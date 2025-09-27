@@ -16,12 +16,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware setup
   await setupAuth(app);
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  // Auth routes - supports both standard auth and URL parameter bypass
+  app.get('/api/auth/user', extractUserId, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      let userId: string;
+      let userType: string = 'agent';
+      let userContext: any = {};
+
+      // Check if this is a URL parameter bypass request
+      if (req.userId && req.userType) {
+        // URL parameter bypass mode
+        userId = req.userId;
+        userType = req.userType;
+        userContext = req.userContext || {};
+        
+        // Return mock user data for bypass mode since we don't store these users in DB
+        const mockUser = {
+          id: userId,
+          userType: userType,
+          agentSlug: req.agentSlug || req.username,
+          email: `${userId}@example.com`,
+          name: userType === 'agent' ? `Agent ${userId}` : `User ${userId}`,
+          context: userContext
+        };
+        
+        return res.json(mockUser);
+      } else if (req.user && req.user.claims) {
+        // Standard Replit Auth mode
+        userId = req.user.claims.sub;
+        const user = await storage.getUser(userId);
+        return res.json(user);
+      } else {
+        // No authentication found
+        return res.status(401).json({ message: "Unauthorized" });
+      }
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });

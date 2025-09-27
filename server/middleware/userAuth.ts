@@ -38,10 +38,12 @@ export const extractUserId = (req: Request, res: Response, next: NextFunction) =
         userType: urlUserType,
       };
       
-      if (urlUserType === 'public') {
-        req.agentSlug = req.query.agentSlug as string;
-      } else {
-        req.username = req.query.username as string;
+      // Extract agentSlug for both user types (needed for context)
+      req.agentSlug = req.query.agentSlug as string;
+      
+      // Extract username for agents if provided
+      if (urlUserType === 'agent') {
+        req.username = req.query.username as string || req.query.agentSlug as string;
       }
       
       return next();
