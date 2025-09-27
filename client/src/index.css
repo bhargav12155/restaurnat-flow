@@ -1,95 +1,124 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: hsl(210, 40%, 98%);
-  --foreground: hsl(210, 40%, 8%);
+  /* Golden Brick Inspired Theme - Matching Your Logo */
+  --background: linear-gradient(135deg, hsl(45, 12%, 98%) 0%, hsl(42, 15%, 96%) 100%);
+  --background-solid: hsl(45, 12%, 98%);
+  --foreground: hsl(30, 15%, 12%);
   --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(210, 40%, 8%);
+  --card-foreground: hsl(30, 15%, 12%);
   --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(210, 40%, 8%);
-  --primary: hsl(168, 76%, 42%);
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(45, 93%, 47%);
-  --secondary-foreground: hsl(210, 40%, 8%);
-  --muted: hsl(210, 40%, 96%);
-  --muted-foreground: hsl(210, 40%, 45%);
-  --accent: hsl(263, 70%, 50%);
-  --accent-foreground: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(30, 15%, 12%);
+
+  /* Golden Brick Button & Highlight Colors - Matching Logo */
+  --primary: linear-gradient(145deg, #b8860b 0%, #daa520 15%, #ffd700 35%, #ffed4e 50%, #ffd700 65%, #daa520 85%, #b8860b 100%);
+  --primary-solid: #daa520;
+  --primary-foreground: hsl(30, 15%, 12%);
+  --primary-shadow: #b8860b;
+  --primary-highlight: #ffed4e;
+
+  /* Golden Brick 3D Effects */
+  --golden-brick-top: linear-gradient(135deg, #ffed4e 0%, #ffd700 50%, #daa520 100%);
+  --golden-brick-side: linear-gradient(135deg, #daa520 0%, #b8860b 50%, #996515 100%);
+  --golden-brick-depth: linear-gradient(135deg, #b8860b 0%, #8b4513 50%, #654321 100%);
+
+  /* Luxury Secondary Colors */
+  --secondary: hsl(42, 20%, 93%);
+  --secondary-foreground: hsl(30, 15%, 20%);
+  --muted: hsl(42, 15%, 95%);
+  --muted-foreground: hsl(30, 12%, 45%);
+  --accent: linear-gradient(145deg, #daa520 0%, #ffd700 50%, #ffed4e 100%);
+  --accent-solid: #daa520;
+  --accent-foreground: hsl(30, 15%, 12%);
+
   --destructive: hsl(0, 84%, 60%);
-  --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(214, 32%, 91%);
-  --input: hsl(214, 32%, 91%);
-  --ring: hsl(168, 76%, 42%);
-  --chart-1: hsl(168, 76%, 42%);
-  --chart-2: hsl(45, 93%, 47%);
-  --chart-3: hsl(263, 70%, 50%);
-  --chart-4: hsl(120, 60%, 50%);
-  --chart-5: hsl(0, 84%, 60%);
-  --sidebar: hsl(0, 0%, 100%);
-  --sidebar-foreground: hsl(210, 40%, 8%);
-  --sidebar-primary: hsl(168, 76%, 42%);
-  --sidebar-primary-foreground: hsl(0, 0%, 100%);
-  --sidebar-accent: hsl(210, 40%, 96%);
-  --sidebar-accent-foreground: hsl(168, 76%, 42%);
-  --sidebar-border: hsl(214, 32%, 91%);
-  --sidebar-ring: hsl(168, 76%, 42%);
-  --font-sans: Inter, system-ui, -apple-system, sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: ui-monospace, monospace;
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --border: hsl(42, 20%, 88%);
+  --input: hsl(42, 15%, 95%);
+  --ring: #daa520;
+
+  /* Golden Brick Chart Colors */
+  --chart-1: #daa520;
+  --chart-2: #ffd700;
+  --chart-3: #ffed4e;
+  --chart-4: #b8860b;
+  --chart-5: #cd853f;
+
   --radius: 0.75rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 1px 2px -1px hsl(168, 76%, 42%, 0.00);
-  --shadow: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 1px 2px -1px hsl(168, 76%, 42%, 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 2px 4px -1px hsl(168, 76%, 42%, 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 4px 6px -1px hsl(168, 76%, 42%, 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 8px 10px -1px hsl(168, 76%, 42%, 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00);
-  --tracking-normal: 0em;
-  --spacing: 0.25rem;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-serif: 'Playfair Display', serif;
+  --font-luxury: 'Cormorant Garamond', serif;
+  --font-mono: ui-monospace, monospace;
+
+  /* Golden Brick Effects - Matching Logo Style */
+  --golden-shine: linear-gradient(135deg, #ffed4e 0%, #ffd700 25%, #daa520 50%, #ffd700 75%, #ffed4e 100%);
+  --golden-metallic: linear-gradient(145deg, #b8860b 0%, #daa520 15%, #ffd700 35%, #ffed4e 50%, #ffd700 65%, #daa520 85%, #b8860b 100%);
+  --golden-glow: 0 0 25px rgba(218, 165, 32, 0.4), 0 0 50px rgba(255, 215, 0, 0.2), 0 0 75px rgba(255, 237, 78, 0.1);
+  --luxury-shadow: 0 12px 40px rgba(139, 69, 19, 0.25), 0 6px 20px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+  --premium-border: 1px solid rgba(218, 165, 32, 0.3);
+  --brick-shadow: 0 8px 16px rgba(139, 69, 19, 0.3), 0 4px 8px rgba(0, 0, 0, 0.2);
+  
+  /* Additional Sidebar Colors */
+  --sidebar: linear-gradient(145deg, rgba(218, 165, 32, 0.1) 0%, rgba(255, 215, 0, 0.05) 100%);
+  --sidebar-foreground: hsl(30, 15%, 12%);
+  --sidebar-primary: #daa520;
+  --sidebar-primary-foreground: hsl(30, 15%, 12%);
+  --sidebar-accent: hsl(42, 15%, 95%);
+  --sidebar-accent-foreground: #daa520;
+  --sidebar-border: hsl(42, 20%, 88%);
+  --sidebar-ring: #daa520;
 }
 
 .dark {
-  --background: hsl(0, 0%, 0%);
-  --foreground: hsl(210, 40%, 91%);
-  --card: hsl(210, 10%, 5%);
-  --card-foreground: hsl(210, 40%, 91%);
-  --popover: hsl(0, 0%, 0%);
-  --popover-foreground: hsl(210, 40%, 91%);
-  --primary: hsl(168, 76%, 42%);
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(45, 93%, 47%);
-  --secondary-foreground: hsl(210, 40%, 8%);
-  --muted: hsl(210, 40%, 8%);
-  --muted-foreground: hsl(210, 40%, 55%);
-  --accent: hsl(263, 70%, 50%);
-  --accent-foreground: hsl(0, 0%, 100%);
-  --destructive: hsl(0, 84%, 60%);
-  --destructive-foreground: hsl(0, 0%, 100%);
-  --border: hsl(210, 15%, 15%);
-  --input: hsl(210, 15%, 15%);
-  --ring: hsl(168, 76%, 42%);
-  --chart-1: hsl(168, 76%, 42%);
-  --chart-2: hsl(45, 93%, 47%);
-  --chart-3: hsl(263, 70%, 50%);
-  --chart-4: hsl(120, 60%, 50%);
-  --chart-5: hsl(0, 84%, 60%);
-  --sidebar: hsl(210, 10%, 5%);
-  --sidebar-foreground: hsl(210, 40%, 91%);
-  --sidebar-primary: hsl(168, 76%, 42%);
-  --sidebar-primary-foreground: hsl(0, 0%, 100%);
-  --sidebar-accent: hsl(210, 40%, 8%);
-  --sidebar-accent-foreground: hsl(168, 76%, 42%);
-  --sidebar-border: hsl(210, 15%, 15%);
-  --sidebar-ring: hsl(168, 76%, 42%);
-  --font-sans: Inter, system-ui, -apple-system, sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: ui-monospace, monospace;
-  --radius: 0.75rem;
+  /* Luxury Dark Golden Theme */
+  --background: linear-gradient(135deg, hsl(25, 15%, 8%) 0%, hsl(30, 20%, 12%) 100%);
+  --background-solid: hsl(25, 15%, 8%);
+  --foreground: hsl(45, 25%, 90%);
+  --card: hsl(25, 20%, 12%);
+  --card-foreground: hsl(45, 25%, 90%);
+  --popover: hsl(25, 20%, 12%);
+  --popover-foreground: hsl(45, 25%, 90%);
+
+  /* Dark Golden Buttons & Highlights */
+  --primary: linear-gradient(135deg, hsl(45, 75%, 50%) 0%, hsl(43, 80%, 60%) 50%, hsl(41, 85%, 65%) 100%);
+  --primary-solid: hsl(45, 75%, 50%);
+  --primary-foreground: hsl(25, 25%, 10%);
+  --primary-shadow: hsl(45, 75%, 35%);
+
+  --secondary: hsl(30, 25%, 18%);
+  --secondary-foreground: hsl(45, 25%, 85%);
+  --muted: hsl(30, 20%, 15%);
+  --muted-foreground: hsl(45, 15%, 65%);
+  --accent: linear-gradient(135deg, hsl(43, 80%, 55%) 0%, hsl(41, 85%, 65%) 100%);
+  --accent-solid: hsl(43, 80%, 55%);
+  --accent-foreground: hsl(25, 25%, 10%);
+
+  --destructive: hsl(0, 84%, 65%);
+  --destructive-foreground: hsl(45, 25%, 90%);
+  --border: hsl(30, 25%, 22%);
+  --input: hsl(30, 20%, 18%);
+  --ring: hsl(45, 75%, 50%);
+
+  /* Dark Golden Effects */
+  --golden-shine: linear-gradient(135deg, #d4af37 0%, #f7e98e 25%, #d4af37 50%, #f7e98e 75%, #d4af37 100%);
+  --golden-glow: 0 0 25px rgba(212, 175, 55, 0.4), 0 0 50px rgba(212, 175, 55, 0.2);
+  --luxury-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --premium-border: 1px solid rgba(212, 175, 55, 0.2);
+  
+  --sidebar: hsl(25, 20%, 12%);
+  --sidebar-foreground: hsl(45, 25%, 90%);
+  --sidebar-primary: hsl(45, 75%, 50%);
+  --sidebar-primary-foreground: hsl(25, 25%, 10%);
+  --sidebar-accent: hsl(30, 20%, 15%);
+  --sidebar-accent-foreground: hsl(43, 80%, 55%);
+  --sidebar-border: hsl(30, 25%, 22%);
+  --sidebar-ring: hsl(45, 75%, 50%);
 }
 
 @layer base {
@@ -98,7 +127,166 @@
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply font-sans antialiased text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--background);
+    min-height: 100vh;
+  }
+
+  /* Luxury Typography */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Golden Brick Button Styles - Matching Logo 3D Effect */
+  .btn-primary, .btn-golden, [data-button-type="primary"], button[class*="primary"] {
+    background: var(--golden-metallic) !important;
+    color: var(--primary-foreground) !important;
+    border: none !important;
+    box-shadow:
+      inset 0 2px 0 rgba(255, 237, 78, 0.8),
+      inset 0 -2px 0 rgba(139, 69, 19, 0.8),
+      inset 2px 0 0 rgba(255, 215, 0, 0.6),
+      inset -2px 0 0 rgba(184, 134, 11, 0.8),
+      var(--brick-shadow),
+      var(--golden-glow) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    position: relative !important;
+    overflow: hidden !important;
+    font-weight: 700 !important;
+    text-shadow: 0 1px 2px rgba(139, 69, 19, 0.5), 0 0 8px rgba(255, 215, 0, 0.3) !important;
+    border-radius: 0.25rem !important;
+  }
+
+  .btn-primary:hover, .btn-golden:hover, [data-button-type="primary"]:hover {
+    transform: translateY(-3px) !important;
+    background: linear-gradient(145deg, #cd853f 0%, #daa520 10%, #ffd700 30%, #ffed4e 50%, #ffd700 70%, #daa520 90%, #cd853f 100%) !important;
+    box-shadow:
+      inset 0 3px 0 rgba(255, 237, 78, 0.9),
+      inset 0 -3px 0 rgba(139, 69, 19, 0.9),
+      inset 3px 0 0 rgba(255, 215, 0, 0.7),
+      inset -3px 0 0 rgba(184, 134, 11, 0.9),
+      0 12px 24px rgba(139, 69, 19, 0.4),
+      0 8px 16px rgba(0, 0, 0, 0.2),
+      0 4px 8px rgba(0, 0, 0, 0.15),
+      var(--golden-glow) !important;
+  }
+
+  /* Golden Brick Shine Animation - Matching Logo Reflections */
+  .btn-primary::before, .btn-golden::before, [data-button-type="primary"]::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.1) 25%,
+      rgba(255, 237, 78, 0.6) 50%,
+      rgba(255, 255, 255, 0.1) 75%,
+      transparent 100%) !important;
+    transition: left 0.8s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  .btn-primary:hover::before, .btn-golden:hover::before, [data-button-type="primary"]:hover::before {
+    left: 100% !important;
+  }
+}
+
+@layer components {
+  /* Golden Brick Card Styles - Matching Logo 3D Depth */
+  .card-luxury, [data-card-type="luxury"] {
+    @apply bg-card border border-border;
+    background: linear-gradient(145deg, #ffffff 0%, #fefefe 50%, #f8f8f8 100%) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -1px 0 rgba(218, 165, 32, 0.1),
+      inset 1px 0 0 rgba(255, 255, 255, 0.4),
+      inset -1px 0 0 rgba(218, 165, 32, 0.1),
+      var(--luxury-shadow) !important;
+    border: 1px solid rgba(218, 165, 32, 0.2) !important;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Apply luxury styling to all Shadcn cards */
+  .card, [data-card], [class*="card"] {
+    background: linear-gradient(145deg, #ffffff 0%, #fefefe 50%, #f8f8f8 100%) !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -1px 0 rgba(218, 165, 32, 0.1),
+      inset 1px 0 0 rgba(255, 255, 255, 0.4),
+      inset -1px 0 0 rgba(218, 165, 32, 0.1),
+      var(--luxury-shadow) !important;
+    border: 1px solid rgba(218, 165, 32, 0.2) !important;
+    backdrop-filter: blur(8px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-luxury:hover, [data-card-type="luxury"]:hover, .card:hover, [data-card]:hover {
+    transform: translateY(-6px);
+    background: linear-gradient(145deg, #ffffff 0%, #fefefe 30%, #f9f9f9 100%) !important;
+    box-shadow:
+      inset 0 2px 0 rgba(255, 255, 255, 0.9),
+      inset 0 -2px 0 rgba(218, 165, 32, 0.15),
+      inset 2px 0 0 rgba(255, 255, 255, 0.5),
+      inset -2px 0 0 rgba(218, 165, 32, 0.15),
+      0 20px 60px rgba(139, 69, 19, 0.2),
+      0 12px 30px rgba(0, 0, 0, 0.15),
+      0 6px 15px rgba(0, 0, 0, 0.1),
+      var(--golden-glow) !important;
+    border-color: rgba(218, 165, 32, 0.4) !important;
+  }
+
+  /* Golden Brick Highlights - Matching Logo Metallic Text */
+  .highlight-golden, .text-golden, [data-highlight="golden"] {
+    background: var(--golden-metallic);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-size: 200% 100%;
+    animation: goldenShine 4s ease-in-out infinite;
+    font-weight: 700;
+    text-shadow:
+      0 1px 0 rgba(255, 237, 78, 0.5),
+      0 -1px 0 rgba(139, 69, 19, 0.3),
+      0 0 10px rgba(218, 165, 32, 0.4);
+    position: relative;
+  }
+
+  @keyframes goldenShine {
+    0%, 100% { background-position: 200% 0; }
+    50% { background-position: -200% 0; }
+  }
+
+  /* Premium Navbar/Header */
+  .navbar-luxury, header, .header {
+    backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.85);
+    border-bottom: var(--premium-border);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  .dark .navbar-luxury, .dark header, .dark .header {
+    background: rgba(25, 20, 15, 0.85);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+  }
+
+  /* Luxury Sidebar */
+  .sidebar-luxury, aside, .sidebar {
+    backdrop-filter: blur(12px);
+    background: var(--sidebar);
+    border-right: var(--premium-border);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.04);
+  }
+
+  .dark .sidebar-luxury, .dark aside, .dark .sidebar {
+    background: var(--sidebar);
+    border-right: 1px solid rgba(212, 175, 55, 0.1);
   }
 }
 
@@ -115,20 +303,6 @@
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
-}
-
-.glassmorphism {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.sidebar-collapsed {
-  width: 4rem;
-}
-
-.sidebar-expanded {
-  width: 16rem;
 }
 
 /* Override default scrollbar styles */

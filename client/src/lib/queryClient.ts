@@ -7,12 +7,48 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// Helper function to get authentication bypass parameters from current URL
+function getBypassAuthParams(): URLSearchParams {
+  const currentUrl = new URL(window.location.href);
+  const bypassParams = new URLSearchParams();
+  
+  if (currentUrl.searchParams.get('bypassAuth') === 'true') {
+    const userId = currentUrl.searchParams.get('userId');
+    const userType = currentUrl.searchParams.get('userType');
+    const agentSlug = currentUrl.searchParams.get('agentSlug');
+    const username = currentUrl.searchParams.get('username');
+    
+    if (userId && userType) {
+      bypassParams.set('bypassAuth', 'true');
+      bypassParams.set('userId', userId);
+      bypassParams.set('userType', userType);
+      if (agentSlug) bypassParams.set('agentSlug', agentSlug);
+      if (username) bypassParams.set('username', username);
+    }
+  }
+  
+  return bypassParams;
+}
+
+// Helper function to append bypass params to URL
+function appendBypassParams(url: string): string {
+  const bypassParams = getBypassAuthParams();
+  if (bypassParams.toString()) {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}${bypassParams.toString()}`;
+  }
+  return url;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  // Include bypass authentication parameters if present in current URL
+  const finalUrl = appendBypassParams(url);
+  
+  const res = await fetch(finalUrl, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -29,7 +65,11 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    // Include bypass authentication parameters if present in current URL
+    const baseUrl = queryKey.join("/") as string;
+    const finalUrl = appendBypassParams(baseUrl);
+    
+    const res = await fetch(finalUrl, {
       credentials: "include",
     });
 
