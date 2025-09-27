@@ -1,0 +1,151 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(210, 40%, 98%);
+  --foreground: hsl(210, 40%, 8%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(210, 40%, 8%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(210, 40%, 8%);
+  --primary: hsl(168, 76%, 42%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(45, 93%, 47%);
+  --secondary-foreground: hsl(210, 40%, 8%);
+  --muted: hsl(210, 40%, 96%);
+  --muted-foreground: hsl(210, 40%, 45%);
+  --accent: hsl(263, 70%, 50%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(214, 32%, 91%);
+  --input: hsl(214, 32%, 91%);
+  --ring: hsl(168, 76%, 42%);
+  --chart-1: hsl(168, 76%, 42%);
+  --chart-2: hsl(45, 93%, 47%);
+  --chart-3: hsl(263, 70%, 50%);
+  --chart-4: hsl(120, 60%, 50%);
+  --chart-5: hsl(0, 84%, 60%);
+  --sidebar: hsl(0, 0%, 100%);
+  --sidebar-foreground: hsl(210, 40%, 8%);
+  --sidebar-primary: hsl(168, 76%, 42%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(210, 40%, 96%);
+  --sidebar-accent-foreground: hsl(168, 76%, 42%);
+  --sidebar-border: hsl(214, 32%, 91%);
+  --sidebar-ring: hsl(168, 76%, 42%);
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: ui-monospace, monospace;
+  --radius: 0.75rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 1px 2px -1px hsl(168, 76%, 42%, 0.00);
+  --shadow: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 1px 2px -1px hsl(168, 76%, 42%, 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 2px 4px -1px hsl(168, 76%, 42%, 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 4px 6px -1px hsl(168, 76%, 42%, 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00), 0px 8px 10px -1px hsl(168, 76%, 42%, 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(168, 76%, 42%, 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: hsl(0, 0%, 0%);
+  --foreground: hsl(210, 40%, 91%);
+  --card: hsl(210, 10%, 5%);
+  --card-foreground: hsl(210, 40%, 91%);
+  --popover: hsl(0, 0%, 0%);
+  --popover-foreground: hsl(210, 40%, 91%);
+  --primary: hsl(168, 76%, 42%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(45, 93%, 47%);
+  --secondary-foreground: hsl(210, 40%, 8%);
+  --muted: hsl(210, 40%, 8%);
+  --muted-foreground: hsl(210, 40%, 55%);
+  --accent: hsl(263, 70%, 50%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(210, 15%, 15%);
+  --input: hsl(210, 15%, 15%);
+  --ring: hsl(168, 76%, 42%);
+  --chart-1: hsl(168, 76%, 42%);
+  --chart-2: hsl(45, 93%, 47%);
+  --chart-3: hsl(263, 70%, 50%);
+  --chart-4: hsl(120, 60%, 50%);
+  --chart-5: hsl(0, 84%, 60%);
+  --sidebar: hsl(210, 10%, 5%);
+  --sidebar-foreground: hsl(210, 40%, 91%);
+  --sidebar-primary: hsl(168, 76%, 42%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(210, 40%, 8%);
+  --sidebar-accent-foreground: hsl(168, 76%, 42%);
+  --sidebar-border: hsl(210, 15%, 15%);
+  --sidebar-ring: hsl(168, 76%, 42%);
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: ui-monospace, monospace;
+  --radius: 0.75rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.glassmorphism {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-collapsed {
+  width: 4rem;
+}
+
+.sidebar-expanded {
+  width: 16rem;
+}
+
+/* Override default scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
