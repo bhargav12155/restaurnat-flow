@@ -124,19 +124,24 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
                 />
               </div>
 
-              {/* Motion Preview */}
+              {/* Motion Preview - Compact with Sound */}
               {selectedPhoto.motion_preview_url && (
-                <div className="border-2 border-[#D4AF37]/30 rounded-lg overflow-hidden">
+                <div className="border-2 border-[#D4AF37]/30 rounded-lg overflow-hidden bg-black">
                   <video
                     src={selectedPhoto.motion_preview_url}
                     controls
-                    className="w-full"
+                    controlsList="nodownload"
+                    className="w-full max-h-[400px] object-contain"
                     autoPlay
                     loop
-                    muted
+                    playsInline
                   >
                     Your browser does not support video playback.
                   </video>
+                  <div className="bg-gray-900 px-3 py-2 text-xs text-gray-300 flex items-center gap-2">
+                    <Play className="w-3 h-3" />
+                    Motion Preview • Click play to see avatar animation with sound
+                  </div>
                 </div>
               )}
 
