@@ -16,6 +16,7 @@ import { HeyGenStreamingService } from "./services/heygen-streaming";
 import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
 import { HeyGenTemplateService } from "./services/heygen-template";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { S3UploadService } from "./services/s3Upload";
 import { realtimeService } from "./websocket";
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
@@ -3143,6 +3144,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Upload custom photo for photo avatar
   app.post(
     "/api/photo-avatars/upload",
+    requireAuth,
     upload.single("photo"),
     async (req, res) => {
       try {
@@ -3150,37 +3152,30 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           return res.status(400).json({ error: "No photo uploaded" });
         }
 
-        const objectStorage = new ObjectStorageService();
-        const fileName = `image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const s3Service = new S3UploadService();
+        const fileName = `${nanoid()}.${req.file.mimetype.split("/")[1]}`;
         
         // Read file from disk (Multer saves to disk, not memory)
         const filePath = req.file.path;
         const fileBuffer = fs.readFileSync(filePath);
         
-        // Get signed upload URL from Replit Object Storage
-        const uploadURL = await objectStorage.getObjectEntityUploadURL();
-        
-        // Upload file to signed URL
-        const uploadResponse = await fetch(uploadURL, {
-          method: 'PUT',
-          body: fileBuffer,
-          headers: {
-            'Content-Type': req.file.mimetype,
-          },
-        });
-        
-        if (!uploadResponse.ok) {
-          throw new Error(`Upload failed: ${uploadResponse.statusText}`);
-        }
-        
-        // Extract the object path from the response
-        const uploadedUrl = uploadResponse.url.split('?')[0];
-        const normalizedPath = objectStorage.normalizeObjectEntityPath(uploadedUrl);
+        // Upload to S3 with user-specific folder
+        const s3Key = await s3Service.uploadFile(
+          userId,
+          fileBuffer,
+          fileName,
+          req.file.mimetype
+        );
         
         // Clean up temporary file
         fs.unlinkSync(filePath);
 
-        res.json({ imageKey: normalizedPath });
+        res.json({ imageKey: s3Key });
       } catch (error) {
         console.error("Failed to upload photo:", error);
         res.status(500).json({ error: "Failed to upload photo" });
@@ -3189,7 +3184,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   );
 
   // Create avatar group from uploaded photos
-  app.post("/api/photo-avatars/create-from-uploads", async (req, res) => {
+  app.post("/api/photo-avatars/create-from-uploads", requireAuth, async (req, res) => {
     try {
       const { name, imageKeys } = req.body;
       
@@ -3199,15 +3194,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         });
       }
 
-      const objectStorage = new ObjectStorageService();
+      const s3Service = new S3UploadService();
       const photoAvatarService = new HeyGenPhotoAvatarService();
       
-      // Download images from object storage and prepare them
+      // Download images from S3 and prepare them
       const photoBuffers: Buffer[] = [];
       for (const imageKey of imageKeys) {
-        // Get the file from object storage
-        const objectFile = await objectStorage.getObjectEntityFile(imageKey);
-        const [buffer] = await objectFile.download();
+        const buffer = await s3Service.getFile(imageKey);
         photoBuffers.push(buffer);
       }
       
