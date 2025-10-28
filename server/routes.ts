@@ -2997,6 +2997,28 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Get avatar group photos (generated images)
+  app.get("/api/photo-avatars/groups/:groupId/photos", async (req, res) => {
+    try {
+      const { groupId } = req.params;
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const group = await photoAvatarService.getAvatarGroup(groupId);
+      
+      // Extract photos from group data
+      const photos = group.photos || group.images || [];
+
+      res.json({ 
+        group_id: groupId,
+        photos: photos,
+        count: photos.length 
+      });
+    } catch (error) {
+      console.error("Failed to get avatar group photos:", error);
+      res.status(500).json({ error: "Failed to get avatar group photos" });
+    }
+  });
+
   // Get avatar group looks
   app.get("/api/photo-avatars/groups/:groupId/looks", async (req, res) => {
     try {
