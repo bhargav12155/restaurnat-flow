@@ -15,6 +15,7 @@ import { HeyGenStreamingService } from "./services/heygen-streaming";
 import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
 import { HeyGenTemplateService } from "./services/heygen-template";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { realtimeService } from "./websocket";
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
 import { requireAuth, requireAgent, optionalAuth } from "./middleware/auth";
@@ -222,6 +223,63 @@ Whether you're a first-time buyer, growing family, or savvy investor, I'll help 
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // =====================================================
+  // NEBRASKA HOME HUB INTEGRATION ENDPOINT
+  // =====================================================
+  app.get("/integration", (req, res) => {
+    try {
+      const { source, domain, userEmail, agentSlug, timestamp } = req.query;
+      
+      // Validate trusted domains
+      const trustedDomains = [
+        'localhost',
+        'nebraskahomehub.com',
+        'bjorkhomes.com',
+        'mandy.bjorkhomes.com'
+      ];
+      
+      const requestDomain = domain as string || '';
+      const isTrusted = trustedDomains.some(trusted => 
+        requestDomain.includes(trusted)
+      );
+      
+      if (!isTrusted) {
+        console.warn(`⚠️ Untrusted integration request from: ${domain}`);
+        return res.status(403).json({ 
+          error: 'Integration not allowed from this domain' 
+        });
+      }
+      
+      // Validate source
+      if (source !== 'nebraska-home-hub') {
+        console.warn(`⚠️ Unknown integration source: ${source}`);
+        return res.status(403).json({ 
+          error: 'Unknown integration source' 
+        });
+      }
+      
+      // Log the integration request
+      console.log(`🔗 Integration request from ${source} - domain: ${domain}, agent: ${agentSlug}`);
+      
+      // Return integration configuration with tenant-scoped data
+      res.json({
+        success: true,
+        source: source || 'unknown',
+        timestamp: timestamp || new Date().toISOString(),
+        config: {
+          appUrl: `http://localhost:5000`,
+          iframeUrl: `http://localhost:5000/?bypassAuth=true&userId=${userEmail || 'guest'}&userType=public&agentSlug=${agentSlug || 'default'}`,
+          authBypass: true,
+          agentSlug: agentSlug, // Limit scope to specific agent
+        },
+        message: 'RealtyFlow integration ready'
+      });
+    } catch (error) {
+      console.error('Integration endpoint error:', error);
+      res.status(500).json({ error: 'Integration configuration failed' });
+    }
+  });
+
+  // =====================================================
   // AUTHENTICATION ROUTES
   // =====================================================
   app.use("/api/auth", authRoutes);
@@ -308,6 +366,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             metaDescription: generatedContent.metaDescription,
           },
         });
+
+        // Send real-time notification
+        realtimeService.notifyContentPublished(
+          user.id,
+          contentPiece.id,
+          generatedContent.title
+        );
 
         res.json({ ...generatedContent, id: contentPiece.id });
       } else {
@@ -748,6 +813,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           originalContent: content,
           neighborhood: null,
         });
+
+        // Send real-time notification
+        realtimeService.notifySocialPostScheduled(
+          user.id,
+          scheduledPost.id,
+          platform,
+          new Date().toISOString()
+        );
 
         res.json({
           success: true,

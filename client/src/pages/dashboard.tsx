@@ -18,6 +18,9 @@ import { SocialLinksPrompt } from "@/components/dashboard/social-links-prompt";
 import { SocialMediaSetup } from "@/components/setup/social-media-setup";
 import UserMenu from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { useAuth } from "@/hooks/useAuth";
 import { useState, useEffect } from "react";
 import { Sparkles, Bell } from "lucide-react";
 
@@ -26,6 +29,14 @@ export default function Dashboard() {
   const [activeView, setActiveView] = useState("dashboard");
   const [showSocialLinksPrompt, setShowSocialLinksPrompt] = useState(false);
   const [showSocialMediaSetup, setShowSocialMediaSetup] = useState(false);
+  const { user, isAuthenticated } = useAuth();
+
+  // Connect to WebSocket for real-time updates
+  const { isConnected, lastMessage } = useWebSocket({
+    userId: user?.id?.toString() || undefined,
+    autoConnect: isAuthenticated && !!user?.id,
+    showToast: true,
+  });
 
   const handleGenerateContent = () => {
     setIsGenerating(true);
