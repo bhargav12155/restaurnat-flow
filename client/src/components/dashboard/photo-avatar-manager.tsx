@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Upload, Camera, Users, Sparkles, Loader2, Check, X, AlertCircle, Image, UserPlus, Wand2, Mic, MicOff, Play, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { AvatarPhotoGallery } from './avatar-photo-gallery';
 
 interface AvatarGroup {
   group_id: string;
@@ -683,71 +684,86 @@ export function PhotoAvatarManager() {
                 </AlertDescription>
               </Alert>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {Array.isArray(avatarGroups) && avatarGroups.map((group: AvatarGroup) => (
-                  <div
+                  <Card
                     key={group.group_id}
-                    className="border rounded-lg p-4 space-y-3"
+                    className="overflow-hidden border-2 border-[#D4AF37]/20"
                     data-testid={`card-group-${group.group_id}`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-medium">{group.name}</h3>
-                        <p className="text-sm text-gray-500">
-                          Created: {new Date(group.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <Badge className={getStatusColor(group.status)}>
-                        {group.status}
-                      </Badge>
-                    </div>
-                    
-                    {group.status === 'processing' && group.training_progress && (
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-sm">
-                          <span>Training Progress</span>
-                          <span>{group.training_progress}%</span>
+                    <CardHeader className="bg-gradient-to-r from-[#D4AF37]/5 to-[#B8860B]/5 border-b border-[#D4AF37]/20">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-xl font-playfair">{group.name}</CardTitle>
+                          <CardDescription>
+                            Created: {new Date(group.created_at).toLocaleDateString()}
+                            {group.avatar_count && ` • ${group.avatar_count} photos`}
+                          </CardDescription>
                         </div>
-                        <Progress value={group.training_progress} />
+                        <Badge className={`${getStatusColor(group.status)} text-white`}>
+                          {group.status}
+                        </Badge>
                       </div>
-                    )}
+                    </CardHeader>
                     
-                    <div className="flex gap-2">
-                      {group.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          onClick={() => trainGroupMutation.mutate(group.group_id)}
-                          disabled={trainGroupMutation.isPending}
-                          data-testid={`button-train-${group.group_id}`}
-                        >
-                          <UserPlus className="w-4 h-4 mr-2" />
-                          Start Training
-                        </Button>
+                    <CardContent className="p-6 space-y-4">
+                      {/* Training Progress */}
+                      {group.status === 'processing' && group.training_progress && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-sm">
+                            <span className="font-medium">Training Progress</span>
+                            <span className="text-[#D4AF37] font-semibold">{group.training_progress}%</span>
+                          </div>
+                          <Progress value={group.training_progress} className="h-2" />
+                          <p className="text-xs text-gray-500">Creating your custom avatar model...</p>
+                        </div>
                       )}
                       
-                      {group.status === 'ready' && (
+                      {/* Photo Gallery Component */}
+                      <AvatarPhotoGallery groupId={group.group_id} />
+                      
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 pt-2 border-t border-gray-200">
+                        {group.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            onClick={() => trainGroupMutation.mutate(group.group_id)}
+                            disabled={trainGroupMutation.isPending}
+                            data-testid={`button-train-${group.group_id}`}
+                            className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+                          >
+                            <UserPlus className="w-4 h-4 mr-2" />
+                            Start Training
+                          </Button>
+                        )}
+                        
+                        {group.status === 'ready' && (
+                          <Button
+                            size="sm"
+                            onClick={() => generateLooksMutation.mutate({ groupId: group.group_id, numLooks: 3 })}
+                            disabled={generateLooksMutation.isPending}
+                            data-testid={`button-looks-${group.group_id}`}
+                            className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+                          >
+                            <Wand2 className="w-4 h-4 mr-2" />
+                            Generate New Looks
+                          </Button>
+                        )}
+                        
                         <Button
                           size="sm"
-                          onClick={() => generateLooksMutation.mutate({ groupId: group.group_id, numLooks: 3 })}
-                          disabled={generateLooksMutation.isPending}
-                          data-testid={`button-looks-${group.group_id}`}
+                          variant="outline"
+                          onClick={() => deleteGroupMutation.mutate(group.group_id)}
+                          disabled={deleteGroupMutation.isPending}
+                          data-testid={`button-delete-${group.group_id}`}
+                          className="ml-auto border-red-300 text-red-600 hover:bg-red-50"
                         >
-                          <Wand2 className="w-4 h-4 mr-2" />
-                          Generate New Looks
+                          <X className="w-4 h-4 mr-1" />
+                          Delete Group
                         </Button>
-                      )}
-                      
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => deleteGroupMutation.mutate(group.group_id)}
-                        disabled={deleteGroupMutation.isPending}
-                        data-testid={`button-delete-${group.group_id}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             )}
