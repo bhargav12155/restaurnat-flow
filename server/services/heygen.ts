@@ -318,9 +318,13 @@ export class HeyGenService {
     // Use the HeyGen upload endpoint for audio
     const uploadUrl = "https://upload.heygen.com/v1/asset";
 
+    // Normalize content type for HeyGen (it expects audio/x-wav for WAV files)
+    const normalizedContentType = contentType === 'audio/wav' ? 'audio/x-wav' : contentType;
+
     console.log("🌐 HeyGen Audio Upload:", {
       url: uploadUrl,
-      contentType,
+      originalContentType: contentType,
+      normalizedContentType,
       bufferSize: audioBuffer.length
     });
 
@@ -328,7 +332,7 @@ export class HeyGenService {
       method: "POST",
       headers: {
         "X-Api-Key": this.apiKey,
-        "Content-Type": contentType,
+        "Content-Type": normalizedContentType,
       },
       body: audioBuffer,
     });
