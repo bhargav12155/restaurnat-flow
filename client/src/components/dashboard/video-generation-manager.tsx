@@ -85,7 +85,7 @@ export function VideoGenerationManager() {
   const queryClient = useQueryClient();
 
   // Fetch user's custom recorded voices from regular avatars
-  const { data: customVoicesData } = useQuery<any[]>({
+  const { data: customAvatarsData } = useQuery<any[]>({
     queryKey: ["/api/avatars"],
   });
   
@@ -96,10 +96,21 @@ export function VideoGenerationManager() {
     queryKey: ["/api/photo-avatars/groups"],
   });
   
-  // Combine custom voices from both regular avatars and photo avatar groups
+  // Fetch custom voices from Voice Library
+  const { data: voiceLibraryVoices = [] } = useQuery<Array<{
+    id: string;
+    name: string;
+    audioUrl: string;
+    userId: string;
+    createdAt: string;
+  }>>({
+    queryKey: ["/api/custom-voices"],
+  });
+  
+  // Combine all custom voices for the voice selector
   const customVoices = [
     // Regular avatars with custom voices
-    ...(customVoicesData || [])
+    ...(customAvatarsData || [])
       .filter((avatar: any) => avatar.metadata?.hasCustomVoice && avatar.metadata?.voiceRecordingUrl)
       .map((avatar: any) => ({
         id: `custom_avatar_${avatar.id}`,
@@ -114,12 +125,21 @@ export function VideoGenerationManager() {
       .filter((group: any) => group.default_voice_id && group.default_voice_id !== 'null')
       .map((group: any) => ({
         id: `custom_group_${group.id}`,
-        name: `${group.name} (My Voice)`,
+        name: `${group.name} (Group Voice)`,
         groupId: group.id,
         voiceId: group.default_voice_id,
         isCustom: true,
         type: 'photo_group',
       })),
+    // Voice Library voices - standalone saved voices
+    ...(voiceLibraryVoices || []).map((voice: any) => ({
+      id: `voice_library_${voice.id}`,
+      name: `${voice.name} (Needs HeyGen Upload)`,
+      audioUrl: voice.audioUrl,
+      voiceLibraryId: voice.id,
+      isCustom: true,
+      type: 'voice_library',
+    })),
   ];
 
   // Fetch photo avatar groups
