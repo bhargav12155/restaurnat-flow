@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import { nanoid } from "nanoid";
 import { storage } from "./storage";
 import { openaiService, getAPIKeyStatus } from "./services/openai";
 import { socialMediaService } from "./services/socialMedia";
