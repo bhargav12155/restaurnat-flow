@@ -16,7 +16,9 @@ import {
   type Avatar,
   type InsertAvatar,
   type VideoContent,
-  type InsertVideoContent
+  type InsertVideoContent,
+  type CustomVoice,
+  type InsertCustomVoice
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -74,6 +76,11 @@ export interface IStorage {
   createVideoContent(video: InsertVideoContent): Promise<VideoContent>;
   updateVideoContent(id: string, updates: Partial<VideoContent>): Promise<VideoContent | undefined>;
   deleteVideoContent(id: string): Promise<boolean>;
+
+  // Custom Voices
+  listCustomVoices(userId: string): Promise<CustomVoice[]>;
+  createCustomVoice(voice: InsertCustomVoice): Promise<CustomVoice>;
+  deleteCustomVoice(id: string, userId: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -86,6 +93,7 @@ export class MemStorage implements IStorage {
   private scheduledPosts: Map<string, ScheduledPost> = new Map();
   private avatars: Map<string, Avatar> = new Map();
   private videoContent: Map<string, VideoContent> = new Map();
+  private customVoices: Map<string, CustomVoice> = new Map();
 
   constructor() {
     this.seedData();
@@ -637,6 +645,32 @@ export class MemStorage implements IStorage {
 
   async deleteVideoContent(id: string): Promise<boolean> {
     return this.videoContent.delete(id);
+  }
+
+  // Custom Voices
+  async listCustomVoices(userId: string): Promise<CustomVoice[]> {
+    return Array.from(this.customVoices.values()).filter(v => v.userId === userId);
+  }
+
+  async createCustomVoice(insertVoice: InsertCustomVoice): Promise<CustomVoice> {
+    const id = randomUUID();
+    const voice: CustomVoice = {
+      ...insertVoice,
+      id,
+      duration: insertVoice.duration || null,
+      fileSize: insertVoice.fileSize || null,
+      createdAt: new Date()
+    };
+    this.customVoices.set(id, voice);
+    return voice;
+  }
+
+  async deleteCustomVoice(id: string, userId: string): Promise<boolean> {
+    const voice = this.customVoices.get(id);
+    if (!voice || voice.userId !== userId) {
+      return false;
+    }
+    return this.customVoices.delete(id);
   }
 }
 

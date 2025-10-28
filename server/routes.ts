@@ -2374,6 +2374,80 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // ======================================
+  // CUSTOM VOICES ENDPOINTS
+  // ======================================
+
+  // List all custom voices for the current user
+  app.get("/api/custom-voices", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const voices = await storage.listCustomVoices(user.id);
+      res.json(voices);
+    } catch (error) {
+      console.error("Failed to fetch custom voices:", error);
+      res.status(500).json({ error: "Failed to fetch custom voices" });
+    }
+  });
+
+  // Upload and save a new custom voice
+  app.post("/api/custom-voices", requireAuth, upload.single("audio"), async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { name } = req.body;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ error: "No audio file provided" });
+      }
+
+      if (!name || name.trim().length === 0) {
+        return res.status(400).json({ error: "Voice name is required" });
+      }
+
+      // Upload audio file to S3
+      const s3Service = new S3UploadService();
+      const audioUrl = await s3Service.uploadFile(
+        file.path,
+        `voices/${user.id}/${nanoid()}_${file.originalname}`,
+        file.mimetype
+      );
+
+      // Get file stats
+      const stats = fs.statSync(file.path);
+      
+      // Create custom voice record
+      const voice = await storage.createCustomVoice({
+        userId: user.id,
+        name: name.trim(),
+        audioUrl,
+        fileSize: stats.size,
+      });
+
+      // Clean up uploaded file
+      fs.unlinkSync(file.path);
+
+      res.status(201).json(voice);
+    } catch (error) {
+      console.error("Failed to create custom voice:", error);
+      res.status(500).json({ error: "Failed to create custom voice" });
+    }
+  });
+
+  // Delete a custom voice
+  app.delete("/api/custom-voices/:id", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+
+      await storage.deleteCustomVoice(id, user.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete custom voice:", error);
+      res.status(500).json({ error: "Failed to delete custom voice" });
+    }
+  });
+
   // Proxy endpoint for HeyGen images to avoid CORS issues
   app.get("/api/proxy/heygen-image", async (req, res) => {
     try {
