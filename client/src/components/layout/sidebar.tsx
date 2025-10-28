@@ -81,12 +81,6 @@ const navigationItems = [
     key: "templates",
   },
   {
-    icon: Mic,
-    label: "Voice Library",
-    href: "#voice-library",
-    key: "voice-library",
-  },
-  {
     icon: Target,
     label: "Advanced Advertising",
     href: "#advertising",
