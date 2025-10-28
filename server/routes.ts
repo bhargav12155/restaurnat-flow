@@ -237,6 +237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "nebraskahomehub.com",
         "bjorkhomes.com",
         "mandy.bjorkhomes.com",
+        "elasticbeanstalk.com", // AWS Elastic Beanstalk deployments
       ];
 
       const requestDomain = (domain as string) || "";
@@ -264,18 +265,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `🔗 Integration request from ${source} - domain: ${domain}, agent: ${agentSlug}`
       );
 
+      // Dynamically detect the deployment URL
+      const protocol = req.protocol; // 'http' or 'https'
+      const host = req.get('host'); // e.g., 'multi-users-realtyflow.replit.app'
+      const appUrl = `${protocol}://${host}`;
+
+      // Build iframe URL with proper authentication
+      let iframeUrl = appUrl;
+      if (userEmail) {
+        iframeUrl += `/?bypassAuth=true&userId=${encodeURIComponent(userEmail as string)}&userType=public&agentSlug=${agentSlug || "default"}`;
+      }
+
       // Return integration configuration with tenant-scoped data
       res.json({
         success: true,
         source: source || "unknown",
         timestamp: timestamp || new Date().toISOString(),
         config: {
-          appUrl: `http://localhost:5000`,
-          iframeUrl: `http://localhost:5000/?bypassAuth=true&userId=${
-            userEmail || "guest"
-          }&userType=public&agentSlug=${agentSlug || "default"}`,
+          appUrl: appUrl,
+          iframeUrl: iframeUrl,
           authBypass: true,
-          agentSlug: agentSlug, // Limit scope to specific agent
+          agentSlug: agentSlug,
+          userEmail: userEmail || null
         },
         message: "RealtyFlow integration ready",
       });
