@@ -3151,34 +3151,36 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         }
 
         const objectStorage = new ObjectStorageService();
-        const privateDir = objectStorage.getPrivateObjectDir();
-        const fileName = `uploads/image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
+        const fileName = `image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
         
         // Read file from disk (Multer saves to disk, not memory)
         const filePath = req.file.path;
         const fileBuffer = fs.readFileSync(filePath);
         
-        // Parse object path to get bucket and object name
-        const fullPath = `${privateDir}/${fileName}`;
-        const pathParts = fullPath.split("/").filter(p => p);
-        const bucketName = pathParts[0];
-        const objectName = pathParts.slice(1).join("/");
+        // Get signed upload URL from Replit Object Storage
+        const uploadURL = await objectStorage.getObjectEntityUploadURL();
         
-        // Upload directly to GCS
-        const { objectStorageClient } = await import('./objectStorage');
-        const bucket = objectStorageClient.bucket(bucketName);
-        const file = bucket.file(objectName);
-        
-        await file.save(fileBuffer, {
-          metadata: {
-            contentType: req.file.mimetype,
+        // Upload file to signed URL
+        const uploadResponse = await fetch(uploadURL, {
+          method: 'PUT',
+          body: fileBuffer,
+          headers: {
+            'Content-Type': req.file.mimetype,
           },
         });
+        
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+        }
+        
+        // Extract the object path from the response
+        const uploadedUrl = uploadResponse.url.split('?')[0];
+        const normalizedPath = objectStorage.normalizeObjectEntityPath(uploadedUrl);
         
         // Clean up temporary file
         fs.unlinkSync(filePath);
 
-        res.json({ imageKey: fileName });
+        res.json({ imageKey: normalizedPath });
       } catch (error) {
         console.error("Failed to upload photo:", error);
         res.status(500).json({ error: "Failed to upload photo" });
@@ -3199,20 +3201,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const objectStorage = new ObjectStorageService();
       const photoAvatarService = new HeyGenPhotoAvatarService();
-      const { objectStorageClient } = await import('./objectStorage');
-      const privateDir = objectStorage.getPrivateObjectDir();
       
       // Download images from object storage and prepare them
       const photoBuffers: Buffer[] = [];
       for (const imageKey of imageKeys) {
-        const fullPath = `${privateDir}/${imageKey}`;
-        const pathParts = fullPath.split("/").filter(p => p);
-        const bucketName = pathParts[0];
-        const objectName = pathParts.slice(1).join("/");
-        
-        const bucket = objectStorageClient.bucket(bucketName);
-        const file = bucket.file(objectName);
-        const [buffer] = await file.download();
+        // Get the file from object storage
+        const objectFile = await objectStorage.getObjectEntityFile(imageKey);
+        const [buffer] = await objectFile.download();
         photoBuffers.push(buffer);
       }
       
