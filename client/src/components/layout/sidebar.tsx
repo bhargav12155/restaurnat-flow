@@ -83,7 +83,7 @@ const navigationItems = [
   {
     icon: Mic,
     label: "Voice Library",
-    href: "/voice-library",
+    href: "#voice-library",
     key: "voice-library",
   },
   {
