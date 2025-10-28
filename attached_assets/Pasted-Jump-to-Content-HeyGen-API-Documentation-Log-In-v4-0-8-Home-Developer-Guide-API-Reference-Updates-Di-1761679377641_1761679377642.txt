@@ -1,0 +1,153 @@
+Jump to Content
+HeyGen API Documentation
+Log In
+v4.0.8
+Home
+Developer Guide
+API Reference
+Updates
+Discussions
+Tools
+Feature Requests
+Community
+Help
+Getting Started
+Quick Start
+Generate and translate videos
+Create Avatar Videos
+
+Generate Video from Template
+
+HeyGen's Webhook Events
+
+Video Translate API
+Photo Avatars API
+
+streaming with interactive avatars
+Streaming API Overview
+
+Streaming Avatar SDK
+
+Demo: Create a Vite Project with Streaming SDK
+
+Demo: Create an iOS App featuring Interactive Avatar
+Firewall Configuration
+Automate with HeyGen API
+Zapier Integration
+
+Personalized Video
+
+Bulk Video Translation
+Other guides
+HeyGen OAuth
+
+HeyGen MCP Server
+Powered by 
+
+Quick Start
+Get started with HeyGen API & SDK quickly
+
+Welcome to the HeyGen API! 🙌
+
+HeyGen API expands what you can do with HeyGen, allowing you to create amazing avatar videos programmatically and integrate HeyGen's powerful AI capabilities into your product. Unleash the potential of HeyGen's AI capabilities! Welcome to the future of video creation – happy AI video making!
+
+📘
+Note:
+The HeyGen API is now offered independently from the HeyGen App!
+
+Your HeyGen App plan - Free, Creator, Team, or Enterprise - determines which features and limits you can use on the app.heygen.com web app.
+
+Every HeyGen App user now automatically receives Free Trial access to the HeyGen API, including Video Generation, Video Translation, and Interactive Avatar endpoints, and there are three paid subscription tiers available for increased usage: Pro, Scale, and Enterprise.
+
+For more information on pricing and usage, please refer to ourlimits page.
+
+Prerequisite
+Create a HeyGen account
+Create a HeyGen account. After you create a HeyGen account, you are able to make professional avatar videos by leveraging HeyGen's powerful AI capabilities.
+
+Access your API key
+After you have registered the HeyGen account, proceed to your account settings and scroll down to the Subscriptions section and copy your API token.
+
+Settings > Subscriptions > HeyGen API > API Token
+
+
+Quickly Create Avatar Video
+See detailed API reference
+You can use the video/generate endpoint of the HeyGen API to programmatically create mp4 files featuring HeyGen's realistic AI Avatars. In the below example, we create a video in test mode.
+
+While still on aFree Trial of the HeyGen API, your videos will be watermarked.
+
+Request
+Response
+
+curl -X POST 'https://api.heygen.com/v2/video/generate' \
+-H 'X-Api-Key: <your-api-key>' \
+-H 'Content-Type: application/json' \
+-d '{
+  "video_inputs": [
+    {
+      "character": {
+        "type": "avatar",
+        "avatar_id": "Daisy-inskirt-20220818",
+        "avatar_style": "normal"
+      },
+      "voice": {
+        "type": "text",
+        "input_text": "Welcome to the HeyGen API!",
+        "voice_id": "2d5b0e6cf36f460aa7fc47e3eee4ba54"
+      },
+      "background": {
+        "type": "color",
+        "value": "#008000"
+      }
+    }
+  ],
+  "dimension": {
+    "width": 1280,
+    "height": 720
+  }
+}'
+You will receive a response with the ID of the newly created video. You can also use the input_audio attribute to pass a public audio URL instead of using the input_text attribute.
+
+You can also use the Template endpoint in order to generate similar videos in bulk. Click here to find out how.
+
+Wait for the Video
+See detailed API reference
+After creating your video, you can check its status. When the video is ready, the status will change to completed.
+
+Request
+Response (Completed)
+Response (Processing)
+Response (Pending)
+Response (Failed)
+
+curl -X GET 'https://api.heygen.com/v1/video_status.get?video_id=<video_id>' \
+-H 'X-Api-Key: <your-api-key>'
+📘
+The video file URL you get will expire in 7 days. 📆
+You can observe this expiration in the URL parameters. Every time you call the video status endpoint, theExpires and other queries are regenerated accordingly.
+
+Download the video
+Once your video is ready, you can find a link in the response for you to download the video.
+
+cURL
+Python
+
+curl <video_url> --output first_video.mp4
+Conclusion
+For a comprehensive understanding of HeyGen APIs and their capabilities, please review our detailedAPI reference.
+
+In conclusion, the HeyGen API empowers you to tap into the remarkable AI capabilities of HeyGen for programmatically generating compelling avatar videos. By creating a HeyGen account and using your API Token, you can explore the vast potential of HeyGen's API to infuse creativity into your business, product, or creative project.
+
+Updated 27 days ago
+
+Create Avatar Videos
+Did this page help you?
+Table of Contents
+Prerequisite
+Create a HeyGen account
+Access your API key
+Quickly Create Avatar Video
+Wait for the Video
+Download the video
+Conclusion
