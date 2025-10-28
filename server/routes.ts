@@ -3150,6 +3150,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           return res.status(400).json({ error: "No photo uploaded" });
         }
 
+        const objectStorage = new ObjectStorageService();
         const fileBuffer = req.file.buffer;
         const fileName = `image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
 
@@ -3175,6 +3176,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         });
       }
 
+      const objectStorage = new ObjectStorageService();
       const photoAvatarService = new HeyGenPhotoAvatarService();
       
       // Download images from object storage and prepare them
