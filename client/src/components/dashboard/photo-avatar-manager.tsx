@@ -42,6 +42,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { AvatarPhotoGallery } from "./avatar-photo-gallery";
+import { VoiceLibraryManager } from "./voice-library-manager";
 
 // Professional HeyGen Voices
 const PROFESSIONAL_VOICES = [
@@ -507,7 +508,7 @@ export function PhotoAvatarManager() {
       </CardHeader>
       <CardContent>
         <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="generate" data-testid="tab-generate">
               <Sparkles className="w-4 h-4 mr-2" />
               Generate AI Photos
@@ -519,6 +520,10 @@ export function PhotoAvatarManager() {
             <TabsTrigger value="voice" data-testid="tab-voice">
               <Mic className="w-4 h-4 mr-2" />
               Voice Recording
+            </TabsTrigger>
+            <TabsTrigger value="voice-library" data-testid="tab-voice-library">
+              <Mic className="w-4 h-4 mr-2" />
+              Voice Library
             </TabsTrigger>
             <TabsTrigger value="manage" data-testid="tab-manage">
               <Users className="w-4 h-4 mr-2" />
@@ -1052,6 +1057,10 @@ export function PhotoAvatarManager() {
                   </AlertDescription>
                 </Alert>
               ))}
+          </TabsContent>
+
+          <TabsContent value="voice-library" className="space-y-4">
+            <VoiceLibraryManager />
           </TabsContent>
 
           <TabsContent value="manage" className="space-y-4">
