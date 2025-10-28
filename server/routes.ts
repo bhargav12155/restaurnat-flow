@@ -3197,17 +3197,22 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       const s3Service = new S3UploadService();
       const photoAvatarService = new HeyGenPhotoAvatarService();
       
-      // Download images from S3 and prepare them
+      // Download images from S3
       const photoBuffers: Buffer[] = [];
       for (const imageKey of imageKeys) {
         const buffer = await s3Service.getFile(imageKey);
         photoBuffers.push(buffer);
       }
       
-      // Create avatar group with HeyGen
+      // Upload photos to HeyGen and get their image keys
+      console.log('Uploading photos to HeyGen...');
+      const heygenImageKeys = await photoAvatarService.uploadMultiplePhotos(photoBuffers);
+      console.log('HeyGen image keys:', heygenImageKeys);
+      
+      // Create avatar group with HeyGen image keys
       const createResult = await photoAvatarService.createAvatarGroup(
         name,
-        photoBuffers
+        heygenImageKeys
       );
       
       // Automatically start training

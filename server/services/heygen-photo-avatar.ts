@@ -74,10 +74,11 @@ export class HeyGenPhotoAvatarService {
   }
 
   // Create avatar group from photos
-  async createAvatarGroup(name: string, imageKey: string) {
+  async createAvatarGroup(name: string, imageKeys: string | string[]) {
+    // HeyGen API accepts either a single key or array of keys
     const payload = {
       name,
-      image_key: imageKey
+      image_key: Array.isArray(imageKeys) ? imageKeys : [imageKeys]
     };
 
     const response = await this.makeRequest('/photo_avatar/avatar_group/create', 'POST', payload);
@@ -152,13 +153,16 @@ export class HeyGenPhotoAvatarService {
     return response.data;
   }
 
-  // Upload custom photo for avatar
-  async uploadCustomPhoto(imageBlob: Blob): Promise<string> {
-    // Use the upload service from main HeyGen service
-    const arrayBuffer = await imageBlob.arrayBuffer();
-    const contentType = imageBlob.type || 'image/jpeg';
-    
+  // Upload custom photo for avatar (supports both Blob and Buffer)
+  async uploadCustomPhoto(imageData: Blob | Buffer, contentType: string = 'image/jpeg'): Promise<string> {
     const uploadUrl = 'https://upload.heygen.com/v1/asset';
+    
+    let body: ArrayBuffer | Buffer;
+    if (imageData instanceof Blob) {
+      body = await imageData.arrayBuffer();
+    } else {
+      body = imageData;
+    }
     
     const response = await fetch(uploadUrl, {
       method: 'POST',
@@ -166,7 +170,7 @@ export class HeyGenPhotoAvatarService {
         'X-Api-Key': this.apiKey,
         'Content-Type': contentType,
       },
-      body: arrayBuffer,
+      body,
     });
 
     if (!response.ok) {
@@ -182,6 +186,18 @@ export class HeyGenPhotoAvatarService {
     } else {
       throw new Error(`Upload failed: ${result.msg || result.message || 'Unknown error'}`);
     }
+  }
+
+  // Upload multiple photos and get their keys
+  async uploadMultiplePhotos(photoBuffers: Buffer[]): Promise<string[]> {
+    const imageKeys: string[] = [];
+    
+    for (const buffer of photoBuffers) {
+      const imageKey = await this.uploadCustomPhoto(buffer, 'image/jpeg');
+      imageKeys.push(imageKey);
+    }
+    
+    return imageKeys;
   }
 
   // Create talking photo from uploaded image (simplified version)
