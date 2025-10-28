@@ -20,9 +20,12 @@ import {
   type CustomVoice,
   type InsertCustomVoice,
   type PhotoAvatarGroupVoice,
-  type InsertPhotoAvatarGroupVoice
+  type InsertPhotoAvatarGroupVoice,
+  photoAvatarGroupVoices
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -86,8 +89,8 @@ export interface IStorage {
 
   // Photo Avatar Group Voices
   savePhotoAvatarGroupVoice(voice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice>;
-  getPhotoAvatarGroupVoice(groupId: string, userId: string): Promise<PhotoAvatarGroupVoice | undefined>;
-  listPhotoAvatarGroupVoices(userId: string): Promise<PhotoAvatarGroupVoice[]>;
+  getPhotoAvatarGroupVoice(groupId: string, userId: number): Promise<PhotoAvatarGroupVoice | undefined>;
+  listPhotoAvatarGroupVoices(userId: number): Promise<PhotoAvatarGroupVoice[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -684,25 +687,35 @@ export class MemStorage implements IStorage {
   }
 
   async savePhotoAvatarGroupVoice(insertVoice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice> {
-    const id = randomUUID();
-    const voice: PhotoAvatarGroupVoice = {
-      ...insertVoice,
-      id,
-      heygenAudioAssetId: insertVoice.heygenAudioAssetId || null,
-      createdAt: new Date()
-    };
-    this.photoAvatarGroupVoices.set(id, voice);
+    const [voice] = await db
+      .insert(photoAvatarGroupVoices)
+      .values({
+        ...insertVoice,
+        heygenAudioAssetId: insertVoice.heygenAudioAssetId || null,
+      })
+      .returning();
     return voice;
   }
 
-  async getPhotoAvatarGroupVoice(groupId: string, userId: string): Promise<PhotoAvatarGroupVoice | undefined> {
-    return Array.from(this.photoAvatarGroupVoices.values()).find(
-      v => v.groupId === groupId && v.userId === userId
-    );
+  async getPhotoAvatarGroupVoice(groupId: string, userId: number): Promise<PhotoAvatarGroupVoice | undefined> {
+    const [voice] = await db
+      .select()
+      .from(photoAvatarGroupVoices)
+      .where(
+        and(
+          eq(photoAvatarGroupVoices.groupId, groupId),
+          eq(photoAvatarGroupVoices.userId, userId)
+        )
+      )
+      .limit(1);
+    return voice;
   }
 
-  async listPhotoAvatarGroupVoices(userId: string): Promise<PhotoAvatarGroupVoice[]> {
-    return Array.from(this.photoAvatarGroupVoices.values()).filter(v => v.userId === userId);
+  async listPhotoAvatarGroupVoices(userId: number): Promise<PhotoAvatarGroupVoice[]> {
+    return await db
+      .select()
+      .from(photoAvatarGroupVoices)
+      .where(eq(photoAvatarGroupVoices.userId, userId));
   }
 }
 
