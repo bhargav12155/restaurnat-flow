@@ -2483,8 +2483,8 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         return res.status(404).json({ error: "Voice not found" });
       }
 
-      const objectStorageService = new ObjectStorageService();
-      const audioBuffer = await objectStorageService.getObject(voice.audioUrl);
+      const s3Service = new S3UploadService();
+      const audioBuffer = await s3Service.getFile(voice.audioUrl);
 
       // Determine content type from file extension
       const ext = path.extname(voice.audioUrl).toLowerCase();
