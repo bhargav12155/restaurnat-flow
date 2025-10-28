@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,11 +26,45 @@ export function VoiceLibraryManager() {
   const [voiceName, setVoiceName] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
 
   // Fetch custom voices
   const { data: voices = [], isLoading } = useQuery<CustomVoice[]>({
     queryKey: ["/api/custom-voices"],
   });
+
+  // Fetch audio blobs with credentials and create blob URLs
+  useEffect(() => {
+    if (voices.length === 0) return;
+
+    const fetchAudioUrls = async () => {
+      const urls: Record<string, string> = {};
+      
+      for (const voice of voices) {
+        try {
+          const response = await fetch(`/api/custom-voices/${voice.id}/audio`, {
+            credentials: "include",
+          });
+          
+          if (response.ok) {
+            const blob = await response.blob();
+            urls[voice.id] = URL.createObjectURL(blob);
+          }
+        } catch (error) {
+          console.error(`Failed to load audio for voice ${voice.id}:`, error);
+        }
+      }
+      
+      setAudioUrls(urls);
+    };
+
+    fetchAudioUrls();
+
+    // Cleanup blob URLs when component unmounts or voices change
+    return () => {
+      Object.values(audioUrls).forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [voices]);
 
   // Upload voice mutation
   const uploadVoiceMutation = useMutation({
@@ -290,13 +324,19 @@ export function VoiceLibraryManager() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <audio
-                      controls
-                      className="h-10"
-                      data-testid={`audio-player-${voice.id}`}
-                    >
-                      <source src={`/api/custom-voices/${voice.id}/audio`} />
-                    </audio>
+                    {audioUrls[voice.id] ? (
+                      <audio
+                        controls
+                        className="h-10"
+                        data-testid={`audio-player-${voice.id}`}
+                        src={audioUrls[voice.id]}
+                      />
+                    ) : (
+                      <div className="flex items-center text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Loading audio...
+                      </div>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
