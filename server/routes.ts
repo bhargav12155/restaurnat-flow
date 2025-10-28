@@ -3288,11 +3288,15 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           size: req.file.size,
         });
 
+        // Read the file buffer
+        const fileBuffer = fs.readFileSync(req.file.path);
+
         // Upload audio file to S3
         const s3Service = new S3UploadService();
         const audioUrl = await s3Service.uploadFile(
-          req.file.path,
-          `avatar-voices/${userId}/${groupId}/${nanoid()}_${req.file.originalname}`,
+          userId,
+          fileBuffer,
+          `avatar-voices/${groupId}/${nanoid()}_${req.file.originalname}`,
           req.file.mimetype
         );
 
@@ -3303,8 +3307,6 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         // Upload to HeyGen for voice cloning
         try {
           console.log("🎤 Uploading audio to HeyGen for voice cloning...");
-          
-          const fileBuffer = fs.readFileSync(req.file.path);
           
           const heygenService = new HeyGenService();
           heygenAudioAssetId = await heygenService.uploadAudio(fileBuffer, req.file.mimetype);
