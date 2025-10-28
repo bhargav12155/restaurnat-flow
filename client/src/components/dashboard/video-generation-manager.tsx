@@ -34,7 +34,18 @@ import {
   RefreshCw,
   User,
   MessageSquare,
+  Mic,
 } from "lucide-react";
+
+// Professional HeyGen Voices
+const PROFESSIONAL_VOICES = [
+  { id: "92c93dc0dff2428ab0bea258ba68f173", name: "Professional Male - Confident" },
+  { id: "f577da968446491289b53bceb77e5092", name: "Professional Male - Warm" },
+  { id: "73c0b6a2e29d4d38aca41454bf58c955", name: "Professional Female - Clear" },
+  { id: "1c7c897eeb2d4b5fb17d3c6c70250b24", name: "Professional Female - Friendly" },
+  { id: "119caed25533477ba63822d5d1552d25", name: "Neutral - Balanced" },
+  { id: "9f2e8c4a7b5d4f6e8a1c3d5b7e9f2a4c", name: "Energetic - Enthusiastic" },
+];
 
 interface PhotoAvatarGroup {
   group_id: string;
@@ -64,6 +75,7 @@ export function VideoGenerationManager() {
   const [title, setTitle] = useState("");
   const [isTestMode, setIsTestMode] = useState(false);
   const [voiceSpeed, setVoiceSpeed] = useState<number>(1.0); // 1.0 = normal speed
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("119caed25533477ba63822d5d1552d25"); // Default: Neutral - Balanced
   const [currentVideo, setCurrentVideo] = useState<VideoGeneration | null>(
     null
   );
@@ -108,6 +120,7 @@ export function VideoGenerationManager() {
       test: boolean;
       isTalkingPhoto?: boolean;
       voiceSpeed?: number;
+      voiceId?: string;
     }) => {
       console.log("🎬 Frontend: Generating video with data:", data);
       const response = await apiRequest("POST", "/api/videos/generate", data);
@@ -186,6 +199,7 @@ export function VideoGenerationManager() {
       // Photo avatar looks are talking photos in HeyGen's API
       isTalkingPhoto: true,
       voiceSpeed: voiceSpeed,
+      voiceId: selectedVoiceId,
     });
   };
 
@@ -365,6 +379,29 @@ export function VideoGenerationManager() {
               Test Mode (shorter video)
             </Label>
           </div>
+        </div>
+
+        {/* Voice Selection */}
+        <div>
+          <Label htmlFor="voice-select" className="text-sm font-medium flex items-center gap-2">
+            <Mic className="w-4 h-4 text-[#D4AF37]" />
+            Voice Selection
+          </Label>
+          <Select
+            value={selectedVoiceId}
+            onValueChange={setSelectedVoiceId}
+          >
+            <SelectTrigger id="voice-select" data-testid="select-voice-id">
+              <SelectValue placeholder="Choose a voice" />
+            </SelectTrigger>
+            <SelectContent>
+              {PROFESSIONAL_VOICES.map((voice) => (
+                <SelectItem key={voice.id} value={voice.id}>
+                  {voice.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Voice Speed Control */}
