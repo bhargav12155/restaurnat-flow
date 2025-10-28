@@ -2483,13 +2483,25 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       const user = (req as any).user;
       const { id } = req.params;
 
+      console.log(`🎵 Fetching audio for voice ID: ${id}, user ID: ${user.id}`);
+      
       const voice = await storage.getCustomVoice(id);
-      if (!voice || voice.userId !== user.id) {
+      console.log(`📊 Voice found:`, voice ? `Yes (userId: ${voice.userId}, audioUrl: ${voice.audioUrl})` : 'No');
+      
+      if (!voice) {
+        console.log(`❌ Voice not found in database`);
+        return res.status(404).json({ error: "Voice not found" });
+      }
+      
+      if (voice.userId !== user.id.toString()) {
+        console.log(`❌ User ID mismatch: voice.userId=${voice.userId}, user.id=${user.id}`);
         return res.status(404).json({ error: "Voice not found" });
       }
 
+      console.log(`📥 Fetching file from S3: ${voice.audioUrl}`);
       const s3Service = new S3UploadService();
       const audioBuffer = await s3Service.getFile(voice.audioUrl);
+      console.log(`✅ Audio file retrieved from S3, size: ${audioBuffer.length} bytes`);
 
       // Determine content type from file extension
       const ext = path.extname(voice.audioUrl).toLowerCase();
@@ -2499,7 +2511,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       res.set('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
       res.send(audioBuffer);
     } catch (error) {
-      console.error("Failed to serve custom voice audio:", error);
+      console.error("❌ Failed to serve custom voice audio:", error);
       res.status(500).json({ error: "Failed to load audio file" });
     }
   });
