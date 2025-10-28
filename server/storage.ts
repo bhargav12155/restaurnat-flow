@@ -84,6 +84,7 @@ export interface IStorage {
 
   // Custom Voices
   listCustomVoices(userId: string): Promise<CustomVoice[]>;
+  getCustomVoice(id: string): Promise<CustomVoice | undefined>;
   createCustomVoice(voice: InsertCustomVoice): Promise<CustomVoice>;
   deleteCustomVoice(id: string, userId: string): Promise<boolean>;
 
@@ -661,6 +662,10 @@ export class MemStorage implements IStorage {
   // Custom Voices
   async listCustomVoices(userId: string): Promise<CustomVoice[]> {
     return Array.from(this.customVoices.values()).filter(v => v.userId === userId);
+  }
+
+  async getCustomVoice(id: string): Promise<CustomVoice | undefined> {
+    return this.customVoices.get(id);
   }
 
   async createCustomVoice(insertVoice: InsertCustomVoice): Promise<CustomVoice> {
