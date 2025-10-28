@@ -295,7 +295,7 @@ export function VoiceLibraryManager() {
                       className="h-10"
                       data-testid={`audio-player-${voice.id}`}
                     >
-                      <source src={voice.audioUrl} />
+                      <source src={`/api/custom-voices/${voice.id}/audio`} />
                     </audio>
                     <Button
                       variant="ghost"

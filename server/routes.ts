@@ -2472,6 +2472,33 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Serve custom voice audio file from S3
+  app.get("/api/custom-voices/:id/audio", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+
+      const voice = await storage.getCustomVoice(id);
+      if (!voice || voice.userId !== user.id) {
+        return res.status(404).json({ error: "Voice not found" });
+      }
+
+      const objectStorageService = new ObjectStorageService();
+      const audioBuffer = await objectStorageService.getObject(voice.audioUrl);
+
+      // Determine content type from file extension
+      const ext = path.extname(voice.audioUrl).toLowerCase();
+      const contentType = ext === '.wav' ? 'audio/wav' : ext === '.mp3' ? 'audio/mpeg' : 'audio/mpeg';
+
+      res.set('Content-Type', contentType);
+      res.set('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+      res.send(audioBuffer);
+    } catch (error) {
+      console.error("Failed to serve custom voice audio:", error);
+      res.status(500).json({ error: "Failed to load audio file" });
+    }
+  });
+
   // Proxy endpoint for HeyGen images to avoid CORS issues
   app.get("/api/proxy/heygen-image", async (req, res) => {
     try {
