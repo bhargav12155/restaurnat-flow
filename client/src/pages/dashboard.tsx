@@ -192,7 +192,7 @@ export default function Dashboard() {
                 <Sparkles className="mr-2 h-4 w-4" />
                 {isGenerating ? "Generating..." : "Generate Content"}
               </Button>
-              <NotificationPanel />
+              <NotificationPanel userId={user?.id?.toString()} lastMessage={lastMessage} />
               <UserMenu />
             </div>
           </div>
