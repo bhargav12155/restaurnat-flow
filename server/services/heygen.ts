@@ -153,6 +153,7 @@ export class HeyGenService {
     script,
     title,
     voiceId,
+    audioAssetId,
     aspectRatio = "16:9",
     quality = "720p",
     isTalkingPhoto = false,
@@ -162,6 +163,7 @@ export class HeyGenService {
     script: string;
     title: string;
     voiceId?: string;
+    audioAssetId?: string;
     aspectRatio?: "16:9" | "9:16" | "1:1";
     quality?: "1080p" | "720p" | "480p";
     isTalkingPhoto?: boolean;
@@ -179,17 +181,25 @@ export class HeyGenService {
           avatar_style: "normal",
         };
 
+    // Build voice object - use audio if audioAssetId is provided, otherwise use text
+    const voice = audioAssetId
+      ? {
+          type: "audio" as const,
+          audio_asset_id: audioAssetId,
+        }
+      : {
+          type: "text" as const,
+          input_text: script.substring(0, 1500), // Limit to 1500 characters as per docs
+          voice_id: voiceId || "119caed25533477ba63822d5d1552d25", // Default voice from docs
+          speed: speed,
+        };
+
     // Follow the exact structure from the official documentation
     const payload = {
       video_inputs: [
         {
           character,
-          voice: {
-            type: "text",
-            input_text: script.substring(0, 1500), // Limit to 1500 characters as per docs
-            voice_id: voiceId || "119caed25533477ba63822d5d1552d25", // Default voice from docs
-            speed: speed,
-          },
+          voice,
         },
       ],
       dimension: {

@@ -251,15 +251,21 @@ export function VideoGenerationManager() {
     }
 
     // Check if using a custom voice
-    const isCustomVoice = selectedVoiceId.startsWith('custom_');
+    const isCustomVoice = selectedVoiceId.startsWith('custom_') || selectedVoiceId.startsWith('voice_library_');
     const customVoice = isCustomVoice 
       ? customVoices.find((v: any) => v.id === selectedVoiceId)
       : null;
     
     // Determine the voice ID to use
     let finalVoiceId = selectedVoiceId;
+    let voiceLibraryId: string | undefined;
+    
     if (customVoice) {
-      if (customVoice.type === 'photo_group') {
+      if (customVoice.type === 'voice_library') {
+        // Voice Library voice - use special marker and pass library ID
+        finalVoiceId = 'voice_library';
+        voiceLibraryId = customVoice.voiceLibraryId;
+      } else if (customVoice.type === 'photo_group') {
         // Use the group's default voice ID directly
         finalVoiceId = customVoice.voiceId;
       } else {
@@ -278,6 +284,7 @@ export function VideoGenerationManager() {
       voiceSpeed: voiceSpeed,
       voiceId: finalVoiceId,
       customVoiceAvatarId: customVoice?.avatarId,
+      voiceLibraryId,
     });
   };
 
