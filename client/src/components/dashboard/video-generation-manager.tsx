@@ -84,6 +84,22 @@ export function VideoGenerationManager() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Fetch user's custom recorded voices from avatars
+  const { data: customVoicesData } = useQuery<any[]>({
+    queryKey: ["/api/avatars"],
+  });
+  
+  // Filter avatars that have custom voices
+  const customVoices = (customVoicesData || [])
+    .filter((avatar: any) => avatar.metadata?.hasCustomVoice && avatar.metadata?.voiceRecordingUrl)
+    .map((avatar: any) => ({
+      id: `custom_${avatar.id}`,
+      name: `${avatar.name} (My Voice)`,
+      avatarId: avatar.id,
+      voiceUrl: avatar.metadata.voiceRecordingUrl,
+      isCustom: true,
+    }));
+
   // Fetch photo avatar groups
   // API returns an object: { avatar_group_list: [...] }
   const { data: avatarGroupsResponse, isLoading: groupsLoading } = useQuery<{
@@ -121,6 +137,7 @@ export function VideoGenerationManager() {
       isTalkingPhoto?: boolean;
       voiceSpeed?: number;
       voiceId?: string;
+      customVoiceAvatarId?: string;
     }) => {
       console.log("🎬 Frontend: Generating video with data:", data);
       const response = await apiRequest("POST", "/api/videos/generate", data);
@@ -191,6 +208,12 @@ export function VideoGenerationManager() {
       return;
     }
 
+    // Check if using a custom voice
+    const isCustomVoice = selectedVoiceId.startsWith('custom_');
+    const customVoice = isCustomVoice 
+      ? customVoices.find((v: any) => v.id === selectedVoiceId)
+      : null;
+
     generateVideoMutation.mutate({
       avatarId: selectedAvatarLook,
       script: script.trim(),
@@ -199,7 +222,8 @@ export function VideoGenerationManager() {
       // Photo avatar looks are talking photos in HeyGen's API
       isTalkingPhoto: true,
       voiceSpeed: voiceSpeed,
-      voiceId: selectedVoiceId,
+      voiceId: isCustomVoice ? 'custom_voice' : selectedVoiceId,
+      customVoiceAvatarId: customVoice?.avatarId,
     });
   };
 
@@ -395,6 +419,25 @@ export function VideoGenerationManager() {
               <SelectValue placeholder="Choose a voice" />
             </SelectTrigger>
             <SelectContent>
+              {/* My Custom Voices Section */}
+              {customVoices.length > 0 && (
+                <>
+                  <div className="px-2 py-1.5 text-xs font-semibold text-[#D4AF37] bg-[#D4AF37]/10">
+                    🎤 My Recorded Voices
+                  </div>
+                  {customVoices.map((voice: any) => (
+                    <SelectItem key={voice.id} value={voice.id}>
+                      {voice.name}
+                    </SelectItem>
+                  ))}
+                  <div className="border-t my-1" />
+                </>
+              )}
+              
+              {/* Professional Voices Section */}
+              <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">
+                🎭 Professional Voices
+              </div>
               {PROFESSIONAL_VOICES.map((voice) => (
                 <SelectItem key={voice.id} value={voice.id}>
                   {voice.name}
@@ -402,6 +445,11 @@ export function VideoGenerationManager() {
               ))}
             </SelectContent>
           </Select>
+          {customVoices.length === 0 && (
+            <p className="text-xs text-gray-500 mt-1">
+              💡 Tip: Record your voice in the Avatar Creator to use your own voice!
+            </p>
+          )}
         </div>
 
         {/* Voice Speed Control */}
