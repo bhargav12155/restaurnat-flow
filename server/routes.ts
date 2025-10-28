@@ -2423,13 +2423,12 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       try {
         console.log("🎤 Uploading audio to HeyGen for voice cloning...");
         
-        // Read the file as a Blob
+        // Read the file as a Buffer
         const fileBuffer = fs.readFileSync(file.path);
-        const audioBlob = new Blob([fileBuffer], { type: file.mimetype });
         
         // Upload to HeyGen
         const heygenService = new HeyGenService();
-        heygenAudioAssetId = await heygenService.uploadAudio(audioBlob, file.mimetype);
+        heygenAudioAssetId = await heygenService.uploadAudio(fileBuffer, file.mimetype);
         status = 'ready';
         
         console.log("✅ HeyGen upload successful! Audio Asset ID:", heygenAudioAssetId);
