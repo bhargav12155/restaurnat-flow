@@ -2909,13 +2909,20 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Generate AI photos for avatars
   app.post("/api/photo-avatars/generate-photos", async (req, res) => {
     try {
+      console.log("📸 Photo generation request:", req.body);
+      
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const result = await photoAvatarService.generateAIPhotos(req.body);
 
+      console.log("✅ Photo generation result:", result);
       res.json(result);
     } catch (error) {
-      console.error("Failed to generate AI photos:", error);
-      res.status(500).json({ error: "Failed to generate AI photos" });
+      console.error("❌ Failed to generate AI photos:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate AI photos";
+      res.status(500).json({ 
+        error: "Failed to generate AI photos",
+        details: errorMessage 
+      });
     }
   });
 
