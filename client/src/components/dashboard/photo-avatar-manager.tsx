@@ -528,13 +528,22 @@ export function PhotoAvatarManager() {
                 {/* Circular thumbnails row */}
                 <div className="flex gap-4 overflow-x-auto pb-4 mb-6">
                   {avatarGroups.map((group: any) => (
-                    <div key={group.id} className="flex flex-col items-center min-w-[90px]">
+                    <button
+                      key={group.id}
+                      onClick={() => {
+                        const element = document.getElementById(`avatar-group-${group.id}`);
+                        if (element) {
+                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }}
+                      className="flex flex-col items-center min-w-[90px] focus:outline-none"
+                      data-testid={`avatar-thumb-${group.id}`}
+                    >
                       <div className="relative">
                         <img
                           src={group.preview_image}
                           alt={group.name}
                           className="w-20 h-20 rounded-full object-cover border-2 border-[#D4AF37] hover:border-[#B8860B] transition-all cursor-pointer hover:scale-105"
-                          data-testid={`avatar-thumb-${group.id}`}
                         />
                         {group.num_looks > 1 && (
                           <div className="absolute -top-1 -right-1 bg-[#D4AF37] text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold">
@@ -545,7 +554,7 @@ export function PhotoAvatarManager() {
                       <p className="text-xs mt-2 text-center font-medium text-gray-700 truncate w-20">
                         {group.name}
                       </p>
-                    </div>
+                    </button>
                   ))}
                 </div>
 
@@ -553,7 +562,11 @@ export function PhotoAvatarManager() {
                 <h4 className="text-sm font-semibold text-gray-600 mb-3">All avatar looks</h4>
                 <div className="space-y-6">
                   {avatarGroups.slice(0, 5).map((group: any) => (
-                    <div key={group.id} className="border rounded-lg p-4 bg-white shadow-sm">
+                    <div 
+                      key={group.id} 
+                      id={`avatar-group-${group.id}`}
+                      className="border rounded-lg p-4 bg-white shadow-sm scroll-mt-24"
+                    >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex-1">
                           <h5 className="font-semibold text-gray-800">{group.name}</h5>
