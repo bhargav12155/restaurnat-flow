@@ -501,23 +501,69 @@ export function PhotoAvatarManager() {
               )}
             </Button>
             
+            {/* Progress Status for Processing Avatars */}
+            {avatarGroups && avatarGroups.some((g: AvatarGroup) => g.status === 'processing') && (
+              <Alert className="mt-4">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>
+                  <div className="space-y-2">
+                    <p className="font-semibold">Avatar Generation in Progress...</p>
+                    <p className="text-sm">
+                      {avatarGroups.filter((g: AvatarGroup) => g.status === 'processing').length} avatar group(s) are being processed by HeyGen. 
+                      This typically takes 2-3 minutes. The page will auto-refresh every 5 seconds.
+                    </p>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Recent Generations Preview */}
             {avatarGroups && avatarGroups.length > 0 && (
               <div className="mt-6 border-t pt-4">
-                <h3 className="text-lg font-semibold mb-3">Recent Generations</h3>
+                <h3 className="text-lg font-semibold mb-3">
+                  Your Avatar Groups ({avatarGroups.length})
+                </h3>
                 <div className="space-y-3">
-                  {avatarGroups.slice(0, 3).map((group: AvatarGroup) => (
+                  {avatarGroups.slice(0, 5).map((group: AvatarGroup) => (
                     <div key={group.group_id} className="border rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium">{group.name}</h4>
+                        <div className="flex-1">
+                          <h4 className="font-medium">{group.name}</h4>
+                          {group.status === 'processing' && group.training_progress && (
+                            <div className="mt-2">
+                              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                <span>Training progress</span>
+                                <span>{group.training_progress}%</span>
+                              </div>
+                              <Progress value={group.training_progress} className="h-2" />
+                            </div>
+                          )}
+                        </div>
                         <Badge className={getStatusColor(group.status)}>
                           {group.status}
                         </Badge>
                       </div>
-                      <AvatarPhotoGallery groupId={group.group_id} />
+                      {group.status === 'ready' && <AvatarPhotoGallery groupId={group.group_id} />}
+                      {group.status === 'processing' && (
+                        <p className="text-sm text-gray-600 mt-2">
+                          Processing... Please wait while HeyGen generates your avatar.
+                        </p>
+                      )}
+                      {group.status === 'failed' && (
+                        <p className="text-sm text-red-600 mt-2">
+                          Generation failed. Please try again.
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+            
+            {isLoadingGroups && (
+              <div className="mt-6 flex items-center justify-center p-8">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Loading your avatars...</span>
               </div>
             )}
           </TabsContent>

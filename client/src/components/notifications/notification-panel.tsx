@@ -8,8 +8,6 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Bell, Image, Video, FileText, Calendar, X } from 'lucide-react';
-import { useWebSocket } from '@/hooks/useWebSocket';
-import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 
 interface Notification {
@@ -22,16 +20,14 @@ interface Notification {
   read: boolean;
 }
 
-export function NotificationPanel() {
+interface NotificationPanelProps {
+  userId?: string;
+  lastMessage?: any;
+}
+
+export function NotificationPanel({ userId, lastMessage }: NotificationPanelProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const { user } = useAuth();
-
-  const { lastMessage } = useWebSocket({
-    userId: user?.id?.toString() || undefined,
-    autoConnect: !!user?.id,
-    showToast: false, // We'll handle notifications ourselves
-  });
 
   useEffect(() => {
     if (lastMessage && lastMessage.type !== 'notification') {
