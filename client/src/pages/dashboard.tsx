@@ -13,6 +13,7 @@ import { BrandSettings } from "@/components/dashboard/brand-settings";
 import { APIKeyManager } from "@/components/dashboard/api-key-manager";
 import { StreamingAvatar } from "@/components/dashboard/streaming-avatar";
 import { PhotoAvatarManager } from "@/components/dashboard/photo-avatar-manager";
+import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
 import { TemplateManager } from "@/components/dashboard/template-manager";
 import { SocialLinksPrompt } from "@/components/dashboard/social-links-prompt";
 import { SocialMediaSetup } from "@/components/setup/social-media-setup";
@@ -101,6 +102,8 @@ export default function Dashboard() {
         return <StreamingAvatar />;
       case "photo-avatars":
         return <PhotoAvatarManager />;
+      case "video-generation":
+        return <VideoGenerationManager />;
       case "templates":
         return <TemplateManager />;
       case "social":
@@ -192,7 +195,10 @@ export default function Dashboard() {
                 <Sparkles className="mr-2 h-4 w-4" />
                 {isGenerating ? "Generating..." : "Generate Content"}
               </Button>
-              <NotificationPanel userId={user?.id?.toString()} lastMessage={lastMessage} />
+              <NotificationPanel
+                userId={user?.id?.toString()}
+                lastMessage={lastMessage}
+              />
               <UserMenu />
             </div>
           </div>
