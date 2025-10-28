@@ -500,6 +500,26 @@ export function PhotoAvatarManager() {
                 </>
               )}
             </Button>
+            
+            {/* Recent Generations Preview */}
+            {avatarGroups && avatarGroups.length > 0 && (
+              <div className="mt-6 border-t pt-4">
+                <h3 className="text-lg font-semibold mb-3">Recent Generations</h3>
+                <div className="space-y-3">
+                  {avatarGroups.slice(0, 3).map((group: AvatarGroup) => (
+                    <div key={group.group_id} className="border rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium">{group.name}</h4>
+                        <Badge className={getStatusColor(group.status)}>
+                          {group.status}
+                        </Badge>
+                      </div>
+                      <AvatarPhotoGallery groupId={group.group_id} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="upload" className="space-y-4">

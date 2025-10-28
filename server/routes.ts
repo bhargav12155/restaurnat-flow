@@ -2528,6 +2528,9 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
       }
+      
+      // Store user ID for notification later
+      const userId = video.userId;
 
       const avatar = avatarId ? await storage.getAvatarById(avatarId) : null;
 
@@ -2707,6 +2710,15 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
                 thumbnailUrl: heygenVideo.data.thumbnail_url,
                 duration: heygenVideo.data.duration,
               });
+              
+              // Send real-time notification
+              if (video.userId) {
+                realtimeService.notifyVideoCreated(
+                  video.userId,
+                  id,
+                  video.title || "Your Video"
+                );
+              }
             } else if (status === "failed") {
               newStatus = "failed";
               const errorMessage =
@@ -2915,6 +2927,16 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       const result = await photoAvatarService.generateAIPhotos(req.body);
 
       console.log("✅ Photo generation result:", result);
+      
+      // Send real-time notification
+      if (req.session?.userId) {
+        realtimeService.notifyPhotoGenerated(
+          req.session.userId,
+          req.body.name || "Avatar",
+          5 // HeyGen generates 5 photos
+        );
+      }
+      
       res.json(result);
     } catch (error) {
       console.error("❌ Failed to generate AI photos:", error);
