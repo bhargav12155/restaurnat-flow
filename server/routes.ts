@@ -3154,6 +3154,10 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         const privateDir = objectStorage.getPrivateObjectDir();
         const fileName = `uploads/image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
         
+        // Read file from disk (Multer saves to disk, not memory)
+        const filePath = req.file.path;
+        const fileBuffer = fs.readFileSync(filePath);
+        
         // Parse object path to get bucket and object name
         const fullPath = `${privateDir}/${fileName}`;
         const pathParts = fullPath.split("/").filter(p => p);
@@ -3165,11 +3169,14 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         const bucket = objectStorageClient.bucket(bucketName);
         const file = bucket.file(objectName);
         
-        await file.save(req.file.buffer, {
+        await file.save(fileBuffer, {
           metadata: {
             contentType: req.file.mimetype,
           },
         });
+        
+        // Clean up temporary file
+        fs.unlinkSync(filePath);
 
         res.json({ imageKey: fileName });
       } catch (error) {
