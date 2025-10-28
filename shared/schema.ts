@@ -136,6 +136,8 @@ export const customVoices = pgTable("custom_voices", {
   audioUrl: text("audio_url").notNull(), // S3 URL or local path to the audio file
   duration: integer("duration"), // Duration in seconds (optional)
   fileSize: integer("file_size"), // File size in bytes (optional)
+  heygenAudioAssetId: text("heygen_audio_asset_id"), // HeyGen audio asset ID for video generation
+  status: text("status").notNull().default('pending'), // 'pending', 'ready', 'failed'
   createdAt: timestamp("created_at").defaultNow(),
 });
 
