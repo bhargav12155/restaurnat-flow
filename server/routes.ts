@@ -3305,10 +3305,9 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           console.log("🎤 Uploading audio to HeyGen for voice cloning...");
           
           const fileBuffer = fs.readFileSync(req.file.path);
-          const audioBlob = new Blob([fileBuffer], { type: req.file.mimetype });
           
           const heygenService = new HeyGenService();
-          heygenAudioAssetId = await heygenService.uploadAudio(audioBlob);
+          heygenAudioAssetId = await heygenService.uploadAudio(fileBuffer, req.file.mimetype);
           
           console.log("✅ HeyGen upload successful! Audio Asset ID:", heygenAudioAssetId);
         } catch (heygenError) {
