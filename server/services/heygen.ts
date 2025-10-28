@@ -314,15 +314,15 @@ export class HeyGenService {
   }
 
   // Upload an audio file and get the audio asset ID for voice cloning
-  async uploadAudio(audioBlob: Blob): Promise<string> {
-    // Convert Blob to ArrayBuffer for binary upload
-    const arrayBuffer = await audioBlob.arrayBuffer();
-
-    // Determine content type from blob
-    const contentType = audioBlob.type || "audio/mpeg";
-
+  async uploadAudio(audioBuffer: Buffer, contentType: string): Promise<string> {
     // Use the HeyGen upload endpoint for audio
     const uploadUrl = "https://upload.heygen.com/v1/asset";
+
+    console.log("🌐 HeyGen Audio Upload:", {
+      url: uploadUrl,
+      contentType,
+      bufferSize: audioBuffer.length
+    });
 
     const response = await fetch(uploadUrl, {
       method: "POST",
@@ -330,20 +330,22 @@ export class HeyGenService {
         "X-Api-Key": this.apiKey,
         "Content-Type": contentType,
       },
-      body: arrayBuffer,
+      body: audioBuffer,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("HeyGen audio upload failed:", response.status, errorText);
+      console.error("❌ HeyGen audio upload failed:", response.status, errorText);
       throw new Error(
         `Failed to upload audio: ${response.status} ${response.statusText}`
       );
     }
 
     const result = await response.json();
+    console.log("📨 HeyGen audio upload response:", result);
+    
     if (result.code === 100 && result.data?.id) {
-      console.log("HeyGen audio upload successful, asset ID:", result.data.id);
+      console.log("✅ HeyGen audio upload successful, asset ID:", result.data.id);
       return result.data.id; // Return the audio_asset_id
     } else {
       throw new Error(
