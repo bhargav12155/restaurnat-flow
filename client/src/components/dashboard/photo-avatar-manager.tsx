@@ -189,10 +189,52 @@ export function PhotoAvatarManager() {
   };
 
   const handleUploadFiles = async () => {
-    for (const file of uploadedFiles) {
-      await uploadPhotoMutation.mutateAsync(file);
+    try {
+      // Upload all photos and collect their keys
+      const uploadedKeys: string[] = [];
+      for (const file of uploadedFiles) {
+        const result = await uploadPhotoMutation.mutateAsync(file);
+        uploadedKeys.push(result.imageKey);
+      }
+      
+      // Ask for avatar group name
+      const groupName = prompt("Enter a name for this avatar group:");
+      if (!groupName) {
+        toast({
+          title: "Upload Cancelled",
+          description: "Please provide a name for your avatar group.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Create avatar group with uploaded photos
+      const response = await fetch('/api/photo-avatars/create-from-uploads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: groupName,
+          imageKeys: uploadedKeys
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to create avatar group');
+      
+      toast({
+        title: "Avatar Group Created!",
+        description: `Created "${groupName}" with ${uploadedKeys.length} photos. Training will start automatically.`,
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/photo-avatars/groups'] });
+      setUploadedFiles([]);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: "Failed to create avatar group. Please try again.",
+        variant: "destructive"
+      });
     }
-    setUploadedFiles([]);
   };
 
   // Voice recording functions
