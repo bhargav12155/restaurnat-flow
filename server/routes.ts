@@ -3395,7 +3395,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Generate video from avatar and script
   app.post("/api/videos/generate", requireAuth, async (req, res) => {
     try {
-      const { avatarId, script, title, test, isTalkingPhoto, voiceSpeed, voiceId, customVoiceAvatarId } = req.body;
+      const { avatarId, script, title, test, isTalkingPhoto, voiceSpeed, voiceId, customVoiceAvatarId, voiceLibraryId } = req.body;
 
       console.log("🎬 Backend: Video generation request received");
       console.log("🎬 Backend: Avatar ID:", avatarId);
@@ -3406,6 +3406,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       console.log("🎬 Backend: Voice speed:", voiceSpeed);
       console.log("🎬 Backend: Voice ID:", voiceId);
       console.log("🎬 Backend: Custom voice avatar ID:", customVoiceAvatarId);
+      console.log("🎬 Backend: Voice Library ID:", voiceLibraryId);
 
       if (!avatarId || !script) {
         console.log("❌ Backend: Validation failed:", {
@@ -3419,7 +3420,24 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       // Handle custom voice if provided
       let finalVoiceId = voiceId;
-      if (voiceId === 'custom_voice' && customVoiceAvatarId) {
+      let audioAssetId: string | undefined;
+      
+      // Handle Voice Library voices
+      if (voiceId === 'voice_library' && voiceLibraryId) {
+        const user = (req as any).user;
+        const voices = await storage.listCustomVoices(user.id);
+        const voiceLibraryVoice = voices.find(v => v.id === voiceLibraryId);
+        
+        if (voiceLibraryVoice?.heygenAudioAssetId && voiceLibraryVoice.status === 'ready') {
+          console.log("🎤 Backend: Voice Library voice detected!");
+          console.log("🎤 Backend: Audio Asset ID:", voiceLibraryVoice.heygenAudioAssetId);
+          audioAssetId = voiceLibraryVoice.heygenAudioAssetId;
+          finalVoiceId = undefined; // Don't use text voice when using audio
+        } else {
+          console.log("⚠️ Backend: Voice Library voice not ready or missing asset ID, using fallback");
+          finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
+        }
+      } else if (voiceId === 'custom_voice' && customVoiceAvatarId) {
         const customAvatar = await storage.getAvatarById(customVoiceAvatarId);
         if (customAvatar?.metadata?.voiceRecordingUrl) {
           console.log("🎤 Backend: Custom voice detected, using default voice as fallback");
@@ -3441,6 +3459,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         isTalkingPhoto: !!isTalkingPhoto,
         speed: voiceSpeed || 1.0,
         voiceId: finalVoiceId,
+        audioAssetId,
       });
 
       console.log("✅ Backend: Video generation result:", result);
