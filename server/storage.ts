@@ -659,6 +659,8 @@ export class MemStorage implements IStorage {
       id,
       duration: insertVoice.duration || null,
       fileSize: insertVoice.fileSize || null,
+      heygenAudioAssetId: insertVoice.heygenAudioAssetId || null,
+      status: insertVoice.status || 'pending',
       createdAt: new Date()
     };
     this.customVoices.set(id, voice);

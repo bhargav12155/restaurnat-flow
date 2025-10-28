@@ -2416,12 +2416,37 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       // Get file stats
       const stats = fs.statSync(file.path);
       
-      // Create custom voice record
+      let heygenAudioAssetId: string | undefined;
+      let status = 'pending';
+
+      // Upload to HeyGen for voice cloning
+      try {
+        console.log("🎤 Uploading audio to HeyGen for voice cloning...");
+        
+        // Read the file as a Blob
+        const fileBuffer = fs.readFileSync(file.path);
+        const audioBlob = new Blob([fileBuffer], { type: file.mimetype });
+        
+        // Upload to HeyGen
+        const heygenService = new HeyGenService();
+        heygenAudioAssetId = await heygenService.uploadAudio(audioBlob);
+        status = 'ready';
+        
+        console.log("✅ HeyGen upload successful! Audio Asset ID:", heygenAudioAssetId);
+      } catch (heygenError) {
+        console.error("❌ HeyGen upload failed:", heygenError);
+        status = 'failed';
+        // Continue anyway - user can still manage the voice in library
+      }
+
+      // Create custom voice record with HeyGen asset ID
       const voice = await storage.createCustomVoice({
         userId: user.id,
         name: name.trim(),
         audioUrl,
         fileSize: stats.size,
+        heygenAudioAssetId,
+        status,
       });
 
       // Clean up uploaded file
