@@ -3296,7 +3296,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Generate video from avatar and script
   app.post("/api/videos/generate", requireAuth, async (req, res) => {
     try {
-      const { avatarId, script, title, test, isTalkingPhoto, voiceSpeed, voiceId } = req.body;
+      const { avatarId, script, title, test, isTalkingPhoto, voiceSpeed, voiceId, customVoiceAvatarId } = req.body;
 
       console.log("🎬 Backend: Video generation request received");
       console.log("🎬 Backend: Avatar ID:", avatarId);
@@ -3306,6 +3306,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       console.log("🎬 Backend: isTalkingPhoto:", isTalkingPhoto);
       console.log("🎬 Backend: Voice speed:", voiceSpeed);
       console.log("🎬 Backend: Voice ID:", voiceId);
+      console.log("🎬 Backend: Custom voice avatar ID:", customVoiceAvatarId);
 
       if (!avatarId || !script) {
         console.log("❌ Backend: Validation failed:", {
@@ -3315,6 +3316,19 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         return res.status(400).json({
           error: "Please provide an avatar ID and script",
         });
+      }
+
+      // Handle custom voice if provided
+      let finalVoiceId = voiceId;
+      if (voiceId === 'custom_voice' && customVoiceAvatarId) {
+        const customAvatar = await storage.getAvatarById(customVoiceAvatarId);
+        if (customAvatar?.metadata?.voiceRecordingUrl) {
+          console.log("🎤 Backend: Custom voice detected, using default voice as fallback");
+          console.log("🎤 Backend: Custom voice URL:", customAvatar.metadata.voiceRecordingUrl);
+          // TODO: Upload custom voice to HeyGen for voice cloning
+          // For now, use professional voice as fallback
+          finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
+        }
       }
 
       const heyGenService = new HeyGenService();
@@ -3327,7 +3341,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         test: test || false,
         isTalkingPhoto: !!isTalkingPhoto,
         speed: voiceSpeed || 1.0,
-        voiceId: voiceId,
+        voiceId: finalVoiceId,
       });
 
       console.log("✅ Backend: Video generation result:", result);
