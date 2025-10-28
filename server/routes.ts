@@ -3032,10 +3032,19 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       const { groupId } = req.params;
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
-      const group = await photoAvatarService.getAvatarGroup(groupId);
+      const looksData = await photoAvatarService.getAvatarGroupLooks(groupId);
       
-      // Extract photos from group data
-      const photos = group.photos || group.images || [];
+      // Transform avatar looks into photo format
+      const photos = (looksData.avatar_list || []).map((avatar: any) => ({
+        id: avatar.id,
+        url: avatar.image_url,
+        thumbnail: avatar.image_url,
+        name: avatar.name,
+        type: 'avatar',
+        created_at: avatar.created_at,
+        status: avatar.status,
+        motion_preview_url: avatar.motion_preview_url
+      }));
 
       res.json({ 
         group_id: groupId,
