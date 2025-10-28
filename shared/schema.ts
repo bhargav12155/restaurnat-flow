@@ -142,6 +142,20 @@ export const customVoices = pgTable("custom_voices", {
 });
 
 // =====================================================
+// PHOTO AVATAR GROUP VOICES TABLE
+// =====================================================
+export const photoAvatarGroupVoices = pgTable("photo_avatar_group_voices", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  groupId: text("group_id").notNull(), // HeyGen avatar group ID
+  audioUrl: text("audio_url").notNull(), // S3 URL to the audio file
+  heygenAudioAssetId: text("heygen_audio_asset_id"), // HeyGen audio asset ID for voice cloning
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =====================================================
 // 5. VIDEO CONTENT TABLE (YouTube & Video)
 // =====================================================
 export const videoContent = pgTable("video_content", {
@@ -473,6 +487,9 @@ export type InsertProperty = z.infer<typeof insertPropertySchema>;
 
 export type CustomVoice = typeof customVoices.$inferSelect;
 export type InsertCustomVoice = z.infer<typeof insertCustomVoiceSchema>;
+
+export type PhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferSelect;
+export type InsertPhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferInsert;
 
 // Legacy types (keeping for compatibility)
 export type UpsertUser = typeof users.$inferInsert;
