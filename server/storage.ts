@@ -18,7 +18,9 @@ import {
   type VideoContent,
   type InsertVideoContent,
   type CustomVoice,
-  type InsertCustomVoice
+  type InsertCustomVoice,
+  type PhotoAvatarGroupVoice,
+  type InsertPhotoAvatarGroupVoice
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -81,6 +83,11 @@ export interface IStorage {
   listCustomVoices(userId: string): Promise<CustomVoice[]>;
   createCustomVoice(voice: InsertCustomVoice): Promise<CustomVoice>;
   deleteCustomVoice(id: string, userId: string): Promise<boolean>;
+
+  // Photo Avatar Group Voices
+  savePhotoAvatarGroupVoice(voice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice>;
+  getPhotoAvatarGroupVoice(groupId: string, userId: string): Promise<PhotoAvatarGroupVoice | undefined>;
+  listPhotoAvatarGroupVoices(userId: string): Promise<PhotoAvatarGroupVoice[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -94,6 +101,7 @@ export class MemStorage implements IStorage {
   private avatars: Map<string, Avatar> = new Map();
   private videoContent: Map<string, VideoContent> = new Map();
   private customVoices: Map<string, CustomVoice> = new Map();
+  private photoAvatarGroupVoices: Map<string, PhotoAvatarGroupVoice> = new Map();
 
   constructor() {
     this.seedData();
@@ -673,6 +681,28 @@ export class MemStorage implements IStorage {
       return false;
     }
     return this.customVoices.delete(id);
+  }
+
+  async savePhotoAvatarGroupVoice(insertVoice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice> {
+    const id = randomUUID();
+    const voice: PhotoAvatarGroupVoice = {
+      ...insertVoice,
+      id,
+      heygenAudioAssetId: insertVoice.heygenAudioAssetId || null,
+      createdAt: new Date()
+    };
+    this.photoAvatarGroupVoices.set(id, voice);
+    return voice;
+  }
+
+  async getPhotoAvatarGroupVoice(groupId: string, userId: string): Promise<PhotoAvatarGroupVoice | undefined> {
+    return Array.from(this.photoAvatarGroupVoices.values()).find(
+      v => v.groupId === groupId && v.userId === userId
+    );
+  }
+
+  async listPhotoAvatarGroupVoices(userId: string): Promise<PhotoAvatarGroupVoice[]> {
+    return Array.from(this.photoAvatarGroupVoices.values()).filter(v => v.userId === userId);
   }
 }
 

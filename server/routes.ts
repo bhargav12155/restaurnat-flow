@@ -3024,12 +3024,17 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // List avatar groups
-  app.get("/api/photo-avatars/groups", async (req, res) => {
+  app.get("/api/photo-avatars/groups", requireAuth, async (req, res) => {
     try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const groups = await photoAvatarService.listAvatarGroups();
 
-      // Enrich each group with actual look counts. If a group has looks, consider it "ready" regardless of train_status.
+      // Enrich each group with actual look counts and custom voice data
       const mappedGroups = await Promise.all(
         (groups.avatar_group_list || []).map(async (group: any) => {
           // Fallbacks for API field variations
@@ -3047,6 +3052,17 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
             );
           }
 
+          // Get custom voice for this group if any
+          let defaultVoiceId = null;
+          try {
+            const customVoice = await storage.getPhotoAvatarGroupVoice(groupId, userId);
+            if (customVoice?.heygenAudioAssetId) {
+              defaultVoiceId = customVoice.heygenAudioAssetId;
+            }
+          } catch (e) {
+            console.warn(`⚠️ Failed to fetch custom voice for group ${groupId}:`, e);
+          }
+
           // Determine status: if any looks exist, mark as ready
           const rawStatus = group.train_status || group.status || "pending";
           const status = looksCount > 0 ? "ready" : rawStatus;
@@ -3055,6 +3071,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
             group_id: groupId,
             name: group.name,
             status,
+            default_voice_id: defaultVoiceId,
             created_at: group.created_at
               ? new Date(group.created_at * 1000).toISOString()
               : new Date().toISOString(),
@@ -3240,6 +3257,90 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       res.status(500).json({ error: "Failed to delete avatar group" });
     }
   });
+
+  // Save voice recording to avatar group
+  app.post(
+    "/api/photo-avatars/groups/:groupId/voice",
+    requireAuth,
+    upload.single("voiceRecording"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No voice recording uploaded" });
+        }
+
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const { groupId } = req.params;
+
+        console.log("🎤 Uploading voice recording to avatar group:", {
+          groupId,
+          filename: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        });
+
+        // Upload audio file to S3
+        const s3Service = new S3UploadService();
+        const audioUrl = await s3Service.uploadFile(
+          req.file.path,
+          `avatar-voices/${userId}/${groupId}/${nanoid()}_${req.file.originalname}`,
+          req.file.mimetype
+        );
+
+        console.log("✅ Voice uploaded to S3:", audioUrl);
+
+        let heygenAudioAssetId: string | undefined;
+
+        // Upload to HeyGen for voice cloning
+        try {
+          console.log("🎤 Uploading audio to HeyGen for voice cloning...");
+          
+          const fileBuffer = fs.readFileSync(req.file.path);
+          const audioBlob = new Blob([fileBuffer], { type: req.file.mimetype });
+          
+          const heygenService = new HeyGenService();
+          heygenAudioAssetId = await heygenService.uploadAudio(audioBlob);
+          
+          console.log("✅ HeyGen upload successful! Audio Asset ID:", heygenAudioAssetId);
+        } catch (heygenError) {
+          console.error("❌ HeyGen upload failed:", heygenError);
+          // Continue anyway - voice is saved to S3
+        }
+
+        // Store the voice metadata in the database
+        if (heygenAudioAssetId) {
+          try {
+            await storage.savePhotoAvatarGroupVoice({
+              userId,
+              groupId,
+              audioUrl,
+              heygenAudioAssetId,
+            });
+            console.log(`✅ Voice ${heygenAudioAssetId} saved to database for group ${groupId}`);
+          } catch (dbError) {
+            console.error("Failed to save voice to database:", dbError);
+          }
+        }
+
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+
+        res.json({ 
+          success: true,
+          audioUrl,
+          heygenAudioAssetId,
+          message: "Voice recording saved successfully"
+        });
+      } catch (error) {
+        console.error("Failed to save voice recording:", error);
+        res.status(500).json({ error: "Failed to save voice recording" });
+      }
+    }
+  );
 
   // Upload custom photo for photo avatar
   app.post(
