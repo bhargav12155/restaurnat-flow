@@ -19,10 +19,11 @@ import { SocialMediaSetup } from "@/components/setup/social-media-setup";
 import UserMenu from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { NotificationPanel } from "@/components/notifications/notification-panel";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAuth } from "@/hooks/useAuth";
 import { useState, useEffect } from "react";
-import { Sparkles, Bell } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -191,16 +192,7 @@ export default function Dashboard() {
                 <Sparkles className="mr-2 h-4 w-4" />
                 {isGenerating ? "Generating..." : "Generate Content"}
               </Button>
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  data-testid="button-notifications"
-                >
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute top-0 right-0 w-2 h-2 bg-destructive rounded-full"></span>
-                </Button>
-              </div>
+              <NotificationPanel />
               <UserMenu />
             </div>
           </div>
