@@ -3075,9 +3075,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   app.post("/api/photo-avatars/groups/:groupId/train", async (req, res) => {
     try {
       const { groupId } = req.params;
+      const { defaultVoiceId } = req.body;
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
-      const result = await photoAvatarService.trainAvatarGroup(groupId);
+      const result = await photoAvatarService.trainAvatarGroup(
+        groupId,
+        defaultVoiceId
+      );
 
       res.json(result);
     } catch (error) {
@@ -3292,7 +3296,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Generate video from avatar and script
   app.post("/api/videos/generate", requireAuth, async (req, res) => {
     try {
-      const { avatarId, script, title, test, isTalkingPhoto } = req.body;
+      const { avatarId, script, title, test, isTalkingPhoto, voiceSpeed } = req.body;
 
       console.log("🎬 Backend: Video generation request received");
       console.log("🎬 Backend: Avatar ID:", avatarId);
@@ -3300,6 +3304,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       console.log("🎬 Backend: Title:", title);
       console.log("🎬 Backend: Test mode:", test);
       console.log("🎬 Backend: isTalkingPhoto:", isTalkingPhoto);
+      console.log("🎬 Backend: Voice speed:", voiceSpeed);
 
       if (!avatarId || !script) {
         console.log("❌ Backend: Validation failed:", {
@@ -3320,6 +3325,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         title: title || "Generated Video",
         test: test || false,
         isTalkingPhoto: !!isTalkingPhoto,
+        speed: voiceSpeed || 1.0,
       });
 
       console.log("✅ Backend: Video generation result:", result);

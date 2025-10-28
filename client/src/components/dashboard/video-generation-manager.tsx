@@ -63,6 +63,7 @@ export function VideoGenerationManager() {
   const [script, setScript] = useState("");
   const [title, setTitle] = useState("");
   const [isTestMode, setIsTestMode] = useState(false);
+  const [voiceSpeed, setVoiceSpeed] = useState<number>(1.0); // 1.0 = normal speed
   const [currentVideo, setCurrentVideo] = useState<VideoGeneration | null>(
     null
   );
@@ -106,6 +107,7 @@ export function VideoGenerationManager() {
       title: string;
       test: boolean;
       isTalkingPhoto?: boolean;
+      voiceSpeed?: number;
     }) => {
       console.log("🎬 Frontend: Generating video with data:", data);
       const response = await apiRequest("POST", "/api/videos/generate", data);
@@ -183,6 +185,7 @@ export function VideoGenerationManager() {
       test: isTestMode,
       // Photo avatar looks are talking photos in HeyGen's API
       isTalkingPhoto: true,
+      voiceSpeed: voiceSpeed,
     });
   };
 
@@ -362,6 +365,28 @@ export function VideoGenerationManager() {
               Test Mode (shorter video)
             </Label>
           </div>
+        </div>
+
+        {/* Voice Speed Control */}
+        <div>
+          <Label htmlFor="voice-speed" className="text-sm font-medium">
+            Voice Speed
+          </Label>
+          <Select
+            value={voiceSpeed.toString()}
+            onValueChange={(value) => setVoiceSpeed(parseFloat(value))}
+          >
+            <SelectTrigger id="voice-speed" data-testid="select-voice-speed">
+              <SelectValue placeholder="Select voice speed" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0.5">0.5x (Slow)</SelectItem>
+              <SelectItem value="0.75">0.75x (Slower)</SelectItem>
+              <SelectItem value="1.0">1.0x (Normal)</SelectItem>
+              <SelectItem value="1.25">1.25x (Faster)</SelectItem>
+              <SelectItem value="1.5">1.5x (Fast)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Script Input */}
