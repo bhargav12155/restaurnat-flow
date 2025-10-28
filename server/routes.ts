@@ -3151,11 +3151,25 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         }
 
         const objectStorage = new ObjectStorageService();
-        const fileBuffer = req.file.buffer;
-        const fileName = `image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
-
-        // Upload to object storage
-        await objectStorage.uploadObject(fileName, fileBuffer);
+        const privateDir = objectStorage.getPrivateObjectDir();
+        const fileName = `uploads/image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
+        
+        // Parse object path to get bucket and object name
+        const fullPath = `${privateDir}/${fileName}`;
+        const pathParts = fullPath.split("/").filter(p => p);
+        const bucketName = pathParts[0];
+        const objectName = pathParts.slice(1).join("/");
+        
+        // Upload directly to GCS
+        const { objectStorageClient } = await import('./objectStorage');
+        const bucket = objectStorageClient.bucket(bucketName);
+        const file = bucket.file(objectName);
+        
+        await file.save(req.file.buffer, {
+          metadata: {
+            contentType: req.file.mimetype,
+          },
+        });
 
         res.json({ imageKey: fileName });
       } catch (error) {
@@ -3178,11 +3192,20 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const objectStorage = new ObjectStorageService();
       const photoAvatarService = new HeyGenPhotoAvatarService();
+      const { objectStorageClient } = await import('./objectStorage');
+      const privateDir = objectStorage.getPrivateObjectDir();
       
       // Download images from object storage and prepare them
       const photoBuffers: Buffer[] = [];
       for (const imageKey of imageKeys) {
-        const buffer = await objectStorage.downloadObject(imageKey);
+        const fullPath = `${privateDir}/${imageKey}`;
+        const pathParts = fullPath.split("/").filter(p => p);
+        const bucketName = pathParts[0];
+        const objectName = pathParts.slice(1).join("/");
+        
+        const bucket = objectStorageClient.bucket(bucketName);
+        const file = bucket.file(objectName);
+        const [buffer] = await file.download();
         photoBuffers.push(buffer);
       }
       
