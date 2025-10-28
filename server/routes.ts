@@ -2405,16 +2405,24 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         return res.status(400).json({ error: "Voice name is required" });
       }
 
+      // Read the file as a Buffer
+      const fileBuffer = fs.readFileSync(file.path);
+      
+      // Get file stats
+      const stats = fs.statSync(file.path);
+      
+      // Determine file extension
+      const ext = path.extname(file.originalname);
+      const fileName = `voice-library/${nanoid()}${ext}`;
+      
       // Upload audio file to S3
       const s3Service = new S3UploadService();
       const audioUrl = await s3Service.uploadFile(
-        file.path,
-        `voices/${user.id}/${nanoid()}_${file.originalname}`,
+        Number(user.id),
+        fileBuffer,
+        fileName,
         file.mimetype
       );
-
-      // Get file stats
-      const stats = fs.statSync(file.path);
       
       let heygenAudioAssetId: string | undefined;
       let status = 'pending';
@@ -2423,10 +2431,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       try {
         console.log("🎤 Uploading audio to HeyGen for voice cloning...");
         
-        // Read the file as a Buffer
-        const fileBuffer = fs.readFileSync(file.path);
-        
-        // Upload to HeyGen
+        // Upload to HeyGen (reuse fileBuffer from above)
         const heygenService = new HeyGenService();
         heygenAudioAssetId = await heygenService.uploadAudio(fileBuffer, file.mimetype);
         status = 'ready';
