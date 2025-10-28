@@ -96,11 +96,12 @@ export function VoiceLibraryManager() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
-      if (!file.type.startsWith("audio/")) {
+      // Validate file type - only WAV and MP3 are supported by HeyGen
+      const allowedTypes = ['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3'];
+      if (!allowedTypes.includes(file.type)) {
         toast({
-          title: "Invalid File",
-          description: "Please select an audio file",
+          title: "Invalid File Format",
+          description: "HeyGen only supports WAV and MP3 files. Please convert your audio file first.",
           variant: "destructive",
         });
         return;
@@ -211,7 +212,7 @@ export function VoiceLibraryManager() {
                 id="voice-file"
                 data-testid="input-voice-file"
                 type="file"
-                accept="audio/*"
+                accept=".wav,.mp3,audio/wav,audio/x-wav,audio/mpeg,audio/mp3"
                 onChange={handleFileChange}
               />
               {audioFile && (
@@ -222,7 +223,7 @@ export function VoiceLibraryManager() {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              Supported formats: MP3, WAV, M4A, OGG
+              Supported formats: WAV, MP3 only
             </p>
           </div>
 
