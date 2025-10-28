@@ -84,21 +84,43 @@ export function VideoGenerationManager() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch user's custom recorded voices from avatars
+  // Fetch user's custom recorded voices from regular avatars
   const { data: customVoicesData } = useQuery<any[]>({
     queryKey: ["/api/avatars"],
   });
   
-  // Filter avatars that have custom voices
-  const customVoices = (customVoicesData || [])
-    .filter((avatar: any) => avatar.metadata?.hasCustomVoice && avatar.metadata?.voiceRecordingUrl)
-    .map((avatar: any) => ({
-      id: `custom_${avatar.id}`,
-      name: `${avatar.name} (My Voice)`,
-      avatarId: avatar.id,
-      voiceUrl: avatar.metadata.voiceRecordingUrl,
-      isCustom: true,
-    }));
+  // Fetch photo avatar groups to check for custom voices
+  const { data: photoAvatarGroupsData } = useQuery<{
+    avatar_group_list?: any[];
+  }>({
+    queryKey: ["/api/photo-avatars/groups"],
+  });
+  
+  // Combine custom voices from both regular avatars and photo avatar groups
+  const customVoices = [
+    // Regular avatars with custom voices
+    ...(customVoicesData || [])
+      .filter((avatar: any) => avatar.metadata?.hasCustomVoice && avatar.metadata?.voiceRecordingUrl)
+      .map((avatar: any) => ({
+        id: `custom_avatar_${avatar.id}`,
+        name: `${avatar.name} (My Voice)`,
+        avatarId: avatar.id,
+        voiceUrl: avatar.metadata.voiceRecordingUrl,
+        isCustom: true,
+        type: 'avatar',
+      })),
+    // Photo avatar groups with custom voices (default_voice_id set)
+    ...(photoAvatarGroupsData?.avatar_group_list || [])
+      .filter((group: any) => group.default_voice_id && group.default_voice_id !== 'null')
+      .map((group: any) => ({
+        id: `custom_group_${group.id}`,
+        name: `${group.name} (My Voice)`,
+        groupId: group.id,
+        voiceId: group.default_voice_id,
+        isCustom: true,
+        type: 'photo_group',
+      })),
+  ];
 
   // Fetch photo avatar groups
   // API returns an object: { avatar_group_list: [...] }
@@ -213,6 +235,18 @@ export function VideoGenerationManager() {
     const customVoice = isCustomVoice 
       ? customVoices.find((v: any) => v.id === selectedVoiceId)
       : null;
+    
+    // Determine the voice ID to use
+    let finalVoiceId = selectedVoiceId;
+    if (customVoice) {
+      if (customVoice.type === 'photo_group') {
+        // Use the group's default voice ID directly
+        finalVoiceId = customVoice.voiceId;
+      } else {
+        // Regular avatar custom voice - use 'custom_voice' marker
+        finalVoiceId = 'custom_voice';
+      }
+    }
 
     generateVideoMutation.mutate({
       avatarId: selectedAvatarLook,
@@ -222,7 +256,7 @@ export function VideoGenerationManager() {
       // Photo avatar looks are talking photos in HeyGen's API
       isTalkingPhoto: true,
       voiceSpeed: voiceSpeed,
-      voiceId: isCustomVoice ? 'custom_voice' : selectedVoiceId,
+      voiceId: finalVoiceId,
       customVoiceAvatarId: customVoice?.avatarId,
     });
   };
