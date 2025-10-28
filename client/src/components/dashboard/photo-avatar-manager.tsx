@@ -443,7 +443,15 @@ export function PhotoAvatarManager() {
   };
 
   const saveVoiceToGroup = async () => {
+    console.log("🎤 saveVoiceToGroup called", {
+      hasRecordedAudio: !!recordedAudio,
+      selectedGroupForVoice,
+      recordedAudioType: recordedAudio?.type,
+      recordedAudioSize: recordedAudio?.size
+    });
+
     if (!recordedAudio || !selectedGroupForVoice) {
+      console.error("❌ Missing data:", { recordedAudio, selectedGroupForVoice });
       toast({
         title: "Missing Data",
         description: "Please select an avatar group and record a voice sample.",
@@ -456,6 +464,8 @@ export function PhotoAvatarManager() {
     formData.append("voiceRecording", recordedAudio, "voice.webm");
     formData.append("groupId", selectedGroupForVoice);
 
+    console.log("📤 Sending voice save request to:", `/api/photo-avatars/groups/${selectedGroupForVoice}/voice`);
+
     try {
       const response = await fetch(
         `/api/photo-avatars/groups/${selectedGroupForVoice}/voice`,
@@ -465,7 +475,15 @@ export function PhotoAvatarManager() {
         }
       );
 
+      console.log("📨 Response received:", {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText
+      });
+
       if (response.ok) {
+        const result = await response.json();
+        console.log("✅ Voice saved successfully:", result);
         toast({
           title: "Voice Saved",
           description: "Voice recording has been saved to the avatar group.",
@@ -473,9 +491,12 @@ export function PhotoAvatarManager() {
         resetRecording();
         setSelectedGroupForVoice(null);
       } else {
+        const errorText = await response.text();
+        console.error("❌ Save failed with status:", response.status, errorText);
         throw new Error("Failed to save voice");
       }
     } catch (error) {
+      console.error("❌ Error saving voice:", error);
       toast({
         title: "Save Failed",
         description: "Failed to save voice recording. Please try again.",
