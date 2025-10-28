@@ -3553,6 +3553,21 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           // For now, use professional voice as fallback
           finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
         }
+      } else if (voiceId) {
+        // Check if voiceId is actually a custom voice audio asset ID from a photo avatar group
+        const user = (req as any).user;
+        const allPhotoAvatarGroupVoices = await storage.listPhotoAvatarGroupVoices(user.id);
+        const matchingGroupVoice = allPhotoAvatarGroupVoices.find(
+          v => v.heygenAudioAssetId === voiceId
+        );
+        
+        if (matchingGroupVoice) {
+          console.log("🎤 Backend: Photo Avatar Group custom voice detected!");
+          console.log("🎤 Backend: Group ID:", matchingGroupVoice.groupId);
+          console.log("🎤 Backend: Audio Asset ID:", matchingGroupVoice.heygenAudioAssetId);
+          audioAssetId = matchingGroupVoice.heygenAudioAssetId;
+          finalVoiceId = undefined; // Don't use text voice when using audio
+        }
       }
 
       const heyGenService = new HeyGenService();
