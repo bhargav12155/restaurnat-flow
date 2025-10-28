@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, Upload, Mic, Loader2, Check } from "lucide-react";
+import { Trash2, Upload, Mic, Loader2, Check, CheckCircle, Clock, XCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
@@ -15,6 +16,8 @@ interface CustomVoice {
   audioUrl: string;
   duration: number | null;
   fileSize: number | null;
+  heygenAudioAssetId: string | null;
+  status: 'pending' | 'ready' | 'failed';
   createdAt: string;
 }
 
@@ -145,6 +148,37 @@ export function VoiceLibraryManager() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const getStatusBadge = (status: string | undefined | null) => {
+    // Treat missing status as ready (legacy voices or voices uploaded before HeyGen integration)
+    if (!status || status === 'ready') {
+      return (
+        <Badge variant="default" className="bg-green-500 hover:bg-green-600 text-white">
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Ready for Video
+        </Badge>
+      );
+    }
+    
+    switch (status) {
+      case 'pending':
+        return (
+          <Badge variant="secondary">
+            <Clock className="h-3 w-3 mr-1 animate-pulse" />
+            Processing...
+          </Badge>
+        );
+      case 'failed':
+        return (
+          <Badge variant="destructive">
+            <XCircle className="h-3 w-3 mr-1" />
+            Upload Failed
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Upload Section */}
@@ -240,9 +274,12 @@ export function VoiceLibraryManager() {
                   className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                 >
                   <div className="flex-1">
-                    <h4 className="font-medium" data-testid={`text-voice-name-${voice.id}`}>
-                      {voice.name}
-                    </h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium" data-testid={`text-voice-name-${voice.id}`}>
+                        {voice.name}
+                      </h4>
+                      {getStatusBadge(voice.status)}
+                    </div>
                     <div className="flex gap-4 text-sm text-muted-foreground mt-1">
                       <span>Size: {formatFileSize(voice.fileSize)}</span>
                       {voice.duration && <span>Duration: {formatDuration(voice.duration)}</span>}
