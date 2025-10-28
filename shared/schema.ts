@@ -304,6 +304,28 @@ export const fileUploads = pgTable("file_uploads", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// =====================================================
+// SOCIAL MEDIA API KEYS TABLE
+// =====================================================
+export const socialApiKeys = pgTable("social_api_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  facebookAppId: text("facebook_app_id"),
+  facebookAppSecret: text("facebook_app_secret"),
+  instagramBusinessAccountId: text("instagram_business_account_id"),
+  instagramToken: text("instagram_token"),
+  twitterApiKey: text("twitter_api_key"),
+  twitterApiSecret: text("twitter_api_secret"),
+  twitterAccessToken: text("twitter_access_token"),
+  twitterAccessTokenSecret: text("twitter_access_token_secret"),
+  linkedinAccessToken: text("linkedin_access_token"),
+  youtubeApiKey: text("youtube_api_key"),
+  youtubeChannelId: text("youtube_channel_id"),
+  tiktokAccessToken: text("tiktok_access_token"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -386,6 +408,12 @@ export const insertFileUploadSchema = createInsertSchema(fileUploads).omit({
   createdAt: true,
 });
 
+export const insertSocialApiKeysSchema = createInsertSchema(socialApiKeys).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -433,3 +461,5 @@ export type InsertUserActivity = z.infer<typeof insertUserActivitySchema>;
 export type UserActivity = typeof userActivity.$inferSelect;
 export type InsertFileUpload = z.infer<typeof insertFileUploadSchema>;
 export type FileUpload = typeof fileUploads.$inferSelect;
+export type InsertSocialApiKeys = z.infer<typeof insertSocialApiKeysSchema>;
+export type SocialApiKeys = typeof socialApiKeys.$inferSelect;
