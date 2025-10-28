@@ -1,11 +1,11 @@
 interface PhotoGenerationOptions {
   name: string;
-  age: 'Child' | 'Young Adult' | 'Middle Age' | 'Senior';
+  age: 'Young Adult' | 'Early Middle Age' | 'Late Middle Age' | 'Senior' | 'Unspecified';
   gender: 'Man' | 'Woman' | 'Person';
   ethnicity: string;
   orientation: 'horizontal' | 'vertical';
   pose: 'full_body' | 'half_body' | 'close_up';
-  style: 'Realistic' | 'Artistic' | 'Professional';
+  style: 'Realistic' | 'Pixar' | 'Cinematic' | 'Vintage' | 'Noir' | 'Cyberpunk' | 'Unspecified';
   appearance: string;
 }
 
