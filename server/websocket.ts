@@ -3,10 +3,11 @@ import { Server } from "http";
 import type { IncomingMessage } from "http";
 
 export interface WebSocketMessage {
-  type: "content_published" | "social_post_scheduled" | "notification" | "status_update";
+  type: "content_published" | "social_post_scheduled" | "notification" | "status_update" | "photo_generated" | "video_created";
   data: any;
   timestamp: string;
   userId?: number;
+  link?: string;
 }
 
 export class RealtimeService {
@@ -117,6 +118,36 @@ export class RealtimeService {
       },
       timestamp: new Date().toISOString(),
       userId,
+    });
+  }
+
+  // Notify about photo generation
+  notifyPhotoGenerated(userId: number, avatarName: string, photoCount: number) {
+    this.sendToUser(userId.toString(), {
+      type: "photo_generated",
+      data: {
+        message: `${photoCount} AI photos generated for "${avatarName}"`,
+        avatarName,
+        photoCount,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "photo-avatars",
+    });
+  }
+
+  // Notify about video creation
+  notifyVideoCreated(userId: number, videoId: string, title: string) {
+    this.sendToUser(userId.toString(), {
+      type: "video_created",
+      data: {
+        videoId,
+        title,
+        message: `Video "${title}" has been created and is ready to view`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "ai-video",
     });
   }
 

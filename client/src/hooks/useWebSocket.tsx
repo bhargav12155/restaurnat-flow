@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 interface WebSocketMessage {
-  type: "content_published" | "social_post_scheduled" | "notification" | "status_update";
+  type: "content_published" | "social_post_scheduled" | "notification" | "status_update" | "photo_generated" | "video_created";
   data: any;
   timestamp: string;
   userId?: number;
+  link?: string;
 }
 
 interface UseWebSocketOptions {
