@@ -26,12 +26,12 @@ interface AvatarGroup {
 
 interface PhotoGenerationRequest {
   name: string;
-  age: 'Child' | 'Young Adult' | 'Middle Age' | 'Senior';
+  age: 'Young Adult' | 'Early Middle Age' | 'Late Middle Age' | 'Senior' | 'Unspecified';
   gender: 'Man' | 'Woman' | 'Person';
   ethnicity: string;
   orientation: 'horizontal' | 'vertical';
   pose: 'full_body' | 'half_body' | 'close_up';
-  style: 'Realistic' | 'Artistic' | 'Professional';
+  style: 'Realistic' | 'Pixar' | 'Cinematic' | 'Vintage' | 'Noir' | 'Cyberpunk' | 'Unspecified';
   appearance: string;
 }
 
@@ -47,12 +47,12 @@ export function PhotoAvatarManager() {
   const [selectedGroupForVoice, setSelectedGroupForVoice] = useState<string | null>(null);
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
     name: 'Mike Bjork Professional Avatar',
-    age: 'Middle Age',
+    age: 'Early Middle Age',
     gender: 'Man',
-    ethnicity: 'Caucasian',
+    ethnicity: 'White',
     orientation: 'vertical',
     pose: 'half_body',
-    style: 'Professional',
+    style: 'Realistic',
     appearance: 'Professional real estate agent, well-groomed, confident smile, business attire'
   });
 
@@ -69,11 +69,10 @@ export function PhotoAvatarManager() {
 
   // Generate AI photos
   const generatePhotosMutation = useMutation({
-    mutationFn: (data: PhotoGenerationRequest) =>
-      apiRequest('/api/photo-avatars/generate-photos', {
-        method: 'POST',
-        body: JSON.stringify(data)
-      }),
+    mutationFn: async (data: PhotoGenerationRequest) => {
+      const res = await apiRequest('POST', '/api/photo-avatars/generate-photos', data);
+      return res.json();
+    },
     onSuccess: (data) => {
       toast({
         title: "Photo Generation Started",
@@ -367,10 +366,11 @@ export function PhotoAvatarManager() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Child">Child</SelectItem>
                     <SelectItem value="Young Adult">Young Adult</SelectItem>
-                    <SelectItem value="Middle Age">Middle Age</SelectItem>
+                    <SelectItem value="Early Middle Age">Early Middle Age</SelectItem>
+                    <SelectItem value="Late Middle Age">Late Middle Age</SelectItem>
                     <SelectItem value="Senior">Senior</SelectItem>
+                    <SelectItem value="Unspecified">Unspecified</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -394,12 +394,26 @@ export function PhotoAvatarManager() {
               
               <div>
                 <Label>Ethnicity</Label>
-                <Input
+                <Select
                   value={generationForm.ethnicity}
-                  onChange={(e) => setGenerationForm({ ...generationForm, ethnicity: e.target.value })}
-                  placeholder="e.g., Caucasian, Asian, African..."
-                  data-testid="input-ethnicity"
-                />
+                  onValueChange={(value) => setGenerationForm({ ...generationForm, ethnicity: value })}
+                >
+                  <SelectTrigger data-testid="select-ethnicity">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="White">White</SelectItem>
+                    <SelectItem value="Black">Black</SelectItem>
+                    <SelectItem value="Asian American">Asian American</SelectItem>
+                    <SelectItem value="East Asian">East Asian</SelectItem>
+                    <SelectItem value="South East Asian">South East Asian</SelectItem>
+                    <SelectItem value="South Asian">South Asian</SelectItem>
+                    <SelectItem value="Middle Eastern">Middle Eastern</SelectItem>
+                    <SelectItem value="Pacific">Pacific</SelectItem>
+                    <SelectItem value="Hispanic">Hispanic</SelectItem>
+                    <SelectItem value="Unspecified">Unspecified</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>
@@ -446,8 +460,12 @@ export function PhotoAvatarManager() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Realistic">Realistic</SelectItem>
-                    <SelectItem value="Artistic">Artistic</SelectItem>
-                    <SelectItem value="Professional">Professional</SelectItem>
+                    <SelectItem value="Pixar">Pixar</SelectItem>
+                    <SelectItem value="Cinematic">Cinematic</SelectItem>
+                    <SelectItem value="Vintage">Vintage</SelectItem>
+                    <SelectItem value="Noir">Noir</SelectItem>
+                    <SelectItem value="Cyberpunk">Cyberpunk</SelectItem>
+                    <SelectItem value="Unspecified">Unspecified</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
