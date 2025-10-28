@@ -132,14 +132,16 @@ export function VideoGenerationManager() {
         type: 'photo_group',
       })),
     // Voice Library voices - standalone saved voices
-    ...(voiceLibraryVoices || []).map((voice: any) => ({
-      id: `voice_library_${voice.id}`,
-      name: `${voice.name} (Needs HeyGen Upload)`,
-      audioUrl: voice.audioUrl,
-      voiceLibraryId: voice.id,
-      isCustom: true,
-      type: 'voice_library',
-    })),
+    ...(voiceLibraryVoices || [])
+      .filter((voice: any) => !voice.status || voice.status === 'ready') // Show ready voices and legacy voices without status
+      .map((voice: any) => ({
+        id: `voice_library_${voice.id}`,
+        name: `${voice.name} (Voice Library)`,
+        audioUrl: voice.audioUrl,
+        voiceLibraryId: voice.id,
+        isCustom: true,
+        type: 'voice_library',
+      })),
   ];
 
   // Fetch photo avatar groups
