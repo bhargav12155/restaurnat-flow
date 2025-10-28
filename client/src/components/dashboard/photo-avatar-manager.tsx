@@ -57,15 +57,18 @@ export function PhotoAvatarManager() {
   });
 
   // Query avatar groups
-  const { data: avatarGroups, isLoading: isLoadingGroups } = useQuery({
+  const { data: avatarGroupsResponse, isLoading: isLoadingGroups } = useQuery({
     queryKey: ['/api/photo-avatars/groups'],
     refetchInterval: (data) => {
       // Refetch every 5 seconds if any group is processing
-      if (!Array.isArray(data)) return false;
-      const hasProcessing = data.some((g: AvatarGroup) => g.status === 'processing');
+      if (!data || !data.avatar_group_list) return false;
+      const hasProcessing = data.avatar_group_list.some((g: any) => g.train_status === 'processing');
       return hasProcessing ? 5000 : false;
     }
   });
+
+  // Extract avatar groups array from response
+  const avatarGroups = avatarGroupsResponse?.avatar_group_list || [];
 
   // Generate AI photos
   const generatePhotosMutation = useMutation({
@@ -502,14 +505,14 @@ export function PhotoAvatarManager() {
             </Button>
             
             {/* Progress Status for Processing Avatars */}
-            {avatarGroups && avatarGroups.some((g: AvatarGroup) => g.status === 'processing') && (
+            {avatarGroups && avatarGroups.length > 0 && avatarGroups.some((g: any) => g.train_status === 'processing') && (
               <Alert className="mt-4">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <AlertDescription>
                   <div className="space-y-2">
-                    <p className="font-semibold">Avatar Generation in Progress...</p>
+                    <p className="font-semibold">Avatar Training in Progress...</p>
                     <p className="text-sm">
-                      {avatarGroups.filter((g: AvatarGroup) => g.status === 'processing').length} avatar group(s) are being processed by HeyGen. 
+                      {avatarGroups.filter((g: any) => g.train_status === 'processing').length} avatar group(s) are being trained by HeyGen. 
                       This typically takes 2-3 minutes. The page will auto-refresh every 5 seconds.
                     </p>
                   </div>
@@ -517,43 +520,49 @@ export function PhotoAvatarManager() {
               </Alert>
             )}
 
-            {/* Recent Generations Preview */}
+            {/* Circular Avatar Thumbnails - Like HeyGen */}
             {avatarGroups && avatarGroups.length > 0 && (
-              <div className="mt-6 border-t pt-4">
-                <h3 className="text-lg font-semibold mb-3">
-                  Your Avatar Groups ({avatarGroups.length})
-                </h3>
-                <div className="space-y-3">
-                  {avatarGroups.slice(0, 5).map((group: AvatarGroup) => (
-                    <div key={group.group_id} className="border rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex-1">
-                          <h4 className="font-medium">{group.name}</h4>
-                          {group.status === 'processing' && group.training_progress && (
-                            <div className="mt-2">
-                              <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                                <span>Training progress</span>
-                                <span>{group.training_progress}%</span>
-                              </div>
-                              <Progress value={group.training_progress} className="h-2" />
-                            </div>
-                          )}
-                        </div>
-                        <Badge className={getStatusColor(group.status)}>
-                          {group.status}
-                        </Badge>
+              <div className="mt-6 border-t pt-6">
+                <h3 className="text-xl font-semibold mb-4 font-playfair">My Avatars</h3>
+                
+                {/* Circular thumbnails row */}
+                <div className="flex gap-4 overflow-x-auto pb-4 mb-6">
+                  {avatarGroups.map((group: any) => (
+                    <div key={group.id} className="flex flex-col items-center min-w-[90px]">
+                      <div className="relative">
+                        <img
+                          src={group.preview_image}
+                          alt={group.name}
+                          className="w-20 h-20 rounded-full object-cover border-2 border-[#D4AF37] hover:border-[#B8860B] transition-all cursor-pointer hover:scale-105"
+                          data-testid={`avatar-thumb-${group.id}`}
+                        />
+                        {group.num_looks > 1 && (
+                          <div className="absolute -top-1 -right-1 bg-[#D4AF37] text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold">
+                            {group.num_looks}
+                          </div>
+                        )}
                       </div>
-                      {group.status === 'ready' && <AvatarPhotoGallery groupId={group.group_id} />}
-                      {group.status === 'processing' && (
-                        <p className="text-sm text-gray-600 mt-2">
-                          Processing... Please wait while HeyGen generates your avatar.
-                        </p>
-                      )}
-                      {group.status === 'failed' && (
-                        <p className="text-sm text-red-600 mt-2">
-                          Generation failed. Please try again.
-                        </p>
-                      )}
+                      <p className="text-xs mt-2 text-center font-medium text-gray-700 truncate w-20">
+                        {group.name}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Large Avatar Images Grid - Like HeyGen */}
+                <h4 className="text-sm font-semibold text-gray-600 mb-3">All avatar looks</h4>
+                <div className="space-y-6">
+                  {avatarGroups.slice(0, 5).map((group: any) => (
+                    <div key={group.id} className="border rounded-lg p-4 bg-white shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex-1">
+                          <h5 className="font-semibold text-gray-800">{group.name}</h5>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {group.num_looks} avatar(s) • Created {new Date(group.created_at * 1000).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <AvatarPhotoGallery groupId={group.id} />
                     </div>
                   ))}
                 </div>
