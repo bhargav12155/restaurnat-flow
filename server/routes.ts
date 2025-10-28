@@ -266,9 +266,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Dynamically detect the deployment URL
-      const protocol = req.protocol; // 'http' or 'https'
-      const host = req.get('host'); // e.g., 'multi-users-realtyflow.replit.app'
-      const appUrl = `${protocol}://${host}`;
+      // For Replit deployments, use the dev domain if available
+      const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+      
+      let appUrl: string;
+      if (replitDevDomain) {
+        // Use Replit's development domain (most reliable)
+        appUrl = `https://${replitDevDomain}`;
+      } else {
+        // Fallback to request headers (works for external requests)
+        const protocol = req.protocol;
+        const host = req.get('host');
+        appUrl = `${protocol}://${host}`;
+      }
 
       // Build iframe URL with proper authentication
       let iframeUrl = appUrl;
