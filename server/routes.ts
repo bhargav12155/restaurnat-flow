@@ -3149,21 +3149,61 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           return res.status(400).json({ error: "No photo uploaded" });
         }
 
-        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const fileBuffer = req.file.buffer;
+        const fileName = `image/${nanoid()}.${req.file.mimetype.split("/")[1]}`;
 
-        const filePath = path.join(process.cwd(), "uploads", req.file.filename);
-        const fileBuffer = fs.readFileSync(filePath);
-        const blob = new Blob([fileBuffer], { type: req.file.mimetype });
+        // Upload to object storage
+        await objectStorage.uploadObject(fileName, fileBuffer);
 
-        const imageKey = await photoAvatarService.uploadCustomPhoto(blob);
-
-        res.json({ imageKey });
+        res.json({ imageKey: fileName });
       } catch (error) {
         console.error("Failed to upload photo:", error);
         res.status(500).json({ error: "Failed to upload photo" });
       }
     }
   );
+
+  // Create avatar group from uploaded photos
+  app.post("/api/photo-avatars/create-from-uploads", async (req, res) => {
+    try {
+      const { name, imageKeys } = req.body;
+      
+      if (!name || !imageKeys || !Array.isArray(imageKeys) || imageKeys.length < 5) {
+        return res.status(400).json({ 
+          error: "Please provide a name and at least 5 photos" 
+        });
+      }
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      
+      // Download images from object storage and prepare them
+      const photoBuffers: Buffer[] = [];
+      for (const imageKey of imageKeys) {
+        const buffer = await objectStorage.downloadObject(imageKey);
+        photoBuffers.push(buffer);
+      }
+      
+      // Create avatar group with HeyGen
+      const createResult = await photoAvatarService.createAvatarGroup(
+        name,
+        photoBuffers
+      );
+      
+      // Automatically start training
+      if (createResult.avatar_group_id) {
+        await photoAvatarService.trainAvatarGroup(createResult.avatar_group_id);
+      }
+      
+      res.json({ 
+        success: true,
+        groupId: createResult.avatar_group_id,
+        message: "Avatar group created and training started"
+      });
+    } catch (error) {
+      console.error("Failed to create avatar group from uploads:", error);
+      res.status(500).json({ error: "Failed to create avatar group" });
+    }
+  });
 
   // ==================== TEMPLATE ENDPOINTS ====================
 
