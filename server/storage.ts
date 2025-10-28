@@ -21,7 +21,8 @@ import {
   type InsertCustomVoice,
   type PhotoAvatarGroupVoice,
   type InsertPhotoAvatarGroupVoice,
-  photoAvatarGroupVoices
+  photoAvatarGroupVoices,
+  customVoices
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -661,34 +662,45 @@ export class MemStorage implements IStorage {
 
   // Custom Voices
   async listCustomVoices(userId: string): Promise<CustomVoice[]> {
-    return Array.from(this.customVoices.values()).filter(v => v.userId === userId);
+    return await db
+      .select()
+      .from(customVoices)
+      .where(eq(customVoices.userId, userId));
   }
 
   async getCustomVoice(id: string): Promise<CustomVoice | undefined> {
-    return this.customVoices.get(id);
+    const [voice] = await db
+      .select()
+      .from(customVoices)
+      .where(eq(customVoices.id, id))
+      .limit(1);
+    return voice;
   }
 
   async createCustomVoice(insertVoice: InsertCustomVoice): Promise<CustomVoice> {
-    const id = randomUUID();
-    const voice: CustomVoice = {
-      ...insertVoice,
-      id,
-      duration: insertVoice.duration || null,
-      fileSize: insertVoice.fileSize || null,
-      heygenAudioAssetId: insertVoice.heygenAudioAssetId || null,
-      status: insertVoice.status || 'pending',
-      createdAt: new Date()
-    };
-    this.customVoices.set(id, voice);
+    const [voice] = await db
+      .insert(customVoices)
+      .values({
+        ...insertVoice,
+        duration: insertVoice.duration || null,
+        fileSize: insertVoice.fileSize || null,
+        heygenAudioAssetId: insertVoice.heygenAudioAssetId || null,
+        status: insertVoice.status || 'pending',
+      })
+      .returning();
     return voice;
   }
 
   async deleteCustomVoice(id: string, userId: string): Promise<boolean> {
-    const voice = this.customVoices.get(id);
-    if (!voice || voice.userId !== userId) {
-      return false;
-    }
-    return this.customVoices.delete(id);
+    const result = await db
+      .delete(customVoices)
+      .where(
+        and(
+          eq(customVoices.id, id),
+          eq(customVoices.userId, userId)
+        )
+      );
+    return true;
   }
 
   async savePhotoAvatarGroupVoice(insertVoice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice> {
