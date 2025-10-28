@@ -3296,7 +3296,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Generate video from avatar and script
   app.post("/api/videos/generate", requireAuth, async (req, res) => {
     try {
-      const { avatarId, script, title, test, isTalkingPhoto, voiceSpeed } = req.body;
+      const { avatarId, script, title, test, isTalkingPhoto, voiceSpeed, voiceId } = req.body;
 
       console.log("🎬 Backend: Video generation request received");
       console.log("🎬 Backend: Avatar ID:", avatarId);
@@ -3305,6 +3305,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       console.log("🎬 Backend: Test mode:", test);
       console.log("🎬 Backend: isTalkingPhoto:", isTalkingPhoto);
       console.log("🎬 Backend: Voice speed:", voiceSpeed);
+      console.log("🎬 Backend: Voice ID:", voiceId);
 
       if (!avatarId || !script) {
         console.log("❌ Backend: Validation failed:", {
@@ -3326,6 +3327,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         test: test || false,
         isTalkingPhoto: !!isTalkingPhoto,
         speed: voiceSpeed || 1.0,
+        voiceId: voiceId,
       });
 
       console.log("✅ Backend: Video generation result:", result);
