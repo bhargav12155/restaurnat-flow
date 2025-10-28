@@ -3055,12 +3055,17 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           // Get custom voice for this group if any
           let defaultVoiceId = null;
           try {
+            console.log(`🔍 Looking up custom voice for group ${groupId}, userId: ${userId}`);
             const customVoice = await storage.getPhotoAvatarGroupVoice(groupId, userId);
+            console.log(`📊 Custom voice result for group ${groupId}:`, customVoice);
             if (customVoice?.heygenAudioAssetId) {
               defaultVoiceId = customVoice.heygenAudioAssetId;
+              console.log(`✅ Found custom voice for group ${groupId}: ${defaultVoiceId}`);
+            } else {
+              console.log(`ℹ️ No custom voice found for group ${groupId}`);
             }
           } catch (e) {
-            console.warn(`⚠️ Failed to fetch custom voice for group ${groupId}:`, e);
+            console.error(`❌ Error fetching custom voice for group ${groupId}:`, e);
           }
 
           // Determine status: if any looks exist, mark as ready
