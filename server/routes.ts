@@ -2429,7 +2429,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         
         // Upload to HeyGen
         const heygenService = new HeyGenService();
-        heygenAudioAssetId = await heygenService.uploadAudio(audioBlob);
+        heygenAudioAssetId = await heygenService.uploadAudio(audioBlob, file.mimetype);
         status = 'ready';
         
         console.log("✅ HeyGen upload successful! Audio Asset ID:", heygenAudioAssetId);
