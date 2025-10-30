@@ -238,6 +238,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "bjorkhomes.com",
         "mandy.bjorkhomes.com",
         "elasticbeanstalk.com", // AWS Elastic Beanstalk deployments
+        "imakepage.com", // iMakePage platform
       ];
 
       const requestDomain = (domain as string) || "";
