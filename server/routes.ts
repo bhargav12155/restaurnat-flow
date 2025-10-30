@@ -266,20 +266,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `🔗 Integration request from ${source} - domain: ${domain}, agent: ${agentSlug}`
       );
 
-      // Dynamically detect the deployment URL
-      // Priority: Published deployment > Request host > Dev domain (for local testing)
-      let appUrl: string;
-      
-      // Check if there's a published deployment URL (best option)
-      if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
-        // Use the published .replit.app domain
-        appUrl = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.replit.app`;
-      } else {
-        // Fallback to request headers (works for external requests)
-        const protocol = req.protocol;
-        const host = req.get('host');
-        appUrl = `${protocol}://${host}`;
-      }
+      // Use the published deployment URL for the branded domain
+      // This ensures consistent iframe URLs regardless of dev/preview environments
+      const appUrl = "https://multi-users-realtyflow.replit.app";
 
       // Build iframe URL with proper authentication
       let iframeUrl = appUrl;
