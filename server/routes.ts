@@ -3686,17 +3686,29 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
         }
       } else if (voiceId === "custom_voice" && customVoiceAvatarId) {
+        // Look up the photo avatar group voice for this avatar
+        const user = (req as any).user;
         const customAvatar = await storage.getAvatarById(customVoiceAvatarId);
-        if (customAvatar?.metadata?.voiceRecordingUrl) {
-          console.log(
-            "🎤 Backend: Custom voice detected, using default voice as fallback"
+        
+        if (customAvatar?.groupId) {
+          console.log("🎤 Backend: Custom voice avatar detected!");
+          console.log("🎤 Backend: Avatar Group ID:", customAvatar.groupId);
+          
+          const groupVoice = await storage.getPhotoAvatarGroupVoice(
+            customAvatar.groupId,
+            user.id
           );
-          console.log(
-            "🎤 Backend: Custom voice URL:",
-            customAvatar.metadata.voiceRecordingUrl
-          );
-          // TODO: Upload custom voice to HeyGen for voice cloning
-          // For now, use professional voice as fallback
+          
+          if (groupVoice?.heygenAudioAssetId) {
+            console.log("🎤 Backend: Found group voice with Audio Asset ID:", groupVoice.heygenAudioAssetId);
+            audioAssetId = groupVoice.heygenAudioAssetId;
+            finalVoiceId = undefined; // Don't use text voice when using audio
+          } else {
+            console.log("⚠️ Backend: No group voice found for avatar group, using fallback");
+            finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
+          }
+        } else {
+          console.log("⚠️ Backend: Avatar has no groupId, using fallback");
           finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
         }
       } else if (voiceId) {
