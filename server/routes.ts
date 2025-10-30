@@ -282,15 +282,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return next();
       }
 
-      const resolvedAppUrl =
-        process.env.REALTYFLOW_APP_URL ||
-        (process.env.NODE_ENV === "production"
-          ? "https://www.imakepage.com/realtyflow"
-          : process.env.CLIENT_URL ||
-            process.env.BASE_URL ||
-            "http://localhost:5000");
-
-      const appUrl = String(resolvedAppUrl).replace(/\/+$/, "");
+      // Use the published deployment URL for consistent iframe embedding
+      const appUrl = "https://multi-users-realtyflow.replit.app";
 
       const params = new URLSearchParams();
       if (userEmail) {
