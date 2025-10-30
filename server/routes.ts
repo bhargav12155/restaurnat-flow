@@ -267,13 +267,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Dynamically detect the deployment URL
-      // For Replit deployments, use the dev domain if available
-      const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
-      
+      // Priority: Published deployment > Request host > Dev domain (for local testing)
       let appUrl: string;
-      if (replitDevDomain) {
-        // Use Replit's development domain (most reliable)
-        appUrl = `https://${replitDevDomain}`;
+      
+      // Check if there's a published deployment URL (best option)
+      if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
+        // Use the published .replit.app domain
+        appUrl = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.replit.app`;
       } else {
         // Fallback to request headers (works for external requests)
         const protocol = req.protocol;
