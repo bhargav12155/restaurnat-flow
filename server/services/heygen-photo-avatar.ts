@@ -326,11 +326,17 @@ export class HeyGenPhotoAvatarService {
   async editLook(params: {
     groupId: string;
     prompt: string;
+    orientation?: "square" | "landscape" | "portrait";
+    pose?: "half_body" | "full_body";
+    style?: string;
     referenceImages?: string[];
   }) {
     const payload = {
       group_id: params.groupId,
       prompt: params.prompt,
+      orientation: params.orientation || "square",
+      pose: params.pose || "half_body",
+      style: params.style || "Realistic",
       ...(params.referenceImages && params.referenceImages.length > 0
         ? { reference_image_keys: params.referenceImages }
         : {}),
@@ -338,6 +344,26 @@ export class HeyGenPhotoAvatarService {
 
     const response = await this.makeRequest(
       "/photo_avatar/look/generate",
+      "POST",
+      payload
+    );
+    return response.data;
+  }
+
+  // Add looks to existing avatar group
+  async addLooks(params: {
+    groupId: string;
+    imageKeys: string[];
+    name?: string;
+  }) {
+    const payload = {
+      group_id: params.groupId,
+      image_keys: params.imageKeys,
+      ...(params.name ? { name: params.name } : {}),
+    };
+
+    const response = await this.makeRequest(
+      "/photo_avatar/avatar_group/add",
       "POST",
       payload
     );
