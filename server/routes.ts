@@ -6,6 +6,7 @@ import fs from "fs";
 import express from "express";
 import { nanoid } from "nanoid";
 import { storage } from "./storage";
+import { db } from "./db";
 import { openaiService, getAPIKeyStatus } from "./services/openai";
 import { socialMediaService } from "./services/socialMedia";
 import { seoService } from "./services/seo";
@@ -4714,7 +4715,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Upload a tutorial video
-  app.post("/api/tutorial-videos/upload", upload.single("video"), async (req, res) => {
+  app.post("/api/tutorial-videos/upload", videoUpload.single("video"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No video file uploaded" });
