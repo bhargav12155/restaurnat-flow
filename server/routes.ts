@@ -28,7 +28,9 @@ import {
   insertScheduledPostSchema,
   insertAvatarSchema,
   insertVideoContentSchema,
+  tutorialVideos,
 } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -4684,6 +4686,100 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     } catch (error) {
       console.error("Error fetching brand settings:", error);
       res.status(500).json({ error: "Failed to fetch brand settings" });
+    }
+  });
+
+  // ==================== TUTORIAL VIDEOS ENDPOINTS ====================
+
+  // Get all tutorial videos or filter by category/subcategory
+  app.get("/api/tutorial-videos", async (req, res) => {
+    try {
+      const { category, subcategory } = req.query;
+      
+      let query = db.select().from(tutorialVideos).where(eq(tutorialVideos.isActive, true));
+      
+      if (category) {
+        query = query.where(eq(tutorialVideos.category, category as string));
+      }
+      if (subcategory) {
+        query = query.where(eq(tutorialVideos.subcategory, subcategory as string));
+      }
+      
+      const videos = await query.orderBy(tutorialVideos.order, tutorialVideos.createdAt);
+      res.json(videos);
+    } catch (error) {
+      console.error("Error fetching tutorial videos:", error);
+      res.status(500).json({ error: "Failed to fetch tutorial videos" });
+    }
+  });
+
+  // Upload a tutorial video
+  app.post("/api/tutorial-videos/upload", upload.single("video"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file uploaded" });
+      }
+
+      const { category, subcategory, title, description, duration, order } = req.body;
+
+      if (!category || !subcategory || !title) {
+        return res.status(400).json({ error: "Category, subcategory, and title are required" });
+      }
+
+      console.log("📹 Uploading tutorial video:", {
+        filename: req.file.originalname,
+        category,
+        subcategory,
+        title,
+      });
+
+      const fileBuffer = fs.readFileSync(req.file.path);
+
+      // Upload to S3 under RealtyFlow Tutorials structure
+      const s3Service = new S3UploadService();
+      const s3VideoUrl = await s3Service.uploadFile(
+        0, // Admin user ID for tutorials
+        fileBuffer,
+        `realtyflow-tutorials/${category}/${subcategory}/${nanoid()}_${req.file.originalname}`,
+        req.file.mimetype
+      );
+
+      console.log("✅ Tutorial video uploaded to S3:", s3VideoUrl);
+
+      // Clean up temporary file
+      fs.unlinkSync(req.file.path);
+
+      // Save to database
+      const [newVideo] = await db.insert(tutorialVideos).values({
+        category,
+        subcategory,
+        title,
+        description: description || null,
+        videoUrl: s3VideoUrl,
+        duration: duration ? parseInt(duration) : null,
+        order: order ? parseInt(order) : 0,
+      }).returning();
+
+      res.json(newVideo);
+    } catch (error) {
+      console.error("Failed to upload tutorial video:", error);
+      res.status(500).json({ error: "Failed to upload tutorial video" });
+    }
+  });
+
+  // Delete a tutorial video
+  app.delete("/api/tutorial-videos/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      await db.update(tutorialVideos)
+        .set({ isActive: false })
+        .where(eq(tutorialVideos.id, parseInt(id)));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete tutorial video:", error);
+      res.status(500).json({ error: "Failed to delete tutorial video" });
     }
   });
 
