@@ -227,6 +227,64 @@ const platformConfig = [
   },
 ];
 
+// Tutorial Videos Section Component
+function TutorialVideosSection({ category, subcategory }: { category: string; subcategory: string }) {
+  const { data: videos = [], isLoading } = useQuery({
+    queryKey: ["/api/tutorial-videos", category, subcategory],
+    queryFn: async () => {
+      const params = new URLSearchParams({ category, subcategory });
+      const response = await fetch(`/api/tutorial-videos?${params}`);
+      if (!response.ok) throw new Error("Failed to fetch tutorial videos");
+      return await response.json();
+    },
+  });
+
+  if (isLoading) {
+    return <div className="text-center text-muted-foreground">Loading tutorials...</div>;
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-muted-foreground mb-2">No tutorial videos available yet.</p>
+        <p className="text-sm text-muted-foreground">Check back soon for helpful guides!</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {videos.map((video: any) => (
+        <Card key={video.id}>
+          <CardHeader>
+            <CardTitle className="text-base">{video.title}</CardTitle>
+            {video.description && (
+              <p className="text-sm text-muted-foreground">{video.description}</p>
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className="aspect-video bg-black rounded-lg overflow-hidden">
+              <video
+                controls
+                className="w-full h-full"
+                data-testid={`video-${video.id}`}
+              >
+                <source src={video.videoUrl} type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+            </div>
+            {video.duration && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Duration: {Math.floor(video.duration / 60)}:{String(video.duration % 60).padStart(2, '0')}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function SocialMediaSetup({
   isOpen,
   onClose,
@@ -533,8 +591,15 @@ export function SocialMediaSetup({
           </Alert>
         )}
 
-        <Tabs defaultValue="facebook" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+        <Tabs defaultValue="tutorials" className="w-full">
+          <TabsList className="grid w-full grid-cols-7">
+            <TabsTrigger
+              value="tutorials"
+              className="flex items-center gap-1"
+            >
+              <Youtube className="h-4 w-4" />
+              <span className="hidden sm:inline">Tutorials</span>
+            </TabsTrigger>
             {platformConfig.map((platform) => (
               <TabsTrigger
                 key={platform.key}
@@ -546,6 +611,28 @@ export function SocialMediaSetup({
               </TabsTrigger>
             ))}
           </TabsList>
+
+          {/* Tutorial Videos Tab */}
+          <TabsContent value="tutorials" className="space-y-6">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-white">
+                <Youtube className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Tutorial Videos</h3>
+                <p className="text-sm text-muted-foreground">
+                  Learn how to connect your social media accounts step-by-step
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <TutorialVideosSection 
+                category="RealtyFlow Tutorials" 
+                subcategory="Add Social Keys" 
+              />
+            </div>
+          </TabsContent>
 
           {platformConfig.map(renderPlatformTab)}
         </Tabs>
