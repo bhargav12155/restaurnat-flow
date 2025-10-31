@@ -24,6 +24,17 @@ The application uses PostgreSQL with Drizzle ORM for type-safe database operatio
 ### AI Integration
 Content generation is powered by OpenAI's GPT-5 model, specifically optimized for real estate marketing in the Omaha market. The AI service generates tailored content for social posts, blog articles, property descriptions, and email campaigns with local market knowledge and neighborhood-specific insights.
 
+### Storage Architecture
+The application implements a dual-storage strategy combining HeyGen's API storage with AWS S3 for backup and long-term archival:
+
+**Voice Recordings**: Audio files are simultaneously stored in both S3 (permanent backup) and HeyGen (for voice cloning). The S3 URL provides playback capability while the HeyGen audio asset ID enables video generation with custom voices.
+
+**Avatar Images**: Photos uploaded for avatar creation are backed up to S3 and sent to HeyGen's storage. S3 provides long-term archival while HeyGen uses the images to create photo avatar groups with multiple poses.
+
+**Generated Videos**: Videos produced by HeyGen are automatically downloaded and backed up to S3 when generation completes. The system stores both the HeyGen CDN URL (for immediate playback) and the S3 URL (for permanent archival and redundancy). Thumbnails are also backed up to S3.
+
+This dual-storage approach ensures data durability, reduces dependency on HeyGen's CDN availability, and provides cost-effective long-term storage for user-generated content.
+
 ### Real-time Communication
 WebSocket connections provide live updates for content generation status, social media posting results, new lead notifications, and system-wide activity feeds. The frontend maintains connection state and handles reconnection logic automatically.
 
