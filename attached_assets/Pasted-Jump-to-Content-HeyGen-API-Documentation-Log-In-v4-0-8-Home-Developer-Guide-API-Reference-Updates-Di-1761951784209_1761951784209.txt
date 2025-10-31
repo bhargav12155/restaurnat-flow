@@ -1,0 +1,114 @@
+Jump to Content
+HeyGen API Documentation
+Log In
+v4.0.8
+Home
+Developer Guide
+API Reference
+Updates
+Discussions
+Tools
+Feature Requests
+Community
+Help
+Getting Started
+Quick Start
+Generate and translate videos
+Create Avatar Videos
+
+Generate Video from Template
+
+HeyGen's Webhook Events
+
+Video Translate API
+Photo Avatars API
+
+Generate AI Avatar Photos
+Create and Train Photo Avatar Groups
+Add Motion and Sound Effects to Your Photo Avatar
+Create Videos with Photo Avatars
+streaming with interactive avatars
+Streaming API Overview
+
+Streaming Avatar SDK
+
+Demo: Create a Vite Project with Streaming SDK
+
+Demo: Create an iOS App featuring Interactive Avatar
+Firewall Configuration
+Automate with HeyGen API
+Zapier Integration
+
+Personalized Video
+
+Bulk Video Translation
+Other guides
+HeyGen OAuth
+
+HeyGen MCP Server
+Powered by 
+
+Add Motion and Sound Effects to Your Photo Avatar
+Bring your photo avatars to life with dynamic motion and immersive sound effects
+
+Enhance your AI Photo avatar by adding dynamic motion and immersive sound effects! Follow this step-by-step guide to bring your avatar to life.
+
+Add Motion
+See detailed API reference
+Add motion to your photo avatar by sending a POST request to the API with the avatar's ID.
+
+Request
+Response
+
+curl --request POST \
+     --url https://api.heygen.com/v2/photo_avatar/add_motion \
+     --header 'accept: application/json' \
+     --header 'content-type: application/json' \
+     --header 'x-api-key: <your-api-key>' \
+     --data '{"id": "62d4489300634c3f99c0ec994c31fa76"}'
+Check Status:
+See detailed API reference
+
+Request
+Response (Pending)
+Response (Completed)
+
+curl -L 'https://api.heygen.com/v2/photo_avatar/e08fcc7348ef4f839ed31abf000cef2c' \
+-H 'accept: application/json' \
+-H 'X-Api-Key: <your-api-key>'
+
+Add Sound Effect
+See detailed API reference
+Add a sound effect to your photo avatar by sending a POST request with the avatar's ID.
+
+Request
+Response
+
+curl --request POST \
+     --url https://api.heygen.com/v2/photo_avatar/add_sound_effect \
+     --header 'accept: application/json' \
+     --header 'content-type: application/json' \
+     --header 'x-api-key: <your-api-key>' \
+     --data '{"id": "e08fcc7348ef4f839ed31abf000cef2c"}'
+Check Status:
+See detailed API reference
+
+Request
+Response
+
+curl -L 'https://api.heygen.com/v2/photo_avatar/e08fcc7348ef4f839ed31abf000cef2c' \
+-H 'accept: application/json' \
+-H 'X-Api-Key: <your-api-key>'
+
+Conclusion
+By following the steps outlined in this guide, you can easily add dynamic motion and immersive sound effects to your photo avatars, enhancing the user experience and bringing your avatars to life.
+
+Updated about 1 hour ago
+
+Create and Train Photo Avatar Groups
+Create Videos with Photo Avatars
+Did this page help you?
+Table of Contents
+Add Motion
+Add Sound Effect
+Conclusion
