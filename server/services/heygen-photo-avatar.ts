@@ -316,8 +316,30 @@ export class HeyGenPhotoAvatarService {
   // Delete avatar group
   async deleteAvatarGroup(groupId: string) {
     const response = await this.makeRequest(
-      `/avatar_group/${groupId}`,
+      `/photo_avatar_group/${groupId}`,
       "DELETE"
+    );
+    return response.data;
+  }
+
+  // Edit/Generate look with custom prompt (for modifying existing looks)
+  async editLook(params: {
+    groupId: string;
+    prompt: string;
+    referenceImages?: string[];
+  }) {
+    const payload = {
+      group_id: params.groupId,
+      prompt: params.prompt,
+      ...(params.referenceImages && params.referenceImages.length > 0
+        ? { reference_image_keys: params.referenceImages }
+        : {}),
+    };
+
+    const response = await this.makeRequest(
+      "/v2/photo_avatar/look/generate",
+      "POST",
+      payload
     );
     return response.data;
   }
