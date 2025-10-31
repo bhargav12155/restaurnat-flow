@@ -3493,10 +3493,20 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           size: req.file.size,
         });
 
-        // Upload directly to HeyGen and get the image key
-        const photoAvatarService = new HeyGenPhotoAvatarService();
         const fileBuffer = fs.readFileSync(req.file.path);
 
+        // Upload to S3 for backup
+        const s3Service = new S3UploadService();
+        const s3ImageUrl = await s3Service.uploadFile(
+          userId,
+          fileBuffer,
+          `avatar-images/${nanoid()}_${req.file.originalname}`,
+          req.file.mimetype
+        );
+        console.log("✅ Photo backed up to S3:", s3ImageUrl);
+
+        // Upload to HeyGen and get the image key
+        const photoAvatarService = new HeyGenPhotoAvatarService();
         const heygenImageKey = await photoAvatarService.uploadCustomPhoto(
           fileBuffer,
           req.file.mimetype
@@ -3507,7 +3517,10 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         // Clean up temporary file
         fs.unlinkSync(req.file.path);
 
-        res.json({ imageKey: heygenImageKey });
+        res.json({ 
+          imageKey: heygenImageKey,
+          s3Url: s3ImageUrl 
+        });
       } catch (error: any) {
         console.error("❌ Failed to upload photo:");
         console.error("Error message:", error?.message);
@@ -3763,6 +3776,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   app.get("/api/videos/:videoId/status", requireAuth, async (req, res) => {
     try {
       const { videoId } = req.params;
+      const userId = req.user?.id;
 
       console.log("📊 Backend: Getting video status for:", videoId);
 
@@ -3770,6 +3784,56 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       const status = await heyGenService.getVideoStatus(videoId);
 
       console.log("✅ Backend: Video status result:", status);
+
+      // If video is completed and has a URL, backup to S3
+      if (status.status === 'completed' && status.video_url && userId) {
+        try {
+          console.log("💾 Backend: Video completed, backing up to S3...");
+          
+          // Download video from HeyGen CDN
+          const videoResponse = await fetch(status.video_url);
+          if (videoResponse.ok) {
+            const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+            
+            // Upload to S3
+            const s3Service = new S3UploadService();
+            const s3VideoUrl = await s3Service.uploadFile(
+              userId,
+              videoBuffer,
+              `generated-videos/${videoId}.mp4`,
+              'video/mp4'
+            );
+            
+            console.log("✅ Backend: Video backed up to S3:", s3VideoUrl);
+            
+            // Add S3 URL to the response
+            status.s3_video_url = s3VideoUrl;
+            
+            // Download and backup thumbnail if available
+            if (status.thumbnail_url) {
+              try {
+                const thumbnailResponse = await fetch(status.thumbnail_url);
+                if (thumbnailResponse.ok) {
+                  const thumbnailBuffer = Buffer.from(await thumbnailResponse.arrayBuffer());
+                  const s3ThumbnailUrl = await s3Service.uploadFile(
+                    userId,
+                    thumbnailBuffer,
+                    `generated-videos/${videoId}_thumbnail.jpg`,
+                    'image/jpeg'
+                  );
+                  status.s3_thumbnail_url = s3ThumbnailUrl;
+                  console.log("✅ Backend: Thumbnail backed up to S3:", s3ThumbnailUrl);
+                }
+              } catch (thumbError) {
+                console.error("⚠️ Backend: Thumbnail backup failed:", thumbError);
+              }
+            }
+          }
+        } catch (backupError) {
+          console.error("⚠️ Backend: S3 backup failed, continuing anyway:", backupError);
+        }
+      }
+
       res.json(status);
     } catch (error: any) {
       console.error("❌ Backend: Failed to get video status");
