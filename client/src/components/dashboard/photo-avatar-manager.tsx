@@ -202,10 +202,7 @@ export function PhotoAvatarManager() {
   // Create avatar group
   const createGroupMutation = useMutation({
     mutationFn: ({ name, imageKey }: { name: string; imageKey: string }) =>
-      apiRequest("/api/photo-avatars/groups", {
-        method: "POST",
-        body: JSON.stringify({ name, imageKey }),
-      }),
+      apiRequest("POST", "/api/photo-avatars/groups", { name, imageKey }),
     onSuccess: () => {
       toast({
         title: "Avatar Group Created",
@@ -220,10 +217,7 @@ export function PhotoAvatarManager() {
   // Train avatar group
   const trainGroupMutation = useMutation({
     mutationFn: ({ groupId, voiceId }: { groupId: string; voiceId?: string }) =>
-      apiRequest(`/api/photo-avatars/groups/${groupId}/train`, {
-        method: "POST",
-        body: voiceId ? JSON.stringify({ defaultVoiceId: voiceId }) : undefined,
-      }),
+      apiRequest("POST", `/api/photo-avatars/groups/${groupId}/train`, voiceId ? { defaultVoiceId: voiceId } : undefined),
     onSuccess: () => {
       toast({
         title: "Training Started",
@@ -245,10 +239,7 @@ export function PhotoAvatarManager() {
 
       const results = await Promise.allSettled(
         pendingGroups.map((group: any) =>
-          apiRequest(`/api/photo-avatars/groups/${group.group_id}/train`, {
-            method: "POST",
-            body: JSON.stringify({ defaultVoiceId: voiceId }),
-          })
+          apiRequest("POST", `/api/photo-avatars/groups/${group.group_id}/train`, { defaultVoiceId: voiceId })
         )
       );
 
@@ -289,10 +280,7 @@ export function PhotoAvatarManager() {
       groupId: string;
       numLooks: number;
     }) =>
-      apiRequest(`/api/photo-avatars/groups/${groupId}/generate-looks`, {
-        method: "POST",
-        body: JSON.stringify({ numLooks }),
-      }),
+      apiRequest("POST", `/api/photo-avatars/groups/${groupId}/generate-looks`, { numLooks }),
     onSuccess: () => {
       toast({
         title: "Generating New Looks",
@@ -307,9 +295,7 @@ export function PhotoAvatarManager() {
   // Delete avatar group
   const deleteGroupMutation = useMutation({
     mutationFn: (groupId: string) =>
-      apiRequest(`/api/photo-avatars/groups/${groupId}`, {
-        method: "DELETE",
-      }),
+      apiRequest("DELETE", `/api/photo-avatars/groups/${groupId}`),
     onSuccess: () => {
       toast({
         title: "Group Deleted",
@@ -330,10 +316,7 @@ export function PhotoAvatarManager() {
       groupId: string;
       prompt: string;
     }) =>
-      apiRequest(`/api/photo-avatars/groups/${groupId}/edit-look`, {
-        method: "POST",
-        body: JSON.stringify({ prompt }),
-      }),
+      apiRequest("POST", `/api/photo-avatars/groups/${groupId}/edit-look`, { prompt }),
     onSuccess: () => {
       toast({
         title: "Generating New Look",
