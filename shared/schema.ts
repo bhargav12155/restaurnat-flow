@@ -491,6 +491,33 @@ export type InsertCustomVoice = z.infer<typeof insertCustomVoiceSchema>;
 export type PhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferSelect;
 export type InsertPhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferInsert;
 
+// =====================================================
+// TUTORIAL VIDEOS TABLE
+// =====================================================
+export const tutorialVideos = pgTable("tutorial_videos", {
+  id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+  category: text("category").notNull(), // e.g., "RealtyFlow Tutorials"
+  subcategory: text("subcategory").notNull(), // e.g., "Add Social Keys"
+  title: text("title").notNull(),
+  description: text("description"),
+  videoUrl: text("video_url").notNull(), // S3 URL
+  thumbnailUrl: text("thumbnail_url"), // Optional thumbnail
+  duration: integer("duration"), // Duration in seconds
+  order: integer("order").default(0), // Display order within subcategory
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTutorialVideoSchema = createInsertSchema(tutorialVideos).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type TutorialVideo = typeof tutorialVideos.$inferSelect;
+export type InsertTutorialVideo = z.infer<typeof insertTutorialVideoSchema>;
+
 // Legacy types (keeping for compatibility)
 export type UpsertUser = typeof users.$inferInsert;
 export type InsertAIContent = z.infer<typeof insertAIContentSchema>;
