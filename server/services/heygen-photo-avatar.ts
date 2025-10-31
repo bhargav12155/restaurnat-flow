@@ -337,7 +337,7 @@ export class HeyGenPhotoAvatarService {
     };
 
     const response = await this.makeRequest(
-      "/v2/photo_avatar/look/generate",
+      "/photo_avatar/look/generate",
       "POST",
       payload
     );
