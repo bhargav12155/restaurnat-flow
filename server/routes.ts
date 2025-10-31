@@ -3785,6 +3785,9 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       console.log("✅ Backend: Video status result:", status);
 
+      // Extended response with S3 backup URLs
+      let response: any = { ...status };
+
       // If video is completed and has a URL, backup to S3
       if (status.status === 'completed' && status.video_url && userId) {
         try {
@@ -3807,7 +3810,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
             console.log("✅ Backend: Video backed up to S3:", s3VideoUrl);
             
             // Add S3 URL to the response
-            status.s3_video_url = s3VideoUrl;
+            response.s3_video_url = s3VideoUrl;
             
             // Download and backup thumbnail if available
             if (status.thumbnail_url) {
@@ -3821,7 +3824,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
                     `generated-videos/${videoId}_thumbnail.jpg`,
                     'image/jpeg'
                   );
-                  status.s3_thumbnail_url = s3ThumbnailUrl;
+                  response.s3_thumbnail_url = s3ThumbnailUrl;
                   console.log("✅ Backend: Thumbnail backed up to S3:", s3ThumbnailUrl);
                 }
               } catch (thumbError) {
@@ -3834,7 +3837,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         }
       }
 
-      res.json(status);
+      res.json(response);
     } catch (error: any) {
       console.error("❌ Backend: Failed to get video status");
       console.error("❌ Backend: Error message:", error?.message);
