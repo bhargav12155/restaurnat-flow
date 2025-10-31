@@ -4707,7 +4707,16 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       }
       
       const videos = await query.orderBy(tutorialVideos.order, tutorialVideos.createdAt);
-      res.json(videos);
+      
+      // Convert S3 paths to full URLs
+      const s3Service = new S3UploadService();
+      const videosWithUrls = videos.map(video => ({
+        ...video,
+        videoUrl: s3Service.getS3Url(video.videoUrl),
+        thumbnailUrl: video.thumbnailUrl ? s3Service.getS3Url(video.thumbnailUrl) : null,
+      }));
+      
+      res.json(videosWithUrls);
     } catch (error) {
       console.error("Error fetching tutorial videos:", error);
       res.status(500).json({ error: "Failed to fetch tutorial videos" });
