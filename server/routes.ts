@@ -3385,7 +3385,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   app.post("/api/photo-avatars/groups/:groupId/edit-look", async (req, res) => {
     try {
       const { groupId } = req.params;
-      const { prompt, referenceImages } = req.body;
+      const { prompt, orientation, pose, style, referenceImages } = req.body;
 
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
@@ -3393,11 +3393,17 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       console.log("✏️ Editing look for group:", groupId);
       console.log("✏️ Edit prompt:", prompt);
+      console.log("✏️ Orientation:", orientation || "square");
+      console.log("✏️ Pose:", pose || "half_body");
+      console.log("✏️ Style:", style || "Realistic");
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const result = await photoAvatarService.editLook({
         groupId,
         prompt,
+        orientation,
+        pose,
+        style,
         referenceImages,
       });
 
@@ -3405,6 +3411,33 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     } catch (error) {
       console.error("Failed to edit look:", error);
       res.status(500).json({ error: "Failed to edit look" });
+    }
+  });
+
+  // Add looks to existing avatar group
+  app.post("/api/photo-avatars/groups/:groupId/add-looks", async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      const { imageKeys, name } = req.body;
+
+      if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
+        return res.status(400).json({ error: "Image keys array is required" });
+      }
+
+      console.log("➕ Adding looks to group:", groupId);
+      console.log("➕ Number of images:", imageKeys.length);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const result = await photoAvatarService.addLooks({
+        groupId,
+        imageKeys,
+        name,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to add looks:", error);
+      res.status(500).json({ error: "Failed to add looks" });
     }
   });
 

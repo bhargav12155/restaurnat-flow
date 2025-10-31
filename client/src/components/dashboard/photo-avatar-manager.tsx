@@ -113,6 +113,9 @@ export function PhotoAvatarManager() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedGroupForEdit, setSelectedGroupForEdit] = useState<AvatarGroup | null>(null);
   const [editPrompt, setEditPrompt] = useState("");
+  const [editOrientation, setEditOrientation] = useState<"square" | "landscape" | "portrait">("square");
+  const [editPose, setEditPose] = useState<"half_body" | "full_body">("half_body");
+  const [editStyle, setEditStyle] = useState("Realistic");
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
     name: "Mike Bjork Professional Avatar",
     age: "Early Middle Age",
@@ -312,11 +315,22 @@ export function PhotoAvatarManager() {
     mutationFn: ({
       groupId,
       prompt,
+      orientation,
+      pose,
+      style,
     }: {
       groupId: string;
       prompt: string;
+      orientation?: string;
+      pose?: string;
+      style?: string;
     }) =>
-      apiRequest("POST", `/api/photo-avatars/groups/${groupId}/edit-look`, { prompt }),
+      apiRequest("POST", `/api/photo-avatars/groups/${groupId}/edit-look`, { 
+        prompt,
+        orientation,
+        pose,
+        style,
+      }),
     onSuccess: () => {
       toast({
         title: "Generating New Look",
@@ -324,6 +338,9 @@ export function PhotoAvatarManager() {
       });
       setEditDialogOpen(false);
       setEditPrompt("");
+      setEditOrientation("square");
+      setEditPose("half_body");
+      setEditStyle("Realistic");
       queryClient.invalidateQueries({
         queryKey: ["/api/photo-avatars/groups"],
       });
@@ -1373,17 +1390,62 @@ export function PhotoAvatarManager() {
               </Label>
               <Textarea
                 id="edit-prompt"
-                placeholder="Example: Add business suit, change background to office setting, make avatar smile more..."
+                placeholder="Example: professional business suit, office background, confident expression..."
                 value={editPrompt}
                 onChange={(e) => setEditPrompt(e.target.value)}
-                rows={5}
+                rows={4}
                 className="resize-none"
                 data-testid="textarea-edit-prompt"
               />
-              <p className="text-xs text-muted-foreground">
-                Be specific about what you want to change. This will generate a new look variation based on your description.
-              </p>
             </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-orientation">Orientation</Label>
+                <Select value={editOrientation} onValueChange={(value: any) => setEditOrientation(value)}>
+                  <SelectTrigger data-testid="select-edit-orientation">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="square">Square</SelectItem>
+                    <SelectItem value="landscape">Landscape</SelectItem>
+                    <SelectItem value="portrait">Portrait</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-pose">Pose</Label>
+                <Select value={editPose} onValueChange={(value: any) => setEditPose(value)}>
+                  <SelectTrigger data-testid="select-edit-pose">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="half_body">Half Body</SelectItem>
+                    <SelectItem value="full_body">Full Body</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-style">Style</Label>
+                <Select value={editStyle} onValueChange={setEditStyle}>
+                  <SelectTrigger data-testid="select-edit-style">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Realistic">Realistic</SelectItem>
+                    <SelectItem value="Cinematic">Cinematic</SelectItem>
+                    <SelectItem value="Pixar">Pixar</SelectItem>
+                    <SelectItem value="Vintage">Vintage</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Be specific about what you want to change. This will generate a new look variation based on your description.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2">
@@ -1403,6 +1465,9 @@ export function PhotoAvatarManager() {
                   editLookMutation.mutate({
                     groupId: selectedGroupForEdit.group_id,
                     prompt: editPrompt.trim(),
+                    orientation: editOrientation,
+                    pose: editPose,
+                    style: editStyle,
                   });
                 }
               }}
