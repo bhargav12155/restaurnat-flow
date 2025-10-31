@@ -255,29 +255,42 @@ function TutorialVideosSection({ category, subcategory }: { category: string; su
   return (
     <div className="space-y-4">
       {videos.map((video: any) => (
-        <Card key={video.id}>
-          <CardHeader>
-            <CardTitle className="text-base">{video.title}</CardTitle>
+        <Card key={video.id} className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Youtube className="h-4 w-4 text-amber-600" />
+              {video.title}
+            </CardTitle>
             {video.description && (
               <p className="text-sm text-muted-foreground">{video.description}</p>
             )}
           </CardHeader>
-          <CardContent>
-            <div className="aspect-video bg-black rounded-lg overflow-hidden">
+          <CardContent className="p-0">
+            <div className="aspect-video bg-black relative group">
               <video
                 controls
-                className="w-full h-full"
+                controlsList="nodownload"
+                className="w-full h-full object-contain"
                 data-testid={`video-${video.id}`}
+                preload="metadata"
               >
                 <source src={video.videoUrl} type="video/mp4" />
                 Your browser does not support the video tag.
               </video>
             </div>
-            {video.duration && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Duration: {Math.floor(video.duration / 60)}:{String(video.duration % 60).padStart(2, '0')}
+            <div className="px-6 py-3 bg-muted/50">
+              <p className="text-xs text-muted-foreground flex items-center gap-4">
+                <span className="flex items-center gap-1">
+                  <Youtube className="h-3 w-3" />
+                  Tutorial Video
+                </span>
+                {video.duration && (
+                  <span>
+                    Duration: {Math.floor(video.duration / 60)}:{String(video.duration % 60).padStart(2, '0')}
+                  </span>
+                )}
               </p>
-            )}
+            </div>
           </CardContent>
         </Card>
       ))}
