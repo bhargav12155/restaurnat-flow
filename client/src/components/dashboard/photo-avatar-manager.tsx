@@ -23,6 +23,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Upload,
   Camera,
   Users,
@@ -38,6 +45,7 @@ import {
   MicOff,
   Play,
   RotateCcw,
+  Edit,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -102,6 +110,9 @@ export function PhotoAvatarManager() {
   >(null);
   const [showTrainAllDialog, setShowTrainAllDialog] = useState(false);
   const [trainAllVoiceId, setTrainAllVoiceId] = useState<string>("");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedGroupForEdit, setSelectedGroupForEdit] = useState<AvatarGroup | null>(null);
+  const [editPrompt, setEditPrompt] = useState("");
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
     name: "Mike Bjork Professional Avatar",
     age: "Early Middle Age",
@@ -306,6 +317,39 @@ export function PhotoAvatarManager() {
       });
       queryClient.invalidateQueries({
         queryKey: ["/api/photo-avatars/groups"],
+      });
+    },
+  });
+
+  // Edit look mutation
+  const editLookMutation = useMutation({
+    mutationFn: ({
+      groupId,
+      prompt,
+    }: {
+      groupId: string;
+      prompt: string;
+    }) =>
+      apiRequest(`/api/photo-avatars/groups/${groupId}/edit-look`, {
+        method: "POST",
+        body: JSON.stringify({ prompt }),
+      }),
+    onSuccess: () => {
+      toast({
+        title: "Generating New Look",
+        description: "Your custom look is being generated based on your description.",
+      });
+      setEditDialogOpen(false);
+      setEditPrompt("");
+      queryClient.invalidateQueries({
+        queryKey: ["/api/photo-avatars/groups"],
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Edit Failed",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });
@@ -1262,21 +1306,36 @@ export function PhotoAvatarManager() {
                           )}
 
                           {group.status === "ready" && (
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                generateLooksMutation.mutate({
-                                  groupId: group.group_id,
-                                  numLooks: 3,
-                                })
-                              }
-                              disabled={generateLooksMutation.isPending}
-                              data-testid={`button-looks-${group.group_id}`}
-                              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
-                            >
-                              <Wand2 className="w-4 h-4 mr-2" />
-                              Generate New Looks
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  generateLooksMutation.mutate({
+                                    groupId: group.group_id,
+                                    numLooks: 3,
+                                  })
+                                }
+                                disabled={generateLooksMutation.isPending}
+                                data-testid={`button-looks-${group.group_id}`}
+                                className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+                              >
+                                <Wand2 className="w-4 h-4 mr-2" />
+                                Generate New Looks
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedGroupForEdit(group);
+                                  setEditDialogOpen(true);
+                                }}
+                                data-testid={`button-edit-look-${group.group_id}`}
+                                className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10"
+                              >
+                                <Edit className="w-4 h-4 mr-2" />
+                                Edit Look
+                              </Button>
+                            </>
                           )}
 
                           <Button
@@ -1301,6 +1360,88 @@ export function PhotoAvatarManager() {
           </TabsContent>
         </Tabs>
       </CardContent>
+
+      {/* Edit Look Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-5 w-5 text-[#D4AF37]" />
+              Edit Avatar Look
+            </DialogTitle>
+            <DialogDescription>
+              Describe the edits you'd like to make to this avatar look. Be specific about changes to appearance, clothing, background, or style.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>
+                Avatar Group: {selectedGroupForEdit?.name}
+              </Label>
+              <Badge variant="outline" className="ml-2">
+                {selectedGroupForEdit?.group_id}
+              </Badge>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-prompt">
+                Describe the edits you'd like to make
+              </Label>
+              <Textarea
+                id="edit-prompt"
+                placeholder="Example: Add business suit, change background to office setting, make avatar smile more..."
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                rows={5}
+                className="resize-none"
+                data-testid="textarea-edit-prompt"
+              />
+              <p className="text-xs text-muted-foreground">
+                Be specific about what you want to change. This will generate a new look variation based on your description.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditDialogOpen(false);
+                setEditPrompt("");
+              }}
+              data-testid="button-cancel-edit"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedGroupForEdit && editPrompt.trim()) {
+                  editLookMutation.mutate({
+                    groupId: selectedGroupForEdit.group_id,
+                    prompt: editPrompt.trim(),
+                  });
+                }
+              }}
+              disabled={!editPrompt.trim() || editLookMutation.isPending}
+              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+              data-testid="button-generate-edit"
+            >
+              {editLookMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4 mr-2" />
+                  Generate New Look
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

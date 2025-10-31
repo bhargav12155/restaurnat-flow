@@ -3381,6 +3381,33 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Edit/Generate new look with custom prompt
+  app.post("/api/photo-avatars/groups/:groupId/edit-look", async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      const { prompt, referenceImages } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      console.log("✏️ Editing look for group:", groupId);
+      console.log("✏️ Edit prompt:", prompt);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const result = await photoAvatarService.editLook({
+        groupId,
+        prompt,
+        referenceImages,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to edit look:", error);
+      res.status(500).json({ error: "Failed to edit look" });
+    }
+  });
+
   // Save voice recording to avatar group
   app.post(
     "/api/photo-avatars/groups/:groupId/voice",
