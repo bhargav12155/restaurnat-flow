@@ -2926,6 +2926,18 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
   // ==================== STREAMING AVATAR ENDPOINTS ====================
 
+  // List available streaming avatars
+  app.get("/api/streaming/avatars", async (req, res) => {
+    try {
+      const streamingService = new HeyGenStreamingService();
+      const avatars = await streamingService.listStreamingAvatars();
+      res.json({ avatars });
+    } catch (error) {
+      console.error("Failed to list streaming avatars:", error);
+      res.status(500).json({ error: "Failed to list streaming avatars" });
+    }
+  });
+
   // Create streaming avatar session
   app.post("/api/streaming/sessions", async (req, res) => {
     try {

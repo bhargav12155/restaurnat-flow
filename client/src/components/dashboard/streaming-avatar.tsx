@@ -31,16 +31,16 @@ export function StreamingAvatar() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
 
-  // Load avatar groups
+  // Load streaming avatars (not photo avatars - they don't work with streaming API)
   const avatarsQuery = useQuery({
-    queryKey: ['/api/photo-avatars/groups'],
-    select: (data: any) => data.avatar_group_list || []
+    queryKey: ['/api/streaming/avatars'],
+    select: (data: any) => data.avatars || []
   });
 
   // Set first avatar as default when loaded
   useEffect(() => {
     if (avatarsQuery.data && avatarsQuery.data.length > 0 && !selectedAvatar) {
-      setSelectedAvatar(avatarsQuery.data[0].group_id);
+      setSelectedAvatar(avatarsQuery.data[0].avatar_id);
     }
   }, [avatarsQuery.data, selectedAvatar]);
 
@@ -256,7 +256,9 @@ export function StreamingAvatar() {
       <CardHeader>
         <CardTitle>Interactive Streaming Avatar</CardTitle>
         <CardDescription>
-          Real-time interactive AI avatar for engaging conversations with your audience
+          Real-time interactive AI avatar with live video streaming, text-to-speech, and two-way voice chat.
+          <br />
+          <strong>Note:</strong> This uses HeyGen's Streaming Avatars (different from Photo Avatars). Only streaming-compatible avatars appear in the dropdown.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -273,13 +275,13 @@ export function StreamingAvatar() {
                   {avatarsQuery.isLoading ? (
                     <SelectItem value="loading" disabled>Loading avatars...</SelectItem>
                   ) : avatarsQuery.data && avatarsQuery.data.length > 0 ? (
-                    avatarsQuery.data.map((group: any) => (
-                      <SelectItem key={group.group_id} value={group.group_id}>
-                        {group.name || group.group_id}
+                    avatarsQuery.data.map((avatar: any) => (
+                      <SelectItem key={avatar.avatar_id} value={avatar.avatar_id}>
+                        {avatar.avatar_name || avatar.avatar_id}
                       </SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="no-avatars" disabled>No avatars found - create one first</SelectItem>
+                    <SelectItem value="no-avatars" disabled>No streaming avatars available - using default</SelectItem>
                   )}
                 </SelectContent>
               </Select>
