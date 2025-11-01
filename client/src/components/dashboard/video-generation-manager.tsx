@@ -413,6 +413,7 @@ export function VideoGenerationManager() {
                 return (
                   <div
                     key={lookId}
+                    data-testid={`avatar-look-${lookId}`}
                     className={`border-2 rounded-lg p-2 cursor-pointer transition-all ${
                       selectedAvatarLook === lookId
                         ? "border-primary bg-primary/5"
@@ -548,6 +549,7 @@ export function VideoGenerationManager() {
           </Label>
           <Textarea
             id="video-script"
+            data-testid="input-video-script"
             value={script}
             onChange={(e) => setScript(e.target.value)}
             placeholder="Enter the script for your avatar to speak. Keep it under 1500 characters for best results."
@@ -560,7 +562,14 @@ export function VideoGenerationManager() {
         </div>
 
         {/* Generate Button */}
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center space-y-2">
+          {(!selectedAvatarLook || !script.trim()) && (
+            <div className="text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-md">
+              {!selectedAvatarLook && !script.trim() && "⚠️ Please select an avatar look and enter a script"}
+              {!selectedAvatarLook && script.trim() && "⚠️ Please select an avatar look above"}
+              {selectedAvatarLook && !script.trim() && "⚠️ Please enter a script"}
+            </div>
+          )}
           <Button
             onClick={handleGenerateVideo}
             disabled={
@@ -569,6 +578,7 @@ export function VideoGenerationManager() {
               !script.trim()
             }
             size="lg"
+            data-testid="button-generate-video"
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
             <Wand2 className="mr-2 h-5 w-5" />
@@ -585,6 +595,7 @@ export function VideoGenerationManager() {
             <Button
               variant="outline"
               size="sm"
+              data-testid="button-sample-welcome"
               onClick={() =>
                 setScript(
                   "Hello! I'm your local real estate expert. I'd love to help you find your dream home in Omaha. What are you looking for?"
@@ -596,6 +607,7 @@ export function VideoGenerationManager() {
             <Button
               variant="outline"
               size="sm"
+              data-testid="button-sample-market"
               onClick={() =>
                 setScript(
                   "The Omaha real estate market is hot right now! Homes in desirable neighborhoods are selling quickly. Contact me today to start your home search."
@@ -607,6 +619,7 @@ export function VideoGenerationManager() {
             <Button
               variant="outline"
               size="sm"
+              data-testid="button-sample-consultation"
               onClick={() =>
                 setScript(
                   "Looking to buy or sell in Omaha? I've helped hundreds of families find their perfect home. Let's schedule a consultation to discuss your real estate goals."
