@@ -74,7 +74,7 @@ export function VideoGenerationManager() {
   const [script, setScript] = useState("");
   const [title, setTitle] = useState("");
   const [isTestMode, setIsTestMode] = useState(false);
-  const [voiceSpeed, setVoiceSpeed] = useState<number>(1.0); // 1.0 = normal speed
+  const [voiceSpeed, setVoiceSpeed] = useState<string>("1.0"); // Store as string for Select
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("119caed25533477ba63822d5d1552d25"); // Default: Neutral - Balanced
   const [currentVideo, setCurrentVideo] = useState<VideoGeneration | null>(
     null
@@ -283,7 +283,7 @@ export function VideoGenerationManager() {
       test: isTestMode,
       // Photo avatar looks are talking photos in HeyGen's API
       isTalkingPhoto: true,
-      voiceSpeed: voiceSpeed,
+      voiceSpeed: parseFloat(voiceSpeed),
       voiceId: finalVoiceId,
       customVoiceAvatarId: customVoice?.avatarId,
       voiceLibraryId,
@@ -350,7 +350,7 @@ export function VideoGenerationManager() {
             onValueChange={setSelectedAvatarGroup}
             value={selectedAvatarGroup}
           >
-            <SelectTrigger>
+            <SelectTrigger id="avatar-group-select" data-testid="select-avatar-group">
               <SelectValue placeholder="Choose a trained avatar group" />
             </SelectTrigger>
             <SelectContent>
@@ -521,8 +521,8 @@ export function VideoGenerationManager() {
             Voice Speed
           </Label>
           <Select
-            value={voiceSpeed.toString()}
-            onValueChange={(value) => setVoiceSpeed(parseFloat(value))}
+            value={voiceSpeed}
+            onValueChange={setVoiceSpeed}
           >
             <SelectTrigger id="voice-speed" data-testid="select-voice-speed">
               <SelectValue placeholder="Select voice speed" />
