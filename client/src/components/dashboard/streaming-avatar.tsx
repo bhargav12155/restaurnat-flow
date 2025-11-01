@@ -31,18 +31,21 @@ export function StreamingAvatar() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
 
-  // Load streaming avatars (not photo avatars - they don't work with streaming API)
-  const avatarsQuery = useQuery({
-    queryKey: ['/api/streaming/avatars'],
-    select: (data: any) => data.avatars || []
-  });
+  // HeyGen's public streaming avatars (these always work)
+  const defaultStreamingAvatars = [
+    { avatar_id: 'Wayne_20240711', avatar_name: 'Wayne - Professional Male' },
+    { avatar_id: 'Angela-inblackskirt-20220820', avatar_name: 'Angela - Professional Female' },
+    { avatar_id: 'josh_lite3_20230714', avatar_name: 'Josh - Casual Male' },
+    { avatar_id: 'Anna_public_3_20240108', avatar_name: 'Anna - Business Woman' },
+    { avatar_id: 'Tyler-incasualsuit-20220721', avatar_name: 'Tyler - Casual Male' },
+  ];
 
-  // Set first avatar as default when loaded
+  // Set default avatar
   useEffect(() => {
-    if (avatarsQuery.data && avatarsQuery.data.length > 0 && !selectedAvatar) {
-      setSelectedAvatar(avatarsQuery.data[0].avatar_id);
+    if (!selectedAvatar && defaultStreamingAvatars.length > 0) {
+      setSelectedAvatar(defaultStreamingAvatars[0].avatar_id);
     }
-  }, [avatarsQuery.data, selectedAvatar]);
+  }, [selectedAvatar]);
 
   // Create streaming session
   const createSessionMutation = useMutation({
@@ -272,24 +275,18 @@ export function StreamingAvatar() {
                   <SelectValue placeholder="Choose an avatar" />
                 </SelectTrigger>
                 <SelectContent>
-                  {avatarsQuery.isLoading ? (
-                    <SelectItem value="loading" disabled>Loading avatars...</SelectItem>
-                  ) : avatarsQuery.data && avatarsQuery.data.length > 0 ? (
-                    avatarsQuery.data.map((avatar: any) => (
-                      <SelectItem key={avatar.avatar_id} value={avatar.avatar_id}>
-                        {avatar.avatar_name || avatar.avatar_id}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="no-avatars" disabled>No streaming avatars available - using default</SelectItem>
-                  )}
+                  {defaultStreamingAvatars.map((avatar) => (
+                    <SelectItem key={avatar.avatar_id} value={avatar.avatar_id}>
+                      {avatar.avatar_name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             
             <Button
               onClick={() => createSessionMutation.mutate(selectedAvatar)}
-              disabled={createSessionMutation.isPending || !selectedAvatar || avatarsQuery.isLoading}
+              disabled={createSessionMutation.isPending || !selectedAvatar}
               className="w-full"
               data-testid="button-start-session"
             >
@@ -305,14 +302,6 @@ export function StreamingAvatar() {
                 </>
               )}
             </Button>
-
-            {!selectedAvatar && avatarsQuery.data && avatarsQuery.data.length === 0 && (
-              <Alert>
-                <AlertDescription>
-                  No avatars available. Please create an avatar in the Photo Avatars section first.
-                </AlertDescription>
-              </Alert>
-            )}
           </div>
         )}
 
