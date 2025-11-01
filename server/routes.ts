@@ -3441,6 +3441,55 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Add motion to photo avatar
+  app.post("/api/photo-avatars/:avatarId/add-motion", async (req, res) => {
+    try {
+      const { avatarId } = req.params;
+
+      console.log("🎬 Adding motion to avatar:", avatarId);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const result = await photoAvatarService.addMotion(avatarId);
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to add motion:", error);
+      res.status(500).json({ error: "Failed to add motion" });
+    }
+  });
+
+  // Add sound effect to photo avatar
+  app.post("/api/photo-avatars/:avatarId/add-sound-effect", async (req, res) => {
+    try {
+      const { avatarId } = req.params;
+
+      console.log("🔊 Adding sound effect to avatar:", avatarId);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const result = await photoAvatarService.addSoundEffect(avatarId);
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to add sound effect:", error);
+      res.status(500).json({ error: "Failed to add sound effect" });
+    }
+  });
+
+  // Get avatar status (for checking motion/sound effect processing)
+  app.get("/api/photo-avatars/:avatarId/status", async (req, res) => {
+    try {
+      const { avatarId } = req.params;
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const status = await photoAvatarService.getAvatarStatus(avatarId);
+
+      res.json(status);
+    } catch (error) {
+      console.error("Failed to get avatar status:", error);
+      res.status(500).json({ error: "Failed to get avatar status" });
+    }
+  });
+
   // Save voice recording to avatar group
   app.post(
     "/api/photo-avatars/groups/:groupId/voice",

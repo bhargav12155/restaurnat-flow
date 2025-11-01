@@ -42,7 +42,7 @@ export class HeyGenPhotoAvatarService {
 
   private async makeRequest(
     endpoint: string,
-    method: "GET" | "POST" | "PUT" = "GET",
+    method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
     body?: any
   ): Promise<any> {
     const url = `${this.baseUrl}${endpoint}`;
@@ -479,6 +479,44 @@ export class HeyGenPhotoAvatarService {
       "POST",
       payload
     );
+    return response.data;
+  }
+
+  // Add motion to photo avatar
+  async addMotion(avatarId: string) {
+    console.log(`🎬 HeyGen: Adding motion to avatar ${avatarId}`);
+    const payload = {
+      id: avatarId,
+    };
+
+    const response = await this.makeRequest(
+      "/photo_avatar/add_motion",
+      "POST",
+      payload
+    );
+    console.log("🎬 HeyGen: Add motion response:", JSON.stringify(response, null, 2));
+    return response.data;
+  }
+
+  // Add sound effect to photo avatar
+  async addSoundEffect(avatarId: string) {
+    console.log(`🔊 HeyGen: Adding sound effect to avatar ${avatarId}`);
+    const payload = {
+      id: avatarId,
+    };
+
+    const response = await this.makeRequest(
+      "/photo_avatar/add_sound_effect",
+      "POST",
+      payload
+    );
+    console.log("🔊 HeyGen: Add sound effect response:", JSON.stringify(response, null, 2));
+    return response.data;
+  }
+
+  // Get avatar status (for checking motion/sound effect status)
+  async getAvatarStatus(avatarId: string) {
+    const response = await this.makeRequest(`/photo_avatar/${avatarId}`);
     return response.data;
   }
 }
