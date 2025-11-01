@@ -49,7 +49,9 @@ export class HeyGenStreamingService {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create session: ${response.status}`);
+        const errorData = await response.json();
+        console.error('HeyGen Streaming API Error:', JSON.stringify(errorData, null, 2));
+        throw new Error(`Failed to create session: ${response.status} - ${JSON.stringify(errorData)}`);
       }
 
       const sessionData = await response.json();
