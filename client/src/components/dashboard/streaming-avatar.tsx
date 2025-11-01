@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,7 +18,7 @@ interface StreamingSession {
 
 export function StreamingAvatar() {
   const { toast } = useToast();
-  const [selectedAvatar, setSelectedAvatar] = useState<string>('default');
+  const [selectedAvatar, setSelectedAvatar] = useState<string>('');
   const [session, setSession] = useState<StreamingSession | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -30,6 +30,19 @@ export function StreamingAvatar() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+
+  // Load avatar groups
+  const avatarsQuery = useQuery({
+    queryKey: ['/api/photo-avatars/groups'],
+    select: (data: any) => data.avatar_group_list || []
+  });
+
+  // Set first avatar as default when loaded
+  useEffect(() => {
+    if (avatarsQuery.data && avatarsQuery.data.length > 0 && !selectedAvatar) {
+      setSelectedAvatar(avatarsQuery.data[0].group_id);
+    }
+  }, [avatarsQuery.data, selectedAvatar]);
 
   // Create streaming session
   const createSessionMutation = useMutation({
@@ -257,17 +270,24 @@ export function StreamingAvatar() {
                   <SelectValue placeholder="Choose an avatar" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Default Avatar</SelectItem>
-                  <SelectItem value="professional">Professional Mike</SelectItem>
-                  <SelectItem value="casual">Casual Mike</SelectItem>
-                  <SelectItem value="formal">Formal Mike</SelectItem>
+                  {avatarsQuery.isLoading ? (
+                    <SelectItem value="loading" disabled>Loading avatars...</SelectItem>
+                  ) : avatarsQuery.data && avatarsQuery.data.length > 0 ? (
+                    avatarsQuery.data.map((group: any) => (
+                      <SelectItem key={group.group_id} value={group.group_id}>
+                        {group.name || group.group_id}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-avatars" disabled>No avatars found - create one first</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
             
             <Button
               onClick={() => createSessionMutation.mutate(selectedAvatar)}
-              disabled={createSessionMutation.isPending}
+              disabled={createSessionMutation.isPending || !selectedAvatar || avatarsQuery.isLoading}
               className="w-full"
               data-testid="button-start-session"
             >
@@ -283,6 +303,14 @@ export function StreamingAvatar() {
                 </>
               )}
             </Button>
+
+            {!selectedAvatar && avatarsQuery.data && avatarsQuery.data.length === 0 && (
+              <Alert>
+                <AlertDescription>
+                  No avatars available. Please create an avatar in the Photo Avatars section first.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
         )}
 
