@@ -36,15 +36,16 @@ export class HeyGenStreamingService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          avatar_name: avatarId || 'default',
-          quality: 'high',
+          avatarName: avatarId || 'Wayne_20240711',
+          quality: 'medium',
           voice: {
-            voice_id: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
-            rate: 1.1,
+            voiceId: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+            rate: 1.0,
             emotion: 'FRIENDLY'
           },
           language: 'en',
-          disable_idle_timeout: false
+          disableIdleTimeout: false,
+          version: 'v2'
         })
       });
 
@@ -236,6 +237,28 @@ export class HeyGenStreamingService {
       }
     });
     return sessions;
+  }
+
+  // List available streaming avatars
+  async listStreamingAvatars() {
+    try {
+      const response = await fetch('https://api.heygen.com/v1/streaming.avatar.list', {
+        method: 'GET',
+        headers: {
+          'X-Api-Key': this.apiKey,
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to list avatars: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.data?.avatars || [];
+    } catch (error) {
+      console.error('Failed to list streaming avatars:', error);
+      return [];
+    }
   }
 
   // Cleanup old sessions (call periodically)
