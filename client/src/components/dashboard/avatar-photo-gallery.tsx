@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Image as ImageIcon, ZoomIn, Download, Play } from 'lucide-react';
+import { Loader2, Image as ImageIcon, ZoomIn, Download, Play, Wand2, Volume2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface Photo {
   id?: string;
@@ -26,6 +28,7 @@ interface AvatarPhotoGalleryProps {
 
 export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const { toast } = useToast();
 
   // Fetch photos for this avatar group
   const { data: photoData, isLoading } = useQuery<PhotoGalleryData>({
@@ -34,6 +37,50 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
   });
 
   const photos = photoData?.photos || [];
+
+  // Add motion mutation
+  const addMotionMutation = useMutation({
+    mutationFn: (avatarId: string) =>
+      apiRequest("POST", `/api/photo-avatars/${avatarId}/add-motion`, {}),
+    onSuccess: () => {
+      toast({
+        title: "Motion Added!",
+        description: "Dynamic motion is being added to your avatar. This may take a few moments.",
+      });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Motion Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Add sound effect mutation
+  const addSoundEffectMutation = useMutation({
+    mutationFn: (avatarId: string) =>
+      apiRequest("POST", `/api/photo-avatars/${avatarId}/add-sound-effect`, {}),
+    onSuccess: () => {
+      toast({
+        title: "Sound Effect Added!",
+        description: "Immersive sound effects are being added to your avatar. This may take a few moments.",
+      });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Sound Effect Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -147,44 +194,100 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
               )}
 
               {/* Photo Actions */}
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (selectedPhoto.url) {
-                      window.open(selectedPhoto.url, '_blank');
-                    }
-                  }}
-                  className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
-                  data-testid="button-download-avatar"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download
-                </Button>
-                {selectedPhoto.motion_preview_url && (
+              <div className="flex gap-2 justify-between">
+                <div className="flex gap-2">
+                  {selectedPhoto.id && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (selectedPhoto.id) {
+                            addMotionMutation.mutate(selectedPhoto.id);
+                          }
+                        }}
+                        disabled={addMotionMutation.isPending}
+                        className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                        data-testid="button-add-motion"
+                      >
+                        {addMotionMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Adding...
+                          </>
+                        ) : (
+                          <>
+                            <Wand2 className="w-4 h-4 mr-2" />
+                            Add Motion
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (selectedPhoto.id) {
+                            addSoundEffectMutation.mutate(selectedPhoto.id);
+                          }
+                        }}
+                        disabled={addSoundEffectMutation.isPending}
+                        className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                        data-testid="button-add-sound"
+                      >
+                        {addSoundEffectMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Adding...
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-4 h-4 mr-2" />
+                            Add Sound
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      if (selectedPhoto.motion_preview_url) {
-                        window.open(selectedPhoto.motion_preview_url, '_blank');
+                      if (selectedPhoto.url) {
+                        window.open(selectedPhoto.url, '_blank');
                       }
                     }}
                     className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                    data-testid="button-download-avatar"
                   >
-                    <Play className="w-4 h-4 mr-2" />
-                    Download Video
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  onClick={() => setSelectedPhoto(null)}
-                  className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
-                  data-testid="button-close-preview"
-                >
-                  Close
-                </Button>
+                  {selectedPhoto.motion_preview_url && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (selectedPhoto.motion_preview_url) {
+                          window.open(selectedPhoto.motion_preview_url, '_blank');
+                        }
+                      }}
+                      className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                    >
+                      <Play className="w-4 h-4 mr-2" />
+                      Download Video
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={() => setSelectedPhoto(null)}
+                    className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+                    data-testid="button-close-preview"
+                  >
+                    Close
+                  </Button>
+                </div>
               </div>
             </div>
           )}
