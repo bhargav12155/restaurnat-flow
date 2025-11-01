@@ -33,11 +33,10 @@ export function StreamingAvatar() {
 
   // Create streaming session
   const createSessionMutation = useMutation({
-    mutationFn: (avatarId: string) =>
-      apiRequest('/api/streaming/sessions', {
-        method: 'POST',
-        body: JSON.stringify({ avatarId })
-      }),
+    mutationFn: async (avatarId: string) => {
+      const res = await apiRequest('POST', '/api/streaming/sessions', { avatarId });
+      return await res.json();
+    },
     onSuccess: async (data) => {
       setSession(data);
       setIsConnecting(true);
@@ -108,11 +107,10 @@ export function StreamingAvatar() {
 
   // Make avatar speak
   const speakMutation = useMutation({
-    mutationFn: (text: string) =>
-      apiRequest(`/api/streaming/sessions/${session?.sessionId}/speak`, {
-        method: 'POST',
-        body: JSON.stringify({ text })
-      }),
+    mutationFn: async (text: string) => {
+      const res = await apiRequest('POST', `/api/streaming/sessions/${session?.sessionId}/speak`, { text });
+      return await res.json();
+    },
     onSuccess: () => {
       setMessage('');
     },
@@ -127,10 +125,10 @@ export function StreamingAvatar() {
 
   // Start voice chat
   const startVoiceChatMutation = useMutation({
-    mutationFn: () =>
-      apiRequest(`/api/streaming/sessions/${session?.sessionId}/voice-chat`, {
-        method: 'POST'
-      }),
+    mutationFn: async () => {
+      const res = await apiRequest('POST', `/api/streaming/sessions/${session?.sessionId}/voice-chat`);
+      return await res.json();
+    },
     onSuccess: async () => {
       // Get user's microphone
       try {
@@ -159,10 +157,10 @@ export function StreamingAvatar() {
 
   // Stop voice chat
   const stopVoiceChatMutation = useMutation({
-    mutationFn: () =>
-      apiRequest(`/api/streaming/sessions/${session?.sessionId}/voice-chat`, {
-        method: 'DELETE'
-      }),
+    mutationFn: async () => {
+      const res = await apiRequest('DELETE', `/api/streaming/sessions/${session?.sessionId}/voice-chat`);
+      return await res.json();
+    },
     onSuccess: () => {
       // Stop local audio stream
       if (localStreamRef.current) {
@@ -175,18 +173,18 @@ export function StreamingAvatar() {
 
   // Interrupt avatar
   const interruptMutation = useMutation({
-    mutationFn: () =>
-      apiRequest(`/api/streaming/sessions/${session?.sessionId}/interrupt`, {
-        method: 'POST'
-      })
+    mutationFn: async () => {
+      const res = await apiRequest('POST', `/api/streaming/sessions/${session?.sessionId}/interrupt`);
+      return await res.json();
+    }
   });
 
   // End session
   const endSessionMutation = useMutation({
-    mutationFn: () =>
-      apiRequest(`/api/streaming/sessions/${session?.sessionId}`, {
-        method: 'DELETE'
-      }),
+    mutationFn: async () => {
+      const res = await apiRequest('DELETE', `/api/streaming/sessions/${session?.sessionId}`);
+      return await res.json();
+    },
     onSuccess: () => {
       cleanup();
       setSession(null);
