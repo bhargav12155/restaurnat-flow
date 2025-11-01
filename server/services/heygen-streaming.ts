@@ -25,6 +25,9 @@ export class HeyGenStreamingService {
   // Create a new streaming session
   async createSession(userId: string, avatarId?: string) {
     try {
+      // Generate unique session ID
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
       // Create access token for streaming
       const token = await this.createAccessToken();
       
@@ -36,6 +39,7 @@ export class HeyGenStreamingService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          sessionId: sessionId,
           avatarName: avatarId || 'Wayne_20240711',
           quality: 'medium',
           voice: {
@@ -59,7 +63,7 @@ export class HeyGenStreamingService {
 
       // Store session
       const session: StreamingSession = {
-        sessionId: sessionData.data?.session_id || 'demo-session',
+        sessionId: sessionData.data?.session_id || sessionId,
         userId,
         avatarName: avatarId || 'default',
         createdAt: new Date(),
