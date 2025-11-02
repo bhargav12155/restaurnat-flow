@@ -3393,6 +3393,25 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Delete individual avatar
+  app.delete("/api/photo-avatars/:avatarId", async (req, res) => {
+    try {
+      const { avatarId } = req.params;
+
+      console.log("🗑️ Deleting individual avatar:", avatarId);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      await photoAvatarService.deleteIndividualAvatar(avatarId);
+
+      console.log("✅ Individual avatar deleted successfully");
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete individual avatar:", error);
+      res.status(500).json({ error: "Failed to delete individual avatar" });
+    }
+  });
+
   // Edit/Generate new look with custom prompt
   app.post("/api/photo-avatars/groups/:groupId/edit-look", async (req, res) => {
     try {
