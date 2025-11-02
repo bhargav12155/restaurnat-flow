@@ -4914,6 +4914,61 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // HeyGen Template routes
+  const heygenTemplateService = new HeyGenTemplateService();
+
+  // List all HeyGen templates
+  app.get("/api/heygen/templates", requireAuth, async (req, res) => {
+    try {
+      const templates = await heygenTemplateService.listTemplates();
+      res.json({ templates });
+    } catch (error) {
+      console.error("Failed to list HeyGen templates:", error);
+      res.status(500).json({ error: "Failed to list templates" });
+    }
+  });
+
+  // Get template details
+  app.get("/api/heygen/templates/:templateId", requireAuth, async (req, res) => {
+    try {
+      const { templateId } = req.params;
+      const details = await heygenTemplateService.getTemplateDetails(templateId);
+      res.json(details);
+    } catch (error) {
+      console.error("Failed to get template details:", error);
+      res.status(500).json({ error: "Failed to get template details" });
+    }
+  });
+
+  // Generate video from template
+  app.post("/api/heygen/templates/:templateId/generate", requireAuth, async (req, res) => {
+    try {
+      const { templateId } = req.params;
+      const user = req.user;
+
+      if (!user) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { title, variables, caption, dimension, include_gif, enable_sharing, scene_ids } = req.body;
+
+      const result = await heygenTemplateService.generateVideoFromTemplate(templateId, {
+        title,
+        variables,
+        caption,
+        dimension,
+        include_gif,
+        enable_sharing,
+        scene_ids,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to generate video from template:", error);
+      res.status(500).json({ error: "Failed to generate video from template" });
+    }
+  });
+
   // Serve uploaded files statically
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
