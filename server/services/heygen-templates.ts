@@ -62,8 +62,8 @@ export class HeyGenTemplateService {
       }
 
       const data = await response.json();
-      // HeyGen returns { templates: [...] } directly, not nested in data
-      return data.templates || [];
+      // HeyGen returns { error, data: { templates: [...] } }
+      return data.data?.templates || [];
     } catch (error) {
       console.error('Failed to list HeyGen templates:', error);
       throw error;
