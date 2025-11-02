@@ -52,7 +52,25 @@ export function VideoTemplates() {
   // Fetch templates list
   const templatesQuery = useQuery({
     queryKey: ['/api/heygen/templates'],
-    select: (data: any) => Array.isArray(data) ? data : []
+    select: (data: any) => {
+      console.log('🔍 [TEMPLATES] Raw API response:', data);
+      console.log('🔍 [TEMPLATES] Is array?', Array.isArray(data));
+      console.log('🔍 [TEMPLATES] Data type:', typeof data);
+      console.log('🔍 [TEMPLATES] Data keys:', data ? Object.keys(data) : 'null');
+      
+      let templates = [];
+      if (Array.isArray(data)) {
+        templates = data;
+      } else if (data && data.templates && Array.isArray(data.templates)) {
+        templates = data.templates;
+      } else if (data && typeof data === 'object') {
+        console.log('🔍 [TEMPLATES] Data structure:', JSON.stringify(data, null, 2));
+      }
+      
+      console.log('✅ [TEMPLATES] Final templates array:', templates);
+      console.log('✅ [TEMPLATES] Templates count:', templates.length);
+      return templates;
+    }
   });
 
   // Fetch template details when selected
@@ -117,6 +135,16 @@ export function VideoTemplates() {
     }));
   };
 
+  const templates = templatesQuery.data || [];
+  
+  console.log('🎨 [RENDER] Templates query state:', {
+    isLoading: templatesQuery.isLoading,
+    isError: templatesQuery.isError,
+    error: templatesQuery.error,
+    dataExists: !!templatesQuery.data,
+    templatesCount: templates.length
+  });
+
   return (
     <>
       <Card data-testid="card-video-templates">
@@ -136,8 +164,9 @@ export function VideoTemplates() {
             </div>
           ) : templatesQuery.data && templatesQuery.data.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {templatesQuery.data.map((template: HeyGenTemplate) => (
-                <Card
+              {templatesQuery.data.map((template: HeyGenTemplate) => {
+                console.log('🎬 [RENDER] Rendering template:', template);
+                return (<Card
                   key={template.template_id}
                   className="cursor-pointer hover:shadow-lg transition-shadow"
                   onClick={() => handleTemplateSelect(template)}
@@ -171,12 +200,15 @@ export function VideoTemplates() {
                     </p>
                   </CardContent>
                 </Card>
-              ))}
+              )})}
             </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <Video className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No templates available</p>
+              <p className="text-xs mt-2 text-red-500">
+                {templatesQuery.isError ? `Error: ${templatesQuery.error}` : 'Check browser console for details'}
+              </p>
             </div>
           )}
         </CardContent>
