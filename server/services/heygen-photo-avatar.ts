@@ -322,6 +322,15 @@ export class HeyGenPhotoAvatarService {
     return response.data;
   }
 
+  // Delete individual avatar (photo/look within a group)
+  async deleteIndividualAvatar(avatarId: string) {
+    const response = await this.makeRequest(
+      `/photo_avatar/${avatarId}`,
+      "DELETE"
+    );
+    return response.data;
+  }
+
   // Edit/Generate look with custom prompt (for modifying existing looks)
   async editLook(params: {
     groupId: string;
