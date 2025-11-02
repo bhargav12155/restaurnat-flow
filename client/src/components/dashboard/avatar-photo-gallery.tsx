@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Image as ImageIcon, ZoomIn, Download, Play, Wand2, Volume2 } from 'lucide-react';
+import { Loader2, Image as ImageIcon, ZoomIn, Download, Play, Wand2, Volume2, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -76,6 +76,32 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
     onError: (error: Error) => {
       toast({
         title: "Sound Effect Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete individual avatar mutation
+  const deleteAvatarMutation = useMutation({
+    mutationFn: (avatarId: string) =>
+      apiRequest("DELETE", `/api/photo-avatars/${avatarId}`),
+    onSuccess: () => {
+      toast({
+        title: "Avatar Deleted",
+        description: "The individual avatar has been removed successfully.",
+      });
+      setSelectedPhoto(null);
+      queryClient.invalidateQueries({
+        queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/photo-avatars/groups"],
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Delete Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -243,6 +269,30 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
                           <>
                             <Volume2 className="w-4 h-4 mr-2" />
                             Add Sound
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (selectedPhoto.id && confirm('Are you sure you want to delete this avatar? This action cannot be undone.')) {
+                            deleteAvatarMutation.mutate(selectedPhoto.id);
+                          }
+                        }}
+                        disabled={deleteAvatarMutation.isPending}
+                        className="border-red-300 text-red-600 hover:bg-red-50"
+                        data-testid="button-delete-avatar"
+                      >
+                        {deleteAvatarMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
                           </>
                         )}
                       </Button>
