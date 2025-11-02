@@ -52,7 +52,7 @@ export function VideoTemplates() {
   // Fetch templates list
   const templatesQuery = useQuery({
     queryKey: ['/api/heygen/templates'],
-    select: (data: any) => data.templates || []
+    select: (data: any) => Array.isArray(data) ? data : []
   });
 
   // Fetch template details when selected

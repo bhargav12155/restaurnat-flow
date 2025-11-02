@@ -4921,7 +4921,8 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   app.get("/api/heygen/templates", requireAuth, async (req, res) => {
     try {
       const templates = await heygenTemplateService.listTemplates();
-      res.json({ templates });
+      // templates is already an array, don't wrap it again
+      res.json(templates);
     } catch (error) {
       console.error("Failed to list HeyGen templates:", error);
       res.status(500).json({ error: "Failed to list templates" });
