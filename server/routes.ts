@@ -4972,6 +4972,9 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const { title, variables, caption, dimension, include_gif, enable_sharing, scene_ids } = req.body;
 
+      console.log("🎬 Generating video from template:", templateId);
+      console.log("📝 Title:", title);
+
       const result = await heygenTemplateService.generateVideoFromTemplate(templateId, {
         title,
         variables,
@@ -4982,7 +4985,34 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         scene_ids,
       });
 
-      res.json(result);
+      // Save the video to database so it appears in the videos list
+      if (result.data?.video_id) {
+        console.log("💾 Saving template video to database, video_id:", result.data.video_id);
+
+        const videoData = {
+          userId: user.id,
+          title: title || "Template Video",
+          script: "",
+          status: "generating" as const,
+          videoType: "template" as const,
+          heygenVideoId: result.data.video_id,
+          heygenTemplateId: templateId,
+          metadata: {
+            templateVariables: variables,
+            dimension,
+            caption,
+            include_gif,
+            enable_sharing,
+          },
+        };
+
+        const savedVideo = await storage.createVideoContent(videoData);
+        console.log("✅ Template video saved with ID:", savedVideo.id);
+
+        res.json({ ...result, savedVideoId: savedVideo.id });
+      } else {
+        res.json(result);
+      }
     } catch (error) {
       console.error("Failed to generate video from template:", error);
       res.status(500).json({ error: "Failed to generate video from template" });
