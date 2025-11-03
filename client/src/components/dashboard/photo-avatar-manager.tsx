@@ -295,14 +295,15 @@ export function PhotoAvatarManager() {
     },
     onError: (error: Error) => {
       const errorMessage = error.message.toLowerCase();
-      const isModelNotFound = errorMessage.includes('model not found') || errorMessage.includes('400');
+      const isModelNotFound = errorMessage.includes('model not found') || errorMessage.includes('404') || errorMessage.includes('400');
       
       toast({
-        title: "Generation Failed",
+        title: "Training Required",
         description: isModelNotFound 
-          ? "This avatar group doesn't support generating additional looks. This feature only works with certain avatar types. Try uploading a new photo to create a fresh avatar group instead."
+          ? "⚠️ This avatar group must be TRAINED before you can generate new looks. Click the 'Start Training' button first, wait for training to complete (status changes to 'ready'), then try again."
           : error.message,
         variant: "destructive",
+        duration: 8000,
       });
     },
   });
@@ -362,11 +363,12 @@ export function PhotoAvatarManager() {
       const isModelNotFound = errorMessage.includes('model not found') || errorMessage.includes('400');
       
       toast({
-        title: "Edit Failed",
+        title: "Training Required",
         description: isModelNotFound 
-          ? "This avatar group doesn't support the AI Edit Look feature. This feature only works with certain avatar types. Try uploading a new photo and creating a fresh avatar group instead."
+          ? "⚠️ This avatar group must be TRAINED before you can generate new looks. Click the 'Start Training' button first, wait for training to complete (status changes to 'ready'), then try again."
           : error.message,
         variant: "destructive",
+        duration: 8000,
       });
     },
   });
