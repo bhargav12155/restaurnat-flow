@@ -2634,6 +2634,34 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Get video history for authenticated user (all completed videos)
+  app.get("/api/videos/history", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log("📚 Fetching video history for user:", userId);
+
+      // Get all completed videos (status: 'ready' or 'uploaded')
+      const allVideos = await storage.getVideoContent(userId);
+      const completedVideos = allVideos.filter(
+        (video) => video.status === "ready" || video.status === "uploaded"
+      );
+
+      console.log(`✅ Found ${completedVideos.length} completed videos`);
+
+      res.json({
+        videos: completedVideos,
+        count: completedVideos.length,
+      });
+    } catch (error) {
+      console.error("Get video history error:", error);
+      res.status(500).json({ error: "Failed to fetch video history" });
+    }
+  });
+
   app.post("/api/videos", async (req, res) => {
     try {
       const user = await storage.getUserByUsername("mikebjork");
@@ -3638,6 +3666,24 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
         const fileBuffer = fs.readFileSync(req.file.path);
 
+        // ✨ AVATAR REUSE DETECTION: Check if this image already exists
+        const crypto = await import('crypto');
+        const imageHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+        console.log("🔍 Image hash:", imageHash);
+
+        const existingAvatar = await storage.getPhotoAvatarGroupByImageHash(imageHash, userId);
+        if (existingAvatar) {
+          console.log("♻️ Avatar reuse detected! Returning existing avatar:", existingAvatar.heygenGroupId);
+          fs.unlinkSync(req.file.path); // Clean up temp file
+          return res.json({
+            imageKey: existingAvatar.heygenImageKey,
+            s3Url: existingAvatar.s3ImageUrl,
+            groupId: existingAvatar.heygenGroupId,
+            reused: true,
+            message: "This image was already uploaded. Reusing existing avatar."
+          });
+        }
+
         // Upload to S3 for backup
         const s3Service = new S3UploadService();
         const s3ImageUrl = await s3Service.uploadFile(
@@ -3662,7 +3708,9 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
         res.json({ 
           imageKey: heygenImageKey,
-          s3Url: s3ImageUrl 
+          s3Url: s3ImageUrl,
+          imageHash, // Return hash for storage when avatar group is created
+          reused: false 
         });
       } catch (error: any) {
         console.error("❌ Failed to upload photo:");
@@ -3682,7 +3730,8 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     requireAuth,
     async (req, res) => {
       try {
-        const { name, imageKeys } = req.body;
+        const { name, imageKeys, imageHash, s3ImageUrl } = req.body;
+        const userId = req.user?.id;
 
         console.log("🎭 Backend: Create avatar group request received");
         console.log("🎭 Backend: Request name:", name);
@@ -3692,6 +3741,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           "🎭 Backend: Request imageKeys isArray:",
           Array.isArray(imageKeys)
         );
+        console.log("🎭 Backend: Image hash:", imageHash);
 
         if (
           !name ||
@@ -3733,6 +3783,26 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         // Automatically start training
         const groupId = createResult.group_id || createResult.avatar_group_id;
         console.log("🎭 Backend: Extracted groupId for training:", groupId);
+
+        // ✨ Save avatar group metadata to database for duplicate detection
+        if (userId && groupId) {
+          try {
+            await storage.createPhotoAvatarGroup({
+              userId,
+              heygenGroupId: groupId,
+              name,
+              imageHash: imageHash || null,
+              s3ImageUrl: s3ImageUrl || null,
+              heygenImageKey: imageKeys[0], // Primary image key
+              status: "pending",
+              trainingProgress: 0,
+            });
+            console.log("💾 Avatar group metadata saved to database");
+          } catch (dbError) {
+            console.error("⚠️ Failed to save avatar group metadata:", dbError);
+            // Don't fail the request, just log the error
+          }
+        }
 
         if (groupId) {
           try {

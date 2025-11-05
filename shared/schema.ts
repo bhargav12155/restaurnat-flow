@@ -142,6 +142,25 @@ export const customVoices = pgTable("custom_voices", {
 });
 
 // =====================================================
+// PHOTO AVATAR GROUPS TABLE (HeyGen Integration)
+// =====================================================
+export const photoAvatarGroups = pgTable("photo_avatar_groups", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  heygenGroupId: text("heygen_group_id").notNull().unique(), // HeyGen avatar group ID
+  name: text("name").notNull(),
+  imageHash: text("image_hash"), // SHA-256 hash of original image for duplicate detection
+  s3ImageUrl: text("s3_image_url"), // S3 backup URL
+  heygenImageKey: text("heygen_image_key"), // HeyGen image key
+  status: text("status").notNull().default("pending"), // 'pending', 'training', 'ready', 'failed'
+  trainingProgress: integer("training_progress").default(0), // 0-100
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =====================================================
 // PHOTO AVATAR GROUP VOICES TABLE
 // =====================================================
 export const photoAvatarGroupVoices = pgTable("photo_avatar_group_voices", {
@@ -487,6 +506,9 @@ export type InsertProperty = z.infer<typeof insertPropertySchema>;
 
 export type CustomVoice = typeof customVoices.$inferSelect;
 export type InsertCustomVoice = z.infer<typeof insertCustomVoiceSchema>;
+
+export type PhotoAvatarGroup = typeof photoAvatarGroups.$inferSelect;
+export type InsertPhotoAvatarGroup = typeof photoAvatarGroups.$inferInsert;
 
 export type PhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferSelect;
 export type InsertPhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferInsert;

@@ -19,8 +19,11 @@ import {
   type InsertVideoContent,
   type CustomVoice,
   type InsertCustomVoice,
+  type PhotoAvatarGroup,
+  type InsertPhotoAvatarGroup,
   type PhotoAvatarGroupVoice,
   type InsertPhotoAvatarGroupVoice,
+  photoAvatarGroups,
   photoAvatarGroupVoices,
   customVoices
 } from "@shared/schema";
@@ -88,6 +91,14 @@ export interface IStorage {
   getCustomVoice(id: string): Promise<CustomVoice | undefined>;
   createCustomVoice(voice: InsertCustomVoice): Promise<CustomVoice>;
   deleteCustomVoice(id: string, userId: string): Promise<boolean>;
+
+  // Photo Avatar Groups
+  createPhotoAvatarGroup(group: InsertPhotoAvatarGroup): Promise<PhotoAvatarGroup>;
+  getPhotoAvatarGroup(groupId: string): Promise<PhotoAvatarGroup | undefined>;
+  getPhotoAvatarGroupByHeygenId(heygenGroupId: string): Promise<PhotoAvatarGroup | undefined>;
+  getPhotoAvatarGroupByImageHash(imageHash: string, userId: string): Promise<PhotoAvatarGroup | undefined>;
+  listPhotoAvatarGroups(userId: string): Promise<PhotoAvatarGroup[]>;
+  updatePhotoAvatarGroup(id: string, updates: Partial<PhotoAvatarGroup>): Promise<PhotoAvatarGroup | undefined>;
 
   // Photo Avatar Group Voices
   savePhotoAvatarGroupVoice(voice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice>;
@@ -733,6 +744,63 @@ export class MemStorage implements IStorage {
       .select()
       .from(photoAvatarGroupVoices)
       .where(eq(photoAvatarGroupVoices.userId, userId));
+  }
+
+  // Photo Avatar Groups
+  async createPhotoAvatarGroup(insertGroup: InsertPhotoAvatarGroup): Promise<PhotoAvatarGroup> {
+    const [group] = await db
+      .insert(photoAvatarGroups)
+      .values(insertGroup)
+      .returning();
+    return group;
+  }
+
+  async getPhotoAvatarGroup(id: string): Promise<PhotoAvatarGroup | undefined> {
+    const [group] = await db
+      .select()
+      .from(photoAvatarGroups)
+      .where(eq(photoAvatarGroups.id, id))
+      .limit(1);
+    return group;
+  }
+
+  async getPhotoAvatarGroupByHeygenId(heygenGroupId: string): Promise<PhotoAvatarGroup | undefined> {
+    const [group] = await db
+      .select()
+      .from(photoAvatarGroups)
+      .where(eq(photoAvatarGroups.heygenGroupId, heygenGroupId))
+      .limit(1);
+    return group;
+  }
+
+  async getPhotoAvatarGroupByImageHash(imageHash: string, userId: string): Promise<PhotoAvatarGroup | undefined> {
+    const [group] = await db
+      .select()
+      .from(photoAvatarGroups)
+      .where(
+        and(
+          eq(photoAvatarGroups.imageHash, imageHash),
+          eq(photoAvatarGroups.userId, userId)
+        )
+      )
+      .limit(1);
+    return group;
+  }
+
+  async listPhotoAvatarGroups(userId: string): Promise<PhotoAvatarGroup[]> {
+    return await db
+      .select()
+      .from(photoAvatarGroups)
+      .where(eq(photoAvatarGroups.userId, userId));
+  }
+
+  async updatePhotoAvatarGroup(id: string, updates: Partial<PhotoAvatarGroup>): Promise<PhotoAvatarGroup | undefined> {
+    const [updated] = await db
+      .update(photoAvatarGroups)
+      .set(updates)
+      .where(eq(photoAvatarGroups.id, id))
+      .returning();
+    return updated;
   }
 }
 
