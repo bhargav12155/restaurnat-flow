@@ -1004,6 +1004,66 @@ export function PhotoAvatarManager() {
                 </Button>
               </>
             )}
+
+            {/* Upload History */}
+            {avatarGroups && avatarGroups.length > 0 && (
+              <div className="mt-6 border-t pt-4">
+                <h3 className="text-sm font-semibold mb-3 text-gray-700 flex items-center gap-2">
+                  <Image className="h-4 w-4" />
+                  Upload History
+                </h3>
+                <p className="text-xs text-gray-500 mb-3">
+                  {avatarGroups.length} avatar {avatarGroups.length === 1 ? "group" : "groups"} created
+                </p>
+                <div className="space-y-2">
+                  {avatarGroups.map((group: any) => (
+                    <div
+                      key={group.group_id}
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                      data-testid={`upload-history-${group.group_id}`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <img
+                          src={group.preview_image}
+                          alt={group.name}
+                          className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-medium text-gray-800 truncate">
+                            {group.name}
+                          </h4>
+                          <div className="flex gap-3 text-xs text-gray-500 mt-0.5">
+                            <span>{group.num_looks} avatar{group.num_looks !== 1 ? 's' : ''}</span>
+                            <span>•</span>
+                            <span>{new Date(group.created_at * 1000).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const element = document.getElementById(`avatar-group-${group.group_id}`);
+                          if (element) {
+                            // Switch to Generate tab first
+                            const generateTab = document.querySelector('[value="generate"]');
+                            if (generateTab) {
+                              (generateTab as HTMLElement).click();
+                            }
+                            setTimeout(() => {
+                              element.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }, 100);
+                          }
+                        }}
+                        data-testid={`button-view-${group.group_id}`}
+                      >
+                        View
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="voice" className="space-y-4">
