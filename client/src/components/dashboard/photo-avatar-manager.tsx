@@ -1005,7 +1005,7 @@ export function PhotoAvatarManager() {
               </>
             )}
 
-            {/* Upload History */}
+            {/* Upload History - Grid Layout */}
             {avatarGroups && avatarGroups.length > 0 && (
               <div className="mt-6 border-t pt-4">
                 <h3 className="text-sm font-semibold mb-3 text-gray-700 flex items-center gap-2">
@@ -1015,50 +1015,68 @@ export function PhotoAvatarManager() {
                 <p className="text-xs text-gray-500 mb-3">
                   {avatarGroups.length} avatar {avatarGroups.length === 1 ? "group" : "groups"} created
                 </p>
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {avatarGroups.map((group: any) => (
                     <div
                       key={group.group_id}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                      className="group relative border rounded-lg overflow-hidden hover:shadow-lg transition-all cursor-pointer"
+                      onClick={() => {
+                        const element = document.getElementById(`avatar-group-${group.group_id}`);
+                        if (element) {
+                          const generateTab = document.querySelector('[value="generate"]');
+                          if (generateTab) {
+                            (generateTab as HTMLElement).click();
+                          }
+                          setTimeout(() => {
+                            element.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }, 100);
+                        }
+                      }}
                       data-testid={`upload-history-${group.group_id}`}
                     >
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="aspect-square relative">
                         <img
                           src={group.preview_image}
                           alt={group.name}
-                          className="w-12 h-12 rounded-lg object-cover border border-gray-200"
+                          className="w-full h-full object-cover"
                         />
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-medium text-gray-800 truncate">
-                            {group.name}
-                          </h4>
-                          <div className="flex gap-3 text-xs text-gray-500 mt-0.5">
-                            <span>{group.num_looks} avatar{group.num_looks !== 1 ? 's' : ''}</span>
-                            <span>•</span>
-                            <span>{new Date(group.created_at * 1000).toLocaleDateString()}</span>
+                        {group.num_looks > 1 && (
+                          <div className="absolute top-2 right-2 bg-[#D4AF37] text-white text-xs px-2 py-0.5 rounded-full font-semibold">
+                            {group.num_looks}
                           </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const element = document.getElementById(`avatar-group-${group.group_id}`);
+                              if (element) {
+                                const generateTab = document.querySelector('[value="generate"]');
+                                if (generateTab) {
+                                  (generateTab as HTMLElement).click();
+                                }
+                                setTimeout(() => {
+                                  element.scrollIntoView({ behavior: "smooth", block: "center" });
+                                }, 100);
+                              }
+                            }}
+                            data-testid={`button-view-${group.group_id}`}
+                          >
+                            View
+                          </Button>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          const element = document.getElementById(`avatar-group-${group.group_id}`);
-                          if (element) {
-                            // Switch to Generate tab first
-                            const generateTab = document.querySelector('[value="generate"]');
-                            if (generateTab) {
-                              (generateTab as HTMLElement).click();
-                            }
-                            setTimeout(() => {
-                              element.scrollIntoView({ behavior: "smooth", block: "center" });
-                            }, 100);
-                          }
-                        }}
-                        data-testid={`button-view-${group.group_id}`}
-                      >
-                        View
-                      </Button>
+                      <div className="p-2 bg-white">
+                        <h4 className="text-xs font-medium text-gray-800 truncate">
+                          {group.name}
+                        </h4>
+                        <p className="text-[10px] text-gray-500 mt-0.5">
+                          {new Date(group.created_at * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </div>
