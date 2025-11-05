@@ -841,15 +841,15 @@ export function PhotoAvatarManager() {
                 </Alert>
               )}
 
-            {/* Circular Avatar Thumbnails - Like HeyGen */}
+            {/* Circular Avatar Thumbnails - Compact Like HeyGen */}
             {avatarGroups && avatarGroups.length > 0 && (
-              <div className="mt-6 border-t pt-6">
-                <h3 className="text-xl font-semibold mb-4 font-playfair">
+              <div className="mt-4 border-t pt-4">
+                <h3 className="text-sm font-semibold mb-3 text-gray-700">
                   My Avatars
                 </h3>
 
                 {/* Circular thumbnails row */}
-                <div className="flex gap-4 overflow-x-auto pb-4 mb-6">
+                <div className="flex gap-3 overflow-x-auto pb-3 mb-4">
                   {avatarGroups.map((group: any) => (
                     <button
                       key={group.group_id}
@@ -864,22 +864,22 @@ export function PhotoAvatarManager() {
                           });
                         }
                       }}
-                      className="flex flex-col items-center min-w-[90px] focus:outline-none"
+                      className="flex flex-col items-center min-w-[70px] focus:outline-none group"
                       data-testid={`avatar-thumb-${group.group_id}`}
                     >
                       <div className="relative">
                         <img
                           src={group.preview_image}
                           alt={group.name}
-                          className="w-20 h-20 rounded-full object-cover border-2 border-[#D4AF37] hover:border-[#B8860B] transition-all cursor-pointer hover:scale-105"
+                          className="w-16 h-16 rounded-full object-cover border-2 border-gray-200 group-hover:border-[#D4AF37] transition-all cursor-pointer"
                         />
                         {group.num_looks > 1 && (
-                          <div className="absolute -top-1 -right-1 bg-[#D4AF37] text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold">
+                          <div className="absolute -top-0.5 -right-0.5 bg-[#D4AF37] text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-semibold">
                             {group.num_looks}
                           </div>
                         )}
                       </div>
-                      <p className="text-xs mt-2 text-center font-medium text-gray-700 truncate w-20">
+                      <p className="text-[10px] mt-1.5 text-center font-medium text-gray-600 truncate w-16">
                         {group.name}
                       </p>
                     </button>
@@ -890,19 +890,19 @@ export function PhotoAvatarManager() {
                 <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                   All avatar looks
                 </h4>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {avatarGroups.slice(0, 5).map((group: any) => (
                     <div
                       key={group.group_id}
                       id={`avatar-group-${group.group_id}`}
-                      className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow scroll-mt-24"
+                      className="border rounded-lg p-2.5 bg-white hover:shadow-md transition-shadow scroll-mt-24"
                     >
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-1.5">
                         <div className="flex-1 min-w-0">
-                          <h5 className="text-sm font-medium text-gray-800 truncate">
+                          <h5 className="text-xs font-medium text-gray-800 truncate">
                             {group.name}
                           </h5>
-                          <p className="text-[10px] text-gray-400">
+                          <p className="text-[9px] text-gray-400">
                             {group.num_looks} avatar(s) • {new Date(group.created_at * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </p>
                         </div>
