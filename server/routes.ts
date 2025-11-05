@@ -720,48 +720,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      // Get stored API keys for the user
-      const apiKeys = await db.query.socialApiKeys.findFirst({
-        where: eq(socialApiKeys.userId, String(userId)),
-      });
+      // Get social media accounts from social_media_accounts table (same as posting endpoint)
+      const socialAccounts = await storage.getSocialMediaAccounts(userId);
 
-      // Determine connection status based on actual API keys
+      // Map accounts to include connection status
+      const connectedPlatforms = new Set(
+        socialAccounts.map((acc) => acc.platform.toLowerCase())
+      );
+
+      // Return all platforms with their connection status
       const platforms = [
         {
           id: nanoid(),
           platform: "facebook",
-          isConnected: !!(apiKeys?.facebookAppId && apiKeys?.facebookAppSecret),
-          lastSync: apiKeys?.facebookAppId ? new Date().toISOString() : null,
+          isConnected: connectedPlatforms.has("facebook"),
+          lastSync: connectedPlatforms.has("facebook") ? new Date().toISOString() : null,
         },
         {
           id: nanoid(),
           platform: "instagram",
-          isConnected: !!(apiKeys?.instagramBusinessAccountId && apiKeys?.instagramToken),
-          lastSync: apiKeys?.instagramBusinessAccountId ? new Date().toISOString() : null,
+          isConnected: connectedPlatforms.has("instagram"),
+          lastSync: connectedPlatforms.has("instagram") ? new Date().toISOString() : null,
         },
         {
           id: nanoid(),
           platform: "linkedin",
-          isConnected: !!apiKeys?.linkedinAccessToken,
-          lastSync: apiKeys?.linkedinAccessToken ? new Date().toISOString() : null,
+          isConnected: connectedPlatforms.has("linkedin"),
+          lastSync: connectedPlatforms.has("linkedin") ? new Date().toISOString() : null,
         },
         {
           id: nanoid(),
           platform: "x",
-          isConnected: !!(apiKeys?.twitterApiKey && apiKeys?.twitterApiSecret),
-          lastSync: apiKeys?.twitterApiKey ? new Date().toISOString() : null,
+          isConnected: connectedPlatforms.has("x") || connectedPlatforms.has("twitter"),
+          lastSync: (connectedPlatforms.has("x") || connectedPlatforms.has("twitter")) ? new Date().toISOString() : null,
         },
         {
           id: nanoid(),
           platform: "tiktok",
-          isConnected: !!apiKeys?.tiktokAccessToken,
-          lastSync: apiKeys?.tiktokAccessToken ? new Date().toISOString() : null,
+          isConnected: connectedPlatforms.has("tiktok"),
+          lastSync: connectedPlatforms.has("tiktok") ? new Date().toISOString() : null,
         },
         {
           id: nanoid(),
           platform: "youtube",
-          isConnected: !!(apiKeys?.youtubeApiKey || apiKeys?.youtubeChannelId),
-          lastSync: apiKeys?.youtubeApiKey ? new Date().toISOString() : null,
+          isConnected: connectedPlatforms.has("youtube"),
+          lastSync: connectedPlatforms.has("youtube") ? new Date().toISOString() : null,
         },
       ];
 
