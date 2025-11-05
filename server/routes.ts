@@ -30,6 +30,7 @@ import {
   insertAvatarSchema,
   insertVideoContentSchema,
   tutorialVideos,
+  socialApiKeys,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -712,44 +713,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Social media endpoints
-  app.get("/api/social/accounts", async (req, res) => {
+  app.get("/api/social/accounts", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const accounts = await storage.getSocialMediaAccounts(user.id);
+      // Get stored API keys for the user
+      const apiKeys = await db.query.socialApiKeys.findFirst({
+        where: eq(socialApiKeys.userId, String(userId)),
+      });
 
-      // Add mock connections if no accounts exist
-      if (accounts.length === 0) {
-        const platforms = [
-          { platform: "facebook", isConnected: true },
-          { platform: "instagram", isConnected: true },
-          { platform: "linkedin", isConnected: true },
-          { platform: "x", isConnected: true },
-          { platform: "tiktok", isConnected: true },
-          { platform: "youtube", isConnected: true },
-        ];
+      // Determine connection status based on actual API keys
+      const platforms = [
+        {
+          id: nanoid(),
+          platform: "facebook",
+          isConnected: !!(apiKeys?.facebookAppId && apiKeys?.facebookAppSecret),
+          lastSync: apiKeys?.facebookAppId ? new Date().toISOString() : null,
+        },
+        {
+          id: nanoid(),
+          platform: "instagram",
+          isConnected: !!(apiKeys?.instagramBusinessAccountId && apiKeys?.instagramToken),
+          lastSync: apiKeys?.instagramBusinessAccountId ? new Date().toISOString() : null,
+        },
+        {
+          id: nanoid(),
+          platform: "linkedin",
+          isConnected: !!apiKeys?.linkedinAccessToken,
+          lastSync: apiKeys?.linkedinAccessToken ? new Date().toISOString() : null,
+        },
+        {
+          id: nanoid(),
+          platform: "x",
+          isConnected: !!(apiKeys?.twitterApiKey && apiKeys?.twitterApiSecret),
+          lastSync: apiKeys?.twitterApiKey ? new Date().toISOString() : null,
+        },
+        {
+          id: nanoid(),
+          platform: "tiktok",
+          isConnected: !!apiKeys?.tiktokAccessToken,
+          lastSync: apiKeys?.tiktokAccessToken ? new Date().toISOString() : null,
+        },
+        {
+          id: nanoid(),
+          platform: "youtube",
+          isConnected: !!(apiKeys?.youtubeApiKey || apiKeys?.youtubeChannelId),
+          lastSync: apiKeys?.youtubeApiKey ? new Date().toISOString() : null,
+        },
+      ];
 
-        for (const p of platforms) {
-          await storage.createSocialMediaAccount({
-            userId: user.id,
-            platform: p.platform,
-            accountId: `${p.platform}_account`,
-            accessToken: p.isConnected ? "mock_token" : null,
-            refreshToken: null,
-            isConnected: p.isConnected,
-            lastSync: p.isConnected ? new Date() : null,
-            metadata: null,
-          });
-        }
-
-        const newAccounts = await storage.getSocialMediaAccounts(user.id);
-        return res.json(newAccounts);
-      }
-
-      res.json(accounts);
+      res.json(platforms);
     } catch (error) {
       console.error("Get social accounts error:", error);
       res.status(500).json({ error: "Failed to fetch social media accounts" });
