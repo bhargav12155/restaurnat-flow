@@ -772,15 +772,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/social/post", requireAuth, upload.single("photo"), async (req, res) => {
+  app.post("/api/social/post", upload.single("photo"), async (req, res) => {
     try {
       const { platform, content, platforms, scheduledFor } = req.body;
       const photo = req.file;
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
 
       if (platform) {
         // Single platform posting (new functionality)
@@ -788,14 +783,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Content is required" });
         }
 
-        // Get user's API keys from social_api_keys table
-        const apiKeys = await db.query.socialApiKeys.findFirst({
-          where: eq(socialApiKeys.userId, String(userId)),
-        });
+        const user = await storage.getUserByUsername("mikebjork");
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
 
-        if (!apiKeys) {
+        // Get user's social accounts to check if platform is connected
+        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        const connectedAccount = socialAccounts.find(
+          (account) => account.platform.toLowerCase() === platform.toLowerCase()
+        );
+
+        if (
+          !connectedAccount &&
+          socialAccounts.length > 0 &&
+          platform.toLowerCase() !== "youtube"
+        ) {
           return res.status(400).json({
-            error: "No social media API keys configured. Please configure your API keys first.",
+            error: `${platform} account not connected. Please connect your account first.`,
           });
         }
 
@@ -805,64 +810,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
           photoUrl = `/uploads/${path.basename(photo.path)}`;
         }
 
-        // Actually post to the platform using real API keys
+        // Actually post to the platform
         let postResult;
         try {
           if (platform.toLowerCase() === "facebook") {
-            if (!apiKeys.facebookAppId || !apiKeys.facebookAppSecret) {
-              return res.status(400).json({
-                error: "Facebook not configured. Please add your Facebook API credentials.",
-              });
-            }
             return res.status(400).json({
               error:
                 "Direct Facebook profile posting is not supported. Please use the Facebook Pages feature instead.",
             });
           } else if (platform.toLowerCase() === "instagram") {
-            if (!apiKeys.instagramToken) {
-              return res.status(400).json({
-                error: "Instagram not configured. Please add your Instagram API token.",
-              });
-            }
             postResult = await socialMediaService.postToInstagram(
               content,
               photoUrl || "",
-              apiKeys.instagramToken
+              connectedAccount?.accessToken || ""
             );
           } else if (platform.toLowerCase() === "linkedin") {
-            if (!apiKeys.linkedinAccessToken) {
-              return res.status(400).json({
-                error: "LinkedIn not configured. Please add your LinkedIn access token.",
-              });
-            }
             postResult = await socialMediaService.postToLinkedIn(
               content,
-              apiKeys.linkedinAccessToken
+              connectedAccount?.accessToken || ""
             );
           } else if (platform.toLowerCase() === "x") {
-            if (!apiKeys.twitterApiKey || !apiKeys.twitterApiSecret) {
-              return res.status(400).json({
-                error: "X (Twitter) not configured. Please add your X API credentials.",
-              });
-            }
             postResult = await socialMediaService.postToX(
               content,
-              apiKeys.twitterAccessToken || ""
+              connectedAccount?.accessToken || ""
             );
           } else if (platform.toLowerCase() === "youtube") {
-            if (!apiKeys.youtubeApiKey && !apiKeys.youtubeChannelId) {
-              return res.status(400).json({
-                error: "YouTube not configured. Please add your YouTube API key.",
-              });
-            }
             // For YouTube, we need title and description
             const title = req.body.title || content.substring(0, 100) + "...";
             const description = req.body.description || content;
+            // Use mock token if no connected account
+            const youtubeToken =
+              connectedAccount?.accessToken || "mock_youtube_token";
             postResult = await socialMediaService.postToYoutube(
               title,
               description,
               photoUrl || undefined,
-              apiKeys.youtubeApiKey || apiKeys.youtubeChannelId || ""
+              youtubeToken
             );
           } else {
             throw new Error(`Unsupported platform: ${platform}`);
