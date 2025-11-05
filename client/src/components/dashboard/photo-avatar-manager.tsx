@@ -886,27 +886,24 @@ export function PhotoAvatarManager() {
                   ))}
                 </div>
 
-                {/* Large Avatar Images Grid - Like HeyGen */}
-                <h4 className="text-sm font-semibold text-gray-600 mb-3">
+                {/* Large Avatar Images Grid - Compact Like HeyGen */}
+                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                   All avatar looks
                 </h4>
-                <div className="space-y-6">
+                <div className="space-y-3">
                   {avatarGroups.slice(0, 5).map((group: any) => (
                     <div
                       key={group.group_id}
                       id={`avatar-group-${group.group_id}`}
-                      className="border rounded-lg p-4 bg-white shadow-sm scroll-mt-24"
+                      className="border rounded-lg p-3 bg-white hover:shadow-md transition-shadow scroll-mt-24"
                     >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex-1">
-                          <h5 className="font-semibold text-gray-800">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <h5 className="text-sm font-medium text-gray-800 truncate">
                             {group.name}
                           </h5>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {group.num_looks} avatar(s) • Created{" "}
-                            {new Date(
-                              group.created_at * 1000
-                            ).toLocaleDateString()}
+                          <p className="text-[10px] text-gray-400">
+                            {group.num_looks} avatar(s) • {new Date(group.created_at * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </p>
                         </div>
                       </div>
