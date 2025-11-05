@@ -886,27 +886,17 @@ export function PhotoAvatarManager() {
                   ))}
                 </div>
 
-                {/* Large Avatar Images Grid - Compact Like HeyGen */}
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                {/* Large Avatar Images Grid - HeyGen Style */}
+                <h4 className="text-xs font-medium text-gray-500 mb-3">
                   All avatar looks
                 </h4>
-                <div className="space-y-2">
-                  {avatarGroups.slice(0, 5).map((group: any) => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {avatarGroups.map((group: any) => (
                     <div
                       key={group.group_id}
                       id={`avatar-group-${group.group_id}`}
-                      className="border rounded-lg p-2.5 bg-white hover:shadow-md transition-shadow scroll-mt-24"
+                      className="scroll-mt-24"
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex-1 min-w-0">
-                          <h5 className="text-xs font-medium text-gray-800 truncate">
-                            {group.name}
-                          </h5>
-                          <p className="text-[9px] text-gray-400">
-                            {group.num_looks} avatar(s) • {new Date(group.created_at * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </p>
-                        </div>
-                      </div>
                       <AvatarPhotoGallery groupId={group.group_id} />
                     </div>
                   ))}
