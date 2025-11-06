@@ -130,56 +130,49 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
 
   return (
     <>
-      {/* HeyGen-Style Avatar Gallery - Large Cards */}
-      {photos.map((photo, index) => (
-        <button
-          key={photo.id || index}
-          onClick={() => setSelectedPhoto(photo)}
-          className="relative group rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 bg-white w-full"
-          data-testid={`avatar-photo-${index}`}
-        >
-          <div className="aspect-[3/4] w-full">
-            <img
-              src={photo.url}
-              alt={photo.name || `Avatar ${index + 1}`}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(photo.name || 'Avatar')}&background=D4AF37&color=fff&size=400`;
-              }}
-            />
-          </div>
-          
-          {/* Name Overlay at Bottom - Always Visible */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-            <p className="text-white text-sm font-medium truncate">
-              {photo.name || `Avatar ${index + 1}`}
-            </p>
-          </div>
-
-          {/* Hover Actions Overlay */}
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-            <div className="flex gap-2 text-white">
-              <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
-                <ZoomIn className="w-5 h-5" />
-              </div>
-              {photo.motion_preview_url && (
-                <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
-                  <Play className="w-5 h-5" />
+      {/* Compact Avatar Gallery - Small Thumbnails */}
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+        {photos.map((photo, index) => (
+          <button
+            key={photo.id || index}
+            onClick={() => setSelectedPhoto(photo)}
+            className="relative group rounded-lg overflow-hidden border-2 border-gray-200 hover:border-[#D4AF37] transition-all duration-200 hover:shadow-lg bg-gray-50 w-full"
+            data-testid={`avatar-photo-${index}`}
+          >
+            <div className="aspect-[3/4] w-full">
+              <img
+                src={photo.url}
+                alt={photo.name || `Avatar ${index + 1}`}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(photo.name || 'Avatar')}&background=D4AF37&color=fff&size=400`;
+                }}
+              />
+            </div>
+            
+            {/* Hover Overlay - Compact */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute bottom-0 left-0 right-0 p-1.5">
+                <div className="flex items-center justify-center gap-1.5 text-white">
+                  <ZoomIn className="w-3.5 h-3.5" />
+                  {photo.motion_preview_url && (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
 
-          {/* Video Badge */}
-          {photo.motion_preview_url && (
-            <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1">
-              <Play className="w-3 h-3" />
-              Video
-            </div>
-          )}
-        </button>
-      ))}
+            {/* Preview Badge - Smaller */}
+            {photo.motion_preview_url && (
+              <div className="absolute top-1 right-1 bg-[#D4AF37] text-white text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
+                <Play className="w-2.5 h-2.5" />
+                Video
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
 
       {/* Full-Size Photo Dialog */}
       <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
