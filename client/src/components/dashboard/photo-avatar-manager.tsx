@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -203,6 +203,32 @@ export function PhotoAvatarManager() {
 
   // Extract avatar groups array from response
   const avatarGroups = avatarGroupsResponse?.avatar_group_list || [];
+
+  // Track previous avatar group statuses to detect training completion
+  const prevStatusesRef = useRef<Record<string, string>>({});
+
+  // Detect when training completes and show notification
+  useEffect(() => {
+    if (!avatarGroups || avatarGroups.length === 0) return;
+
+    avatarGroups.forEach((group: any) => {
+      const groupId = group.group_id;
+      const currentStatus = group.status;
+      const previousStatus = prevStatusesRef.current[groupId];
+
+      // Detect training completion: status changed from pending/processing to ready
+      if (previousStatus && previousStatus !== "ready" && currentStatus === "ready") {
+        toast({
+          title: "🎉 Training Complete!",
+          description: `Avatar "${group.name}" is now ready to edit with custom looks!`,
+          duration: 8000,
+        });
+      }
+
+      // Update ref with current status
+      prevStatusesRef.current[groupId] = currentStatus;
+    });
+  }, [avatarGroups, toast]);
 
   // Generate AI photos
   const generatePhotosMutation = useMutation({
