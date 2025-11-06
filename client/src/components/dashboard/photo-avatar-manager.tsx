@@ -46,11 +46,69 @@ import {
   Play,
   RotateCcw,
   Edit,
+  ZoomIn,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { AvatarPhotoGallery } from "./avatar-photo-gallery";
 import { VoiceLibraryManager } from "./voice-library-manager";
+
+// Large Avatar Card Component for HeyGen-style display
+function LargeAvatarCard({ groupId, groupName }: { groupId: string; groupName: string }) {
+  const { data: photoData } = useQuery<any>({
+    queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
+    enabled: !!groupId,
+  });
+
+  const photos = photoData?.photos || [];
+  const firstPhoto = photos[0];
+
+  if (!firstPhoto) return null;
+
+  return (
+    <button
+      className="relative group rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 bg-white w-full"
+      data-testid={`large-avatar-${groupId}`}
+    >
+      <div className="aspect-[3/4] w-full">
+        <img
+          src={firstPhoto.url}
+          alt={firstPhoto.name || groupName}
+          className="w-full h-full object-cover"
+        />
+      </div>
+      
+      {/* Name Overlay at Bottom - Always Visible */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+        <p className="text-white text-sm font-medium truncate">
+          {firstPhoto.name || groupName}
+        </p>
+      </div>
+
+      {/* Hover Actions Overlay */}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+        <div className="flex gap-2 text-white">
+          <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+            <ZoomIn className="w-5 h-5" />
+          </div>
+          {firstPhoto.motion_preview_url && (
+            <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+              <Play className="w-5 h-5" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Video Badge */}
+      {firstPhoto.motion_preview_url && (
+        <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1">
+          <Play className="w-3 h-3" />
+          Video
+        </div>
+      )}
+    </button>
+  );
+}
 
 // Professional HeyGen Voices
 const PROFESSIONAL_VOICES = [
@@ -892,13 +950,11 @@ export function PhotoAvatarManager() {
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                   {avatarGroups.map((group: any) => (
-                    <div
+                    <LargeAvatarCard
                       key={group.group_id}
-                      id={`avatar-group-${group.group_id}`}
-                      className="scroll-mt-24"
-                    >
-                      <AvatarPhotoGallery groupId={group.group_id} />
-                    </div>
+                      groupId={group.group_id}
+                      groupName={group.name}
+                    />
                   ))}
                 </div>
               </div>
