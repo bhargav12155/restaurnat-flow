@@ -47,6 +47,8 @@ import {
   RotateCcw,
   Edit,
   ZoomIn,
+  CheckCircle,
+  Clock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1380,9 +1382,23 @@ export function PhotoAvatarManager() {
                         {/* Compact Header */}
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-medium text-gray-800 truncate">
-                              {group.name}
-                            </h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-sm font-medium text-gray-800 truncate">
+                                {group.name}
+                              </h4>
+                              {group.status === "ready" && (
+                                <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                                  <CheckCircle className="w-3 h-3" />
+                                  <span className="text-[9px] font-semibold">Ready to Edit</span>
+                                </div>
+                              )}
+                              {group.status === "pending" && (
+                                <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                                  <Clock className="w-3 h-3" />
+                                  <span className="text-[9px] font-semibold">Needs Training</span>
+                                </div>
+                              )}
+                            </div>
                             <p className="text-[10px] text-gray-400">
                               {new Date(group.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                               {group.avatar_count && ` • ${group.avatar_count} photos`}
