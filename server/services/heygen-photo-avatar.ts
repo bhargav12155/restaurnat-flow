@@ -300,7 +300,7 @@ export class HeyGenPhotoAvatarService {
       const payload = {
         group_id: groupId,
         prompt: prompts[i],
-        orientation: "portrait",
+        orientation: "vertical",
         pose: "half_body",
         style: "Realistic",
       };

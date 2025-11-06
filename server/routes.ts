@@ -3245,9 +3245,12 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
             );
           }
 
-          // Determine status: if any looks exist, mark as ready
+          // Determine status based on training completion
+          // Only mark as "ready" if the model is actually trained (train_status === "completed")
+          // Having photos doesn't mean it's trained!
           const rawStatus = group.train_status || group.status || "pending";
-          const status = looksCount > 0 ? "ready" : rawStatus;
+          const isCompleted = rawStatus === "completed" || rawStatus === "ready";
+          const status = isCompleted ? "ready" : (looksCount > 0 ? "pending" : rawStatus);
 
           return {
             group_id: groupId,
@@ -3305,10 +3308,12 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         );
       }
 
+      const rawStatus = base.train_status || base.status || "pending";
+      const isCompleted = rawStatus === "completed" || rawStatus === "ready";
       const detail = {
         group_id: base.id || base.group_id,
         name: base.name,
-        status: looksCount > 0 ? "ready" : base.train_status || base.status,
+        status: isCompleted ? "ready" : (looksCount > 0 ? "pending" : rawStatus),
         created_at: base.created_at
           ? new Date(base.created_at * 1000).toISOString()
           : new Date().toISOString(),
