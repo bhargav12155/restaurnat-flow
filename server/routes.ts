@@ -3465,7 +3465,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Edit/Generate new look with custom prompt
-  app.post("/api/photo-avatars/groups/:groupId/edit-look", async (req, res) => {
+  app.post("/api/heygen/avatars/:groupId/generate-look", async (req, res) => {
     try {
       const { groupId } = req.params;
       const { prompt, orientation, pose, style, referenceImages } = req.body;
