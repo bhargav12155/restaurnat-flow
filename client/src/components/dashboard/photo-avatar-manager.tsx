@@ -370,14 +370,27 @@ export function PhotoAvatarManager() {
       numLooks: number;
     }) =>
       apiRequest("POST", `/api/photo-avatars/groups/${groupId}/generate-looks`, { numLooks }),
-    onSuccess: () => {
+    onSuccess: (data: any, variables) => {
       toast({
-        title: "Generating New Looks",
-        description: "New avatar looks are being generated.",
+        title: "🎨 Generating New Looks",
+        description: "New avatar looks are being generated. They will appear automatically when ready (usually 30-60 seconds).",
+        duration: 6000,
       });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/photo-avatars/groups"],
-      });
+      
+      // Start polling for the new photos - refresh every 3 seconds for 2 minutes
+      const pollInterval = setInterval(() => {
+        queryClient.invalidateQueries({
+          queryKey: [`/api/photo-avatars/groups/${variables.groupId}/photos`],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/photo-avatars/groups"],
+        });
+      }, 3000);
+
+      // Stop polling after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 120000);
     },
     onError: (error: Error) => {
       const errorMessage = error.message.toLowerCase();
@@ -430,19 +443,32 @@ export function PhotoAvatarManager() {
         pose,
         style,
       }),
-    onSuccess: () => {
+    onSuccess: (data: any, variables) => {
       toast({
-        title: "Generating New Look",
-        description: "Your custom look is being generated based on your description.",
+        title: "🎨 Generating New Look",
+        description: "Your custom look is being generated. It will appear automatically when ready (usually 30-60 seconds).",
+        duration: 6000,
       });
       setEditDialogOpen(false);
       setEditPrompt("");
       setEditOrientation("square");
       setEditPose("half_body");
       setEditStyle("Realistic");
-      queryClient.invalidateQueries({
-        queryKey: ["/api/photo-avatars/groups"],
-      });
+      
+      // Start polling for the new photo - refresh every 3 seconds for 2 minutes
+      const pollInterval = setInterval(() => {
+        queryClient.invalidateQueries({
+          queryKey: [`/api/photo-avatars/groups/${variables.groupId}/photos`],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/photo-avatars/groups"],
+        });
+      }, 3000);
+
+      // Stop polling after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 120000);
     },
     onError: (error: Error) => {
       const errorMessage = error.message.toLowerCase();
