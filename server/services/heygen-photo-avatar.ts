@@ -287,22 +287,38 @@ export class HeyGenPhotoAvatarService {
   }
 
   // Generate new looks for trained avatar
+  // Note: This requires the avatar group to be trained first
   async generateNewLooks(groupId: string, numLooks: number = 3) {
-    const payload = {
-      group_id: groupId,
-      num_looks: numLooks,
-      style_preferences: {
-        clothing: ["business", "casual", "formal"],
-        backgrounds: ["office", "outdoor", "studio"],
-      },
-    };
+    const prompts = [
+      "professional business attire in modern office setting with confident expression",
+      "casual smart outfit in outdoor environment with natural lighting and friendly smile",
+      "formal executive look with polished appearance and neutral background"
+    ];
 
-    const response = await this.makeRequest(
-      "/photo_avatar/avatar_group/generate_looks",
-      "POST",
-      payload
-    );
-    return response.data;
+    const results = [];
+    for (let i = 0; i < Math.min(numLooks, prompts.length); i++) {
+      const payload = {
+        group_id: groupId,
+        prompt: prompts[i],
+        orientation: "portrait",
+        pose: "half_body",
+        style: "Realistic",
+      };
+
+      try {
+        const response = await this.makeRequest(
+          "/photo_avatar/look/generate",
+          "POST",
+          payload
+        );
+        results.push(response.data);
+      } catch (error) {
+        console.error(`Failed to generate look ${i + 1}:`, error);
+        throw error; // Throw on first error to show user the issue
+      }
+    }
+
+    return { generation_ids: results };
   }
 
   // Check training status

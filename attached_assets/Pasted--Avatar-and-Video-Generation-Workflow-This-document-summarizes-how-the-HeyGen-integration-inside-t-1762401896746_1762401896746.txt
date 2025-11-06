@@ -1,0 +1,212 @@
+# Avatar and Video Generation Workflow
+
+This document summarizes how the HeyGen integration inside this project uploads user photos, creates reusable avatars, stores them, and later generates narrated videos. It is intended for engineers who need to integrate the same flow from another app.
+
+---
+
+## High-Level Architecture
+
+| Component                                               | Responsibility                                                                                     |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Angular frontend (`src/app/…`)                          | Collects user inputs (photo, script/voice/background), calls backend endpoints.                    |
+| Express proxy (`server/index.ts`)                       | Wraps HeyGen REST APIs, enforces limits, and persists metadata.                                    |
+| Storage layer (`server/storage.ts`, `shared/schema.ts`) | Persists avatars, generated videos, usage counters, and notifications in Postgres via Drizzle ORM. |
+| HeyGen API                                              | Accepts assets (photos/audio), produces talking-photo avatars, and renders final videos.           |
+
+Sessions are tracked with `express-session`; anonymous visitors receive a long-lived cookie so that avatars/videos created before login can later be linked to their account.
+
+---
+
+## 1. Uploading a Photo & Creating an Avatar
+
+Endpoint: `POST /api/heygen/assets` (ref. `server/index.ts`, lines ~810-990)
+
+1. **Frontend** sends a multipart form upload with fields:
+   - `file`: image binary.
+   - `kind`: `'image'`.
+2. **Backend** streams the file to HeyGen’s upload service: `https://upload.heygen.com/v1/asset`.
+   - Adjusts the `Content-Type` header (e.g. forces `audio/x-wav` for WAV files).
+3. The HeyGen response contains a public `url` and `image_key`.
+4. Before creating a new avatar the backend checks `storage.getAvatarsBySessionOrUser(sessionId, userId)` to see if this session already owns an avatar with the same image. If found, it returns the existing avatar (`reused: true`).
+5. Enforces the free-tier avatar limit (currently **1 per session**). If the limit is reached it returns HTTP 403.
+6. When a new avatar is allowed, the server calls `POST https://api.heygen.com/v2/photo_avatar/avatar_group/create` with the `image_key`.
+7. Successful responses include a `group_id` (the `talking_photo_id`). The backend persists the record via `storage.createAvatar({
+   sessionId,
+   userId: undefined,  // Linked later if the user logs in
+   heygenAvatarId: groupId,
+   imageUrl,
+   avatarName: "Photo_<timestamp>"
+})`.
+8. Response body returned to the frontend:
+   ```json
+   {
+     "asset_id": "02024958e1ef4e7cbd151b5ad1d1137d",
+     "url": "https://resource2.heygen.ai/image/...",
+     "talking_photo_id": "02024958e1ef4e7cbd151b5ad1d1137d",
+     "group_id": "02024958e1ef4e7cbd151b5ad1d1137d",
+     "status": "pending",
+     "processing": true,
+     "reused": false
+   }
+   ```
+   Talking-photo avatars can be used immediately even if `status` is `pending`; HeyGen finalizes them internally when a video job starts.
+
+**Persistence** (schema in `shared/schema.ts`):
+
+```
+avatars
+  id SERIAL PK
+  user_id (nullable)
+  session_id
+  heygen_avatar_id UNIQUE
+  image_url
+  avatar_name
+  is_trained (future use)
+  created_at
+```
+
+---
+
+## 2. Retrieving Avatars
+
+Endpoint: `GET /api/avatars/library` (ref. `server/index.ts`, lines ~1186-1220)
+
+- Uses the session cookie (and optionally `userId` if logged in).
+- Calls `storage.getAvatarsBySessionOrUser(sessionId, userId)` so logged-in users see both pre-login and post-login avatars.
+- Returns:
+  ```json
+  {
+    "avatars": [
+      {
+        "id": 12,
+        "heygenAvatarId": "02024958e1ef4e7cbd151b5ad1d1137d",
+        "imageUrl": "…",
+        "avatarName": "Photo_1762365757828",
+        "createdAt": "2024-11-05T18:05:58.000Z"
+      }
+    ],
+    "count": 1
+  }
+  ```
+
+When the user later authenticates, `storage.linkSessionToUser(sessionId, userId)` reassigns existing avatars and video records from the anonymous session to the account.
+
+---
+
+## 3. Generating a Video from an Avatar
+
+Endpoint: `POST /api/heygen/videos` (ref. `server/index.ts`, lines ~990-1160)
+
+**Input payload (frontend)**
+
+```json
+{
+  "script": "Short narration…", // optional if custom audio uploaded
+  "voiceId": "d252ca05aabc4ed5…", // HeyGen preset voice
+  "voiceAssetId": null, // custom audio asset id if uploaded
+  "photoAssetId": "02024958e1ef4e…", // talking photo id (from avatar upload)
+  "captionEnabled": false,
+  "backgroundType": "color", // or "video"/"image"
+  "backgroundColor": "#101010",
+  "backgroundUrl": null,
+  "videoPlayStyle": "center"
+}
+```
+
+**Backend steps**
+
+1. Enforces free tier limits:
+   - Maximum **3** videos per session (`storage.getVideoCountBySessionId`).
+   - Maximum duration **5 seconds** for free users (estimated from script length).
+2. Builds the character definition sent to HeyGen:
+   ```typescript
+   const character = photoAssetId
+     ? { talking_photo_id: photoAssetId }
+     : { avatar_id: avatarIdFromHeyGenPreset };
+   const voice = voiceAssetId
+     ? { voice_id: voiceId, voice_asset_id: voiceAssetId }
+     : { voice_id: voiceId };
+   ```
+3. Constructs `video_inputs[0]` with character, voice, background settings, and caption flag.
+4. Calls `POST https://api.heygen.com/v2/video/generate`.
+5. Records the pending job in `video_generations` via `storage.createVideoGeneration`, storing:
+   - `sessionId`, optional `avatarId` (foreign key to `avatars` table), script text, estimated duration, and HeyGen `request_id`.
+6. Returns `{ request_id, status, video_url }` (URL usually null until completed).
+
+**Status & Completion**
+
+- Frontend polls `GET /api/heygen/videos/:requestId` (ref. lines ~1225-1285).
+- Once HeyGen returns `status === 'completed'`, backend updates the original record with the final `video_url`.
+- `GET /api/videos/history` returns all completed videos for the session/user.
+
+**Video persistence** (`video_generations` table in `shared/schema.ts`)
+
+```
+video_generations
+  id SERIAL PK
+  user_id (nullable)
+  session_id
+  avatar_id (nullable FK → avatars.id)
+  request_id (HeyGen video_id)
+  video_url (nullable until complete)
+  script_text
+  duration
+  created_at
+```
+
+---
+
+## 4. Supporting Operations
+
+### 4.1 Voice Library
+
+- Endpoint: `GET /api/heygen/voices`.
+- Proxies HeyGen’s `/voices` endpoint and returns the `data.voices` array (hundreds of preset voices including metadata such as locale, gender, and feature flags).
+
+### 4.2 Script Authoring (Optional)
+
+- Endpoint: `POST /api/heygen/scripts/auto`.
+- Uses OpenAI (`gpt-4o-mini`) to produce a short script constrained to ~5 seconds of speech, respecting tone and prompt.
+
+### 4.3 Avatar Enhancements
+
+- `POST /api/heygen/avatars/:avatarId/motion` → adds motion to a talking photo.
+- `POST /api/heygen/avatars/:avatarId/add-sound-effect` → adds background audio.
+- `GET /api/heygen/avatars/:avatarId/status` → polls motion/sound-effect progress.
+
+### 4.4 Generate New Looks (Image Variants)
+
+- `POST /api/heygen/avatars/:groupId/generate-look`
+  - Sends `prompt`, `orientation`, `pose`, `style` to HeyGen (`/photo_avatar/look/generate`).
+  - Records usage in `generate_look_usage` (see storage logic) and guides clients to poll for `generation_id` status.
+
+---
+
+## 5. Data Flow Summary
+
+1. **Photo Upload** → `POST /api/heygen/assets` → HeyGen asset service → `avatars` table.
+2. **Avatar Library** → `GET /api/avatars/library` → `avatars` table (session/user filtered).
+3. **Script (optional)** → `POST /api/heygen/scripts/auto` → OpenAI response.
+4. **Voice Selection** → `GET /api/heygen/voices` → HeyGen voice catalog.
+5. **Video Generation** → `POST /api/heygen/videos` → HeyGen video job → `video_generations` table.
+6. **Status Polling** → `GET /api/heygen/videos/:requestId` → updates video URL once finished.
+7. **History Listing** → `GET /api/videos/history` → completed jobs for UI playback/download.
+
+All items created pre-login remain associated with the anonymous `sessionId`. Upon login or registration, `storage.linkSessionToUser` migrates them to the user record so that workflows remain seamless.
+
+---
+
+## 6. Reusing the Flow in Another Application
+
+To integrate these steps elsewhere:
+
+1. Reuse the proxy endpoints or port the logic from `server/index.ts`.
+2. Mirror the database schema for `avatars` and `video_generations` (see `shared/schema.ts`).
+3. Maintain a session identifier (cookie or token) to support pre-login usage.
+4. Enforce limits as needed (free-tier logic is centralized in the proxy).
+5. Always store HeyGen identifiers:
+   - `talking_photo_id` / `group_id` for avatars.
+   - `video_id` (`request_id`) for videos.
+6. Poll HeyGen for completion and update persisted records so clients can display download links.
+
+This documentation should give another team enough context to reproduce the end-to-end avatar/video workflow without diving into the entire codebase. Reach out if you need sequence diagrams or SDK wrappers.
