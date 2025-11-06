@@ -437,7 +437,7 @@ export function PhotoAvatarManager() {
       pose?: string;
       style?: string;
     }) =>
-      apiRequest("POST", `/api/photo-avatars/groups/${groupId}/edit-look`, { 
+      apiRequest("POST", `/api/heygen/avatars/${groupId}/generate-look`, { 
         prompt,
         orientation,
         pose,
