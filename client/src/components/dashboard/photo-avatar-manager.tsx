@@ -1317,63 +1317,41 @@ export function PhotoAvatarManager() {
                   avatarGroups.map((group: AvatarGroup) => (
                     <Card
                       key={group.group_id}
-                      className="overflow-hidden border-2 border-[#D4AF37]/20"
+                      className="overflow-hidden border border-gray-200"
                       data-testid={`card-group-${group.group_id}`}
                     >
-                      <CardHeader className="bg-gradient-to-r from-[#D4AF37]/5 to-[#B8860B]/5 border-b border-[#D4AF37]/20">
+                      <CardContent className="p-3 space-y-2">
+                        {/* Compact Header */}
                         <div className="flex items-center justify-between">
-                          <div>
-                            <CardTitle className="text-xl font-playfair">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-medium text-gray-800 truncate">
                               {group.name}
-                            </CardTitle>
-                            <CardDescription>
-                              Created:{" "}
-                              {new Date(group.created_at).toLocaleDateString()}
-                              {group.avatar_count &&
-                                ` • ${group.avatar_count} photos`}
-                            </CardDescription>
+                            </h4>
+                            <p className="text-[10px] text-gray-400">
+                              {new Date(group.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              {group.avatar_count && ` • ${group.avatar_count} photos`}
+                            </p>
                           </div>
                           <Badge
-                            className={`${getStatusColor(
-                              group.status
-                            )} text-white`}
+                            className={`${getStatusColor(group.status)} text-white text-[9px] px-1.5 py-0.5`}
                           >
                             {group.status}
                           </Badge>
                         </div>
-                      </CardHeader>
 
-                      <CardContent className="p-6 space-y-4">
-                        {/* Training Progress and Gallery */}
-                        <div className="space-y-4">
-                          {/* Training Progress */}
-                          {group.status === "processing" &&
-                            group.training_progress && (
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-sm">
-                                  <span className="font-medium">
-                                    Training Progress
-                                  </span>
-                                  <span className="text-[#D4AF37] font-semibold">
-                                    {group.training_progress}%
-                                  </span>
-                                </div>
-                                <Progress
-                                  value={group.training_progress}
-                                  className="h-2"
-                                />
-                                <p className="text-xs text-gray-500">
-                                  Creating your custom avatar model...
-                                </p>
-                              </div>
-                            )}
+                        {/* Training Progress - Compact */}
+                        {group.status === "processing" && group.training_progress && (
+                          <div className="space-y-1">
+                            <Progress value={group.training_progress} className="h-1" />
+                            <p className="text-[9px] text-gray-400">Training: {group.training_progress}%</p>
+                          </div>
+                        )}
 
-                          {/* Photo Gallery Component */}
-                          <AvatarPhotoGallery groupId={group.group_id} />
-                        </div>
+                        {/* Photo Gallery Component */}
+                        <AvatarPhotoGallery groupId={group.group_id} />
 
-                        {/* Action Buttons */}
-                        <div className="flex gap-2 pt-2 border-t border-gray-200">
+                        {/* Compact Action Buttons */}
+                        <div className="flex gap-1.5 pt-1">
                           {group.status === "pending" && (
                             <Button
                               size="sm"
@@ -1382,10 +1360,10 @@ export function PhotoAvatarManager() {
                               }
                               disabled={trainGroupMutation.isPending}
                               data-testid={`button-train-${group.group_id}`}
-                              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+                              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 h-7 text-[10px] px-2"
                             >
-                              <UserPlus className="w-4 h-4 mr-2" />
-                              Start Training
+                              <UserPlus className="w-3 h-3 mr-1" />
+                              Train
                             </Button>
                           )}
 
@@ -1401,10 +1379,10 @@ export function PhotoAvatarManager() {
                                 }
                                 disabled={generateLooksMutation.isPending}
                                 data-testid={`button-looks-${group.group_id}`}
-                                className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+                                className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 h-7 text-[10px] px-2"
                               >
-                                <Wand2 className="w-4 h-4 mr-2" />
-                                Generate New Looks
+                                <Wand2 className="w-3 h-3 mr-1" />
+                                New Looks
                               </Button>
                               <Button
                                 size="sm"
@@ -1414,10 +1392,10 @@ export function PhotoAvatarManager() {
                                   setEditDialogOpen(true);
                                 }}
                                 data-testid={`button-edit-look-${group.group_id}`}
-                                className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10"
+                                className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 h-7 text-[10px] px-2"
                               >
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit Look
+                                <Edit className="w-3 h-3 mr-1" />
+                                Edit
                               </Button>
                             </>
                           )}
@@ -1430,10 +1408,10 @@ export function PhotoAvatarManager() {
                             }
                             disabled={deleteGroupMutation.isPending}
                             data-testid={`button-delete-${group.group_id}`}
-                            className="ml-auto border-red-300 text-red-600 hover:bg-red-50"
+                            className="ml-auto border-red-300 text-red-600 hover:bg-red-50 h-7 text-[10px] px-2"
                           >
-                            <X className="w-4 h-4 mr-1" />
-                            Delete Group
+                            <X className="w-3 h-3 mr-1" />
+                            Delete
                           </Button>
                         </div>
                       </CardContent>
