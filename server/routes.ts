@@ -1558,6 +1558,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/seo/keywords/generate", async (req, res) => {
+    try {
+      const { location, businessType } = req.body;
+      
+      const keywords = await seoService.generateTopKeywordsWithAI(
+        location || 'Omaha, Nebraska',
+        businessType || 'real estate agent'
+      );
+      
+      res.json(keywords);
+    } catch (error) {
+      console.error("AI keyword generation error:", error);
+      res.status(500).json({ error: "Failed to generate keywords" });
+    }
+  });
+
   app.post("/api/seo/analyze", async (req, res) => {
     try {
       const { content, keywords } = req.body;

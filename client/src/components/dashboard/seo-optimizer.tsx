@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Search, Globe, Smartphone } from "lucide-react";
+import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Search, Globe, Smartphone, Sparkles, Loader2 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface SeoKeyword {
   id: string;
@@ -29,7 +31,9 @@ const getRankColor = (rank: number) => {
 };
 
 export function SEOOptimizer() {
+  const { toast } = useToast();
   const [showFullReport, setShowFullReport] = useState(false);
+  const [aiGeneratedKeywords, setAiGeneratedKeywords] = useState<SeoKeyword[] | null>(null);
   
   const { data: keywords, isLoading: keywordsLoading } = useQuery<SeoKeyword[]>({
     queryKey: ["/api/seo/keywords"],
@@ -39,7 +43,35 @@ export function SEOOptimizer() {
     queryKey: ["/api/seo/site-health"],
   });
 
+  const generateKeywordsMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('/api/seo/keywords/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          location: 'Omaha, Nebraska',
+          businessType: 'real estate agent'
+        })
+      });
+    },
+    onSuccess: (data) => {
+      setAiGeneratedKeywords(data);
+      toast({
+        title: "✨ AI Keywords Generated!",
+        description: `Generated ${data.length} optimized keywords for your real estate business.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Generation Failed",
+        description: "Could not generate keywords. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const isLoading = keywordsLoading || healthLoading;
+  const displayKeywords = aiGeneratedKeywords || keywords;
 
   if (isLoading) {
     return (
@@ -65,12 +97,33 @@ export function SEOOptimizer() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-semibold text-foreground">SEO Performance</CardTitle>
-          <Dialog open={showFullReport} onOpenChange={setShowFullReport}>
-            <DialogTrigger asChild>
-              <Button variant="link" className="text-primary hover:text-primary/80 text-sm font-medium" data-testid="button-view-seo-report">
-                View Full Report
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => generateKeywordsMutation.mutate()}
+              disabled={generateKeywordsMutation.isPending}
+              variant="outline"
+              size="sm"
+              className="text-sm"
+              data-testid="button-generate-ai-keywords"
+            >
+              {generateKeywordsMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3 w-3 mr-1.5" />
+                  AI Keywords
+                </>
+              )}
+            </Button>
+            <Dialog open={showFullReport} onOpenChange={setShowFullReport}>
+              <DialogTrigger asChild>
+                <Button variant="link" className="text-primary hover:text-primary/80 text-sm font-medium" data-testid="button-view-seo-report">
+                  View Full Report
+                </Button>
+              </DialogTrigger>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -101,7 +154,7 @@ export function SEOOptimizer() {
                       <Progress value={siteHealth?.mobileScore || 98} className="mt-2" />
                     </div>
                     <div className="text-center p-4 border rounded-lg">
-                      <div className="text-3xl font-bold text-purple-600 mb-1">{keywords?.length || 12}</div>
+                      <div className="text-3xl font-bold text-purple-600 mb-1">{displayKeywords?.length || 12}</div>
                       <div className="text-sm text-muted-foreground">Tracked Keywords</div>
                     </div>
                   </div>
@@ -137,7 +190,7 @@ export function SEOOptimizer() {
                 
                 <TabsContent value="keywords" className="space-y-4 mt-4">
                   <div className="space-y-3">
-                    {keywords?.map((keyword, index) => (
+                    {displayKeywords?.map((keyword, index) => (
                       <div key={keyword.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div className="flex-1">
                           <div className="font-medium text-sm">\u0022{keyword.keyword}\u0022</div>
@@ -263,6 +316,7 @@ export function SEOOptimizer() {
               </Tabs>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -270,7 +324,7 @@ export function SEOOptimizer() {
         <div>
           <h3 className="text-sm font-medium text-foreground mb-3">Top Performing Keywords</h3>
           <div className="space-y-2">
-            {keywords?.slice(0, 4).map((keyword) => (
+            {displayKeywords?.slice(0, 4).map((keyword) => (
               <div key={keyword.id} className="flex items-center justify-between" data-testid={`keyword-${keyword.id}`}>
                 <span className="text-sm text-foreground">"{keyword.keyword}"</span>
                 <Badge variant="secondary" className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent hover:bg-secondary/80 text-chart-3 font-medium bg-[#2e4551]">
