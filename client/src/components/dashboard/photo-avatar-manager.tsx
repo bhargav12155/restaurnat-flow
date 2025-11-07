@@ -56,7 +56,15 @@ import { AvatarPhotoGallery } from "./avatar-photo-gallery";
 import { VoiceLibraryManager } from "./voice-library-manager";
 
 // Large Avatar Card Component for HeyGen-style display
-function LargeAvatarCard({ groupId, groupName }: { groupId: string; groupName: string }) {
+function LargeAvatarCard({ 
+  groupId, 
+  groupName,
+  onOpenGallery 
+}: { 
+  groupId: string; 
+  groupName: string;
+  onOpenGallery: () => void;
+}) {
   const { data: photoData } = useQuery<any>({
     queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
     enabled: !!groupId,
@@ -69,6 +77,7 @@ function LargeAvatarCard({ groupId, groupName }: { groupId: string; groupName: s
 
   return (
     <button
+      onClick={onOpenGallery}
       className="relative group rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 bg-white w-full"
       data-testid={`large-avatar-${groupId}`}
     >
@@ -176,6 +185,7 @@ export function PhotoAvatarManager() {
   const [editOrientation, setEditOrientation] = useState<"square" | "landscape" | "portrait">("square");
   const [editPose, setEditPose] = useState<"half_body" | "full_body">("half_body");
   const [editStyle, setEditStyle] = useState("Realistic");
+  const [openGalleryGroupId, setOpenGalleryGroupId] = useState<string | null>(null);
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
     name: "Mike Bjork Professional Avatar",
     age: "Early Middle Age",
@@ -1008,6 +1018,7 @@ export function PhotoAvatarManager() {
                       key={group.group_id}
                       groupId={group.group_id}
                       groupName={group.name}
+                      onOpenGallery={() => setOpenGalleryGroupId(group.group_id)}
                     />
                   ))}
                 </div>
@@ -1674,6 +1685,23 @@ export function PhotoAvatarManager() {
               )}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Photo Gallery Dialog */}
+      <Dialog open={!!openGalleryGroupId} onOpenChange={() => setOpenGalleryGroupId(null)}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-playfair text-2xl">
+              Avatar Gallery
+            </DialogTitle>
+            <DialogDescription>
+              Click on any avatar to view full-size and play videos
+            </DialogDescription>
+          </DialogHeader>
+          {openGalleryGroupId && (
+            <AvatarPhotoGallery groupId={openGalleryGroupId} />
+          )}
         </DialogContent>
       </Dialog>
     </Card>
