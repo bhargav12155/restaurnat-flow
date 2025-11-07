@@ -45,14 +45,11 @@ export function SEOOptimizer() {
 
   const generateKeywordsMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest('/api/seo/keywords/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: 'Omaha, Nebraska',
-          businessType: 'real estate agent'
-        })
+      const response = await apiRequest('POST', '/api/seo/keywords/generate', {
+        location: 'Omaha, Nebraska',
+        businessType: 'real estate agent'
       });
+      return await response.json();
     },
     onSuccess: (data) => {
       setAiGeneratedKeywords(data);
