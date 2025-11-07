@@ -131,9 +131,16 @@ Return ONLY a valid JSON array with this exact structure:
         max_tokens: 2000,
       });
 
-      const responseText = completion.choices[0]?.message?.content?.trim();
+      let responseText = completion.choices[0]?.message?.content?.trim();
       if (!responseText) {
         throw new Error('Empty response from OpenAI');
+      }
+
+      // Remove markdown code blocks if present
+      if (responseText.startsWith('```json')) {
+        responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
+      } else if (responseText.startsWith('```')) {
+        responseText = responseText.replace(/```\n?/g, '').trim();
       }
 
       const keywords = JSON.parse(responseText);
