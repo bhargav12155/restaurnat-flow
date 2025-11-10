@@ -6,10 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload } from "lucide-react";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 
 const calendarDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -369,9 +370,21 @@ const initialScheduledContent = [
   }
 ];
 
+interface ScheduledPost {
+  id: string;
+  platform: string;
+  postType: string | null;
+  content: string;
+  scheduledFor: string;
+  metadata?: {
+    imageUrl?: string;
+    [key: string]: any;
+  };
+}
+
 export function ContentCalendar() {
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [scheduledContent, setScheduledContent] = useState(initialScheduledContent);
+  const [localGeneratedPosts, setLocalGeneratedPosts] = useState<typeof initialScheduledContent>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [previewContent, setPreviewContent] = useState<typeof initialScheduledContent[0] | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -380,6 +393,80 @@ export function ContentCalendar() {
   const [savedPhotoUrl, setSavedPhotoUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
+
+  const { data: apiScheduledPosts = [], isLoading } = useQuery<ScheduledPost[]>({
+    queryKey: ["/api/scheduled-posts"],
+  });
+
+  const platformColors = {
+    facebook: "bg-blue-500",
+    instagram: "bg-pink-500",
+    linkedin: "bg-blue-700",
+    x: "bg-blue-400",
+    youtube: "bg-red-600",
+  };
+
+  const postTypeLabels: Record<string, string> = {
+    local_market: "Local Market",
+    moving_guide: "Moving Guide",
+    open_houses: "Open House",
+    just_listed: "Just Listed",
+    just_sold: "Just Sold",
+    price_improvement: "Price Drop",
+  };
+
+  const scheduledContent = useMemo(() => {
+    const transformedPosts = apiScheduledPosts.map((post) => {
+      const scheduledDate = new Date(post.scheduledFor);
+      const platformKey = post.platform.toLowerCase() as keyof typeof platformColors;
+      
+      return {
+        id: `api-${post.id}`,
+        title: post.postType ? postTypeLabels[post.postType] || post.postType : "Social Post",
+        type: "Social",
+        date: scheduledDate,
+        time: format(scheduledDate, "h:mm a"),
+        color: platformColors[platformKey] || "bg-gray-500",
+        platform: post.platform.charAt(0).toUpperCase() + post.platform.slice(1),
+        content: post.content,
+        photoUrl: post.metadata?.imageUrl,
+      };
+    });
+
+    const hasApiPosts = apiScheduledPosts.length > 0;
+    const seedContent = hasApiPosts ? [] : initialScheduledContent;
+
+    return [...seedContent, ...localGeneratedPosts, ...transformedPosts];
+  }, [apiScheduledPosts, localGeneratedPosts]);
+
+  const setScheduledContent = (updater: typeof initialScheduledContent | ((prev: typeof initialScheduledContent) => typeof initialScheduledContent)) => {
+    if (typeof updater === 'function') {
+      setLocalGeneratedPosts(prevLocal => {
+        const seedContent = apiScheduledPosts.length > 0 ? [] : initialScheduledContent;
+        const transformedAPI = apiScheduledPosts.map(p => ({
+          id: `api-${p.id}`,
+          title: p.postType ? postTypeLabels[p.postType] || p.postType : "Social Post",
+          type: "Social" as const,
+          date: new Date(p.scheduledFor),
+          time: format(new Date(p.scheduledFor), "h:mm a"),
+          color: platformColors[p.platform.toLowerCase() as keyof typeof platformColors] || "bg-gray-500",
+          platform: p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
+          content: p.content,
+          photoUrl: p.metadata?.imageUrl,
+        }));
+        
+        const currentFull = [...seedContent, ...prevLocal, ...transformedAPI];
+        const currentLength = currentFull.length;
+        const newFull = updater(currentFull);
+        
+        const newlyAddedItems = newFull.slice(currentLength);
+        
+        return [...prevLocal, ...newlyAddedItems];
+      });
+    } else {
+      setLocalGeneratedPosts(updater);
+    }
+  };
   
   const handlePreview = (content: typeof initialScheduledContent[0]) => {
     setPreviewContent(content);
