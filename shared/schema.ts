@@ -584,3 +584,100 @@ export type InsertFileUpload = z.infer<typeof insertFileUploadSchema>;
 export type FileUpload = typeof fileUploads.$inferSelect;
 export type InsertSocialApiKeys = z.infer<typeof insertSocialApiKeysSchema>;
 export type SocialApiKeys = typeof socialApiKeys.$inferSelect;
+
+// =====================================================
+// PLATFORM INTELLIGENCE TAXONOMY
+// =====================================================
+
+export const contentTypeValues = [
+  "listing",
+  "market_update",
+  "buyer_tips",
+  "seller_tips",
+  "neighborhood",
+  "investment",
+  "testimonial",
+  "general"
+] as const;
+
+export const audiencePersonaValues = [
+  "first_time_buyer",
+  "luxury_buyer",
+  "seller",
+  "investor",
+  "relocating",
+  "general"
+] as const;
+
+export const contentIntentValues = [
+  "educate",
+  "convert",
+  "engage",
+  "inform",
+  "inspire"
+] as const;
+
+export const propertyClassValues = [
+  "luxury",
+  "mid_market",
+  "starter",
+  "investment",
+  "general"
+] as const;
+
+export const marketHeatValues = ["hot", "balanced", "cold"] as const;
+export const priceMomentumValues = ["rising", "stable", "falling"] as const;
+export const daysOnMarketTrendValues = ["fast", "normal", "slow"] as const;
+
+export const platformFitValues = ["excellent", "very-good", "good", "fair"] as const;
+
+export const contentTypeSchema = z.enum(contentTypeValues);
+export const audiencePersonaSchema = z.enum(audiencePersonaValues);
+export const contentIntentSchema = z.enum(contentIntentValues);
+export const propertyClassSchema = z.enum(propertyClassValues);
+export const marketHeatSchema = z.enum(marketHeatValues);
+export const priceMomentumSchema = z.enum(priceMomentumValues);
+export const daysOnMarketTrendSchema = z.enum(daysOnMarketTrendValues);
+export const platformFitSchema = z.enum(platformFitValues);
+
+export type ContentType = z.infer<typeof contentTypeSchema>;
+export type AudiencePersona = z.infer<typeof audiencePersonaSchema>;
+export type ContentIntent = z.infer<typeof contentIntentSchema>;
+export type PropertyClass = z.infer<typeof propertyClassSchema>;
+export type MarketHeat = z.infer<typeof marketHeatSchema>;
+export type PriceMomentum = z.infer<typeof priceMomentumSchema>;
+export type DaysOnMarketTrend = z.infer<typeof daysOnMarketTrendSchema>;
+export type PlatformFit = z.infer<typeof platformFitSchema>;
+
+export const marketSignalsSchema = z.object({
+  inventoryHeat: marketHeatSchema,
+  priceMomentum: priceMomentumSchema,
+  daysOnMarketTrend: daysOnMarketTrendSchema,
+});
+
+export const contentProfileSchema = z.object({
+  contentType: contentTypeSchema,
+  audiencePersona: audiencePersonaSchema,
+  intent: contentIntentSchema,
+  propertyClass: propertyClassSchema.optional(),
+  hasEmojis: z.boolean(),
+  hasHashtags: z.boolean(),
+  hasNumbers: z.boolean(),
+  hasQuestions: z.boolean(),
+  hasCallToAction: z.boolean(),
+  wordCount: z.number(),
+  sentimentScore: z.number().optional(),
+});
+
+export const platformScoreSchema = z.object({
+  platform: z.string(),
+  score: z.number(),
+  fit: platformFitSchema,
+  reasons: z.array(z.string()),
+  optimization: z.string(),
+  confidence: z.number().optional(),
+});
+
+export type MarketSignals = z.infer<typeof marketSignalsSchema>;
+export type ContentProfile = z.infer<typeof contentProfileSchema>;
+export type PlatformScore = z.infer<typeof platformScoreSchema>;
