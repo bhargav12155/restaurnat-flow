@@ -575,11 +575,11 @@ export function ContentCalendar() {
       
       // Convert AI schedule to our content format and add to existing content
       const newContent = aiSchedule.schedule.map((item: any, index: number) => {
-        // Parse date safely - handle various formats
+        // Parse date safely - API returns 'date' field, not 'scheduledDate'
         let parsedDate;
         try {
-          if (item.scheduledDate) {
-            parsedDate = new Date(item.scheduledDate);
+          if (item.date) {
+            parsedDate = new Date(item.date);
             // Check if date is valid
             if (isNaN(parsedDate.getTime())) {
               // Fallback to a default date if invalid
@@ -596,7 +596,7 @@ export function ContentCalendar() {
         }
 
         return {
-          id: scheduledContent.length + index + 1,
+          id: `local-${Date.now()}-${index}`,
           title: item.title || `AI Post ${index + 1}`,
           type: item.type || 'Social',
           date: parsedDate,
