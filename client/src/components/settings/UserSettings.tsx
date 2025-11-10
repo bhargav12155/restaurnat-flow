@@ -19,6 +19,7 @@ import {
   User,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { CompanyProfile } from "./CompanyProfile";
 
 interface SocialMediaUrls {
   facebook: string;
@@ -185,6 +186,7 @@ export function UserSettings() {
       <Tabs defaultValue="account">
         <TabsList className="mb-4">
           <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="company">Company Profile</TabsTrigger>
           <TabsTrigger value="social">Social URLs</TabsTrigger>
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
         </TabsList>
@@ -224,6 +226,10 @@ export function UserSettings() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="company">
+          <CompanyProfile />
         </TabsContent>
 
         <TabsContent value="api-keys">
