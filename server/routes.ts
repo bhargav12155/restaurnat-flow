@@ -378,6 +378,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         propertyData,
       } = req.body;
 
+      // Fetch company profile for dynamic personalization
+      const userId = req.user?.id;
+      let companyProfile = null;
+      if (userId) {
+        companyProfile = await storage.getCompanyProfile(userId);
+      }
+
       const generatedContent = await openaiService.generateContent({
         type,
         topic,
@@ -388,6 +395,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         longTailKeywords,
         localSeoFocus,
         propertyData,
+        companyProfile: companyProfile || undefined,
       });
 
       // Save to storage
@@ -433,10 +441,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { topic, platform, neighborhood } = req.body;
 
+      // Fetch company profile for dynamic personalization
+      const userId = req.user?.id;
+      let companyProfile = null;
+      if (userId) {
+        companyProfile = await storage.getCompanyProfile(userId);
+      }
+
       const socialPost = await openaiService.generateSocialMediaPost(
         topic,
         platform,
-        neighborhood
+        neighborhood,
+        companyProfile || undefined
       );
       res.json(socialPost);
     } catch (error) {
