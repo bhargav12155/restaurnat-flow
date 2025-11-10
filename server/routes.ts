@@ -29,6 +29,7 @@ import {
   insertScheduledPostSchema,
   insertAvatarSchema,
   insertVideoContentSchema,
+  insertCompanyProfileSchema,
   tutorialVideos,
   socialApiKeys,
 } from "@shared/schema";
@@ -5126,6 +5127,55 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     } catch (error) {
       console.error("Failed to generate video from template:", error);
       res.status(500).json({ error: "Failed to generate video from template" });
+    }
+  });
+
+  // =====================================================
+  // COMPANY PROFILE ROUTES
+  // =====================================================
+  
+  // Get company profile
+  app.get("/api/company/profile", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      const profile = await storage.getCompanyProfile(userId);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error fetching company profile:", error);
+      res.status(500).json({ error: "Failed to fetch company profile" });
+    }
+  });
+
+  // Create or update company profile
+  app.post("/api/company/profile", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      // Validate request body
+      const validation = insertCompanyProfileSchema.safeParse({
+        ...req.body,
+        userId,
+      });
+      
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: "Invalid company profile data", 
+          details: validation.error.errors 
+        });
+      }
+      
+      const profile = await storage.upsertCompanyProfile(validation.data);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error saving company profile:", error);
+      res.status(500).json({ error: "Failed to save company profile" });
     }
   });
 

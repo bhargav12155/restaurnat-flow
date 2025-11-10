@@ -23,9 +23,12 @@ import {
   type InsertPhotoAvatarGroup,
   type PhotoAvatarGroupVoice,
   type InsertPhotoAvatarGroupVoice,
+  type CompanyProfile,
+  type InsertCompanyProfile,
   photoAvatarGroups,
   photoAvatarGroupVoices,
-  customVoices
+  customVoices,
+  companyProfiles
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -104,6 +107,10 @@ export interface IStorage {
   savePhotoAvatarGroupVoice(voice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice>;
   getPhotoAvatarGroupVoice(groupId: string, userId: number): Promise<PhotoAvatarGroupVoice | undefined>;
   listPhotoAvatarGroupVoices(userId: number): Promise<PhotoAvatarGroupVoice[]>;
+
+  // Company Profile
+  getCompanyProfile(userId: string): Promise<CompanyProfile | null>;
+  upsertCompanyProfile(profile: InsertCompanyProfile): Promise<CompanyProfile>;
 }
 
 export class MemStorage implements IStorage {
@@ -801,6 +808,30 @@ export class MemStorage implements IStorage {
       .where(eq(photoAvatarGroups.id, id))
       .returning();
     return updated;
+  }
+
+  async getCompanyProfile(userId: string): Promise<CompanyProfile | null> {
+    const [profile] = await db
+      .select()
+      .from(companyProfiles)
+      .where(eq(companyProfiles.userId, userId))
+      .limit(1);
+    return profile || null;
+  }
+
+  async upsertCompanyProfile(profile: InsertCompanyProfile): Promise<CompanyProfile> {
+    const [result] = await db
+      .insert(companyProfiles)
+      .values(profile)
+      .onConflictDoUpdate({
+        target: companyProfiles.userId,
+        set: {
+          ...profile,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
   }
 }
 

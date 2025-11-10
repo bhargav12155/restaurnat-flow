@@ -540,6 +540,36 @@ export const insertTutorialVideoSchema = createInsertSchema(tutorialVideos).omit
 export type TutorialVideo = typeof tutorialVideos.$inferSelect;
 export type InsertTutorialVideo = z.infer<typeof insertTutorialVideoSchema>;
 
+// =====================================================
+// COMPANY PROFILE TABLE (Agent/Company Information)
+// =====================================================
+export const companyProfiles = pgTable("company_profiles", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  businessName: text("business_name").notNull(),
+  agentName: text("agent_name").notNull(),
+  agentTitle: text("agent_title"),
+  phone: text("phone"),
+  email: text("email"),
+  officeAddress: text("office_address"),
+  licenseNumber: text("license_number"),
+  brokerageName: text("brokerage_name"),
+  tagline: text("tagline"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCompanyProfileSchema = createInsertSchema(companyProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CompanyProfile = typeof companyProfiles.$inferSelect;
+export type InsertCompanyProfile = z.infer<typeof insertCompanyProfileSchema>;
+
 // Legacy types (keeping for compatibility)
 export type UpsertUser = typeof users.$inferInsert;
 export type InsertAIContent = z.infer<typeof insertAIContentSchema>;
