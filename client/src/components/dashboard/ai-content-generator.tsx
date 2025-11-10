@@ -1141,46 +1141,50 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Content Type Selection */}
-        <div>
+        <div className="space-y-3">
           <Label className="text-sm font-medium text-foreground mb-2 block">
             Content Type
           </Label>
           <div className="grid grid-cols-3 gap-3">
             {contentTypes.map((type) => (
-              <div key={type.value} className="space-y-2">
-                <Button
-                  variant={contentType === type.value ? "default" : "secondary"}
-                  className="w-full text-sm font-medium"
-                  onClick={() => setContentType(type.value)}
-                  data-testid={`content-type-${type.value}`}
-                >
-                  <type.icon className="mr-2 h-4 w-4" />
-                  {type.label}
-                </Button>
-
-                {/* Style Dropdown */}
-                <Select
-                  value={contentStyles[type.value] || "None"}
-                  onValueChange={(value) =>
-                    setContentStyles((prev) => ({
-                      ...prev,
-                      [type.value]: value,
-                    }))
-                  }
-                >
-                  <SelectTrigger className="w-full h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {styleOptions.map((style) => (
-                      <SelectItem key={style.value} value={style.value}>
-                        {style.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <Button
+                key={type.value}
+                variant={contentType === type.value ? "default" : "secondary"}
+                className="w-full text-sm font-medium"
+                onClick={() => setContentType(type.value)}
+                data-testid={`content-type-${type.value}`}
+              >
+                <type.icon className="mr-2 h-4 w-4" />
+                {type.label}
+              </Button>
             ))}
+          </div>
+          
+          {/* Single Style Dropdown */}
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">
+              Content Style
+            </Label>
+            <Select
+              value={contentStyles[contentType] || "None"}
+              onValueChange={(value) =>
+                setContentStyles((prev) => ({
+                  ...prev,
+                  [contentType]: value,
+                }))
+              }
+            >
+              <SelectTrigger className="w-full h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {styleOptions.map((style) => (
+                  <SelectItem key={style.value} value={style.value}>
+                    {style.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
