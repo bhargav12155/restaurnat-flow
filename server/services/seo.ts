@@ -86,10 +86,14 @@ export class SEOService {
     return [...baseTopics, ...neighborhoodTopics];
   }
 
-  async generateTopKeywordsWithAI(location: string = 'Omaha, Nebraska', businessType: string = 'real estate agent'): Promise<AIGeneratedKeyword[]> {
+  async generateTopKeywordsWithAI(
+    location: string = 'Omaha, Nebraska',
+    businessType: string = 'real estate agent',
+    marketData?: any[]
+  ): Promise<AIGeneratedKeyword[]> {
     try {
       if (!process.env.OPENAI_API_KEY) {
-        console.warn('OpenAI API key not found, returning fallback keywords');
+        console.warn('⚠️  OpenAI API key not found - using fallback keywords (not recommended)');
         return this.getFallbackKeywords();
       }
 
@@ -98,20 +102,36 @@ export class SEOService {
         apiKey: process.env.OPENAI_API_KEY,
       });
 
-      const prompt = `You are an expert SEO specialist for real estate. Generate the top 12 most valuable SEO keywords for a ${businessType} in ${location}.
+      // Build market intelligence context from real data
+      let marketContext = '';
+      if (marketData && marketData.length > 0) {
+        const marketSummary = marketData.map(data => {
+          const trend = data.trend || 'stable';
+          const trendDirection = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '→';
+          return `- ${data.neighborhood || 'Overall Market'}: Median Price $${data.medianPrice?.toLocaleString() || 'N/A'} (${trendDirection} ${data.percentChange || 0}%), ${data.daysOnMarket || 'N/A'} days on market, ${data.inventory || 'N/A'} active listings`;
+        }).join('\n');
+
+        marketContext = `\n\n**REAL-TIME MARKET DATA (Use this actual data, do NOT make up numbers):**
+${marketSummary}
+
+Based on this live market data, generate keywords that reflect current market conditions.`;
+      }
+
+      const prompt = `You are an expert SEO specialist for real estate. Generate the top 12 most valuable SEO keywords for a ${businessType} in ${location}.${marketContext}
 
 For each keyword, provide:
 1. The exact keyword phrase (optimized for local SEO)
-2. Estimated monthly search volume (realistic numbers)
+2. Realistic monthly search volume (base on market activity and neighborhood popularity)
 3. Current ranking (1-100, where lower is better - assume good SEO practices)
 4. Keyword difficulty (0-100, where higher is more competitive)
-5. Associated neighborhood (if applicable, use real ${location} neighborhoods)
+5. Associated neighborhood (MUST use actual neighborhoods from the market data above, or null if general)
 
 Focus on:
 - High-intent commercial keywords (buyers/sellers looking for agents)
-- Location-specific keywords
-- Neighborhood-based searches
+- Location-specific keywords aligned with market data trends
+- Neighborhood-based searches for areas with strong market activity
 - Long-tail keywords with good conversion potential
+- Keywords that capitalize on current market trends (hot neighborhoods, price points, inventory levels)
 
 Return ONLY a valid JSON array with this exact structure:
 [
@@ -146,13 +166,27 @@ Return ONLY a valid JSON array with this exact structure:
       const keywords = JSON.parse(responseText);
       
       if (!Array.isArray(keywords)) {
-        throw new Error('Invalid response format from OpenAI');
+        throw new Error('Invalid response format from OpenAI - expected JSON array');
+      }
+
+      // Validate keyword structure
+      const isValid = keywords.every(kw => 
+        typeof kw.keyword === 'string' &&
+        typeof kw.searchVolume === 'number' &&
+        typeof kw.currentRank === 'number' &&
+        typeof kw.difficulty === 'number'
+      );
+
+      if (!isValid) {
+        throw new Error('Invalid keyword schema from OpenAI - missing required fields');
       }
 
       return keywords;
     } catch (error) {
-      console.error('AI keyword generation error:', error);
-      return this.getFallbackKeywords();
+      console.error('❌ AI keyword generation error:', error);
+      // Rethrow error to surface to client - do NOT fall back to static keywords
+      // Only use fallback when API key is completely missing (handled above)
+      throw new Error(`Failed to generate live market-driven keywords: ${(error as Error).message}`);
     }
   }
 
