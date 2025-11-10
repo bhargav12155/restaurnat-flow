@@ -24,19 +24,27 @@
 - ✅ Red PlugZap icon for disconnected platforms
 - ✅ Added tooltip on hover to show connection status
 
-## 🚧 In Progress
-
-### 4. AI Content Generator - Dynamic Content
-- [ ] Create company profile/settings storage
-- [ ] Add fields for:
-  - Company name (e.g., "Berkshire Hathaway HomeServices")
-  - Agent name (e.g., "Mike Bjork")
+### 4. Company Profile System
+- ✅ Created companyProfiles database table with all required fields
+- ✅ Implemented storage interface methods (getCompanyProfile, upsertCompanyProfile)
+- ✅ Added authenticated API routes (GET/POST /api/company/profile)
+- ✅ Built CompanyProfile form component using react-hook-form + zodResolver
+- ✅ Integrated into Settings page as new "Company Profile" tab
+- ✅ Added validation for required fields (businessName, agentName)
+- ✅ Fields included:
+  - Business Name (e.g., "Berkshire Hathaway HomeServices")
+  - Agent Name (e.g., "Mike Bjork")
+  - Agent Title (e.g., "Senior Real Estate Specialist")
   - Phone number
-  - Website URL  
   - Email address
-  - Default hashtags
-- [ ] Update AI content generation to use stored profile data
-- [ ] Add fallback to prompt user if profile not complete
+  - Office Address
+  - License Number
+  - Brokerage Name
+  - Company Tagline
+- ✅ Form data persists to database with proper type safety
+- ⚠️  TODO: Connect to AI content generators to use profile data instead of hardcoded values
+
+## 🚧 In Progress
 
 ### 5. AI Optimize Button Logic
 - [ ] Add validation to check all required fields are filled
@@ -84,8 +92,8 @@
 - [ ] Add to top right under settings icon
 
 ## 🔄 Next Actions
-1. Continue with Task 4 (Dynamic AI Content)
-2. Then Tasks 5-7 (AI features)
+1. Connect company profile to AI content generators (replace hardcoded values)
+2. Then Tasks 5-7 (AI features: Optimize button, SEO keywords, Market Intelligence)
 3. Run comprehensive architect review
 4. Test all changes
 5. Mark completed tasks as done

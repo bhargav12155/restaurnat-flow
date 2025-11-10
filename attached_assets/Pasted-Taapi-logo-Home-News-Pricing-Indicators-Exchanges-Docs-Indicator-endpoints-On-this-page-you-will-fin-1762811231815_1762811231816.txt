@@ -1,0 +1,249 @@
+Taapi logo
+Home
+News
+Pricing
+Indicators
+Exchanges
+Docs
+Indicator endpoints
+On this page you will find the complete list of the 208 indicators that TAAPI.IO offers. Click the individual indicators for more information, such as which parameters to use, example API calls etc.
+
+Search indicators
+Endpoint	Name	Category
+2crows	Two Crows	Pattern recognition
+3blackcrows	Three Black Crows	Pattern recognition
+3inside	Three Inside Up/Down	Pattern recognition
+3linestrike	Three-Line Strike	Pattern recognition
+3outside	Three Outside Up/Down	Pattern recognition
+3starsinsouth	Three Stars In The South	Pattern recognition
+3whitesoldiers	Three Advancing White Soldiers	Pattern recognition
+abandonedbaby	Abandoned Baby	Pattern recognition
+abs	Vector Absolute Value	Math Transform
+accbands	Acceleration Bands	Overlap Studies
+accosc	Accelerator Oscillator	Oscillators
+ad	Chaikin A/D Line	Volume
+add	Vector Arithmetic Add	Math Operators
+adosc	Chaikin A/D Oscillator	Volume
+advanceblock	Advance Block	Pattern recognition
+adx	Average Directional Movement Index	Momentum
+adxr	Average Directional Movement Index Rating	Momentum
+ao	Awesome Oscillator	Momentum
+apo	Absolute Price Oscillator	Momentum
+aroon	Aroon	Momentum
+aroonosc	Aroon Oscillator	Momentum
+atan	Vector Trigonometric ATan	Math Transform
+atr	Average True Range	Volatility
+avgprice	Average Price	Price
+bbands Popular	Bollinger Bands	Overlap Studies, Trend, Volatility
+bbw	Bollinger Bands Width (BBW)	Volatility
+belthold	Belt-hold	Pattern recognition
+beta	Beta	Statistic functions
+bop	Balance Of Power	Momentum
+breakaway	Breakaway	Pattern recognition
+candle Popular	Candle	Price
+candles	Candles	Price
+cci Popular	Commodity Channel Index	Momentum
+ceil	Vector Ceil	Math Transform
+chop	Choppiness Index (CHOP)	Oscillators
+closingmarubozu	Closing Marubozu	Pattern recognition
+cmf Popular	Chaikin Money Flow	Volume
+cmo	Chande Momentum Oscillator	Momentum, Oscillators
+concealbabyswall	Concealing Baby Swallow	Pattern recognition
+coppockcurve	Coppock Curve	Oscillators, Overlap Studies
+correl	Pearson’s Correlation Coefficient	Statistic functions
+cos	Vector Trigonometric Cos	Math Transform
+counterattack	Counterattack	Pattern recognition
+darkcloudcover	Dark Cloud Cover	Pattern recognition
+dema	Double Exponential Moving Average	Overlap Studies
+div	Vector Arithmetic Div	Math Operators
+dm	Directional Movement	Oscillators, Trend
+dmi Popular	Directional Movement Index	Oscillators, Trend
+doji Popular	Doji	Pattern recognition
+dojistar	Doji Star	Pattern recognition
+donchianchannels	Donchian Channels	Bands, Breakouts, Overlap Studies, Trend, Volatility
+dpo	Detrended Price Oscillator	Oscillators
+dragonflydoji	Dragonfly Doji	Pattern recognition
+dx	Directional Movement Index	Momentum, Oscillators
+ema Popular Updated	Exponential Moving Average (EMA)	Overlap Studies
+engulfing	Engulfing Pattern	Pattern recognition
+eom	Ease of Movement	Oscillators
+eveningdojistar	Evening Doji Star	Pattern recognition
+eveningstar	Evening Star	Pattern recognition
+fibonacciretracement Popular	Fibonacci Retracement	Overlap Studies
+fisher	Fisher Transform	
+floor	Vector Floor	Math Transform
+fosc	Forecast Oscillator	Oscillators
+gapsidesidewhite	Up/Down-gap side-by-side white lines	Pattern recognition
+gravestonedoji	Gravestone Doji	Pattern recognition
+hammer	Hammer	Pattern recognition
+hangingman	Hanging Man	Pattern recognition
+harami	Harami Pattern	Pattern recognition
+haramicross	Harami Cross Pattern	Pattern recognition
+highwave	High-Wave Candle	Pattern recognition
+hikkake	Hikkake Pattern	Pattern recognition
+hikkakemod	Modified Hikkake Pattern	Pattern recognition
+hma Popular	Hull Moving Average	Overlap Studies
+homingpigeon	Homing Pigeon	Pattern recognition
+ht_dcperiod	Hilbert Transform – Dominant Cycle Period	
+ht_dcphase	Hilbert Transform – Dominant Cycle Phase	
+ht_phasor	Hilbert Transform – Phasor Components	
+ht_sine	Hilbert Transform – SineWave	
+ht_trendline	Hilbert Transform – Instantaneous Trendline	Overlap Studies
+ht_trendmode	Hilbert Transform – Trend vs Cycle Mode	
+ichimoku Popular	Ichimoku Cloud	Momentum, Overlap Studies
+identical3crows	Identical Three Crows	Pattern recognition
+inneck	In-Neck Pattern	Pattern recognition
+invertedhammer	Inverted Hammer	Pattern recognition
+kama	Kaufman Adaptive Moving Average	Overlap Studies
+kdj	KDJ	Overlap Studies
+keltnerchannels	Keltner Channels	Overlap Studies, Volatility
+kicking	Kicking	Pattern recognition
+kickingbylength	Kicking – bull/bear determined by the longer marubozu	Pattern recognition
+kvo	Klinger Volume Oscillator	Oscillators
+ladderbottom	Ladder Bottom	Pattern recognition
+linearreg	Linear Regression	Statistic functions
+linearreg_angle	Linear Regression Angle	Statistic functions
+linearreg_intercept	Linear Regression Intercept	Statistic functions
+linearreg_slope	Linear Regression Slope	Statistic functions
+ln	Vector Log Natural	Math Transform
+log10	Vector Log10	Math Transform
+longleggeddoji	Long Legged Doji	Pattern recognition
+longline	Long Line Candle	Pattern recognition
+ma Popular	Moving Average	Overlap Studies
+macd Popular	Moving Average Convergence Divergence (MACD)	Momentum
+macdext	MACD with controllable MA type	Momentum
+mama	MESA Adaptive Moving Average	Overlap Studies
+marketfi	Market Facilitation Index	Momentum, Trend, Volume
+marubozu	Marubozu	Pattern recognition
+mass	Mass Index	Volatility
+matchinglow	Matching Low	Pattern recognition
+mathold	Mat Hold	Pattern recognition
+max	Highest value over a specified period	Math Operators
+maxindex	Index of highest value over a specified period	Math Operators
+medprice	Median Price	Price
+mfi Popular	Money Flow Index	Momentum, Oscillators
+midpoint	MidPoint over period	Overlap Studies
+midprice	Midpoint Price over period	Overlap Studies
+min	Lowest value over a specified period	Math Operators
+minindex	Index of lowest value over a specified period	Math Operators
+minmax	Lowest and highest values over a specified period	Math Operators
+minmaxindex	Indexes of lowest and highest values over a specified period	Math Operators
+minus_di	Minus Directional Indicator	Momentum
+minus_dm	Minus Directional Movement	Momentum
+mom Popular	Momentum	Momentum
+morningdojistar	Morning Doji Star	Pattern recognition
+morningstar	Morning Star	Pattern recognition
+msw	Mesa Sine Wave	
+mul	Vector Multiplication	Math Transform
+mult	Vector Arithmetic Mult	Math Operators
+natr	Normalized Average True Range	Volatility
+nvi	Negative Volume Index	Volume
+obv	On Balance Volume	Volume
+onneck	On-Neck Pattern	Pattern recognition
+pd	Price direction	Momentum, Oscillators
+piercing	Piercing Pattern	Pattern recognition
+pivotpoints Popular	Pivot points	Overlap Studies, Support & Resistance, Trend
+plus_di	Plus Directional Indicator	Momentum
+plus_dm	Plus Directional Movement	Momentum
+ppo	Percentage Price Oscillator	Momentum, Oscillators
+price	Price	Price
+priorswinghigh	Prior Swing High	Price
+priorswinglow	Prior Swing Low	Price
+psar Popular Updated	Parabolic SAR	Overlap Studies, Trend
+pvi	Positive Volume Index	Volume
+qstick	Qstick	Trend
+rickshawman	Rickshaw Man	Pattern recognition
+risefall3methods	Rising/Falling Three Methods	Pattern recognition
+roc Popular	Rate of change	Momentum, Oscillators, Trend
+rocp	Rate of change Percentage	Momentum
+rocr	Rate of change ratio	Momentum
+rocr100	Rate of change ratio 100 scale	Momentum
+round	Vector Round	Math Transform
+rsi Popular	Relative Strength Index (RSI)	Momentum, Oscillators
+rvgi	Relative Vigor Index	Momentum, Oscillators
+separatinglines	Separating Lines	Pattern recognition
+shootingstar	Shooting Star	Pattern recognition
+shortline	Short Line Candle	Pattern recognition
+sin	Vector Trigonometric Sin	Math Transform
+sma	Simple Moving Average	Overlap Studies
+smma	Smoothed Moving Average (SMMA)	Overlap Studies, Trend
+spinningtop	Spinning Top	Pattern recognition
+sqrt	Vector Square Root	Math Operators
+squeeze	Squeeze Momentum Indicator (SMI)	Momentum, Volatility
+stalledpattern Popular	Stalled Pattern	Pattern recognition
+stc	Schaff Trend Cycle	Momentum, Oscillators
+stddev Popular	Standard Deviation	Statistic functions, Volatility
+sticksandwich	Stick Sandwich	Pattern recognition
+stoch Popular Updated	Stochastic	Momentum, Oscillators
+stochf	Stochastic Fast	Momentum, Oscillators
+stochrsi Popular Updated	StochRSI – Stochastic Relative Strength Index	Momentum, Oscillators
+sub	Vector Arithmetic Substraction	Math Operators
+sum	Summation	Math Operators
+supertrend Popular Updated	Supertrend	Momentum, Trend
+t3	Triple Exponential Moving Average (T3)	Overlap Studies
+takuri	Takuri	Pattern recognition
+tan	Vector Trigonometric Tan	Math Transform
+tanh	Vector Trigonometric Tanh	Math Transform
+tasukigap	Tasuki Gap	Pattern recognition
+tdsequential Popular	Sequential Countdown Indicator (based on DeMark Methodology)	Momentum
+tema	Triple Exponential Moving Average	Overlap Studies
+thrusting	Thrusting Pattern	Pattern recognition
+todeg	Vector Degree Conversion	Math Transform
+torad	Vector Radian Conversion	Math Transform
+tr Popular	True range	Price
+trima	Triangular Moving Average	Overlap Studies
+tristar	Tristar Pattern	Pattern recognition
+trix Popular	TRIX	Momentum, Oscillators
+trunc	Vector Truncate	Math Transform
+tsf	Time Series Forecast	Statistic functions
+typprice Popular	Typical Price	Price
+ultosc Popular	Ultimate Oscillator	Momentum, Oscillators
+unique3river	Unique 3 River	Pattern recognition
+upsidegap2crows	Upside Gap Two Crows	Pattern recognition
+var	Variance	Statistic functions
+vhf	Vertical Horizontal Filter	
+vidya	Variable Index Dynamic Average	Overlap Studies
+volatility	Annualized Historical Volatility	Volatility
+volume	Volume	Volume
+volumesplit	Volume Split	Volume
+vortex	Vortex	Trend
+vosc	Volume Oscillator	Oscillators, Volume
+vwap Popular	Volume Weighted Average Price (VWAP)	Overlap Studies, Volume
+vwma	Volume Weighted Moving Average	Overlap Studies, Volume
+wad	Williams Accumulation/Distribution (A/D)	Momentum
+wclprice	Weighted Close Price	Price
+wilders	Wilders Smoothing	Overlap Studies
+williamsalligator	Williams Alligator	Overlap Studies, Trend
+willr	Williams’ %R	Momentum
+wma	Weighted Moving Average	Overlap Studies
+xsidegap3methods	Upside/Downside Gap Three Methods	Pattern recognition
+zlema	Zero-Lag Exponential Moving Average	Overlap Studies
+Earn 20% from every referral
+Looking to earn some extra cash while spreading the love for TAAPI.IO? Our affiliate program offers you the chance to earn a 20% commission on every payment you refer!
+
+Taapi logo
+About
+About us
+Subscription
+Affiliate program
+Terms of Service
+Privacy Policy
+Crypto Data API
+Realtime Stock Prices
+API status
+Contact
+Documentation
+Get started
+Integration
+Indicators
+© 2025 TAAPI.IO, s.r.o. All rights reserved.
+
+Home
+News
+Pricing
+Indicators
+Exchanges
+Docs
+My account
+
+
