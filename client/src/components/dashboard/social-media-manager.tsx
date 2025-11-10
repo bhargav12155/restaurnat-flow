@@ -40,7 +40,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SocialMediaSetup } from "@/components/setup/social-media-setup";
-import { Settings } from "lucide-react";
+import { Settings, Plug, PlugZap } from "lucide-react";
 
 interface SocialMediaAccount {
   id: string;
@@ -990,17 +990,17 @@ Mike Bjork | Berkshire Hathaway HomeServices
                     {account.platform}
                   </span>
                 </div>
-                <Badge
-                  variant={account.isConnected ? "secondary" : "destructive"}
-                  className={
-                    account.isConnected
-                      ? "bg-green-100 text-green-700 border-green-200"
-                      : "bg-red-100 text-red-700 border-red-200"
-                  }
+                <div 
+                  className="flex items-center gap-1"
                   data-testid={`status-${account.platform}`}
+                  title={account.isConnected ? "Connected" : "Disconnected"}
                 >
-                  {account.isConnected ? "Connected" : "Disconnected"}
-                </Badge>
+                  {account.isConnected ? (
+                    <Plug className="h-5 w-5 text-green-600" />
+                  ) : (
+                    <PlugZap className="h-5 w-5 text-red-600" />
+                  )}
+                </div>
               </div>
             );
           })}
