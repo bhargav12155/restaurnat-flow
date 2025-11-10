@@ -1,6 +1,5 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { OverviewCards } from "@/components/dashboard/overview-cards";
-import { SocialSetupReminder } from "@/components/dashboard/social-setup-reminder";
 import { AIContentGenerator } from "@/components/dashboard/ai-content-generator";
 import { SocialMediaManager } from "@/components/dashboard/social-media-manager";
 import { SEOOptimizer } from "@/components/dashboard/seo-optimizer";
@@ -140,11 +139,6 @@ export default function Dashboard() {
         return (
           <>
             <OverviewCards />
-
-            {/* Social Media Setup Reminder */}
-            <SocialSetupReminder
-              onSetupClick={() => setShowSocialMediaSetup(true)}
-            />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">

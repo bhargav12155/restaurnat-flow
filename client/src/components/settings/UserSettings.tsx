@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CompanyProfile } from "./CompanyProfile";
+import { SocialSetupReminder } from "@/components/dashboard/social-setup-reminder";
 
 interface SocialMediaUrls {
   facebook: string;
@@ -62,6 +63,7 @@ export function UserSettings() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [showTokens, setShowTokens] = useState(false);
+  const [activeTab, setActiveTab] = useState("account");
   const [socialUrls, setSocialUrls] = useState<SocialMediaUrls>({
     facebook: "",
     instagram: "",
@@ -183,7 +185,11 @@ export function UserSettings() {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="account">
+      <SocialSetupReminder
+        onSetupClick={() => setActiveTab("api-keys")}
+      />
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="account">Account</TabsTrigger>
           <TabsTrigger value="company">Company Profile</TabsTrigger>
