@@ -88,22 +88,24 @@
   - Dynamic platform recommendations with transparent explanations
 - ✅ Architect approved: "Null guard prevents pre-generation crash and platform intelligence pipeline runs with semantic classification and market data integration"
 
-### 8. Local Market Intelligence (COMPLETED - Previous Session)
+### 8. Social Media Setup - Settings Page Integration (COMPLETED)
+- ✅ Moved SocialSetupReminder from Dashboard to Settings page
+- ✅ Added controlled tab state to UserSettings component
+- ✅ "Set Up Social Media" button switches to API Keys tab
+- ✅ Removed duplicate reminder from dashboard
+- ✅ Improved UX: reminder contextually placed where configuration happens
+- ✅ Preserved functionality: still checks /api/user/social-api-keys
+- ✅ Architect approved: "Social Setup reminder successfully relocated to Settings with functional tab routing"
+
+### 9. Local Market Intelligence (COMPLETED - Previous Session)
 - ✅ Live Omaha market data with accurate decimal inventory parsing
 - ✅ AI-powered market intelligence report generation
 - ✅ Neighborhood-specific metrics with trending analysis
 
-### 9. SEO Keywords - AI Integration (COMPLETED - Previous Session)
+### 10. SEO Keywords - AI Integration (COMPLETED - Previous Session)
 - ✅ Live market data integration for keyword generation
 - ✅ Fresh AI keywords on each request (no caching)
 - ✅ Fallback keywords only when OpenAI unavailable
-
-## 🚧 In Progress
-
-### 10. Complete Social Media Setup (Settings)
-- [ ] Move "Complete Your Social Media Setup" to Settings page
-- [ ] Add to top right under settings icon
-- [ ] Improve UX for social media connection flow
 
 ## 📋 Pending Tasks
 
@@ -118,7 +120,7 @@
 2. ✅ Content Calendar API integration (DONE)
 3. ✅ AI Schedule functionality fixed (DONE)
 4. ✅ Platform Intelligence algorithm upgraded (DONE)
-5. 🚧 Complete Social Media Setup in Settings (IN PROGRESS)
+5. ✅ Social Media Setup moved to Settings (DONE)
 6. Continue with remaining UI/UX improvements
 
 ## 🔑 API Keys & Resources
