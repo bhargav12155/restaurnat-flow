@@ -38,6 +38,10 @@ import {
   Bookmark,
   MoreHorizontal,
   Globe,
+  Bed,
+  Bath,
+  Square,
+  MapPin,
 } from "lucide-react";
 import {
   FaFacebook,
@@ -1361,34 +1365,85 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
             )}
 
             {selectedProperty && (
-              <div className="p-3 bg-background rounded border">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-foreground">
+              <div className="p-4 bg-muted/30 rounded-lg border space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-foreground">
                     Selected Property
-                  </p>
+                  </h4>
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => setSelectedProperty(null)}
-                    className="h-6 w-6 p-0"
+                    className="h-7 text-xs"
                     data-testid="button-clear-property"
                   >
-                    <X className="h-3 w-3" />
+                    Change Property
                   </Button>
                 </div>
-                <p className="text-xs font-medium">
-                  #{selectedProperty.mlsNumber}
-                </p>
-                <p className="text-xs">
-                  {selectedProperty.address}, {selectedProperty.city}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  ${selectedProperty.price?.toLocaleString() || "N/A"} •{" "}
-                  {selectedProperty.bedrooms || 0}BR/
-                  {selectedProperty.bathrooms || 0}BA •{" "}
-                  {selectedProperty.squareFootage?.toLocaleString() || "N/A"} sq
-                  ft
-                </p>
+                
+                <div className="flex gap-4">
+                  {/* Property Image */}
+                  <div className="w-28 h-28 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
+                    {selectedProperty.photoUrls?.[0] ? (
+                      <img 
+                        src={selectedProperty.photoUrls[0]} 
+                        alt={selectedProperty.address}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Home className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Property Details */}
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <h5 className="font-semibold text-base text-foreground line-clamp-1">
+                        {selectedProperty.address}
+                      </h5>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedProperty.city}, {selectedProperty.state} {selectedProperty.zipCode}
+                      </p>
+                    </div>
+                    
+                    {selectedProperty.neighborhood && (
+                      <Badge variant="outline" className="text-xs">
+                        <MapPin className="h-3 w-3 mr-1" />
+                        {selectedProperty.neighborhood}
+                      </Badge>
+                    )}
+                    
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      <div className="flex items-center gap-1 text-sm">
+                        <Bed className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{selectedProperty.bedrooms || 0}</span>
+                        <span className="text-xs text-muted-foreground">beds</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm">
+                        <Bath className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{selectedProperty.bathrooms || 0}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-sm">
+                        <Square className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{selectedProperty.squareFootage?.toLocaleString() || "N/A"}</span>
+                        <span className="text-xs text-muted-foreground">sqft</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-1 border-t">
+                      <div className="text-xs text-muted-foreground">
+                        MLS# {selectedProperty.mlsNumber}
+                      </div>
+                      {selectedProperty.agent && (
+                        <div className="text-xs text-muted-foreground">
+                          Agent: {selectedProperty.agent}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
