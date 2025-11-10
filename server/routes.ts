@@ -1881,6 +1881,45 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  app.get("/api/market/intelligence", async (req, res) => {
+    try {
+      // Import the market intelligence service
+      const { MarketIntelligenceService } = await import('./services/market-intelligence');
+      const marketIntelligenceService = new MarketIntelligenceService();
+
+      // Fetch live market data
+      let marketData;
+      try {
+        marketData = await storage.getMarketData();
+        if (!marketData || marketData.length === 0) {
+          console.warn('⚠️  No market data available for intelligence generation');
+          return res.status(502).json({ 
+            error: "Market data unavailable", 
+            message: "Unable to fetch real-time market data. Please try again later." 
+          });
+        }
+      } catch (marketError) {
+        console.error("Failed to fetch market data for intelligence:", marketError);
+        return res.status(502).json({ 
+          error: "Market data service error", 
+          message: "Could not retrieve market data for analysis." 
+        });
+      }
+
+      // Generate AI-powered market intelligence
+      const intelligence = await marketIntelligenceService.generateIntelligence(marketData);
+      
+      res.json(intelligence);
+    } catch (error) {
+      console.error("❌ Market intelligence generation error:", error);
+      res.status(502).json({ 
+        error: "Intelligence generation failed", 
+        message: "Unable to generate market intelligence. Please try again or contact support.",
+        details: (error as Error).message 
+      });
+    }
+  });
+
   app.get("/api/content/suggestions", async (req, res) => {
     try {
       const neighborhood = req.query.neighborhood as string;

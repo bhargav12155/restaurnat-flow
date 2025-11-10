@@ -955,6 +955,28 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     }, 2000);
   };
 
+  const generateContentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/content/generate", data);
+      return response.json();
+    },
+    onSuccess: (data: GeneratedContent) => {
+      setLastGenerated(data);
+      toast({
+        title: "Content Generated Successfully!",
+        description: `Created "${data.title}" with ${data.wordCount} words`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/content"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Generation Failed",
+        description: error.message || "Failed to generate content",
+        variant: "destructive",
+      });
+    },
+  });
+
   const regenerateForPlatformMutation = useMutation<
     GeneratedContent,
     Error,
@@ -1061,28 +1083,6 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
       neighborhood,
     });
   };
-
-  const generateContentMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const response = await apiRequest("POST", "/api/content/generate", data);
-      return response.json();
-    },
-    onSuccess: (data: GeneratedContent) => {
-      setLastGenerated(data);
-      toast({
-        title: "Content Generated Successfully!",
-        description: `Created "${data.title}" with ${data.wordCount} words`,
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/content"] });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Generation Failed",
-        description: error.message || "Failed to generate content",
-        variant: "destructive",
-      });
-    },
-  });
 
   const handleGenerate = () => {
     if (!topic.trim() && contentType !== "property_feature") {
