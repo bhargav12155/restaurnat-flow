@@ -59,7 +59,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { useOptimizationPrereqs } from "@/hooks/use-optimization-prereqs";
 
 interface AIContentGeneratorProps {
   isGenerating: boolean;
@@ -1124,6 +1131,16 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     (contentType !== "property_feature" ||
       (contentType === "property_feature" && selectedProperty));
 
+  // Optimization prerequisites validation
+  const optimizationPrereqs = useOptimizationPrereqs({
+    contentType,
+    topic,
+    lastGenerated,
+    selectedProperty,
+    isGenerating,
+    isPending: regenerateForPlatformMutation.isPending,
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -1805,6 +1822,30 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   Recommended Platforms:
                 </p>
               </div>
+
+              {/* Optimization Prerequisites Checklist */}
+              <div className="mb-3 p-2 bg-muted/30 rounded-md border">
+                <p className="text-xs font-medium text-foreground mb-2">Optimization Requirements:</p>
+                <div className="space-y-1">
+                  {optimizationPrereqs.checklistItems.map((item) => (
+                    <div key={item.id} className="flex items-center space-x-2">
+                      {item.isMet ? (
+                        <div className="h-4 w-4 rounded-full bg-green-500 flex items-center justify-center">
+                          <span className="text-white text-xs">✓</span>
+                        </div>
+                      ) : (
+                        <div className="h-4 w-4 rounded-full bg-red-500 flex items-center justify-center">
+                          <span className="text-white text-xs">✗</span>
+                        </div>
+                      )}
+                      <span className={`text-xs ${item.isMet ? 'text-muted-foreground' : 'text-foreground font-medium'}`}>
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 {getPlatformSuggestions(lastGenerated).map(
                   (suggestion, index) => {
@@ -1854,33 +1895,61 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                               {suggestion.platform}
                             </p>
                             <div className="flex items-center space-x-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-xs"
-                                onClick={() =>
-                                  handleRegenerateForPlatform(
-                                    suggestion.platform
-                                  )
-                                }
-                                disabled={
-                                  regeneratingFor === suggestion.platform ||
-                                  regenerateForPlatformMutation.isPending
-                                }
-                                data-testid={`button-regenerate-${suggestion.platform.toLowerCase()}`}
-                              >
-                                {regeneratingFor === suggestion.platform ? (
-                                  <>
-                                    <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                                    Optimizing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <RefreshCw className="mr-1 h-3 w-3" />
-                                    Optimize
-                                  </>
-                                )}
-                              </Button>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  {optimizationPrereqs.ready && regeneratingFor !== suggestion.platform ? (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 px-2 text-xs"
+                                      onClick={() =>
+                                        handleRegenerateForPlatform(
+                                          suggestion.platform
+                                        )
+                                      }
+                                      data-testid={`button-regenerate-${suggestion.platform.toLowerCase()}`}
+                                    >
+                                      <RefreshCw className="mr-1 h-3 w-3" />
+                                      Optimize
+                                    </Button>
+                                  ) : (
+                                    <TooltipTrigger asChild>
+                                      <span
+                                        tabIndex={0}
+                                        role="button"
+                                        className="inline-flex cursor-not-allowed"
+                                      >
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-6 px-2 text-xs pointer-events-none"
+                                          disabled
+                                          data-testid={`button-regenerate-${suggestion.platform.toLowerCase()}`}
+                                        >
+                                          {regeneratingFor === suggestion.platform ? (
+                                            <>
+                                              <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                                              Optimizing...
+                                            </>
+                                          ) : (
+                                            <>
+                                              <RefreshCw className="mr-1 h-3 w-3" />
+                                              Optimize
+                                            </>
+                                          )}
+                                        </Button>
+                                      </span>
+                                    </TooltipTrigger>
+                                  )}
+                                  {!optimizationPrereqs.ready && (
+                                    <TooltipContent>
+                                      <div className="text-xs">
+                                        {optimizationPrereqs.unmetReasons.join(" • ")}
+                                      </div>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
                               <Button
                                 variant="secondary"
                                 size="sm"
