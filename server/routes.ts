@@ -1579,15 +1579,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { location, businessType } = req.body;
       
+      // Fetch live market data to provide real-time context to AI
+      let marketData;
+      try {
+        marketData = await storage.getMarketData();
+        if (!marketData || marketData.length === 0) {
+          console.warn('⚠️  No market data available for AI keyword generation');
+          return res.status(502).json({ 
+            error: "Market data unavailable", 
+            message: "Unable to fetch real-time market data. Please try again later or contact support." 
+          });
+        }
+      } catch (marketError) {
+        console.error("Failed to fetch market data for keyword generation:", marketError);
+        return res.status(502).json({ 
+          error: "Market data service error", 
+          message: "Could not retrieve market intelligence data. Keyword generation requires live market data." 
+        });
+      }
+      
+      // Generate keywords with real market intelligence
       const keywords = await seoService.generateTopKeywordsWithAI(
         location || 'Omaha, Nebraska',
-        businessType || 'real estate agent'
+        businessType || 'real estate agent',
+        marketData
       );
       
       res.json(keywords);
     } catch (error) {
-      console.error("AI keyword generation error:", error);
-      res.status(500).json({ error: "Failed to generate keywords" });
+      console.error("❌ AI keyword generation error:", error);
+      res.status(502).json({ 
+        error: "AI keyword generation failed", 
+        message: "Unable to generate fresh, market-driven keywords. Please try again or contact support.",
+        details: (error as Error).message 
+      });
     }
   });
 
