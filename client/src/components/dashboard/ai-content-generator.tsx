@@ -67,6 +67,12 @@ import {
 } from "@/components/ui/tooltip";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useOptimizationPrereqs } from "@/hooks/use-optimization-prereqs";
+import {
+  classifyContent,
+  calculateMarketSignals,
+  scorePlatform,
+} from "@/lib/platform-intelligence";
+import type { PlatformScore as PlatformScoreType } from "@shared/schema";
 
 interface AIContentGeneratorProps {
   isGenerating: boolean;
@@ -133,245 +139,41 @@ interface PlatformSuggestion {
   score: number;
 }
 
+const platformIcons: Record<string, any> = {
+  "Instagram": FaInstagram,
+  "Facebook": FaFacebook,
+  "LinkedIn": FaLinkedin,
+  "X (Twitter)": FaTwitter,
+  "TikTok": FaTiktok,
+  "YouTube": FaYoutube,
+};
+
 const getPlatformSuggestions = (
-  content: GeneratedContent
+  content: GeneratedContent | null,
+  marketData?: any[]
 ): PlatformSuggestion[] => {
-  const { content: text, wordCount, keywords } = content;
+  if (!content) {
+    return [];
+  }
 
-  const hasEmojis = text
-    ? /[\uD83C-\uDBFF\uDC00-\uDFFF]|[\u2600-\u27FF]/.test(text)
-    : false;
-  const hasHashtags = text?.includes("#") || false;
-  const isEducational =
-    text?.toLowerCase().includes("tips") ||
-    text?.toLowerCase().includes("guide") ||
-    text?.toLowerCase().includes("first-time") ||
-    false;
-  const isVisual =
-    text?.toLowerCase().includes("home") ||
-    text?.toLowerCase().includes("property") ||
-    text?.toLowerCase().includes("house") ||
-    false;
-  const isProfessional =
-    text?.toLowerCase().includes("expert") ||
-    text?.toLowerCase().includes("professional") ||
-    false;
+  const profile = classifyContent(content);
+  const signals = calculateMarketSignals(marketData);
 
-  const suggestions: PlatformSuggestion[] = [];
+  const platforms = ["Instagram", "Facebook", "LinkedIn", "X (Twitter)", "TikTok", "YouTube"];
+  const scores: PlatformScoreType[] = platforms.map(platform =>
+    scorePlatform(platform, profile, signals)
+  );
 
-  // Instagram analysis
-  let instagramScore = 0;
-  if (hasEmojis) instagramScore += 25;
-  if (hasHashtags) instagramScore += 25;
-  if (isEducational) instagramScore += 20;
-  if (isVisual) instagramScore += 15;
-  if (wordCount <= 150) instagramScore += 15;
-
-  suggestions.push({
-    platform: "Instagram",
-    icon: FaInstagram,
-    fit:
-      instagramScore >= 80
-        ? "excellent"
-        : instagramScore >= 60
-        ? "very-good"
-        : "good",
-    reason: isEducational
-      ? "Educational content + visual appeal + younger demographic"
-      : "Great for visual storytelling and hashtags",
-    optimization:
-      "Pair with home photos or create an infographic with buying tips",
-    score: instagramScore,
-  });
-
-  // Facebook analysis
-  let facebookScore = 0;
-  if (isEducational) facebookScore += 30;
-  if (wordCount >= 100 && wordCount <= 300) facebookScore += 25;
-  if (
-    text?.toLowerCase().includes("omaha") ||
-    text?.toLowerCase().includes("local")
-  )
-    facebookScore += 20;
-  if (hasEmojis) facebookScore += 15;
-  if (text?.includes("?")) facebookScore += 10;
-
-  suggestions.push({
-    platform: "Facebook",
-    icon: FaFacebook,
-    fit:
-      facebookScore >= 80
-        ? "excellent"
-        : facebookScore >= 60
-        ? "very-good"
-        : "good",
-    reason: "Perfect for community engagement and local groups",
-    optimization:
-      'Add engagement question: "What\'s your biggest concern as a first-time buyer?"',
-    score: facebookScore,
-  });
-
-  // LinkedIn analysis
-  let linkedinScore = 0;
-  if (isProfessional) linkedinScore += 30;
-  if (wordCount >= 200) linkedinScore += 25;
-  if (
-    text?.toLowerCase().includes("market") ||
-    text?.toLowerCase().includes("insight")
-  )
-    linkedinScore += 20;
-  if (
-    !hasEmojis ||
-    (hasEmojis &&
-      text
-        ?.split("")
-        .filter((char) =>
-          /[\uD83C-\uDBFF\uDC00-\uDFFF]|[\u2600-\u27FF]/.test(char)
-        ).length <= 2)
-  )
-    linkedinScore += 15;
-  if (
-    text?.toLowerCase().includes("expert") ||
-    text?.toLowerCase().includes("professional")
-  )
-    linkedinScore += 10;
-
-  suggestions.push({
-    platform: "LinkedIn",
-    icon: FaLinkedin,
-    fit:
-      linkedinScore >= 80
-        ? "excellent"
-        : linkedinScore >= 60
-        ? "very-good"
-        : "good",
-    reason: "Professional expertise positioning and business networking",
-    optimization:
-      'Make more professional: "As your Omaha real estate professional..."',
-    score: linkedinScore,
-  });
-
-  // Twitter/X analysis
-  let twitterScore = 0;
-  if (wordCount <= 200) twitterScore += 30;
-  if (hasHashtags) twitterScore += 25;
-  if (
-    text?.toLowerCase().includes("omaha") ||
-    text?.toLowerCase().includes("local")
-  )
-    twitterScore += 20;
-  if (hasEmojis) twitterScore += 15;
-  if (text?.includes("?") || text?.includes("!")) twitterScore += 10;
-
-  suggestions.push({
-    platform: "X (Twitter)",
-    icon: FaTwitter,
-    fit:
-      twitterScore >= 80
-        ? "excellent"
-        : twitterScore >= 60
-        ? "very-good"
-        : "good",
-    reason: "Perfect character count and real-time engagement",
-    optimization: "Add trending local hashtags like #OmahaLife",
-    score: twitterScore,
-  });
-
-  // TikTok analysis
-  let tiktokScore = 0;
-  if (wordCount <= 150) tiktokScore += 30; // Short, engaging content
-  if (hasEmojis) tiktokScore += 25; // TikTok loves emojis
-  if (
-    text?.toLowerCase().includes("home") ||
-    text?.toLowerCase().includes("house") ||
-    text?.toLowerCase().includes("tip")
-  )
-    tiktokScore += 20; // Visual/educational content
-  if (hasHashtags) tiktokScore += 15; // Hashtag discovery is key
-  if (text?.includes("!") || text?.includes("?")) tiktokScore += 10; // Engaging punctuation
-
-  suggestions.push({
-    platform: "TikTok",
-    icon: FaTiktok,
-    fit:
-      tiktokScore >= 80
-        ? "excellent"
-        : tiktokScore >= 60
-        ? "very-good"
-        : "good",
-    reason: "Short-form video content with high engagement potential",
-    optimization:
-      "Create quick home tour or real estate tip video with trending audio",
-    score: tiktokScore,
-  });
-
-  // YouTube analysis
-  let youtubeScore = 0;
-  if (wordCount >= 300) youtubeScore += 25; // Detailed descriptions perform better
-  if (
-    text?.toLowerCase().includes("omaha") ||
-    text?.toLowerCase().includes("local")
-  )
-    youtubeScore += 25; // Local SEO crucial for YouTube
-  if (
-    text?.toLowerCase().includes("mike bjork") ||
-    text?.toLowerCase().includes("expert")
-  )
-    youtubeScore += 20; // Personal branding
-  if (
-    text?.toLowerCase().includes("home") ||
-    text?.toLowerCase().includes("property") ||
-    text?.toLowerCase().includes("real estate")
-  )
-    youtubeScore += 15; // Relevant keywords
-  if (text?.includes("?") || text?.includes("!")) youtubeScore += 10; // Engagement
-  if (hasHashtags) youtubeScore += 5; // YouTube hashtags help but less critical
-
-  suggestions.push({
-    platform: "YouTube",
-    icon: FaYoutube,
-    fit:
-      youtubeScore >= 80
-        ? "excellent"
-        : youtubeScore >= 60
-        ? "very-good"
-        : "good",
-    reason: "Long-form video content with strong local SEO potential",
-    optimization:
-      "Create detailed description with local keywords and Mike Bjork expert positioning",
-    score: youtubeScore,
-  });
-
-  // Website analysis
-  let websiteScore = 0;
-  if (wordCount >= 300) websiteScore += 30; // Blog-length content works best for website
-  if (
-    text?.toLowerCase().includes("omaha") ||
-    text?.toLowerCase().includes("local")
-  )
-    websiteScore += 25; // Local SEO crucial for website
-  if (isEducational) websiteScore += 20; // Educational content drives website traffic
-  if (keywords && keywords.length >= 3) websiteScore += 15; // Keyword rich content
-  if (
-    text?.toLowerCase().includes("market") ||
-    text?.toLowerCase().includes("insight")
-  )
-    websiteScore += 10; // Authority content
-
-  suggestions.push({
-    platform: "Website",
-    icon: Globe,
-    fit:
-      websiteScore >= 80
-        ? "excellent"
-        : websiteScore >= 60
-        ? "very-good"
-        : "good",
-    reason: "SEO-optimized content perfect for driving organic website traffic",
-    optimization:
-      "Add meta description and internal links to boost search rankings",
-    score: websiteScore,
-  });
+  const suggestions: PlatformSuggestion[] = scores
+    .filter(s => s.fit !== "fair")
+    .map(score => ({
+      platform: score.platform,
+      icon: platformIcons[score.platform] || FaFacebook,
+      fit: score.fit as "excellent" | "very-good" | "good",
+      reason: score.reasons.slice(0, 2).join("; ") || "Good platform for this content",
+      optimization: score.optimization,
+      score: score.score,
+    }));
 
   return suggestions.sort((a, b) => b.score - a.score);
 };
@@ -447,6 +249,11 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const { data: marketData } = useQuery({
+    queryKey: ['/api/market/data'],
+    staleTime: 15 * 60 * 1000,
+  });
 
   // Style options for all content types
   const styleOptions = [
@@ -1847,7 +1654,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               </div>
 
               <div className="space-y-2">
-                {getPlatformSuggestions(lastGenerated).map(
+                {getPlatformSuggestions(lastGenerated, marketData).map(
                   (suggestion, index) => {
                     const IconComponent = suggestion.icon;
                     return (
