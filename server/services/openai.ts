@@ -361,6 +361,16 @@ const openai = new OpenAI({
     "your-openai-api-key",
 });
 
+export interface CompanyProfileData {
+  businessName?: string;
+  agentName?: string;
+  agentTitle?: string;
+  phone?: string;
+  email?: string;
+  brokerageName?: string;
+  tagline?: string;
+}
+
 export interface ContentGenerationRequest {
   type: "blog" | "social" | "property_feature";
   topic: string;
@@ -370,6 +380,7 @@ export interface ContentGenerationRequest {
   seoOptimized?: boolean;
   longTailKeywords?: boolean;
   localSeoFocus?: boolean;
+  companyProfile?: CompanyProfileData;
   propertyData?: {
     id: string;
     mlsNumber: string;
@@ -412,6 +423,11 @@ export class OpenAIService {
   ): Promise<GeneratedContent> {
     try {
       const prompt = this.buildPrompt(request);
+      
+      // Use company profile data or fallback to defaults
+      const agentName = request.companyProfile?.agentName || "Mike Bjork";
+      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "Berkshire Hathaway HomeServices";
+      const agentTitle = request.companyProfile?.agentTitle || "real estate agent";
 
       const response = await multiOpenAI.makeRequest(
         "content",
@@ -422,7 +438,7 @@ export class OpenAIService {
               {
                 role: "system",
                 content:
-                  "You are an expert real estate content writer and SEO specialist focused on the Omaha, Nebraska market. Generate high-quality, SEO-optimized content for Mike Bjork, a top real estate agent with Berkshire Hathaway HomeServices in Omaha. Always include Mike Bjork's name and credentials for better SEO and personal branding. Always respond with valid JSON.",
+                  `You are an expert real estate content writer and SEO specialist focused on the Omaha, Nebraska market. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName} in Omaha. Always include ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON.`,
               },
               {
                 role: "user",
@@ -580,14 +596,19 @@ export class OpenAIService {
   async generateSocialMediaPost(
     topic: string,
     platform: string,
-    neighborhood?: string
+    neighborhood?: string,
+    companyProfile?: CompanyProfileData
   ): Promise<any> {
     try {
+      // Use company profile data or fallback to defaults
+      const agentName = companyProfile?.agentName || "Mike Bjork";
+      const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "Berkshire Hathaway HomeServices";
+      
       const prompt = `Create a ${platform} post about "${topic}" for ${
         neighborhood || "Omaha"
       } real estate. 
       Make it engaging and include relevant hashtags. Keep it appropriate for ${platform}'s format and audience.
-      Include Mike Bjork as the real estate agent and reference Berkshire Hathaway HomeServices.`;
+      Include ${agentName} as the real estate agent and reference ${businessName}.`;
 
       const response = await multiOpenAI.makeRequest(
         "social",
@@ -618,10 +639,16 @@ export class OpenAIService {
       };
     } catch (error) {
       console.error("Social media post generation error:", error);
+      
+      // Use company profile data in fallback or defaults
+      const agentName = companyProfile?.agentName || "Mike Bjork";
+      const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "Berkshire Hathaway HomeServices";
+      const agentHashtag = agentName.replace(/\s+/g, '');
+      
       return {
         content: `Check out ${topic} in ${
           neighborhood || "Omaha"
-        }! Contact Mike Bjork at Berkshire Hathaway HomeServices for expert guidance. #OmahaRealEstate #MikeBjork`,
+        }! Contact ${agentName} at ${businessName} for expert guidance. #OmahaRealEstate #${agentHashtag}`,
         platform,
         topic,
         neighborhood,
@@ -815,14 +842,19 @@ Respond with JSON in this format:
     videoType,
     platform = "youtube",
     duration,
+    companyProfile,
   }: {
     topic: string;
     neighborhood: string;
     videoType: string;
     platform?: string;
     duration: number;
+    companyProfile?: CompanyProfileData;
   }): Promise<string> {
     try {
+      // Use company profile data or fallback to defaults
+      const agentName = companyProfile?.agentName || "Mike Bjork";
+      
       const platformOptimizations = {
         youtube: {
           style: "Educational and detailed",
@@ -848,7 +880,7 @@ Respond with JSON in this format:
         platformOptimizations[platform as keyof typeof platformOptimizations] ||
         platformOptimizations.youtube;
 
-      const prompt = `Create a ${duration}-second video script for Mike Bjork about ${topic} in ${neighborhood}, Omaha.
+      const prompt = `Create a ${duration}-second video script for ${agentName} about ${topic} in ${neighborhood}, Omaha.
       
       Platform: ${platform.toUpperCase()}
       Video type: ${videoType}
@@ -876,7 +908,7 @@ Respond with JSON in this format:
           : ""
       }
       
-      Write this as a script that Mike can read naturally while looking at the camera. Make it engaging and platform-appropriate without being too salesy.`;
+      Write this as a script that ${agentName} can read naturally while looking at the camera. Make it engaging and platform-appropriate without being too salesy.`;
 
       const response = await multiOpenAI.makeRequest(
         "content",
@@ -901,14 +933,18 @@ Respond with JSON in this format:
     } catch (error) {
       console.error("Video script generation error:", error);
 
+      // Use company profile data in fallback or defaults
+      const agentName = companyProfile?.agentName || "Mike Bjork";
+      const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "Berkshire Hathaway HomeServices";
+
       // Return fallback script
-      return `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices here in Omaha. 
+      return `Hi, I'm ${agentName} with ${businessName} here in Omaha. 
 
 Today I want to talk to you about ${topic} in ${neighborhood}. As your local real estate expert, I've seen firsthand how this area continues to attract families and professionals looking for their perfect home.
 
 The ${neighborhood} market offers unique opportunities whether you're buying your first home or looking to upgrade. I'd love to help you navigate these opportunities and find exactly what you're looking for.
 
-Ready to explore ${neighborhood}? Give me a call or send me an email. I'm Mike Bjork, and I'm here to make your real estate dreams a reality in Omaha.`;
+Ready to explore ${neighborhood}? Give me a call or send me an email. I'm ${agentName}, and I'm here to make your real estate dreams a reality in Omaha.`;
     }
   }
 
