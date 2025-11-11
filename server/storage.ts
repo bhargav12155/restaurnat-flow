@@ -186,30 +186,8 @@ export class MemStorage implements IStorage {
       this.marketData.set(marketId, market);
     });
 
-    // Seed SEO keywords
-    const keywords = [
-      { keyword: "omaha real estate agent", currentRank: 3, searchVolume: 1200, difficulty: 75 },
-      { keyword: "dundee homes for sale", currentRank: 1, searchVolume: 450, difficulty: 45, neighborhood: "Dundee" },
-      { keyword: "aksarben luxury condos", currentRank: 7, searchVolume: 320, difficulty: 60, neighborhood: "Aksarben" },
-      { keyword: "moving to omaha guide", currentRank: 2, searchVolume: 890, difficulty: 55 },
-    ];
-
-    keywords.forEach(k => {
-      const keywordId = randomUUID();
-      const seoKeyword: SeoKeyword = {
-        id: keywordId,
-        userId,
-        keyword: k.keyword,
-        currentRank: k.currentRank,
-        previousRank: k.currentRank + Math.floor(Math.random() * 3),
-        searchVolume: k.searchVolume,
-        difficulty: k.difficulty,
-        neighborhood: k.neighborhood || null,
-        lastChecked: new Date(),
-        createdAt: new Date(),
-      };
-      this.seoKeywords.set(keywordId, seoKeyword);
-    });
+    // SEO keywords will be AI-generated on first login based on user's service areas and specialties
+    // No seed keywords - users start with empty keyword list
 
     // Seed analytics data
     const metrics = [
@@ -234,11 +212,11 @@ export class MemStorage implements IStorage {
       this.analytics.set(analyticsId, analytic);
     });
 
-    // Seed scheduled posts focused on local markets and moving to Omaha
-    this.generateWeeklyScheduledPosts(userId);
+    // Scheduled posts will be generated on-demand via "Generate Content Plan" button
+    // No seed posts - users start with empty calendar
 
-    // Create default avatar for Mike Bjork
-    this.createDefaultAvatar(userId);
+    // Create default avatar with user's actual name
+    this.createDefaultAvatar(userId, user.name);
 
     // Create sample video content
     this.createSampleVideoContent(userId);
@@ -593,11 +571,12 @@ export class MemStorage implements IStorage {
     }
   }
 
-  private createDefaultAvatar(userId: string) {
+  private createDefaultAvatar(userId: string, userName?: string) {
+    const displayName = userName || "Professional Agent";
     const avatar: Avatar = {
       id: randomUUID(),
       userId,
-      name: "Mike Bjork - Professional",
+      name: `${displayName} - Professional`,
       description: "Professional real estate agent avatar for client-facing content",
       avatarImageUrl: null, // Would be set when user uploads their photo
       voiceId: "119caed25533477ba63822d5d1552d25", // HeyGen default professional voice
