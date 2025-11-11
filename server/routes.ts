@@ -573,6 +573,248 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate 30-day AI-powered content plan
+  app.post("/api/content/generate-plan", requireAuth, async (req: any, res) => {
+    try {
+      const { keywords = [], durationDays = 30 } = req.body;
+
+      if (!keywords || keywords.length === 0) {
+        return res.status(400).json({ error: "At least one keyword is required" });
+      }
+
+      if (durationDays > 60) {
+        return res.status(400).json({ error: "Duration cannot exceed 60 days" });
+      }
+
+      const userId = req.user.id;
+      const planId = nanoid();
+
+      // Build comprehensive prompt for 30-day plan
+      const keywordList = keywords.map((k: any) => k.keyword || k).join(", ");
+      
+      const prompt = `Generate a comprehensive ${durationDays}-day social media content plan for a real estate agent in Omaha, Nebraska.
+
+SEO Keywords to incorporate (rotate throughout the plan, each keyword should appear at least twice): ${keywordList}
+
+Requirements:
+1. Create ~2 posts per day across 4 platforms (Facebook, Instagram, LinkedIn, X/Twitter) = ${durationDays * 2} total posts
+2. Vary post types: market updates, neighborhood spotlights, buyer/seller tips, testimonials, educational content
+3. Each post should naturally incorporate 1-2 of the SEO keywords
+4. Include engaging captions (150-300 characters), relevant hashtags (3-5), and clear CTAs
+5. Distribute posts across different times: morning (9am), afternoon (1pm), evening (6pm)
+6. Lighter posting on weekends (avoid LinkedIn on weekends)
+
+Return a JSON object with this exact structure:
+{
+  "days": [
+    {
+      "dayNumber": 1,
+      "theme": "Market Update Monday",
+      "posts": [
+        {
+          "platform": "facebook",
+          "postType": "market_update",
+          "content": "Post caption here...",
+          "hashtags": ["#OmahaRealEstate", "#MarketUpdate"],
+          "cta": "Call to action text",
+          "keywordsUsed": ["omaha homes for sale", "real estate market"],
+          "recommendedTime": "09:00",
+          "neighborhood": "Dundee"
+        }
+      ]
+    }
+  ]
+}
+
+Make the content authentic, engaging, and SEO-optimized. Focus on providing value to potential buyers and sellers in Omaha.`;
+
+      // Call OpenAI to generate the plan
+      const response = await openaiService.generateContentPlan(prompt, durationDays);
+      
+      // Validate response structure
+      if (!response.days || !Array.isArray(response.days)) {
+        throw new Error('Invalid AI response: missing days array');
+      }
+
+      // Generate schedule slots starting tomorrow at 9am
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 1);
+      startDate.setHours(9, 0, 0, 0);
+
+      // Parse AI response and create scheduled posts
+      const scheduledPosts = [];
+      let totalPosts = 0;
+      const postsByPlatform: Record<string, number> = {};
+      const errors = [];
+      const MIN_POSTS_PER_DAY = 2; // Requirement: ~2 posts per day across platforms
+      const postsPerDay: Map<number, number> = new Map();
+
+      try {
+        // First pass: create posts from AI response
+        for (const day of response.days) {
+          if (!day.dayNumber || !day.posts || !Array.isArray(day.posts)) {
+            console.warn('Skipping invalid day:', day);
+            continue;
+          }
+
+          const dayNum = day.dayNumber;
+          if (!postsPerDay.has(dayNum)) {
+            postsPerDay.set(dayNum, 0);
+          }
+
+          const dayDate = new Date(startDate);
+          dayDate.setDate(dayDate.getDate() + (dayNum - 1));
+
+          for (const post of day.posts) {
+            try {
+              // Validate required post fields
+              if (!post.platform || !post.content) {
+                console.warn('Skipping invalid post:', post);
+                continue;
+              }
+
+              // Skip LinkedIn on weekends
+              const dayOfWeek = dayDate.getDay();
+              if (post.platform === 'linkedin' && (dayOfWeek === 0 || dayOfWeek === 6)) {
+                continue;
+              }
+
+              // Set post time with safe parsing
+              const postDate = new Date(dayDate);
+              const timeStr = post.recommendedTime || '09:00';
+              const timeParts = timeStr.split(':');
+              const hours = parseInt(timeParts[0] || '9');
+              const minutes = parseInt(timeParts[1] || '0');
+              postDate.setHours(hours, minutes, 0, 0);
+
+              const scheduledPost = await storage.createScheduledPost({
+                userId,
+                platform: post.platform,
+                postType: post.postType || 'general',
+                content: post.content,
+                hashtags: post.hashtags || [],
+                scheduledFor: postDate,
+                status: 'pending',
+                isEdited: false,
+                originalContent: post.content,
+                neighborhood: post.neighborhood || null,
+                seoScore: 80,
+                metadata: {
+                  planId,
+                  theme: day.theme || 'General Content',
+                  cta: post.cta || 'Contact us today!',
+                  keywordsUsed: post.keywordsUsed || [],
+                  aiGenerated: true
+                }
+              });
+
+              scheduledPosts.push(scheduledPost);
+              totalPosts++;
+              postsPerDay.set(dayNum, (postsPerDay.get(dayNum) || 0) + 1);
+              postsByPlatform[post.platform] = (postsByPlatform[post.platform] || 0) + 1;
+            } catch (postError) {
+              console.error('Error creating scheduled post:', postError);
+              errors.push({ day: dayNum, error: postError });
+            }
+          }
+        }
+
+        // Second pass: backfill days with insufficient posts
+        const fallbackPlan = openaiService.getFallbackPlan(durationDays);
+        for (let dayNum = 1; dayNum <= durationDays; dayNum++) {
+          const postsForDay = postsPerDay.get(dayNum) || 0;
+          
+          if (postsForDay < MIN_POSTS_PER_DAY) {
+            console.log(`Backfilling day ${dayNum} (has ${postsForDay} posts, need ${MIN_POSTS_PER_DAY})`);
+            const fallbackDay = fallbackPlan.days.find((d: any) => d.dayNumber === dayNum);
+            
+            if (fallbackDay && fallbackDay.posts) {
+              const dayDate = new Date(startDate);
+              dayDate.setDate(dayDate.getDate() + (dayNum - 1));
+              
+              const postsNeeded = MIN_POSTS_PER_DAY - postsForDay;
+              const fallbackPosts = fallbackDay.posts.slice(0, postsNeeded);
+              
+              for (const post of fallbackPosts) {
+                const postDate = new Date(dayDate);
+                const timeStr = post.recommendedTime || '09:00';
+                const timeParts = timeStr.split(':');
+                const hours = parseInt(timeParts[0] || '9');
+                const minutes = parseInt(timeParts[1] || '0');
+                postDate.setHours(hours, minutes, 0, 0);
+
+                const scheduledPost = await storage.createScheduledPost({
+                  userId,
+                  platform: post.platform,
+                  postType: post.postType || 'general',
+                  content: post.content,
+                  hashtags: post.hashtags || [],
+                  scheduledFor: postDate,
+                  status: 'pending',
+                  isEdited: false,
+                  originalContent: post.content,
+                  neighborhood: post.neighborhood || null,
+                  seoScore: 80,
+                  metadata: {
+                    planId,
+                    theme: fallbackDay.theme || 'General Content',
+                    cta: post.cta || 'Contact us today!',
+                    keywordsUsed: post.keywordsUsed || [],
+                    aiGenerated: true,
+                    backfilled: true
+                  }
+                });
+
+                scheduledPosts.push(scheduledPost);
+                totalPosts++;
+                postsByPlatform[post.platform] = (postsByPlatform[post.platform] || 0) + 1;
+              }
+            }
+          }
+        }
+
+        // Validate minimum requirements
+        const expectedMinPosts = durationDays * MIN_POSTS_PER_DAY;
+        if (totalPosts < expectedMinPosts) {
+          throw new Error(`Generated only ${totalPosts} posts, expected at least ${expectedMinPosts}`);
+        }
+
+        if (totalPosts === 0) {
+          throw new Error('No valid posts were generated');
+        }
+      } catch (loopError) {
+        // Rollback: delete all created posts for this plan
+        console.error('Error during post creation, rolling back:', loopError);
+        for (const post of scheduledPosts) {
+          try {
+            await storage.deleteScheduledPost(post.id);
+          } catch (deleteError) {
+            console.error('Error during rollback:', deleteError);
+          }
+        }
+        throw loopError;
+      }
+
+      // Send real-time notification
+      realtimeService.sendNotification(
+        parseInt(userId),
+        `Generated ${totalPosts} posts for your 30-day content calendar`
+      );
+
+      res.json({
+        planId,
+        totalPosts,
+        postsByPlatform,
+        daysPlanned: durationDays,
+        message: `Successfully generated ${totalPosts} posts for ${durationDays} days`
+      });
+
+    } catch (error) {
+      console.error("Content plan generation error:", error);
+      res.status(500).json({ error: "Failed to generate content plan" });
+    }
+  });
+
   // Social Media OAuth Routes
   app.post("/api/social/connect/:platform", async (req, res) => {
     try {
