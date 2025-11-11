@@ -186,20 +186,41 @@ export function SEOOptimizer() {
                 </TabsContent>
                 
                 <TabsContent value="keywords" className="space-y-4 mt-4">
+                  <div className="mb-4 p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
+                    <strong className="text-foreground">What these numbers mean:</strong>
+                    <div className="mt-1 space-y-1">
+                      • <strong>Monthly Searches</strong> - How many people search this phrase each month
+                      <br />• <strong>Your Ranking</strong> - Where your website appears in Google results (lower is better!)
+                      <br />• <strong>Neighborhood</strong> - The Omaha area this keyword targets
+                    </div>
+                  </div>
                   <div className="space-y-3">
                     {displayKeywords?.map((keyword, index) => (
-                      <div key={keyword.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div key={keyword.id} className="flex items-center justify-between p-3 border rounded-lg hover:border-primary/50 transition-colors">
                         <div className="flex-1">
-                          <div className="font-medium text-sm">\u0022{keyword.keyword}\u0022</div>
-                          <div className="text-xs text-muted-foreground">
-                            Search Volume: {keyword.searchVolume?.toLocaleString() || 'N/A'}
-                            {keyword.neighborhood && ` • ${keyword.neighborhood}`}
+                          <div className="font-medium text-sm mb-1.5">\u0022{keyword.keyword}\u0022</div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Search className="h-3 w-3" />
+                              <strong>{keyword.searchVolume?.toLocaleString() || 'N/A'}</strong> monthly searches
+                            </span>
+                            {keyword.neighborhood && (
+                              <span className="flex items-center gap-1">
+                                <Globe className="h-3 w-3" />
+                                {keyword.neighborhood}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
-                          <Badge variant={keyword.currentRank <= 3 ? 'default' : keyword.currentRank <= 10 ? 'secondary' : 'outline'}>
-                            #{keyword.currentRank}
-                          </Badge>
+                          <div className="text-right">
+                            <Badge variant={keyword.currentRank <= 3 ? 'default' : keyword.currentRank <= 10 ? 'secondary' : 'outline'} className="text-sm">
+                              Rank #{keyword.currentRank}
+                            </Badge>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {keyword.currentRank <= 3 ? '🏆 Top 3!' : keyword.currentRank <= 10 ? '✨ Page 1' : 'Page ' + Math.ceil(keyword.currentRank / 10)}
+                            </div>
+                          </div>
                           {index < 5 ? (
                             <TrendingUp className="h-4 w-4 text-green-600" />
                           ) : (
