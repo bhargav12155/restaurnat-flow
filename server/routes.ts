@@ -360,11 +360,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Add real engagement leads from tracking system
       try {
         const { engagementLeads } = await import("@shared/schema");
-        const { count, gte, sql: drizzleSql } = await import("drizzle-orm");
+        const { count, gte, lt, and, sql: drizzleSql } = await import("drizzle-orm");
         
         // Get first day of current month
         const now = new Date();
         const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        // Get first day of last month
+        const firstDayOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         
         // Count engagement leads created this month
         const monthlyLeadsResult = await db
@@ -372,12 +375,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(engagementLeads)
           .where(gte(engagementLeads.createdAt, firstDayOfMonth));
         
-        const engagementLeadsCount = monthlyLeadsResult[0]?.count || 0;
+        const currentMonthLeads = monthlyLeadsResult[0]?.count || 0;
+        
+        // Count engagement leads created last month
+        const lastMonthLeadsResult = await db
+          .select({ count: count() })
+          .from(engagementLeads)
+          .where(
+            and(
+              gte(engagementLeads.createdAt, firstDayOfLastMonth),
+              lt(engagementLeads.createdAt, firstDayOfMonth)
+            )
+          );
+        
+        const lastMonthLeads = lastMonthLeadsResult[0]?.count || 0;
+        
+        // Calculate percentage change
+        let leadsChange = 0;
+        if (lastMonthLeads > 0) {
+          leadsChange = ((currentMonthLeads - lastMonthLeads) / lastMonthLeads) * 100;
+        } else if (currentMonthLeads > 0) {
+          leadsChange = 100; // If no leads last month but some this month, 100% increase
+        }
         
         // Replace static monthly_leads with real engagement leads count
-        overview.monthly_leads = engagementLeadsCount;
+        overview.monthly_leads = currentMonthLeads;
+        overview.monthly_leads_change = Math.round(leadsChange * 10) / 10; // Round to 1 decimal
         
-        console.log(`📊 Dashboard: ${engagementLeadsCount} engagement leads this month`);
+        console.log(`📊 Dashboard: ${currentMonthLeads} engagement leads this month (${leadsChange >= 0 ? '+' : ''}${leadsChange.toFixed(1)}% vs last month)`);
       } catch (error) {
         console.warn("Failed to fetch engagement leads, using static data:", error);
       }
