@@ -2020,6 +2020,146 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Content Opportunities endpoints - AI-generated content suggestions
+  app.get("/api/ai/opportunities", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const db = getDb();
+      
+      // Get stored opportunities for this user
+      const opportunities = await db.select().from(contentOpportunities)
+        .where(eq(contentOpportunities.userId, userId))
+        .orderBy(desc(contentOpportunities.searchSignal), desc(contentOpportunities.generatedAt));
+      
+      // If no opportunities exist, generate initial set
+      if (opportunities.length === 0) {
+        console.log(`📊 No opportunities found for user ${userId}, triggering auto-generation...`);
+        // Trigger generation and return empty array (client will refetch)
+        // We'll handle generation in the POST endpoint
+        return res.json([]);
+      }
+      
+      res.json(opportunities);
+    } catch (error) {
+      console.error("Failed to get content opportunities:", error);
+      res.status(500).json({ error: "Failed to fetch content opportunities" });
+    }
+  });
+
+  app.post("/api/ai/opportunities/generate", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      console.log(`🎯 Generating AI content opportunities for user ${userId}...`);
+      
+      const db = getDb();
+      const openaiService = new OpenAIService();
+      
+      // 1. Load user's market data (top neighborhoods)
+      const marketData = await storage.getMarketData(userId);
+      const topNeighborhoods = marketData
+        .filter(m => m.trend === 'hot' || m.trend === 'rising')
+        .slice(0, 5)
+        .map(m => ({
+          name: m.neighborhood,
+          avgPrice: m.avgPrice,
+          trend: m.trend,
+          inventory: m.inventory
+        }));
+      
+      // 2. Load user's SEO keywords (top priority)
+      const keywords = await storage.getSEOKeywords(userId);
+      const topKeywords = keywords
+        .slice(0, 10)
+        .map(k => ({
+          keyword: k.keyword,
+          volume: k.searchVolume || 0,
+          difficulty: k.difficulty || 0
+        }));
+      
+      // 3. Build AI prompt for generating opportunities
+      const prompt = `You are a real estate content strategist. Based on the following market data and SEO keywords, generate 5 high-value content opportunities for a real estate agent.
+
+Market Data (Hot Neighborhoods):
+${topNeighborhoods.map(n => `- ${n.name}: $${n.avgPrice?.toLocaleString()} avg price, ${n.trend} trend, ${n.inventory} inventory`).join('\n')}
+
+Top SEO Keywords:
+${topKeywords.map(k => `- "${k.keyword}" (volume: ${k.volume}, difficulty: ${k.difficulty})`).join('\n')}
+
+Generate exactly 5 content opportunities as a JSON array. Each opportunity must include:
+- title: Catchy title for the content piece (e.g., "Aksarben Market Update", "First-Time Buyer Guide")
+- description: Brief reason why this content is valuable (e.g., "High search volume", "Trending topic", "Seasonal interest")
+- priority: "high", "medium", or "low"
+- neighborhood: neighborhood name if applicable, or null
+- relatedKeyword: the keyword this relates to, or null
+- trendSource: "market" (based on neighborhood data), "keyword" (based on SEO keywords), or "trend" (general real estate trend)
+- searchSignal: integer score 0-100 indicating search demand/relevance
+
+Focus on:
+1. High-search-volume topics related to the provided keywords
+2. Neighborhood-specific market updates for hot areas
+3. Seasonal/trending real estate topics
+4. First-time buyer guides and educational content
+5. Local market analysis and comparisons
+
+Return ONLY the JSON array, no other text.`;
+
+      const response = await openaiService.chatCompletion([
+        { role: 'system', content: 'You are a real estate content strategist who generates data-driven content opportunities in JSON format.' },
+        { role: 'user', content: prompt }
+      ], {
+        temperature: 0.7,
+        max_tokens: 1500
+      });
+      
+      // Parse AI response
+      let generatedOpportunities;
+      try {
+        const content = response.choices[0].message.content || '[]';
+        // Remove markdown code blocks if present
+        const jsonContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        generatedOpportunities = JSON.parse(jsonContent);
+      } catch (parseError) {
+        console.error('Failed to parse AI response:', parseError);
+        console.error('Raw response:', response.choices[0].message.content);
+        throw new Error('Failed to parse AI-generated opportunities');
+      }
+      
+      // Validate and prepare for database
+      const opportunitiesToInsert = generatedOpportunities.slice(0, 5).map((opp: any) => ({
+        userId,
+        title: opp.title || 'Untitled Opportunity',
+        description: opp.description || 'AI-generated content opportunity',
+        priority: opp.priority || 'medium',
+        neighborhood: opp.neighborhood || null,
+        keywordId: opp.relatedKeyword || null,
+        trendSource: opp.trendSource || 'trend',
+        searchSignal: Math.min(100, Math.max(0, opp.searchSignal || 50)),
+        metadata: {
+          relatedKeyword: opp.relatedKeyword,
+          generatedBy: 'gpt-5',
+          marketContext: topNeighborhoods.length > 0,
+          keywordContext: topKeywords.length > 0
+        }
+      }));
+      
+      // Delete old opportunities for this user
+      await db.delete(contentOpportunities).where(eq(contentOpportunities.userId, userId));
+      
+      // Insert new opportunities
+      const inserted = await db.insert(contentOpportunities).values(opportunitiesToInsert).returning();
+      
+      console.log(`✅ Generated ${inserted.length} content opportunities for user ${userId}`);
+      res.json(inserted);
+      
+    } catch (error) {
+      console.error('❌ Failed to generate content opportunities:', error);
+      res.status(500).json({ 
+        error: "Failed to generate content opportunities",
+        message: (error as Error).message 
+      });
+    }
+  });
+
   app.get("/api/market/intelligence", requireAuth, async (req: any, res) => {
     try {
       const userId = req.user.id;
