@@ -32,7 +32,8 @@ import {
   photoAvatars,
   customVoices,
   companyProfiles,
-  videoContent as videoContentTable
+  videoContent as videoContentTable,
+  scheduledPosts as scheduledPostsTable
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -414,53 +415,73 @@ export class MemStorage implements IStorage {
   }
 
   async getScheduledPosts(userId: string, status?: string): Promise<ScheduledPost[]> {
-    const userPosts = Array.from(this.scheduledPosts.values()).filter(post => post.userId === userId);
     if (status) {
-      return userPosts.filter(post => post.status === status);
+      return await db
+        .select()
+        .from(scheduledPostsTable)
+        .where(and(
+          eq(scheduledPostsTable.userId, userId),
+          eq(scheduledPostsTable.status, status)
+        ))
+        .orderBy(scheduledPostsTable.scheduledFor);
     }
-    return userPosts.sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime());
+    
+    return await db
+      .select()
+      .from(scheduledPostsTable)
+      .where(eq(scheduledPostsTable.userId, userId))
+      .orderBy(scheduledPostsTable.scheduledFor);
   }
 
   async getScheduledPostById(id: string): Promise<ScheduledPost | undefined> {
-    return this.scheduledPosts.get(id);
+    const [post] = await db
+      .select()
+      .from(scheduledPostsTable)
+      .where(eq(scheduledPostsTable.id, id))
+      .limit(1);
+    return post;
   }
 
   async createScheduledPost(insertPost: InsertScheduledPost): Promise<ScheduledPost> {
-    const id = randomUUID();
-    const post: ScheduledPost = {
-      ...insertPost,
-      id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      metadata: insertPost.metadata || null,
-      isEdited: insertPost.isEdited || false,
-      originalContent: insertPost.originalContent || null,
-      neighborhood: insertPost.neighborhood || null,
-      hashtags: insertPost.hashtags || null,
-      postType: insertPost.postType || null,
-      status: insertPost.status || "pending",
-      seoScore: insertPost.seoScore ?? 0
-    };
-    this.scheduledPosts.set(id, post);
+    const [post] = await db
+      .insert(scheduledPostsTable)
+      .values({
+        ...insertPost,
+        metadata: insertPost.metadata || null,
+        isEdited: insertPost.isEdited || false,
+        originalContent: insertPost.originalContent || null,
+        neighborhood: insertPost.neighborhood || null,
+        hashtags: insertPost.hashtags || null,
+        postType: insertPost.postType || null,
+        status: insertPost.status || "pending",
+        seoScore: insertPost.seoScore ?? 0
+      })
+      .returning();
     return post;
   }
 
   async updateScheduledPost(id: string, updates: Partial<ScheduledPost>): Promise<ScheduledPost | undefined> {
-    const post = this.scheduledPosts.get(id);
-    if (!post) return undefined;
+    const existing = await this.getScheduledPostById(id);
+    if (!existing) return undefined;
     
-    const updated = { 
-      ...post, 
-      ...updates, 
-      updatedAt: new Date(),
-      isEdited: updates.content && updates.content !== post.originalContent ? true : post.isEdited
-    };
-    this.scheduledPosts.set(id, updated);
-    return updated;
+    const [post] = await db
+      .update(scheduledPostsTable)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+        isEdited: updates.content && updates.content !== existing.originalContent ? true : existing.isEdited
+      })
+      .where(eq(scheduledPostsTable.id, id))
+      .returning();
+    return post;
   }
 
   async deleteScheduledPost(id: string): Promise<boolean> {
-    return this.scheduledPosts.delete(id);
+    const result = await db
+      .delete(scheduledPostsTable)
+      .where(eq(scheduledPostsTable.id, id))
+      .returning();
+    return result.length > 0;
   }
 
   private generateWeeklyScheduledPosts(userId: string) {
