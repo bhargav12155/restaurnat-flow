@@ -817,11 +817,12 @@ export function ContentCalendar() {
                       {dayContent.map((content) => (
                         <div
                           key={content.id}
-                          className={`text-xs p-1 rounded ${content.color} text-white cursor-pointer hover:opacity-80 mb-1`}
+                          className={`text-xs p-1.5 rounded ${content.color} text-white cursor-pointer hover:opacity-80 mb-1 overflow-hidden`}
                           onClick={() => handlePreview(content)}
-                          title={`${content.title} - ${content.time}`}
+                          title={`${content.title} - ${content.time}\n${content.content?.substring(0, 100)}`}
                         >
-                          {content.type}
+                          <div className="font-semibold truncate text-[11px]">{content.title}</div>
+                          <div className="text-[10px] opacity-80 truncate mt-0.5">{content.platform} • {content.time}</div>
                         </div>
                       ))}
                     </div>
