@@ -3284,7 +3284,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  // List avatar groups
+  // List avatar groups (DATABASE-FIRST WITH PRIVACY)
   app.get("/api/photo-avatars/groups", requireAuth, async (req, res) => {
     try {
       const userId = req.user?.id;
@@ -3292,15 +3292,18 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const photoAvatarService = new HeyGenPhotoAvatarService();
-      const groups = await photoAvatarService.listAvatarGroups();
+      const userIdString = String(userId);
+      const dbGroups = await storage.listPhotoAvatarGroups(userIdString);
 
-      // Enrich each group with actual look counts and custom voice data
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+
+      // Enrich each user's group with HeyGen data
       const mappedGroups = await Promise.all(
-        (groups.avatar_group_list || []).map(async (group: any) => {
-          // Fallbacks for API field variations
-          const groupId = group.id || group.group_id;
+        dbGroups.map(async (dbGroup) => {
+          const groupId = dbGroup.heygenGroupId;
           let looksCount = 0;
+          let heygenStatus = dbGroup.status;
+
           try {
             const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
             looksCount = Array.isArray(looks?.avatar_list)
@@ -3316,53 +3319,37 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           // Get custom voice for this group if any
           let defaultVoiceId = null;
           try {
-            console.log(
-              `🔍 Looking up custom voice for group ${groupId}, userId: ${userId}`
-            );
             const customVoice = await storage.getPhotoAvatarGroupVoice(
               groupId,
               userId
             );
-            console.log(
-              `📊 Custom voice result for group ${groupId}:`,
-              customVoice
-            );
             if (customVoice?.heygenAudioAssetId) {
               defaultVoiceId = customVoice.heygenAudioAssetId;
-              console.log(
-                `✅ Found custom voice for group ${groupId}: ${defaultVoiceId}`
-              );
-            } else {
-              console.log(`ℹ️ No custom voice found for group ${groupId}`);
             }
           } catch (e) {
-            console.error(
-              `❌ Error fetching custom voice for group ${groupId}:`,
+            console.warn(
+              `⚠️ Error fetching custom voice for group ${groupId}:`,
               e
             );
           }
 
-          // Determine status based on training completion
-          // Only mark as "ready" if the model is actually trained (train_status === "completed")
-          // Having photos doesn't mean it's trained!
-          const rawStatus = group.train_status || group.status || "pending";
+          // Use database status as source of truth
+          const rawStatus = dbGroup.status || "pending";
           const isCompleted = rawStatus === "completed" || rawStatus === "ready";
           const status = isCompleted ? "ready" : (looksCount > 0 ? "pending" : rawStatus);
 
           return {
             group_id: groupId,
-            name: group.name,
+            name: dbGroup.name,
             status,
             default_voice_id: defaultVoiceId,
-            created_at: group.created_at
-              ? new Date(group.created_at * 1000).toISOString()
-              : new Date().toISOString(),
+            created_at: dbGroup.createdAt || new Date().toISOString(),
             avatar_count: looksCount,
             training_progress:
               status === "processing" || rawStatus === "processing"
-                ? 50
+                ? dbGroup.trainingProgress || 50
                 : undefined,
-            preview_image: group.preview_image,
+            preview_image: dbGroup.s3ImageUrl,
           };
         })
       );
@@ -3376,22 +3363,23 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  // Get avatar group details
-  app.get("/api/photo-avatars/groups/:groupId", async (req, res) => {
+  // Get avatar group details (WITH OWNERSHIP CHECK)
+  app.get("/api/photo-avatars/groups/:groupId", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
 
-      const photoAvatarService = new HeyGenPhotoAvatarService();
-      // Some v2 endpoints for group details 404; derive details from list + looks as a reliable fallback
-      const groups = await photoAvatarService.listAvatarGroups();
-      const base = (groups.avatar_group_list || []).find(
-        (g: any) => (g.id || g.group_id) === groupId
-      );
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
 
-      if (!base) {
+      // Ownership check
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+      if (!dbGroup) {
         return res.status(404).json({ error: "Avatar group not found" });
       }
 
+      const photoAvatarService = new HeyGenPhotoAvatarService();
       let looksCount = 0;
       try {
         const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
@@ -3405,17 +3393,15 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         );
       }
 
-      const rawStatus = base.train_status || base.status || "pending";
+      const rawStatus = dbGroup.status || "pending";
       const isCompleted = rawStatus === "completed" || rawStatus === "ready";
       const detail = {
-        group_id: base.id || base.group_id,
-        name: base.name,
+        group_id: groupId,
+        name: dbGroup.name,
         status: isCompleted ? "ready" : (looksCount > 0 ? "pending" : rawStatus),
-        created_at: base.created_at
-          ? new Date(base.created_at * 1000).toISOString()
-          : new Date().toISOString(),
+        created_at: dbGroup.createdAt || new Date().toISOString(),
         avatar_count: looksCount,
-        preview_image: base.preview_image,
+        preview_image: dbGroup.s3ImageUrl,
       };
 
       res.json(detail);
@@ -3425,10 +3411,21 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  // Get avatar group photos (generated images)
-  app.get("/api/photo-avatars/groups/:groupId/photos", async (req, res) => {
+  // Get avatar group photos (generated images) (WITH OWNERSHIP CHECK)
+  app.get("/api/photo-avatars/groups/:groupId/photos", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Ownership check
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+      if (!dbGroup) {
+        return res.status(404).json({ error: "Avatar group not found" });
+      }
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const looksData = await photoAvatarService.getAvatarGroupLooks(groupId);
@@ -3456,10 +3453,21 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  // Get avatar group looks
-  app.get("/api/photo-avatars/groups/:groupId/looks", async (req, res) => {
+  // Get avatar group looks (WITH OWNERSHIP CHECK)
+  app.get("/api/photo-avatars/groups/:groupId/looks", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Ownership check
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+      if (!dbGroup) {
+        return res.status(404).json({ error: "Avatar group not found" });
+      }
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
@@ -3472,10 +3480,21 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Train avatar group
-  app.post("/api/photo-avatars/groups/:groupId/train", async (req, res) => {
+  app.post("/api/photo-avatars/groups/:groupId/train", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
       const { defaultVoiceId } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Ownership check
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+      if (!dbGroup) {
+        return res.status(404).json({ error: "Avatar group not found" });
+      }
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const result = await photoAvatarService.trainAvatarGroup(
@@ -3493,9 +3512,21 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Generate new looks
   app.post(
     "/api/photo-avatars/groups/:groupId/generate-looks",
+    requireAuth,
     async (req, res) => {
       try {
         const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
         const { numLooks = 3 } = req.body;
 
         const photoAvatarService = new HeyGenPhotoAvatarService();
@@ -3513,9 +3544,20 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   );
 
   // Check training status
-  app.get("/api/photo-avatars/groups/:groupId/status", async (req, res) => {
+  app.get("/api/photo-avatars/groups/:groupId/status", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Ownership check
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+      if (!dbGroup) {
+        return res.status(404).json({ error: "Avatar group not found" });
+      }
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const status = await photoAvatarService.checkTrainingStatus(groupId);
@@ -3528,9 +3570,20 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Delete avatar group
-  app.delete("/api/photo-avatars/groups/:groupId", async (req, res) => {
+  app.delete("/api/photo-avatars/groups/:groupId", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Ownership check and delete
+      const deleted = await storage.deletePhotoAvatarGroup(groupId, userId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Avatar group not found" });
+      }
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
       await photoAvatarService.deleteAvatarGroup(groupId);
@@ -3595,10 +3648,21 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Add looks to existing avatar group
-  app.post("/api/photo-avatars/groups/:groupId/add-looks", async (req, res) => {
+  app.post("/api/photo-avatars/groups/:groupId/add-looks", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
       const { imageKeys, name } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Ownership check
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+      if (!dbGroup) {
+        return res.status(404).json({ error: "Avatar group not found" });
+      }
 
       if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
         return res.status(400).json({ error: "Image keys array is required" });
