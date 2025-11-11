@@ -120,7 +120,7 @@ export class HeyGenPhotoAvatarService {
   // Get generation status
   async getGenerationStatus(generationId: string) {
     const response = await this.makeRequest(
-      `/photo_avatar/photo/generate/${generationId}`
+      `/photo_avatar/generation/${generationId}`
     );
     return response.data;
   }
