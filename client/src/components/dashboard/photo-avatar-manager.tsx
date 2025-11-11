@@ -268,19 +268,19 @@ export function PhotoAvatarManager() {
           );
           const statusData = await statusRes.json();
 
-          if (statusData.status === "completed" && statusData.image_keys && statusData.image_keys.length > 0) {
+          if (statusData.status === "success" && statusData.image_key_list && statusData.image_key_list.length > 0) {
             clearInterval(pollInterval);
 
             // Automatically create avatar group from generated photos
             try {
               await apiRequest("POST", "/api/photo-avatars/groups", {
                 name: avatarName,
-                imageKey: statusData.image_keys,
+                imageKey: statusData.image_key_list,
               });
 
               toast({
                 title: "✅ Photos Ready!",
-                description: `${statusData.image_keys.length} AI photos for "${avatarName}" are now in your avatar gallery!`,
+                description: `${statusData.image_key_list.length} AI photos for "${avatarName}" are now in your avatar gallery!`,
                 duration: 8000,
               });
 
