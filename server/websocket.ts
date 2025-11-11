@@ -3,7 +3,7 @@ import { Server } from "http";
 import type { IncomingMessage } from "http";
 
 export interface WebSocketMessage {
-  type: "content_published" | "social_post_scheduled" | "notification" | "status_update" | "photo_generated" | "video_created";
+  type: "content_published" | "social_post_scheduled" | "notification" | "status_update" | "photo_generated" | "video_created" | "avatar_group_created" | "motion_added" | "sound_effect_added" | "avatar_ready";
   data: any;
   timestamp: string;
   userId?: number;
@@ -178,6 +178,67 @@ export class RealtimeService {
       data: { message },
       timestamp: new Date().toISOString(),
       userId,
+    });
+  }
+
+  // Notify about avatar group creation
+  notifyAvatarGroupCreated(userId: number, groupId: string, groupName: string, avatarCount: number) {
+    this.sendToUser(userId.toString(), {
+      type: "avatar_group_created",
+      data: {
+        groupId,
+        groupName,
+        avatarCount,
+        message: `Avatar group "${groupName}" created with ${avatarCount} photo${avatarCount !== 1 ? 's' : ''}`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "photo-avatars",
+    });
+  }
+
+  // Notify about motion added to avatar
+  notifyMotionAdded(userId: number, avatarId: string, avatarName: string) {
+    this.sendToUser(userId.toString(), {
+      type: "motion_added",
+      data: {
+        avatarId,
+        avatarName,
+        message: `Motion added to "${avatarName}" - processing started`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "photo-avatars",
+    });
+  }
+
+  // Notify about sound effect added to avatar
+  notifySoundEffectAdded(userId: number, avatarId: string, avatarName: string) {
+    this.sendToUser(userId.toString(), {
+      type: "sound_effect_added",
+      data: {
+        avatarId,
+        avatarName,
+        message: `Sound effect added to "${avatarName}" - processing started`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "photo-avatars",
+    });
+  }
+
+  // Notify when avatar is ready (motion/sound processing complete)
+  notifyAvatarReady(userId: number, avatarId: string, avatarName: string) {
+    this.sendToUser(userId.toString(), {
+      type: "avatar_ready",
+      data: {
+        avatarId,
+        avatarName,
+        message: `Avatar "${avatarName}" is ready!`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "photo-avatars",
     });
   }
 
