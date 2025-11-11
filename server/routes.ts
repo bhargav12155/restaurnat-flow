@@ -2733,23 +2733,6 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  // Video Content endpoints
-  app.get("/api/videos", requireAuth, async (req, res) => {
-    try {
-      const userId = String(req.user?.id);
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const status = req.query.status as string;
-      const videos = await storage.getVideoContent(userId, status);
-      res.json(videos);
-    } catch (error) {
-      console.error("Get videos error:", error);
-      res.status(500).json({ error: "Failed to fetch videos" });
-    }
-  });
-
   // Get video history for authenticated user (all completed videos)
   app.get("/api/videos/history", requireAuth, async (req, res) => {
     try {
