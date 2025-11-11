@@ -82,12 +82,6 @@ const navigationItems = [
     key: "templates",
   },
   {
-    icon: Sparkles,
-    label: "HeyGen Templates",
-    href: "#video-templates",
-    key: "video-templates",
-  },
-  {
     icon: Target,
     label: "Advanced Advertising",
     href: "#advertising",
