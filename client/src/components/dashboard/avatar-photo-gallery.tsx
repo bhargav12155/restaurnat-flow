@@ -228,54 +228,6 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          if (selectedPhoto.id) {
-                            addMotionMutation.mutate(selectedPhoto.id);
-                          }
-                        }}
-                        disabled={addMotionMutation.isPending}
-                        className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
-                        data-testid="button-add-motion"
-                      >
-                        {addMotionMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Adding...
-                          </>
-                        ) : (
-                          <>
-                            <Wand2 className="w-4 h-4 mr-2" />
-                            Add Motion
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (selectedPhoto.id) {
-                            addSoundEffectMutation.mutate(selectedPhoto.id);
-                          }
-                        }}
-                        disabled={addSoundEffectMutation.isPending}
-                        className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
-                        data-testid="button-add-sound"
-                      >
-                        {addSoundEffectMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Adding...
-                          </>
-                        ) : (
-                          <>
-                            <Volume2 className="w-4 h-4 mr-2" />
-                            Add Sound
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
                           if (selectedPhoto.id && confirm('Are you sure you want to delete this avatar? This action cannot be undone.')) {
                             deleteAvatarMutation.mutate(selectedPhoto.id);
                           }
