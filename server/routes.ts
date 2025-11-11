@@ -2124,6 +2124,39 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  app.post("/api/market/refresh", requireAuth, async (req, res) => {
+    try {
+      console.log('🔄 Refreshing market data with AI generation...');
+      
+      // Import and initialize AI market data generator
+      const { AIMarketDataGenerator } = await import('./services/ai-market-generator');
+      const generator = new AIMarketDataGenerator();
+      
+      let generatedData;
+      try {
+        generatedData = await generator.generateOmahaMarketData();
+      } catch (aiError) {
+        console.warn('⚠️  AI generation failed, using fallback data:', aiError);
+        generatedData = generator.getFallbackData();
+      }
+      
+      // Refresh storage with new data
+      const newMarketData = await storage.refreshMarketData(generatedData.neighborhoods);
+      
+      res.json({
+        success: true,
+        data: newMarketData,
+        metadata: generatedData.metadata,
+      });
+    } catch (error) {
+      console.error('❌ Market data refresh error:', error);
+      res.status(500).json({ 
+        error: "Failed to refresh market data",
+        message: (error as Error).message 
+      });
+    }
+  });
+
   app.get("/api/market/intelligence", async (req, res) => {
     try {
       // Import the market intelligence service

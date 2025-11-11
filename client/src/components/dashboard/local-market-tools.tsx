@@ -1,7 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RefreshCw } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { format } from "date-fns";
 
 interface MarketData {
   id: string;
@@ -11,6 +15,7 @@ interface MarketData {
   inventory: string;
   priceGrowth: string;
   trend: "hot" | "rising" | "steady" | "cooling";
+  lastUpdated?: Date | string;
 }
 
 const contentOpportunities = [
@@ -64,8 +69,32 @@ const getTrendIcon = (trend: string) => {
 };
 
 export function LocalMarketTools() {
+  const { toast } = useToast();
+  
   const { data: marketData, isLoading } = useQuery<MarketData[]>({
     queryKey: ["/api/market/data"],
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("/api/market/refresh", {
+        method: "POST",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/market/data"] });
+      toast({
+        title: "Market Data Refreshed",
+        description: "AI has generated fresh market statistics for Omaha neighborhoods.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Refresh Failed",
+        description: error.message || "Could not refresh market data. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   if (isLoading) {
@@ -95,14 +124,40 @@ export function LocalMarketTools() {
   const avgPrice = marketData ? Math.round(marketData.reduce((sum, d) => sum + d.avgPrice, 0) / marketData.length / 1000) : 285;
   const avgDaysOnMarket = marketData ? Math.round(marketData.reduce((sum, d) => sum + d.daysOnMarket, 0) / marketData.length) : 23;
 
+  // Get the most recent lastUpdated timestamp from market data
+  const recordsWithTimestamps = marketData?.filter(d => d.lastUpdated) || [];
+  const lastUpdated = recordsWithTimestamps.length > 0
+    ? new Date(Math.max(...recordsWithTimestamps.map(d => new Date(d.lastUpdated!).getTime())))
+    : null;
+
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-foreground">Local Market Intelligence</CardTitle>
-          <Badge variant="secondary" className="bg-accent/10 text-accent">
-            Live Data
-          </Badge>
+          <div className="space-y-1">
+            <CardTitle className="text-lg font-semibold text-foreground">Local Market Intelligence</CardTitle>
+            {lastUpdated && (
+              <p className="text-xs text-muted-foreground">
+                Last updated: {format(lastUpdated, "MMM d, yyyy 'at' h:mm a")}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="bg-accent/10 text-accent">
+              AI Generated
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending}
+              data-testid="button-refresh-market"
+              className="flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshMutation.isPending ? 'animate-spin' : ''}`} />
+              {refreshMutation.isPending ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
