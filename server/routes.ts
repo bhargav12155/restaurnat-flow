@@ -3727,10 +3727,34 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const { avatarId } = req.params;
 
-      // Ownership validation
+      // First, try to find the avatar in the database (uploaded avatars)
       const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(avatarId, userId);
+      
+      // If not in database, verify ownership via group (AI-generated avatars)
       if (!dbAvatar) {
-        return res.status(404).json({ error: "Avatar not found" });
+        console.log("⚠️ Avatar not in database, checking group ownership via HeyGen API");
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        
+        try {
+          // Get avatar details from HeyGen to find its group
+          const avatarDetails = await photoAvatarService.getAvatarDetails(avatarId);
+          const groupId = avatarDetails?.data?.group_id;
+          
+          if (!groupId) {
+            return res.status(404).json({ error: "Avatar not found" });
+          }
+          
+          // Verify user owns the group
+          const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+          if (!dbGroup) {
+            return res.status(404).json({ error: "Avatar not found" });
+          }
+          
+          console.log("✅ Group ownership verified for AI-generated avatar");
+        } catch (error) {
+          console.error("Failed to verify avatar ownership:", error);
+          return res.status(404).json({ error: "Avatar not found" });
+        }
       }
 
       console.log("🗑️ Deleting individual avatar:", avatarId);
@@ -3738,8 +3762,10 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       const photoAvatarService = new HeyGenPhotoAvatarService();
       await photoAvatarService.deleteIndividualAvatar(avatarId);
 
-      // Delete from database
-      await storage.deletePhotoAvatar(avatarId, userId);
+      // Delete from database if it exists there
+      if (dbAvatar) {
+        await storage.deletePhotoAvatar(avatarId, userId);
+      }
 
       console.log("✅ Individual avatar deleted successfully");
 
