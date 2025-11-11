@@ -38,6 +38,22 @@ This dual-storage approach ensures data durability, reduces dependency on HeyGen
 ### Real-time Communication
 WebSocket connections provide live updates for content generation status, social media posting results, new lead notifications, and system-wide activity feeds. The frontend maintains connection state and handles reconnection logic automatically.
 
+### Engagement Tracking & Analytics
+The platform includes a comprehensive engagement tracking system that monitors anonymous user behavior on agent websites to identify high-quality leads automatically:
+
+**Session Tracking**: Captures user browsing sessions with device fingerprinting, page views, time spent, and navigation patterns. Sessions persist across page loads using sessionStorage and automatically track metrics like total page views, properties viewed, and properties liked.
+
+**Property Interaction Analytics**: Records detailed user interactions including property views, time spent on listings, likes/favorites, and engagement patterns. Each interaction is timestamped and associated with the user's session for comprehensive behavior analysis.
+
+**Automatic Lead Generation**: Implements an engagement scoring algorithm that automatically generates leads when users meet specific thresholds:
+- Score ≥25 triggers lead creation
+- Scoring factors: session duration (300s+ = 20pts, 600s+ = 35pts), multiple property views (3+ = 15pts), property likes (10pts each), high interaction count (5+ = 10pts)
+- Lead quality classification: hot (score ≥40), warm (25-39), cold (<25)
+
+**Client-Side Tracking Library**: JavaScript library (`engagement-tracker.ts`) provides session initialization, heartbeat monitoring (30-second intervals with delta time tracking), property view tracking, like/unlike tracking, and real-time engagement scoring. Uses incremental time deltas to prevent double-counting and ensure accurate session duration metrics.
+
+**Analytics Endpoints**: RESTful API provides engagement overview (sessions, views, likes, leads), recent leads list, property engagement stats (top viewed, like counts), and session details for agent-specific analytics dashboards.
+
 ## External Dependencies
 
 **Database**: PostgreSQL with Neon serverless hosting for scalable database operations
