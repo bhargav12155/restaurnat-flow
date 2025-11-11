@@ -3316,6 +3316,14 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
             });
           }
           console.log(`✅ Persisted ${looks.avatar_list.length} individual avatars to database`);
+          
+          // Send notification
+          realtimeService.notifyAvatarGroupCreated(
+            parseInt(userId),
+            heygenGroup.group_id,
+            name,
+            looks.avatar_list.length
+          );
         }
       } catch (err) {
         console.error("⚠️ Failed to persist individual avatars:", err);
@@ -3851,10 +3859,12 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const result = await photoAvatarService.addMotion(avatarId);
 
-      // Try to update status in database if avatar exists
+      // Get avatar name for notification
+      let avatarName = "Avatar";
       try {
         const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(avatarId, userId);
         if (dbAvatar) {
+          avatarName = dbAvatar.name || avatarName;
           await storage.updatePhotoAvatar(avatarId, userId, { 
             status: 'processing',
             metadata: { ...dbAvatar.metadata, is_motion: true }
@@ -3863,6 +3873,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       } catch (e) {
         console.warn("Could not update avatar in database:", e);
       }
+
+      // Send notification
+      realtimeService.notifyMotionAdded(
+        parseInt(userId),
+        avatarId,
+        avatarName
+      );
 
       res.json(result);
     } catch (error) {
@@ -3907,10 +3924,12 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const result = await photoAvatarService.addSoundEffect(avatarId);
 
-      // Try to update status in database if avatar exists
+      // Get avatar name for notification
+      let avatarName = "Avatar";
       try {
         const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(avatarId, userId);
         if (dbAvatar) {
+          avatarName = dbAvatar.name || avatarName;
           await storage.updatePhotoAvatar(avatarId, userId, { 
             status: 'processing',
             metadata: { ...dbAvatar.metadata, background_sound_effect: true }
@@ -3919,6 +3938,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       } catch (e) {
         console.warn("Could not update avatar in database:", e);
       }
+
+      // Send notification
+      realtimeService.notifySoundEffectAdded(
+        parseInt(userId),
+        avatarId,
+        avatarName
+      );
 
       res.json(result);
     } catch (error) {
