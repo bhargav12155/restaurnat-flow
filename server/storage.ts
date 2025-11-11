@@ -28,7 +28,8 @@ import {
   photoAvatarGroups,
   photoAvatarGroupVoices,
   customVoices,
-  companyProfiles
+  companyProfiles,
+  videoContent as videoContentTable
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -85,9 +86,12 @@ export interface IStorage {
   // Video Content
   getVideoContent(userId: string, status?: string): Promise<VideoContent[]>;
   getVideoById(id: string): Promise<VideoContent | undefined>;
+  getVideoByIdAndUser(id: string, userId: string): Promise<VideoContent | undefined>;
   createVideoContent(video: InsertVideoContent): Promise<VideoContent>;
   updateVideoContent(id: string, updates: Partial<VideoContent>): Promise<VideoContent | undefined>;
+  updateVideoContentWithUserGuard(id: string, userId: string, updates: Partial<VideoContent>): Promise<VideoContent | undefined>;
   deleteVideoContent(id: string): Promise<boolean>;
+  deleteVideoContentWithUserGuard(id: string, userId: string): Promise<boolean>;
 
   // Custom Voices
   listCustomVoices(userId: string): Promise<CustomVoice[]>;
@@ -99,9 +103,11 @@ export interface IStorage {
   createPhotoAvatarGroup(group: InsertPhotoAvatarGroup): Promise<PhotoAvatarGroup>;
   getPhotoAvatarGroup(groupId: string): Promise<PhotoAvatarGroup | undefined>;
   getPhotoAvatarGroupByHeygenId(heygenGroupId: string): Promise<PhotoAvatarGroup | undefined>;
+  getPhotoAvatarGroupByHeygenIdAndUser(heygenGroupId: string, userId: string): Promise<PhotoAvatarGroup | undefined>;
   getPhotoAvatarGroupByImageHash(imageHash: string, userId: string): Promise<PhotoAvatarGroup | undefined>;
   listPhotoAvatarGroups(userId: string): Promise<PhotoAvatarGroup[]>;
   updatePhotoAvatarGroup(id: string, updates: Partial<PhotoAvatarGroup>): Promise<PhotoAvatarGroup | undefined>;
+  deletePhotoAvatarGroup(groupId: string, userId: string): Promise<boolean>;
 
   // Photo Avatar Group Voices
   savePhotoAvatarGroupVoice(voice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice>;
@@ -678,6 +684,46 @@ export class MemStorage implements IStorage {
     return this.videoContent.delete(id);
   }
 
+  async getVideoByIdAndUser(id: string, userId: string): Promise<VideoContent | undefined> {
+    const [video] = await db
+      .select()
+      .from(videoContentTable)
+      .where(
+        and(
+          eq(videoContentTable.id, id),
+          eq(videoContentTable.userId, userId)
+        )
+      )
+      .limit(1);
+    return video;
+  }
+
+  async updateVideoContentWithUserGuard(id: string, userId: string, updates: Partial<VideoContent>): Promise<VideoContent | undefined> {
+    const [updated] = await db
+      .update(videoContentTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(videoContentTable.id, id),
+          eq(videoContentTable.userId, userId)
+        )
+      )
+      .returning();
+    return updated;
+  }
+
+  async deleteVideoContentWithUserGuard(id: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(videoContentTable)
+      .where(
+        and(
+          eq(videoContentTable.id, id),
+          eq(videoContentTable.userId, userId)
+        )
+      );
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
   // Custom Voices
   async listCustomVoices(userId: string): Promise<CustomVoice[]> {
     return await db
@@ -808,6 +854,32 @@ export class MemStorage implements IStorage {
       .where(eq(photoAvatarGroups.id, id))
       .returning();
     return updated;
+  }
+
+  async getPhotoAvatarGroupByHeygenIdAndUser(heygenGroupId: string, userId: string): Promise<PhotoAvatarGroup | undefined> {
+    const [group] = await db
+      .select()
+      .from(photoAvatarGroups)
+      .where(
+        and(
+          eq(photoAvatarGroups.heygenGroupId, heygenGroupId),
+          eq(photoAvatarGroups.userId, userId)
+        )
+      )
+      .limit(1);
+    return group;
+  }
+
+  async deletePhotoAvatarGroup(groupId: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(photoAvatarGroups)
+      .where(
+        and(
+          eq(photoAvatarGroups.heygenGroupId, groupId),
+          eq(photoAvatarGroups.userId, userId)
+        )
+      );
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
   async getCompanyProfile(userId: string): Promise<CompanyProfile | null> {
