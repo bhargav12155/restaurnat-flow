@@ -446,6 +446,30 @@ export function ContentCalendar() {
     },
   });
 
+  const generateContentPlanMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/content/generate-plan', {
+        targetAudience: 'home buyers and sellers',
+        specialties: [],
+      });
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      toast({
+        title: "Content Plan Generated!",
+        description: `Successfully created ${data.posts?.length || 30}-day content calendar`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Generation Failed",
+        description: "Could not generate content plan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const approvePostMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await apiRequest('PATCH', `/api/scheduled-posts/${id}`, { status: 'approved' });
@@ -738,24 +762,44 @@ export function ContentCalendar() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-semibold text-foreground">Content Calendar</CardTitle>
-          <Button 
-            onClick={handleAIScheduling}
-            disabled={isGenerating}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-all duration-200"
-            data-testid="button-ai-schedule"
-          >
-            {isGenerating ? (
-              <>
-                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                Generating...
-              </>
-            ) : (
-              <>
-                <span className="mr-1 text-lg">🤖</span>
-                AI Schedule
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={() => generateContentPlanMutation.mutate()}
+              disabled={generateContentPlanMutation.isPending}
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-md transition-all duration-200"
+              data-testid="button-generate-content-plan"
+            >
+              {generateContentPlanMutation.isPending ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <span className="mr-1 text-lg">📅</span>
+                  Generate 30-Day Plan
+                </>
+              )}
+            </Button>
+            <Button 
+              onClick={handleAIScheduling}
+              disabled={isGenerating}
+              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-all duration-200"
+              data-testid="button-ai-schedule"
+            >
+              {isGenerating ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <span className="mr-1 text-lg">🤖</span>
+                  AI Schedule
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
