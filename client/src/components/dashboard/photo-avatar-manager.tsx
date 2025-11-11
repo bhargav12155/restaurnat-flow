@@ -30,6 +30,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Upload,
   Camera,
   Users,
@@ -775,7 +781,7 @@ export function PhotoAvatarManager() {
             </TabsTrigger>
             <TabsTrigger value="upload" data-testid="tab-upload">
               <Upload className="w-4 h-4 mr-2" />
-              Upload Photos
+              Upload Avatars
             </TabsTrigger>
             <TabsTrigger value="voice" data-testid="tab-voice">
               <Mic className="w-4 h-4 mr-2" />
@@ -1542,18 +1548,27 @@ export function PhotoAvatarManager() {
                         {/* Compact Action Buttons */}
                         <div className="flex gap-1.5 pt-1">
                           {group.status === "pending" && (
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                trainGroupMutation.mutate({ groupId: group.group_id })
-                              }
-                              disabled={trainGroupMutation.isPending}
-                              data-testid={`button-train-${group.group_id}`}
-                              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 h-7 text-[10px] px-2"
-                            >
-                              <UserPlus className="w-3 h-3 mr-1" />
-                              Train
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      trainGroupMutation.mutate({ groupId: group.group_id })
+                                    }
+                                    disabled={trainGroupMutation.isPending}
+                                    data-testid={`button-train-${group.group_id}`}
+                                    className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 h-7 text-[10px] px-2"
+                                  >
+                                    <UserPlus className="w-3 h-3 mr-1" />
+                                    Train
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>You need to train to make sure you can generate variations of the avatar</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
 
                           {group.status === "ready" && (
