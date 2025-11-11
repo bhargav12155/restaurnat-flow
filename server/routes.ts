@@ -3410,12 +3410,18 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           const groupId = dbGroup.heygenGroupId;
           let looksCount = 0;
           let heygenStatus = dbGroup.status;
+          let previewImage = dbGroup.s3ImageUrl;
 
           try {
             const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
             looksCount = Array.isArray(looks?.avatar_list)
               ? looks.avatar_list.length
               : 0;
+            
+            // If s3ImageUrl is not available, use the first avatar's image from HeyGen
+            if (!previewImage && looks?.avatar_list && looks.avatar_list.length > 0) {
+              previewImage = looks.avatar_list[0].image_url;
+            }
           } catch (e) {
             console.warn(
               `⚠️ Failed to fetch looks for group ${groupId}:`,
@@ -3456,7 +3462,8 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
               status === "processing" || rawStatus === "processing"
                 ? dbGroup.trainingProgress || 50
                 : undefined,
-            preview_image: dbGroup.s3ImageUrl,
+            preview_image: previewImage,
+            num_looks: looksCount,
           };
         })
       );
