@@ -172,7 +172,7 @@ export function VideoTemplates() {
                   onClick={() => handleTemplateSelect(template)}
                   data-testid={`card-template-${template.template_id}`}
                 >
-                  <div className="aspect-video bg-muted relative overflow-hidden">
+                  <div className="aspect-video bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 relative overflow-hidden">
                     {template.thumbnail_image_url ? (
                       <img
                         src={template.thumbnail_image_url}
@@ -180,8 +180,11 @@ export function VideoTemplates() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Video className="w-12 h-12 text-muted-foreground" />
+                      <div className="w-full h-full flex flex-col items-center justify-center p-6 bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600">
+                        <Video className="w-16 h-16 text-white mb-3 opacity-90" />
+                        <h3 className="text-white font-semibold text-center text-sm leading-tight">
+                          {template.name}
+                        </h3>
                       </div>
                     )}
                     <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
