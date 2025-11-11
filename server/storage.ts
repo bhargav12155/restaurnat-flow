@@ -36,7 +36,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -640,57 +640,69 @@ export class MemStorage implements IStorage {
 
   // Video Content methods
   async getVideoContent(userId: string, status?: string): Promise<VideoContent[]> {
-    const userVideos = Array.from(this.videoContent.values()).filter(video => video.userId === userId);
+    const conditions = [eq(videoContentTable.userId, userId)];
     if (status) {
-      return userVideos.filter(video => video.status === status);
+      conditions.push(eq(videoContentTable.status, status));
     }
-    return userVideos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    return await db
+      .select()
+      .from(videoContentTable)
+      .where(and(...conditions))
+      .orderBy(desc(videoContentTable.createdAt));
   }
 
   async getVideoById(id: string): Promise<VideoContent | undefined> {
-    return this.videoContent.get(id);
+    const [video] = await db
+      .select()
+      .from(videoContentTable)
+      .where(eq(videoContentTable.id, id))
+      .limit(1);
+    return video;
   }
 
   async createVideoContent(insertVideo: InsertVideoContent): Promise<VideoContent> {
-    const id = randomUUID();
-    const video: VideoContent = {
-      ...insertVideo,
-      id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      avatarId: insertVideo.avatarId || null,
-      topic: insertVideo.topic || null,
-      neighborhood: insertVideo.neighborhood || null,
-      videoType: insertVideo.videoType || null,
-      duration: insertVideo.duration || null,
-      thumbnailUrl: insertVideo.thumbnailUrl || null,
-      videoUrl: insertVideo.videoUrl || null,
-      youtubeUrl: insertVideo.youtubeUrl || null,
-      youtubeVideoId: insertVideo.youtubeVideoId || null,
-      tags: insertVideo.tags || null,
-      seoOptimized: insertVideo.seoOptimized || false,
-      metadata: insertVideo.metadata || null,
-      status: insertVideo.status || "draft"
-    };
-    this.videoContent.set(id, video);
+    const [video] = await db
+      .insert(videoContentTable)
+      .values({
+        ...insertVideo,
+        avatarId: insertVideo.avatarId || null,
+        topic: insertVideo.topic || null,
+        neighborhood: insertVideo.neighborhood || null,
+        videoType: insertVideo.videoType || null,
+        duration: insertVideo.duration || null,
+        thumbnailUrl: insertVideo.thumbnailUrl || null,
+        videoUrl: insertVideo.videoUrl || null,
+        youtubeUrl: insertVideo.youtubeUrl || null,
+        youtubeVideoId: insertVideo.youtubeVideoId || null,
+        tags: insertVideo.tags || null,
+        seoOptimized: insertVideo.seoOptimized || false,
+        metadata: insertVideo.metadata || null,
+        status: insertVideo.status || "draft",
+        platform: insertVideo.platform || null,
+        heygenVideoId: insertVideo.heygenVideoId || null,
+        heygenAvatarId: insertVideo.heygenAvatarId || null,
+        heygenVoiceId: insertVideo.heygenVoiceId || null,
+        heygenTemplateId: insertVideo.heygenTemplateId || null,
+      })
+      .returning();
     return video;
   }
 
   async updateVideoContent(id: string, updates: Partial<VideoContent>): Promise<VideoContent | undefined> {
-    const video = this.videoContent.get(id);
-    if (!video) return undefined;
-    
-    const updated = { 
-      ...video, 
-      ...updates, 
-      updatedAt: new Date()
-    };
-    this.videoContent.set(id, updated);
+    const [updated] = await db
+      .update(videoContentTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(videoContentTable.id, id))
+      .returning();
     return updated;
   }
 
   async deleteVideoContent(id: string): Promise<boolean> {
-    return this.videoContent.delete(id);
+    const result = await db
+      .delete(videoContentTable)
+      .where(eq(videoContentTable.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
   }
 
   async getVideoByIdAndUser(id: string, userId: string): Promise<VideoContent | undefined> {

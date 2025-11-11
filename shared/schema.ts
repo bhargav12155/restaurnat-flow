@@ -213,7 +213,7 @@ export const videoContent = pgTable("video_content", {
   topic: text("topic"), // Generated topic or custom topic
   neighborhood: text("neighborhood"),
   videoType: text("video_type"), // 'market_update', 'neighborhood_tour', 'buyer_tips', etc.
-  platform: text("platform").default("youtube"), // 'youtube', 'reels', 'story'
+  platform: text("platform"), // 'youtube', 'reels', 'story'
   duration: integer("duration"), // in seconds
   thumbnailUrl: text("thumbnail_url"),
   videoUrl: text("video_url"), // Generated video URL
@@ -225,6 +225,10 @@ export const videoContent = pgTable("video_content", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  heygenVideoId: text("heygen_video_id"),
+  heygenAvatarId: text("heygen_avatar_id"),
+  heygenVoiceId: text("heygen_voice_id"),
+  heygenTemplateId: text("heygen_template_id"),
 });
 
 // =====================================================
