@@ -10,6 +10,7 @@ import {
   boolean,
   real,
   unique,
+  serial,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -730,3 +731,117 @@ export const platformScoreSchema = z.object({
 export type MarketSignals = z.infer<typeof marketSignalsSchema>;
 export type ContentProfile = z.infer<typeof contentProfileSchema>;
 export type PlatformScore = z.infer<typeof platformScoreSchema>;
+
+// =====================================================
+// ENGAGEMENT TRACKING TABLES
+// =====================================================
+
+// User Sessions - Track anonymous user browsing sessions
+export const userSessions = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull().unique(),
+  publicUserId: integer("public_user_id").references(() => publicUsers.id),
+  agentSlug: text("agent_slug").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  deviceType: text("device_type"),
+  browserName: text("browser_name"),
+  operatingSystem: text("operating_system"),
+  country: text("country"),
+  city: text("city"),
+  firstPageVisited: text("first_page_visited"),
+  lastPageVisited: text("last_page_visited"),
+  totalTimeSpentSeconds: integer("total_time_spent_seconds").default(0),
+  totalPageViews: integer("total_page_views").default(0),
+  totalPropertiesViewed: integer("total_properties_viewed").default(0),
+  totalPropertiesLiked: integer("total_properties_liked").default(0),
+  conversionType: text("conversion_type"),
+  conversionValue: text("conversion_value"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Property Interactions - Track individual user interactions
+export const propertyInteractions = pgTable("property_interactions", {
+  id: serial("id").primaryKey(),
+  publicUserId: integer("public_user_id").references(() => publicUsers.id),
+  propertyId: text("property_id"),
+  agentSlug: text("agent_slug").notNull(),
+  interactionType: text("interaction_type").notNull(),
+  interactionValue: text("interaction_value"),
+  timeSpentSeconds: integer("time_spent_seconds").default(0),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  sessionId: text("session_id"),
+  referrerUrl: text("referrer_url"),
+  currentUrl: text("current_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Property Likes - Track property favorites
+export const propertyLikes = pgTable("property_likes", {
+  id: serial("id").primaryKey(),
+  publicUserId: integer("public_user_id").references(() => publicUsers.id),
+  propertyId: text("property_id").notNull(),
+  agentSlug: text("agent_slug").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  sessionId: text("session_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Engagement Leads - Auto-generated leads from high engagement
+export const engagementLeads = pgTable("engagement_leads", {
+  id: serial("id").primaryKey(),
+  publicUserId: integer("public_user_id").references(() => publicUsers.id),
+  sessionId: text("session_id").references(() => userSessions.sessionId),
+  agentId: integer("agent_id").references(() => users.id),
+  agentSlug: text("agent_slug").notNull(),
+  engagementScore: integer("engagement_score").default(0),
+  engagementReason: text("engagement_reason").notNull(),
+  engagementDetails: jsonb("engagement_details"),
+  mostViewedPropertyId: text("most_viewed_property_id"),
+  mostTimeSpentPropertyId: text("most_time_spent_property_id"),
+  likedPropertyIds: jsonb("liked_property_ids"),
+  detectedEmail: text("detected_email"),
+  detectedPhone: text("detected_phone"),
+  detectedName: text("detected_name"),
+  leadQuality: text("lead_quality").default("warm"),
+  leadStatus: text("lead_status").default("auto_generated"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+  convertedToContactAt: timestamp("converted_to_contact_at"),
+  contactedAt: timestamp("contacted_at"),
+});
+
+export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPropertyInteractionSchema = createInsertSchema(propertyInteractions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPropertyLikeSchema = createInsertSchema(propertyLikes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertEngagementLeadSchema = createInsertSchema(engagementLeads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type UserSession = typeof userSessions.$inferSelect;
+export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
+export type PropertyInteraction = typeof propertyInteractions.$inferSelect;
+export type InsertPropertyInteraction = z.infer<typeof insertPropertyInteractionSchema>;
+export type PropertyLike = typeof propertyLikes.$inferSelect;
+export type InsertPropertyLike = z.infer<typeof insertPropertyLikeSchema>;
+export type EngagementLead = typeof engagementLeads.$inferSelect;
+export type InsertEngagementLead = z.infer<typeof insertEngagementLeadSchema>;

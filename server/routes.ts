@@ -5850,6 +5850,482 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // Serve uploaded files statically
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+  // ====================================
+  // ENGAGEMENT TRACKING & ANALYTICS ENDPOINTS
+  // ====================================
+
+  // Track user session
+  app.post("/api/track/session", async (req, res) => {
+    try {
+      const { sessionId, agentSlug, pageVisited, deviceType } = req.body;
+
+      if (!sessionId || !agentSlug) {
+        return res.status(400).json({ error: "sessionId and agentSlug are required" });
+      }
+
+      // Import tracking schemas
+      const { userSessions } = await import("@shared/schema");
+      const { sql: drizzleSql, eq, and } = await import("drizzle-orm");
+
+      // Check if session exists
+      const existing = await db
+        .select()
+        .from(userSessions)
+        .where(eq(userSessions.sessionId, sessionId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Update existing session
+        await db
+          .update(userSessions)
+          .set({
+            lastPageVisited: pageVisited,
+            totalPageViews: drizzleSql`${userSessions.totalPageViews} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(userSessions.sessionId, sessionId));
+      } else {
+        // Create new session
+        await db.insert(userSessions).values({
+          sessionId,
+          agentSlug,
+          firstPageVisited: pageVisited || "/",
+          lastPageVisited: pageVisited || "/",
+          deviceType: deviceType || "desktop",
+          ipAddress: (req.ip || "").substring(0, 50),
+          userAgent: (req.get("user-agent") || "").substring(0, 500),
+          totalPageViews: 1,
+          isActive: true,
+        });
+      }
+
+      res.json({ success: true, sessionId });
+    } catch (error) {
+      console.error("❌ Error tracking session:", error);
+      res.status(500).json({ error: "Failed to track session" });
+    }
+  });
+
+  // Track property interaction
+  app.post("/api/track/property-interaction", async (req, res) => {
+    try {
+      const {
+        sessionId,
+        agentSlug,
+        propertyId,
+        interactionType,
+        interactionValue,
+        timeSpentSeconds,
+        currentUrl,
+      } = req.body;
+
+      if (!agentSlug || !interactionType) {
+        return res.status(400).json({ error: "agentSlug and interactionType are required" });
+      }
+
+      const { propertyInteractions, userSessions } = await import("@shared/schema");
+      const { sql: drizzleSql, eq } = await import("drizzle-orm");
+
+      // Track the interaction
+      await db.insert(propertyInteractions).values({
+        propertyId: propertyId || null,
+        agentSlug,
+        interactionType,
+        interactionValue: interactionValue || null,
+        timeSpentSeconds: timeSpentSeconds || 0,
+        currentUrl: currentUrl || null,
+        sessionId: sessionId || null,
+        ipAddress: (req.ip || "").substring(0, 50),
+        userAgent: (req.get("user-agent") || "").substring(0, 500),
+      });
+
+      // Update session counters if applicable
+      if (sessionId) {
+        if (interactionType === "view" && propertyId) {
+          await db
+            .update(userSessions)
+            .set({
+              totalPropertiesViewed: drizzleSql`${userSessions.totalPropertiesViewed} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+
+        if (timeSpentSeconds && timeSpentSeconds > 0) {
+          await db
+            .update(userSessions)
+            .set({
+              totalTimeSpentSeconds: drizzleSql`${userSessions.totalTimeSpentSeconds} + ${timeSpentSeconds}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("❌ Error tracking interaction:", error);
+      res.status(500).json({ error: "Failed to track interaction" });
+    }
+  });
+
+  // Track property like
+  app.post("/api/track/property-like", async (req, res) => {
+    try {
+      const { sessionId, agentSlug, propertyId, liked } = req.body;
+
+      if (!agentSlug || !propertyId) {
+        return res.status(400).json({ error: "agentSlug and propertyId are required" });
+      }
+
+      const { propertyLikes, userSessions } = await import("@shared/schema");
+      const { eq, and, sql: drizzleSql } = await import("drizzle-orm");
+
+      if (liked) {
+        // Add like
+        await db.insert(propertyLikes).values({
+          propertyId,
+          agentSlug,
+          sessionId: sessionId || null,
+          ipAddress: (req.ip || "").substring(0, 50),
+          userAgent: (req.get("user-agent") || "").substring(0, 500),
+        });
+
+        // Update session counter
+        if (sessionId) {
+          await db
+            .update(userSessions)
+            .set({
+              totalPropertiesLiked: drizzleSql`${userSessions.totalPropertiesLiked} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+      } else {
+        // Remove like
+        const conditions = [eq(propertyLikes.propertyId, propertyId)];
+        if (sessionId) {
+          conditions.push(eq(propertyLikes.sessionId, sessionId));
+        }
+
+        await db.delete(propertyLikes).where(and(...conditions));
+
+        // Update session counter
+        if (sessionId) {
+          await db
+            .update(userSessions)
+            .set({
+              totalPropertiesLiked: drizzleSql`GREATEST(${userSessions.totalPropertiesLiked} - 1, 0)`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("❌ Error tracking like:", error);
+      res.status(500).json({ error: "Failed to track like" });
+    }
+  });
+
+  // Generate engagement lead
+  app.post("/api/track/generate-engagement-lead", async (req, res) => {
+    try {
+      const { sessionId, agentSlug } = req.body;
+
+      if (!sessionId || !agentSlug) {
+        return res.status(400).json({ error: "sessionId and agentSlug required" });
+      }
+
+      const { engagementLeads, userSessions, propertyInteractions, propertyLikes } = await import("@shared/schema");
+      const { eq, and, sql: drizzleSql, desc } = await import("drizzle-orm");
+
+      // Check if lead already exists for this session
+      const existingLead = await db
+        .select()
+        .from(engagementLeads)
+        .where(eq(engagementLeads.sessionId, sessionId))
+        .limit(1);
+
+      if (existingLead.length > 0) {
+        return res.json({ success: true, leadId: existingLead[0].id, alreadyExists: true });
+      }
+
+      // Get session data
+      const session = await db
+        .select()
+        .from(userSessions)
+        .where(eq(userSessions.sessionId, sessionId))
+        .limit(1);
+
+      if (session.length === 0) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Calculate engagement score
+      const sessionData = session[0];
+      let score = 0;
+
+      if (sessionData.totalTimeSpentSeconds > 300) score += 20;
+      if (sessionData.totalPropertiesViewed > 3) score += 15;
+      if (sessionData.totalPropertiesLiked > 0) score += sessionData.totalPropertiesLiked * 10;
+
+      // Get liked properties
+      const likedProps = await db
+        .select()
+        .from(propertyLikes)
+        .where(eq(propertyLikes.sessionId, sessionId));
+
+      const likedPropertyIds = likedProps.map((p) => p.propertyId);
+
+      // Determine reason
+      let reason = "high_engagement";
+      if (sessionData.totalPropertiesLiked >= 2) reason = "liked_multiple_properties";
+      else if (sessionData.totalTimeSpentSeconds > 600) reason = "spent_long_time_on_site";
+      else if (sessionData.totalPropertiesViewed > 5) reason = "viewed_many_properties";
+
+      // Determine quality
+      let quality = "warm";
+      if (score >= 40) quality = "hot";
+      else if (score < 25) quality = "cold";
+
+      // Create engagement lead
+      const lead = await db
+        .insert(engagementLeads)
+        .values({
+          sessionId,
+          agentSlug,
+          engagementScore: score,
+          engagementReason: reason,
+          engagementDetails: {
+            timeSpent: sessionData.totalTimeSpentSeconds,
+            propertiesViewed: sessionData.totalPropertiesViewed,
+            propertiesLiked: sessionData.totalPropertiesLiked,
+          },
+          likedPropertyIds: likedPropertyIds.length > 0 ? likedPropertyIds : null,
+          leadQuality: quality,
+          leadStatus: "auto_generated",
+          ipAddress: sessionData.ipAddress,
+          userAgent: sessionData.userAgent,
+        })
+        .returning();
+
+      console.log(`✅ Generated ${quality} lead for session ${sessionId} (score: ${score})`);
+
+      res.json({ success: true, leadId: lead[0].id, score, quality });
+    } catch (error) {
+      console.error("❌ Error generating engagement lead:", error);
+      res.status(500).json({ error: "Failed to generate lead" });
+    }
+  });
+
+  // ====================================
+  // ANALYTICS ENDPOINTS
+  // ====================================
+
+  // Get engagement overview for agent
+  app.get("/api/analytics/engagement/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const { userSessions, propertyInteractions, propertyLikes, engagementLeads } = await import("@shared/schema");
+      const { eq, and, gte, sql: drizzleSql, count } = await import("drizzle-orm");
+
+      // Get date range (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Total sessions
+      const totalSessionsResult = await db
+        .select({ count: count() })
+        .from(userSessions)
+        .where(
+          and(
+            eq(userSessions.agentSlug, agentSlug),
+            gte(userSessions.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Active sessions (visited in last 24 hours)
+      const oneDayAgo = new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+      const activeSessionsResult = await db
+        .select({ count: count() })
+        .from(userSessions)
+        .where(
+          and(
+            eq(userSessions.agentSlug, agentSlug),
+            eq(userSessions.isActive, true),
+            gte(userSessions.updatedAt, oneDayAgo)
+          )
+        );
+
+      // Total property views
+      const propertyViewsResult = await db
+        .select({ count: count() })
+        .from(propertyInteractions)
+        .where(
+          and(
+            eq(propertyInteractions.agentSlug, agentSlug),
+            eq(propertyInteractions.interactionType, "view"),
+            gte(propertyInteractions.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Total likes
+      const likesResult = await db
+        .select({ count: count() })
+        .from(propertyLikes)
+        .where(
+          and(
+            eq(propertyLikes.agentSlug, agentSlug),
+            gte(propertyLikes.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Total engagement leads
+      const leadsResult = await db
+        .select({ count: count() })
+        .from(engagementLeads)
+        .where(
+          and(
+            eq(engagementLeads.agentSlug, agentSlug),
+            gte(engagementLeads.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Hot leads (score >= 40)
+      const hotLeadsResult = await db
+        .select({ count: count() })
+        .from(engagementLeads)
+        .where(
+          and(
+            eq(engagementLeads.agentSlug, agentSlug),
+            eq(engagementLeads.leadQuality, "hot"),
+            gte(engagementLeads.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Average session time
+      const avgTimeResult = await db
+        .select({
+          avgTime: drizzleSql<number>`AVG(${userSessions.totalTimeSpentSeconds})`,
+        })
+        .from(userSessions)
+        .where(
+          and(
+            eq(userSessions.agentSlug, agentSlug),
+            gte(userSessions.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      res.json({
+        totalSessions: totalSessionsResult[0]?.count || 0,
+        activeSessions: activeSessionsResult[0]?.count || 0,
+        totalPropertyViews: propertyViewsResult[0]?.count || 0,
+        totalLikes: likesResult[0]?.count || 0,
+        totalLeads: leadsResult[0]?.count || 0,
+        hotLeads: hotLeadsResult[0]?.count || 0,
+        averageSessionTime: Math.round(avgTimeResult[0]?.avgTime || 0),
+      });
+    } catch (error) {
+      console.error("❌ Error fetching engagement analytics:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  // Get recent engagement leads
+  app.get("/api/analytics/leads/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      
+      const { engagementLeads } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+
+      const leads = await db
+        .select()
+        .from(engagementLeads)
+        .where(eq(engagementLeads.agentSlug, agentSlug))
+        .orderBy(desc(engagementLeads.createdAt))
+        .limit(limit);
+
+      res.json(leads);
+    } catch (error) {
+      console.error("❌ Error fetching leads:", error);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
+  // Get property engagement stats
+  app.get("/api/analytics/properties/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const { propertyInteractions, propertyLikes } = await import("@shared/schema");
+      const { eq, and, sql: drizzleSql } = await import("drizzle-orm");
+
+      // Get top properties by views
+      const topViewed = await db
+        .select({
+          propertyId: propertyInteractions.propertyId,
+          viewCount: drizzleSql<number>`COUNT(*)`,
+          totalTimeSpent: drizzleSql<number>`SUM(${propertyInteractions.timeSpentSeconds})`,
+        })
+        .from(propertyInteractions)
+        .where(
+          and(
+            eq(propertyInteractions.agentSlug, agentSlug),
+            eq(propertyInteractions.interactionType, "view")
+          )
+        )
+        .groupBy(propertyInteractions.propertyId)
+        .orderBy(drizzleSql`COUNT(*) DESC`)
+        .limit(10);
+
+      // Get like counts
+      const likeCounts = await db
+        .select({
+          propertyId: propertyLikes.propertyId,
+          likeCount: drizzleSql<number>`COUNT(*)`,
+        })
+        .from(propertyLikes)
+        .where(eq(propertyLikes.agentSlug, agentSlug))
+        .groupBy(propertyLikes.propertyId);
+
+      res.json({
+        topViewed,
+        likeCounts,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching property analytics:", error);
+      res.status(500).json({ error: "Failed to fetch property analytics" });
+    }
+  });
+
+  // Get session details
+  app.get("/api/analytics/sessions/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      const { userSessions } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+
+      const sessions = await db
+        .select()
+        .from(userSessions)
+        .where(eq(userSessions.agentSlug, agentSlug))
+        .orderBy(desc(userSessions.updatedAt))
+        .limit(limit);
+
+      res.json(sessions);
+    } catch (error) {
+      console.error("❌ Error fetching sessions:", error);
+      res.status(500).json({ error: "Failed to fetch sessions" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
