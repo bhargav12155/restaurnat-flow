@@ -338,6 +338,15 @@ export class HeyGenPhotoAvatarService {
     return response.data;
   }
 
+  // Get individual avatar details
+  async getAvatarDetails(avatarId: string) {
+    const response = await this.makeRequest(
+      `/photo_avatar/${avatarId}`,
+      "GET"
+    );
+    return response;
+  }
+
   // Delete individual avatar (photo/look within a group)
   async deleteIndividualAvatar(avatarId: string) {
     const response = await this.makeRequest(

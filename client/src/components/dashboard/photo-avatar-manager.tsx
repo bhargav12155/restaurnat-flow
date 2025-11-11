@@ -1278,13 +1278,13 @@ export function PhotoAvatarManager() {
                   <SelectContent>
                     {Array.isArray(avatarGroups) &&
                       avatarGroups
-                        .filter((g: AvatarGroup) => g.status === "ready")
+                        .filter((g: AvatarGroup) => g.status !== "failed")
                         .map((group: AvatarGroup) => (
                           <SelectItem
                             key={group.group_id}
                             value={group.group_id}
                           >
-                            {group.name}
+                            {group.name} {group.status !== "ready" && `(${group.status})`}
                           </SelectItem>
                         ))}
                   </SelectContent>
