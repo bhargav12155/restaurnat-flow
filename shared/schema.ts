@@ -274,6 +274,7 @@ export const marketData = pgTable("market_data", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Make market data user-specific
   neighborhood: text("neighborhood").notNull(),
   avgPrice: integer("avg_price"),
   daysOnMarket: integer("days_on_market"),
@@ -430,6 +431,7 @@ export const insertSEOKeywordSchema = createInsertSchema(seoKeywords).omit({
 
 export const insertMarketDataSchema = createInsertSchema(marketData).omit({
   id: true,
+  lastUpdated: true,
 });
 
 export const insertAnalyticsSchema = createInsertSchema(analytics).omit({
