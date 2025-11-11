@@ -184,10 +184,10 @@ export function VideoGenerationManager() {
     script?: string;
     duration?: number;
   }>>({
-    queryKey: ["/api/videos", "ready"],
+    queryKey: ["/api/videos"],
     select: (data: any) => {
-      // Filter for ready videos
-      return (data || []).filter((v: any) => 
+      // Filter for ready videos - handle undefined/null data from cached responses
+      return (data ?? []).filter((v: any) => 
         v.status === "ready" || v.status === "uploaded" || v.status === "completed"
       );
     },
