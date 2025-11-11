@@ -80,6 +80,8 @@ export function VideoGenerationManager() {
     null
   );
   const [showVideoDialog, setShowVideoDialog] = useState(false);
+  const [selectedLibraryVideo, setSelectedLibraryVideo] = useState<any | null>(null);
+  const [showLibraryVideoDialog, setShowLibraryVideoDialog] = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -169,6 +171,26 @@ export function VideoGenerationManager() {
     queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "looks"],
     enabled: !!selectedAvatarGroup,
     refetchInterval: selectedAvatarGroup ? 7000 : false,
+  });
+
+  // Fetch user's completed videos
+  const { data: completedVideos = [] } = useQuery<Array<{
+    id: string;
+    title: string;
+    videoUrl: string;
+    thumbnailUrl?: string;
+    status: string;
+    createdAt?: string;
+    script?: string;
+    duration?: number;
+  }>>({
+    queryKey: ["/api/videos", "ready"],
+    select: (data: any) => {
+      // Filter for ready videos
+      return (data || []).filter((v: any) => 
+        v.status === "ready" || v.status === "uploaded" || v.status === "completed"
+      );
+    },
   });
 
   // Generate video mutation
@@ -330,6 +352,7 @@ export function VideoGenerationManager() {
     }) || [];
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="text-xl font-semibold text-foreground flex items-center">
@@ -754,5 +777,151 @@ export function VideoGenerationManager() {
         </DialogContent>
       </Dialog>
     </Card>
+
+    {/* My Generated Videos Section */}
+    {completedVideos.length > 0 && (
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="text-xl font-semibold text-foreground flex items-center">
+            <Play className="mr-2 h-5 w-5 text-[#D4AF37]" />
+            My Generated Videos
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Previously generated avatar videos
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {completedVideos.map((video) => (
+              <button
+                key={video.id}
+                onClick={() => {
+                  setSelectedLibraryVideo(video);
+                  setShowLibraryVideoDialog(true);
+                }}
+                className="group relative bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-[#D4AF37] transition-all cursor-pointer"
+                data-testid={`video-thumbnail-${video.id}`}
+              >
+                {/* Thumbnail */}
+                <div className="relative aspect-video bg-black">
+                  {video.thumbnailUrl ? (
+                    <img
+                      src={video.thumbnailUrl}
+                      alt={video.title}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = 'https://ui-avatars.com/api/?name=Video&background=D4AF37&color=fff&size=400';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                      <Video className="w-12 h-12 text-gray-600" />
+                    </div>
+                  )}
+                  
+                  {/* Play Overlay */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="bg-[#D4AF37] rounded-full p-3">
+                      <Play className="w-6 h-6 text-white fill-white" />
+                    </div>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="absolute top-2 right-2">
+                    <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
+                      Ready
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Video Info */}
+                <div className="p-3 space-y-1">
+                  <h4 className="font-medium text-sm line-clamp-1 text-left">
+                    {video.title || 'Untitled Video'}
+                  </h4>
+                  {video.createdAt && (
+                    <p className="text-xs text-gray-500">
+                      {new Date(video.createdAt).toLocaleDateString()}
+                    </p>
+                  )}
+                  {video.duration && (
+                    <p className="text-xs text-gray-500">
+                      {Math.floor(video.duration / 60)}:{String(video.duration % 60).padStart(2, '0')}
+                    </p>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )}
+
+    {/* Library Video Player Dialog */}
+    <Dialog open={showLibraryVideoDialog} onOpenChange={setShowLibraryVideoDialog}>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle className="font-playfair text-2xl">
+            {selectedLibraryVideo?.title || 'Video Preview'}
+          </DialogTitle>
+          <DialogDescription>
+            Generated on {selectedLibraryVideo?.createdAt ? new Date(selectedLibraryVideo.createdAt).toLocaleDateString() : 'N/A'}
+          </DialogDescription>
+        </DialogHeader>
+
+        {selectedLibraryVideo && (
+          <div className="space-y-4">
+            {/* Video Player */}
+            <div className="border-2 border-[#D4AF37]/30 rounded-lg overflow-hidden bg-black">
+              <video
+                controls
+                className="w-full aspect-video"
+                src={selectedLibraryVideo.videoUrl}
+                autoPlay
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
+
+            {/* Video Details */}
+            {selectedLibraryVideo.script && (
+              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold mb-2">Script</h4>
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  {selectedLibraryVideo.script}
+                </p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (selectedLibraryVideo?.videoUrl) {
+                    window.open(selectedLibraryVideo.videoUrl, '_blank');
+                  }
+                }}
+                className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                data-testid="button-download-library-video"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setShowLibraryVideoDialog(false)}
+                className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
