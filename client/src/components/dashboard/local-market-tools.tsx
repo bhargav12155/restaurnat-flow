@@ -77,9 +77,7 @@ export function LocalMarketTools() {
 
   const refreshMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("/api/market/refresh", {
-        method: "POST",
-      });
+      return await apiRequest("POST", "/api/market/refresh");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/market/data"] });
