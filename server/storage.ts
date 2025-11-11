@@ -64,11 +64,11 @@ export interface IStorage {
   updateSeoKeyword(id: string, updates: Partial<SeoKeyword>): Promise<SeoKeyword | undefined>;
 
   // Market Data
-  getMarketData(): Promise<MarketData[]>;
-  getMarketDataByNeighborhood(neighborhood: string): Promise<MarketData | undefined>;
+  getMarketData(userId: string): Promise<MarketData[]>;
+  getMarketDataByNeighborhood(userId: string, neighborhood: string): Promise<MarketData | undefined>;
   createMarketData(data: InsertMarketData): Promise<MarketData>;
   updateMarketData(id: string, updates: Partial<MarketData>): Promise<MarketData | undefined>;
-  refreshMarketData(neighborhoods: InsertMarketData[]): Promise<MarketData[]>;
+  refreshMarketData(userId: string, neighborhoods: InsertMarketData[]): Promise<MarketData[]>;
 
   // Analytics
   getAnalytics(userId: string, metric?: string): Promise<Analytics[]>;
@@ -174,6 +174,7 @@ export class MemStorage implements IStorage {
       const marketId = randomUUID();
       const market: MarketData = {
         id: marketId,
+        userId, // Associate market data with the seeded user
         neighborhood: n.name,
         avgPrice: n.avgPrice,
         daysOnMarket: n.daysOnMarket,
@@ -362,12 +363,12 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async getMarketData(): Promise<MarketData[]> {
-    return Array.from(this.marketData.values());
+  async getMarketData(userId: string): Promise<MarketData[]> {
+    return Array.from(this.marketData.values()).filter(data => data.userId === userId);
   }
 
-  async getMarketDataByNeighborhood(neighborhood: string): Promise<MarketData | undefined> {
-    return Array.from(this.marketData.values()).find(data => data.neighborhood === neighborhood);
+  async getMarketDataByNeighborhood(userId: string, neighborhood: string): Promise<MarketData | undefined> {
+    return Array.from(this.marketData.values()).find(data => data.userId === userId && data.neighborhood === neighborhood);
   }
 
   async createMarketData(insertData: InsertMarketData): Promise<MarketData> {
@@ -395,14 +396,24 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async refreshMarketData(neighborhoods: InsertMarketData[]): Promise<MarketData[]> {
-    // Clear existing market data
-    this.marketData.clear();
+  async refreshMarketData(userId: string, neighborhoods: InsertMarketData[]): Promise<MarketData[]> {
+    // Clear existing market data for this user only
+    const userMarketDataIds = Array.from(this.marketData.entries())
+      .filter(([_, data]) => data.userId === userId)
+      .map(([id, _]) => id);
     
-    // Create new market data from AI-generated neighborhoods
+    userMarketDataIds.forEach(id => this.marketData.delete(id));
+    
+    // Create new market data from AI-generated neighborhoods for this user
     const newMarketData: MarketData[] = [];
     
     for (const neighborhood of neighborhoods) {
+      // Verify userId matches (security check)
+      if (neighborhood.userId !== userId) {
+        console.warn(`⚠️  Skipping neighborhood with mismatched userId: ${neighborhood.userId} !== ${userId}`);
+        continue;
+      }
+      
       const id = randomUUID();
       const data: MarketData = {
         ...neighborhood,
@@ -418,7 +429,7 @@ export class MemStorage implements IStorage {
       newMarketData.push(data);
     }
     
-    console.log(`📊 Refreshed market data for ${newMarketData.length} neighborhoods`);
+    console.log(`📊 Refreshed market data for user ${userId}: ${newMarketData.length} neighborhoods`);
     return newMarketData;
   }
 

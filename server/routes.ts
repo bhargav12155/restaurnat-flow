@@ -2098,9 +2098,29 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Market data endpoints
-  app.get("/api/market/data", async (req, res) => {
+  app.get("/api/market/data", requireAuth, async (req: any, res) => {
     try {
-      const marketData = await storage.getMarketData();
+      const userId = req.user.id;
+      const marketData = await storage.getMarketData(userId);
+      
+      // If user has no market data, generate initial data
+      if (!marketData || marketData.length === 0) {
+        console.log(`📊 No market data found for user ${userId}, generating initial data...`);
+        const { AIMarketDataGenerator } = await import('./services/ai-market-generator');
+        const generator = new AIMarketDataGenerator(userId);
+        
+        let generatedData;
+        try {
+          generatedData = await generator.generateOmahaMarketData();
+        } catch (aiError) {
+          console.warn('⚠️  AI generation failed, using fallback data:', aiError);
+          generatedData = generator.getFallbackData();
+        }
+        
+        const newMarketData = await storage.refreshMarketData(userId, generatedData.neighborhoods);
+        return res.json(newMarketData);
+      }
+      
       res.json(marketData);
     } catch (error) {
       console.error("Get market data error:", error);
@@ -2108,10 +2128,11 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  app.get("/api/market/neighborhoods/:neighborhood", async (req, res) => {
+  app.get("/api/market/neighborhoods/:neighborhood", requireAuth, async (req: any, res) => {
     try {
+      const userId = req.user.id;
       const { neighborhood } = req.params;
-      const data = await storage.getMarketDataByNeighborhood(neighborhood);
+      const data = await storage.getMarketDataByNeighborhood(userId, neighborhood);
 
       if (!data) {
         return res.status(404).json({ error: "Neighborhood data not found" });
@@ -2124,13 +2145,14 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  app.post("/api/market/refresh", requireAuth, async (req, res) => {
+  app.post("/api/market/refresh", requireAuth, async (req: any, res) => {
     try {
-      console.log('🔄 Refreshing market data with AI generation...');
+      const userId = req.user.id;
+      console.log(`🔄 Refreshing market data for user ${userId} with AI generation...`);
       
       // Import and initialize AI market data generator
       const { AIMarketDataGenerator } = await import('./services/ai-market-generator');
-      const generator = new AIMarketDataGenerator();
+      const generator = new AIMarketDataGenerator(userId);
       
       let generatedData;
       try {
@@ -2140,8 +2162,8 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         generatedData = generator.getFallbackData();
       }
       
-      // Refresh storage with new data
-      const newMarketData = await storage.refreshMarketData(generatedData.neighborhoods);
+      // Refresh storage with new data for this user
+      const newMarketData = await storage.refreshMarketData(userId, generatedData.neighborhoods);
       
       res.json({
         success: true,
@@ -2157,22 +2179,34 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  app.get("/api/market/intelligence", async (req, res) => {
+  app.get("/api/market/intelligence", requireAuth, async (req: any, res) => {
     try {
+      const userId = req.user.id;
+      
       // Import the market intelligence service
       const { MarketIntelligenceService } = await import('./services/market-intelligence');
       const marketIntelligenceService = new MarketIntelligenceService();
 
-      // Fetch live market data
+      // Fetch live market data for this user
       let marketData;
       try {
-        marketData = await storage.getMarketData();
+        marketData = await storage.getMarketData(userId);
         if (!marketData || marketData.length === 0) {
-          console.warn('⚠️  No market data available for intelligence generation');
-          return res.status(502).json({ 
-            error: "Market data unavailable", 
-            message: "Unable to fetch real-time market data. Please try again later." 
-          });
+          console.warn(`⚠️  No market data available for user ${userId}, generating initial data...`);
+          
+          // Generate initial market data for the user
+          const { AIMarketDataGenerator } = await import('./services/ai-market-generator');
+          const generator = new AIMarketDataGenerator(userId);
+          
+          let generatedData;
+          try {
+            generatedData = await generator.generateOmahaMarketData();
+          } catch (aiError) {
+            console.warn('⚠️  AI generation failed, using fallback data:', aiError);
+            generatedData = generator.getFallbackData();
+          }
+          
+          marketData = await storage.refreshMarketData(userId, generatedData.neighborhoods);
         }
       } catch (marketError) {
         console.error("Failed to fetch market data for intelligence:", marketError);
