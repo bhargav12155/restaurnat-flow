@@ -23,10 +23,13 @@ import {
   type InsertPhotoAvatarGroup,
   type PhotoAvatarGroupVoice,
   type InsertPhotoAvatarGroupVoice,
+  type PhotoAvatar,
+  type InsertPhotoAvatar,
   type CompanyProfile,
   type InsertCompanyProfile,
   photoAvatarGroups,
   photoAvatarGroupVoices,
+  photoAvatars,
   customVoices,
   companyProfiles,
   videoContent as videoContentTable
@@ -113,6 +116,12 @@ export interface IStorage {
   savePhotoAvatarGroupVoice(voice: InsertPhotoAvatarGroupVoice): Promise<PhotoAvatarGroupVoice>;
   getPhotoAvatarGroupVoice(groupId: string, userId: number): Promise<PhotoAvatarGroupVoice | undefined>;
   listPhotoAvatarGroupVoices(userId: number): Promise<PhotoAvatarGroupVoice[]>;
+
+  // Individual Photo Avatars
+  createPhotoAvatar(avatar: InsertPhotoAvatar): Promise<PhotoAvatar>;
+  getPhotoAvatarByHeygenIdAndUser(heygenAvatarId: string, userId: string): Promise<PhotoAvatar | undefined>;
+  updatePhotoAvatar(heygenAvatarId: string, userId: string, updates: Partial<PhotoAvatar>): Promise<PhotoAvatar | undefined>;
+  deletePhotoAvatar(heygenAvatarId: string, userId: string): Promise<boolean>;
 
   // Company Profile
   getCompanyProfile(userId: string): Promise<CompanyProfile | null>;
@@ -877,6 +886,55 @@ export class MemStorage implements IStorage {
         and(
           eq(photoAvatarGroups.heygenGroupId, groupId),
           eq(photoAvatarGroups.userId, userId)
+        )
+      );
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Individual Photo Avatars
+  async createPhotoAvatar(avatar: InsertPhotoAvatar): Promise<PhotoAvatar> {
+    const [result] = await db
+      .insert(photoAvatars)
+      .values(avatar)
+      .returning();
+    return result;
+  }
+
+  async getPhotoAvatarByHeygenIdAndUser(heygenAvatarId: string, userId: string): Promise<PhotoAvatar | undefined> {
+    const [avatar] = await db
+      .select()
+      .from(photoAvatars)
+      .where(
+        and(
+          eq(photoAvatars.heygenAvatarId, heygenAvatarId),
+          eq(photoAvatars.userId, userId)
+        )
+      )
+      .limit(1);
+    return avatar;
+  }
+
+  async updatePhotoAvatar(heygenAvatarId: string, userId: string, updates: Partial<PhotoAvatar>): Promise<PhotoAvatar | undefined> {
+    const [result] = await db
+      .update(photoAvatars)
+      .set(updates)
+      .where(
+        and(
+          eq(photoAvatars.heygenAvatarId, heygenAvatarId),
+          eq(photoAvatars.userId, userId)
+        )
+      )
+      .returning();
+    return result;
+  }
+
+  async deletePhotoAvatar(heygenAvatarId: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(photoAvatars)
+      .where(
+        and(
+          eq(photoAvatars.heygenAvatarId, heygenAvatarId),
+          eq(photoAvatars.userId, userId)
         )
       );
     return result.rowCount ? result.rowCount > 0 : false;
