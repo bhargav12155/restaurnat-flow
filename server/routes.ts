@@ -4592,6 +4592,28 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
+  // Get all user videos from database
+  app.get("/api/videos", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const status = req.query.status as string | undefined;
+
+      console.log("📹 Backend: Getting videos for user:", userId, "status filter:", status);
+
+      const videos = await storage.getVideoContent(String(userId), status);
+
+      console.log("✅ Backend: Found", videos.length, "videos");
+      res.json(videos);
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to get videos");
+      console.error("❌ Backend: Error message:", error?.message);
+      res.status(500).json({
+        error: "Failed to get videos",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   // Get video details
   app.get("/api/videos/:videoId", requireAuth, async (req, res) => {
     try {
