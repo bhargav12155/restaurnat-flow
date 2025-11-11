@@ -84,7 +84,9 @@ export function SEOOptimizer() {
         title: "🎯 30-Day Content Plan Created!",
         description: `Generated ${data.totalPosts || 30} posts based on your SEO keywords. Review and approve.`,
       });
-      setLocation('/dashboard/content-calendar');
+      // Navigate to dashboard calendar view using hash navigation
+      setLocation('/dashboard');
+      window.location.hash = '#calendar';
     },
     onError: (error) => {
       toast({

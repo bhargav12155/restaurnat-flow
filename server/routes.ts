@@ -2175,15 +2175,11 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Scheduled Posts endpoints
-  app.get("/api/scheduled-posts", async (req, res) => {
+  app.get("/api/scheduled-posts", requireAuth, async (req: any, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
+      const userId = req.user.id;
       const status = req.query.status as string;
-      const posts = await storage.getScheduledPosts(user.id, status);
+      const posts = await storage.getScheduledPosts(userId, status);
       res.json(posts);
     } catch (error) {
       console.error("Get scheduled posts error:", error);
