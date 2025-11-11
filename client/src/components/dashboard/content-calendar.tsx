@@ -485,6 +485,14 @@ export function ContentCalendar() {
     youtube: "bg-red-600",
   };
 
+  const platformNames: Record<string, string> = {
+    facebook: "Facebook",
+    instagram: "Instagram",
+    linkedin: "LinkedIn",
+    x: "X",
+    youtube: "YouTube",
+  };
+
   const postTypeLabels: Record<string, string> = {
     market_update: "Market Update",
     buyer_tips: "Buyer Tips",
@@ -511,7 +519,7 @@ export function ContentCalendar() {
         date: scheduledDate,
         time: format(scheduledDate, "h:mm a"),
         color: platformColors[platformKey] || "bg-gray-500",
-        platform: post.platform.charAt(0).toUpperCase() + post.platform.slice(1),
+        platform: platformNames[platformKey] || post.platform.charAt(0).toUpperCase() + post.platform.slice(1),
         content: post.content,
         photoUrl: post.metadata?.imageUrl,
       };
@@ -527,17 +535,20 @@ export function ContentCalendar() {
     if (typeof updater === 'function') {
       setLocalGeneratedPosts(prevLocal => {
         const seedContent = apiScheduledPosts.length > 0 ? [] : initialScheduledContent;
-        const transformedAPI = apiScheduledPosts.map(p => ({
-          id: `api-${p.id}`,
-          title: p.postType ? postTypeLabels[p.postType] || p.postType : "Social Post",
-          type: "Social" as const,
-          date: new Date(p.scheduledFor),
-          time: format(new Date(p.scheduledFor), "h:mm a"),
-          color: platformColors[p.platform.toLowerCase() as keyof typeof platformColors] || "bg-gray-500",
-          platform: p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
-          content: p.content,
-          photoUrl: p.metadata?.imageUrl,
-        }));
+        const transformedAPI = apiScheduledPosts.map(p => {
+          const platformKey = p.platform.toLowerCase() as keyof typeof platformColors;
+          return {
+            id: `api-${p.id}`,
+            title: p.postType ? postTypeLabels[p.postType] || p.postType : "Social Post",
+            type: "Social" as const,
+            date: new Date(p.scheduledFor),
+            time: format(new Date(p.scheduledFor), "h:mm a"),
+            color: platformColors[platformKey] || "bg-gray-500",
+            platform: platformNames[platformKey] || p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
+            content: p.content,
+            photoUrl: p.metadata?.imageUrl,
+          };
+        });
         
         const currentFull = [...seedContent, ...prevLocal, ...transformedAPI];
         const currentLength = currentFull.length;
