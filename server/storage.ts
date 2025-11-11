@@ -68,6 +68,7 @@ export interface IStorage {
   getMarketDataByNeighborhood(neighborhood: string): Promise<MarketData | undefined>;
   createMarketData(data: InsertMarketData): Promise<MarketData>;
   updateMarketData(id: string, updates: Partial<MarketData>): Promise<MarketData | undefined>;
+  refreshMarketData(neighborhoods: InsertMarketData[]): Promise<MarketData[]>;
 
   // Analytics
   getAnalytics(userId: string, metric?: string): Promise<Analytics[]>;
@@ -392,6 +393,33 @@ export class MemStorage implements IStorage {
     const updated = { ...data, ...updates };
     this.marketData.set(id, updated);
     return updated;
+  }
+
+  async refreshMarketData(neighborhoods: InsertMarketData[]): Promise<MarketData[]> {
+    // Clear existing market data
+    this.marketData.clear();
+    
+    // Create new market data from AI-generated neighborhoods
+    const newMarketData: MarketData[] = [];
+    
+    for (const neighborhood of neighborhoods) {
+      const id = randomUUID();
+      const data: MarketData = {
+        ...neighborhood,
+        id,
+        avgPrice: neighborhood.avgPrice || null,
+        daysOnMarket: neighborhood.daysOnMarket || null,
+        inventory: neighborhood.inventory || null,
+        priceGrowth: neighborhood.priceGrowth || null,
+        trend: neighborhood.trend || null,
+        lastUpdated: new Date(),
+      };
+      this.marketData.set(id, data);
+      newMarketData.push(data);
+    }
+    
+    console.log(`📊 Refreshed market data for ${newMarketData.length} neighborhoods`);
+    return newMarketData;
   }
 
   async getAnalytics(userId: string, metric?: string): Promise<Analytics[]> {
