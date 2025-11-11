@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Search, Globe, Smartphone, Sparkles, Loader2 } from "lucide-react";
+import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Search, Globe, Smartphone, Sparkles, Loader2, Calendar } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface SeoKeyword {
   id: string;
@@ -32,6 +33,7 @@ const getRankColor = (rank: number) => {
 
 export function SEOOptimizer() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [showFullReport, setShowFullReport] = useState(false);
   const [aiGeneratedKeywords, setAiGeneratedKeywords] = useState<SeoKeyword[] | null>(null);
   
@@ -67,6 +69,32 @@ export function SEOOptimizer() {
     },
   });
 
+  const generateContentPlanMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/content/generate-plan', {
+        keywords: displayKeywords || [],
+        durationDays: 30
+      });
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/scheduled-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/content/plan'] });
+      toast({
+        title: "🎯 30-Day Content Plan Created!",
+        description: `Generated ${data.totalPosts || 30} posts based on your SEO keywords. Review and approve.`,
+      });
+      setLocation('/dashboard/content-calendar');
+    },
+    onError: (error) => {
+      toast({
+        title: "Plan Generation Failed",
+        description: "Could not generate content plan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const isLoading = keywordsLoading || healthLoading;
   const displayKeywords = aiGeneratedKeywords || keywords;
 
@@ -95,6 +123,26 @@ export function SEOOptimizer() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-semibold text-foreground">SEO Performance</CardTitle>
           <div className="flex items-center gap-2">
+            <Button
+              onClick={() => generateContentPlanMutation.mutate()}
+              disabled={generateContentPlanMutation.isPending || !displayKeywords?.length}
+              variant="default"
+              size="sm"
+              className="text-sm bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              data-testid="button-generate-content-plan"
+            >
+              {generateContentPlanMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                  Creating Plan...
+                </>
+              ) : (
+                <>
+                  <Calendar className="h-3 w-3 mr-1.5" />
+                  Generate Content Plan
+                </>
+              )}
+            </Button>
             <Button
               onClick={() => generateKeywordsMutation.mutate()}
               disabled={generateKeywordsMutation.isPending}
