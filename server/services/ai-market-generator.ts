@@ -11,6 +11,11 @@ export interface GeneratedMarketData {
 
 export class AIMarketDataGenerator {
   private openai: any;
+  private userId: string;
+
+  constructor(userId: string) {
+    this.userId = userId;
+  }
 
   async initialize() {
     if (!process.env.OPENAI_API_KEY) {
@@ -87,8 +92,8 @@ Return ONLY a valid JSON array with this exact structure:
         throw new Error('Invalid response structure: expected array of neighborhoods');
       }
 
-      // Validate each neighborhood
-      const validatedNeighborhoods = neighborhoods.map((n, index) => {
+      // Validate each neighborhood and add userId
+      const validatedNeighborhoods: InsertMarketData[] = neighborhoods.map((n, index) => {
         if (!n.neighborhood || !n.avgPrice || !n.daysOnMarket || !n.inventory || !n.priceGrowth || !n.trend) {
           throw new Error(`Invalid neighborhood data at index ${index}: missing required fields`);
         }
@@ -107,13 +112,14 @@ Return ONLY a valid JSON array with this exact structure:
         }
 
         return {
+          userId: this.userId, // Add userId to satisfy InsertMarketData contract
           neighborhood: n.neighborhood,
           avgPrice: n.avgPrice,
           daysOnMarket: n.daysOnMarket,
           inventory: n.inventory,
           priceGrowth: n.priceGrowth,
           trend: n.trend,
-        } as InsertMarketData;
+        };
       });
 
       console.log(`✅ AI generated market data for ${validatedNeighborhoods.length} neighborhoods`);
@@ -137,16 +143,16 @@ Return ONLY a valid JSON array with this exact structure:
    */
   getFallbackData(): GeneratedMarketData {
     const fallbackNeighborhoods: InsertMarketData[] = [
-      { neighborhood: "Aksarben", avgPrice: 685000, daysOnMarket: 18, inventory: "0.8 months", priceGrowth: "+9.2%", trend: "hot" },
-      { neighborhood: "Dundee", avgPrice: 625000, daysOnMarket: 21, inventory: "0.9 months", priceGrowth: "+8.7%", trend: "hot" },
-      { neighborhood: "Blackstone", avgPrice: 465000, daysOnMarket: 23, inventory: "1.1 months", priceGrowth: "+7.5%", trend: "rising" },
-      { neighborhood: "Benson", avgPrice: 425000, daysOnMarket: 25, inventory: "1.2 months", priceGrowth: "+6.8%", trend: "rising" },
-      { neighborhood: "Midtown", avgPrice: 510000, daysOnMarket: 22, inventory: "1.0 months", priceGrowth: "+7.9%", trend: "rising" },
-      { neighborhood: "West Omaha", avgPrice: 575000, daysOnMarket: 26, inventory: "1.3 months", priceGrowth: "+5.2%", trend: "steady" },
-      { neighborhood: "Regency", avgPrice: 595000, daysOnMarket: 24, inventory: "1.2 months", priceGrowth: "+6.1%", trend: "steady" },
-      { neighborhood: "Old Market", avgPrice: 445000, daysOnMarket: 20, inventory: "0.9 months", priceGrowth: "+8.3%", trend: "hot" },
-      { neighborhood: "Elkhorn", avgPrice: 415000, daysOnMarket: 28, inventory: "1.5 months", priceGrowth: "+5.8%", trend: "steady" },
-      { neighborhood: "Papillion", avgPrice: 385000, daysOnMarket: 29, inventory: "1.6 months", priceGrowth: "+5.4%", trend: "steady" },
+      { userId: this.userId, neighborhood: "Aksarben", avgPrice: 685000, daysOnMarket: 18, inventory: "0.8 months", priceGrowth: "+9.2%", trend: "hot" },
+      { userId: this.userId, neighborhood: "Dundee", avgPrice: 625000, daysOnMarket: 21, inventory: "0.9 months", priceGrowth: "+8.7%", trend: "hot" },
+      { userId: this.userId, neighborhood: "Blackstone", avgPrice: 465000, daysOnMarket: 23, inventory: "1.1 months", priceGrowth: "+7.5%", trend: "rising" },
+      { userId: this.userId, neighborhood: "Benson", avgPrice: 425000, daysOnMarket: 25, inventory: "1.2 months", priceGrowth: "+6.8%", trend: "rising" },
+      { userId: this.userId, neighborhood: "Midtown", avgPrice: 510000, daysOnMarket: 22, inventory: "1.0 months", priceGrowth: "+7.9%", trend: "rising" },
+      { userId: this.userId, neighborhood: "West Omaha", avgPrice: 575000, daysOnMarket: 26, inventory: "1.3 months", priceGrowth: "+5.2%", trend: "steady" },
+      { userId: this.userId, neighborhood: "Regency", avgPrice: 595000, daysOnMarket: 24, inventory: "1.2 months", priceGrowth: "+6.1%", trend: "steady" },
+      { userId: this.userId, neighborhood: "Old Market", avgPrice: 445000, daysOnMarket: 20, inventory: "0.9 months", priceGrowth: "+8.3%", trend: "hot" },
+      { userId: this.userId, neighborhood: "Elkhorn", avgPrice: 415000, daysOnMarket: 28, inventory: "1.5 months", priceGrowth: "+5.8%", trend: "steady" },
+      { userId: this.userId, neighborhood: "Papillion", avgPrice: 385000, daysOnMarket: 29, inventory: "1.6 months", priceGrowth: "+5.4%", trend: "steady" },
     ];
 
     return {
