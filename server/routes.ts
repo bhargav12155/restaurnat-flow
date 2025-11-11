@@ -1803,14 +1803,47 @@ Make the content authentic, engaging, and SEO-optimized. Focus on providing valu
   });
 
   // SEO endpoints
-  app.get("/api/seo/keywords", async (req, res) => {
+  app.get("/api/seo/keywords", requireAuth, async (req: any, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const userId = req.user.id;
+      let keywords = await storage.getSeoKeywords(userId);
+      
+      // Auto-generate keywords on first login if user has none
+      if (!keywords || keywords.length === 0) {
+        console.log(`📊 No keywords found for user ${userId}, generating AI keywords...`);
+        
+        // Get user's service areas from market data
+        const marketData = await storage.getMarketData(userId);
+        const serviceAreas = marketData.map(m => m.neighborhood).filter(Boolean);
+        
+        if (serviceAreas.length === 0) {
+          serviceAreas.push('Omaha'); // Default to Omaha
+        }
+        
+        try {
+          const { AIKeywordGenerator } = await import('./services/ai-keyword-generator');
+          const generator = new AIKeywordGenerator(userId);
+          
+          let generatedData;
+          try {
+            generatedData = await generator.generateKeywords(serviceAreas);
+          } catch (aiError) {
+            console.warn('⚠️  AI keyword generation failed, using fallback:', aiError);
+            generatedData = generator.getFallbackKeywords(serviceAreas);
+          }
+          
+          // Save generated keywords to storage
+          for (const keyword of generatedData.keywords) {
+            await storage.createSeoKeyword(keyword);
+          }
+          
+          keywords = await storage.getSeoKeywords(userId);
+          console.log(`✅ Auto-generated ${keywords.length} keywords for new user`);
+        } catch (error) {
+          console.error('❌ Keyword generation error:', error);
+        }
       }
-
-      const keywords = await storage.getSeoKeywords(user.id);
+      
       res.json(keywords);
     } catch (error) {
       console.error("Get SEO keywords error:", error);
@@ -2251,6 +2284,60 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     } catch (error) {
       console.error("Get scheduled posts error:", error);
       res.status(500).json({ error: "Failed to fetch scheduled posts" });
+    }
+  });
+
+  // Generate 30-day content calendar
+  app.post("/api/content/generate-plan", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      console.log(`🗓️  Generating 30-day content plan for user ${userId}...`);
+      
+      // Get user's market data for service areas
+      const marketData = await storage.getMarketData(userId);
+      const serviceAreas = marketData.map(m => m.neighborhood).filter(Boolean);
+      
+      if (serviceAreas.length === 0) {
+        serviceAreas.push('Omaha'); // Default to Omaha
+      }
+      
+      // Import and initialize AI content calendar generator
+      const { AIContentCalendarGenerator } = await import('./services/ai-content-calendar');
+      const generator = new AIContentCalendarGenerator(userId);
+      
+      let generatedPlan;
+      try {
+        generatedPlan = await generator.generate30DayPlan(
+          serviceAreas,
+          marketData,
+          req.body.targetAudience,
+          req.body.specialties
+        );
+      } catch (aiError) {
+        console.warn('⚠️  AI content generation failed, using fallback:', aiError);
+        generatedPlan = generator.getFallbackContentPlan(serviceAreas, marketData);
+      }
+      
+      // Save generated posts to storage
+      const createdPosts = [];
+      for (const post of generatedPlan.posts) {
+        const created = await storage.createScheduledPost(post);
+        createdPosts.push(created);
+      }
+      
+      console.log(`✅ Generated ${createdPosts.length}-day content plan for user ${userId}`);
+      
+      res.json({
+        success: true,
+        posts: createdPosts,
+        metadata: generatedPlan.metadata,
+      });
+    } catch (error) {
+      console.error('❌ Content plan generation error:', error);
+      res.status(500).json({ 
+        error: "Failed to generate content plan",
+        message: (error as Error).message 
+      });
     }
   });
 
