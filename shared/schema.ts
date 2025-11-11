@@ -175,6 +175,31 @@ export const photoAvatarGroupVoices = pgTable("photo_avatar_group_voices", {
 });
 
 // =====================================================
+// PHOTO AVATARS TABLE (Individual Avatars)
+// =====================================================
+export const photoAvatars = pgTable(
+  "photo_avatars",
+  {
+    id: varchar("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").notNull(),
+    heygenAvatarId: text("heygen_avatar_id").notNull().unique(), // Individual avatar ID from HeyGen
+    groupDbId: varchar("group_db_id").notNull(), // Foreign key to photoAvatarGroups.id (our DB ID)
+    heygenGroupId: text("heygen_group_id").notNull(), // HeyGen's group ID for convenience
+    name: text("name"),
+    pose: text("pose"), // e.g., "half_body", "full_body"
+    status: text("status").default("pending"), // 'pending', 'processing', 'ready', 'failed'
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("idx_photo_avatars_heygen_id").on(table.heygenAvatarId),
+    index("idx_photo_avatars_user_heygen").on(table.userId, table.heygenAvatarId),
+  ]
+);
+
+// =====================================================
 // 5. VIDEO CONTENT TABLE (YouTube & Video)
 // =====================================================
 export const videoContent = pgTable("video_content", {
@@ -512,6 +537,14 @@ export type InsertPhotoAvatarGroup = typeof photoAvatarGroups.$inferInsert;
 
 export type PhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferSelect;
 export type InsertPhotoAvatarGroupVoice = typeof photoAvatarGroupVoices.$inferInsert;
+
+export type PhotoAvatar = typeof photoAvatars.$inferSelect;
+export type InsertPhotoAvatar = typeof photoAvatars.$inferInsert;
+
+export const insertPhotoAvatarSchema = createInsertSchema(photoAvatars).omit({
+  id: true,
+  createdAt: true,
+});
 
 // =====================================================
 // TUTORIAL VIDEOS TABLE
