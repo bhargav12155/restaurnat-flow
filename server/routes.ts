@@ -357,6 +357,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return acc;
       }, {} as Record<string, number>);
 
+      // Add real engagement leads from tracking system
+      try {
+        const { engagementLeads } = await import("@shared/schema");
+        const { count, gte, sql: drizzleSql } = await import("drizzle-orm");
+        
+        // Get first day of current month
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        // Count engagement leads created this month
+        const monthlyLeadsResult = await db
+          .select({ count: count() })
+          .from(engagementLeads)
+          .where(gte(engagementLeads.createdAt, firstDayOfMonth));
+        
+        const engagementLeadsCount = monthlyLeadsResult[0]?.count || 0;
+        
+        // Replace static monthly_leads with real engagement leads count
+        overview.monthly_leads = engagementLeadsCount;
+        
+        console.log(`📊 Dashboard: ${engagementLeadsCount} engagement leads this month`);
+      } catch (error) {
+        console.warn("Failed to fetch engagement leads, using static data:", error);
+      }
+
       res.json(overview);
     } catch (error) {
       console.error("Dashboard overview error:", error);
