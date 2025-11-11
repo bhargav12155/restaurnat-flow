@@ -564,6 +564,8 @@ export function ContentCalendar() {
   };
   
   const handlePreview = (content: typeof initialScheduledContent[0]) => {
+    console.log('Preview content:', content);
+    console.log('Platform:', content.platform);
     setPreviewContent(content);
     setShowPreview(true);
     setIsEditing(false);
@@ -1228,6 +1230,65 @@ export function ContentCalendar() {
                           </>
                         )}
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Default/Fallback Preview for other platforms or if no match */}
+              {previewContent.platform !== 'Facebook' && 
+               previewContent.platform !== 'Instagram' && 
+               previewContent.platform !== 'YouTube' && 
+               previewContent.platform !== 'LinkedIn' && (
+                <div className="bg-white dark:bg-gray-900 text-black dark:text-white p-4">
+                  <div className="flex items-center gap-3 mb-3 pb-3 border-b">
+                    <div className="w-10 h-10 bg-golden-accent rounded-full flex items-center justify-center">
+                      <span className="text-sm font-bold text-golden-foreground">MB</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-sm">Mike Bjork</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {previewContent.platform} • {format(new Date(), "MMM d, h:mm a")}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <div className="font-semibold text-base mb-2">{previewContent.title}</div>
+                    {isEditing ? (
+                      <Textarea
+                        value={editedContent}
+                        onChange={(e) => setEditedContent(e.target.value)}
+                        className="text-sm min-h-[100px] resize-none"
+                        placeholder="Edit your content..."
+                      />
+                    ) : (
+                      <div className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-300">
+                        {editedContent}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {(photoPreview || savedPhotoUrl) && (
+                    <div className="border rounded bg-gray-50 dark:bg-gray-800 p-1 relative">
+                      <img 
+                        src={photoPreview || savedPhotoUrl || ""} 
+                        alt="Content" 
+                        className="w-full aspect-video object-cover rounded"
+                      />
+                      {isEditing && (
+                        <div className="absolute top-2 right-2">
+                          <ObjectUploader
+                            maxNumberOfFiles={1}
+                            maxFileSize={10485760}
+                            onGetUploadParameters={handlePhotoUpload}
+                            onComplete={handlePhotoComplete}
+                            buttonClassName="h-8 w-8 p-0 bg-black/50 hover:bg-black/70"
+                          >
+                            <Upload className="h-4 w-4 text-white" />
+                          </ObjectUploader>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
