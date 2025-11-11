@@ -250,14 +250,68 @@ export function PhotoAvatarManager() {
       );
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data, variables) => {
+      const generationId = data.generation_id;
+      const avatarName = variables.name;
+
       toast({
         title: "Photo Generation Started",
-        description: `Generating 5 AI photos for ${generationForm.name}. This may take a few minutes.`,
+        description: `Generating 5 AI photos for ${avatarName}. This may take a few minutes.`,
       });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/photo-avatars/groups"],
-      });
+
+      // Poll for generation completion and auto-create avatar group
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiRequest(
+            "GET",
+            `/api/photo-avatars/generation/${generationId}`
+          );
+          const statusData = await statusRes.json();
+
+          if (statusData.status === "completed" && statusData.image_keys && statusData.image_keys.length > 0) {
+            clearInterval(pollInterval);
+
+            // Automatically create avatar group from generated photos
+            try {
+              await apiRequest("POST", "/api/photo-avatars/groups", {
+                name: avatarName,
+                imageKey: statusData.image_keys,
+              });
+
+              toast({
+                title: "✅ Photos Ready!",
+                description: `${statusData.image_keys.length} AI photos for "${avatarName}" are now in your avatar gallery!`,
+                duration: 8000,
+              });
+
+              queryClient.invalidateQueries({
+                queryKey: ["/api/photo-avatars/groups"],
+              });
+            } catch (error) {
+              console.error("Failed to create avatar group:", error);
+              toast({
+                title: "Group Creation Failed",
+                description: "Photos were generated but failed to create avatar group. Please try manually.",
+                variant: "destructive",
+              });
+            }
+          } else if (statusData.status === "failed") {
+            clearInterval(pollInterval);
+            toast({
+              title: "Generation Failed",
+              description: "Photo generation failed. Please try again.",
+              variant: "destructive",
+            });
+          }
+        } catch (error) {
+          console.error("Error polling generation status:", error);
+        }
+      }, 5000); // Poll every 5 seconds
+
+      // Stop polling after 5 minutes (timeout)
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 300000);
     },
     onError: () => {
       toast({
