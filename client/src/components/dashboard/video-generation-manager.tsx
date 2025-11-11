@@ -730,12 +730,14 @@ export function VideoGenerationManager() {
               {/* Thumbnail Preview */}
               {currentVideo.thumbnail_url && (
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Thumbnail</Label>
-                  <img
-                    src={currentVideo.thumbnail_url}
-                    alt="Video thumbnail"
-                    className="w-full max-h-32 object-cover rounded border"
-                  />
+                  <Label className="text-sm font-medium">Thumbnail Preview</Label>
+                  <div className="border-2 border-[#D4AF37]/30 rounded-lg overflow-hidden bg-gray-50 dark:bg-gray-900">
+                    <img
+                      src={currentVideo.thumbnail_url}
+                      alt="Video thumbnail"
+                      className="w-full max-h-96 object-contain"
+                    />
+                  </div>
                 </div>
               )}
 
