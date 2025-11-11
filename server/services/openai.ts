@@ -656,6 +656,77 @@ export class OpenAIService {
     }
   }
 
+  getFallbackPlan(durationDays: number = 30): any {
+    return this.getFallbackContentPlan(durationDays);
+  }
+
+  async generateContentPlan(prompt: string, durationDays: number = 30): Promise<any> {
+    try {
+      const response = await multiOpenAI.makeRequest(
+        "content",
+        async (client) => {
+          return await client.chat.completions.create({
+            model: "gpt-5",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an expert social media content strategist specializing in real estate marketing. Generate comprehensive, SEO-optimized content plans with authentic engagement strategies. Always respond with valid JSON.",
+              },
+              {
+                role: "user",
+                content: prompt,
+              },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.8,
+            max_tokens: 4000,
+          });
+        }
+      );
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      return result;
+    } catch (error) {
+      console.error("Content plan generation error:", error);
+      
+      // Fallback: generate plan with requested duration
+      console.log(`Generating fallback content plan for ${durationDays} days`);
+      return this.getFallbackContentPlan(durationDays);
+    }
+  }
+
+  private getFallbackContentPlan(durationDays: number = 30): any {
+    const platforms = ['facebook', 'instagram', 'linkedin', 'x'];
+    const themes = [
+      'Market Update', 'Neighborhood Spotlight', 'Buyer Tips', 
+      'Seller Guide', 'Investment Insights', 'Community Events', 'Success Stories'
+    ];
+    const days = [];
+    
+    for (let i = 1; i <= durationDays; i++) {
+      const theme = themes[i % themes.length];
+      const platformsToday = i % 2 === 0 ? platforms.slice(0, 2) : platforms.slice(2, 4);
+      
+      days.push({
+        dayNumber: i,
+        theme: `${theme}`,
+        posts: platformsToday.map((platform, idx) => ({
+          platform,
+          postType: 'market_update',
+          content: `Day ${i}: Omaha real estate ${theme.toLowerCase()}. Contact us to learn more about buying or selling in Omaha! #OmahaRealEstate #NebraskaHomes`,
+          hashtags: ['#OmahaRealEstate', '#NebraskaHomes', '#RealEstateTips'],
+          cta: 'Contact us today!',
+          keywordsUsed: ['omaha real estate', 'nebraska homes'],
+          recommendedTime: idx === 0 ? '09:00' : '13:00',
+          neighborhood: 'Omaha'
+        }))
+      });
+    }
+    
+    return { days };
+  }
+
   async generatePlatformSpecificContent(params: {
     platform: string;
     originalContent: string;
