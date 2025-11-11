@@ -3823,22 +3823,46 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const { avatarId } = req.params;
 
-      // Ownership validation
-      const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(avatarId, userId);
-      if (!dbAvatar) {
+      // Ownership validation: verify user owns a group containing this avatar
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const allUserGroups = await storage.listPhotoAvatarGroups(userId);
+      
+      let ownsAvatar = false;
+      let avatarGroupId: string | null = null;
+      
+      for (const group of allUserGroups) {
+        try {
+          const looks = await photoAvatarService.getAvatarGroupLooks(group.heygenGroupId);
+          if (looks.avatar_list && looks.avatar_list.some((a: any) => a.id === avatarId)) {
+            ownsAvatar = true;
+            avatarGroupId = group.heygenGroupId;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!ownsAvatar) {
         return res.status(404).json({ error: "Avatar not found" });
       }
 
       console.log("🎬 Adding motion to avatar:", avatarId);
 
-      const photoAvatarService = new HeyGenPhotoAvatarService();
       const result = await photoAvatarService.addMotion(avatarId);
 
-      // Update status in database
-      await storage.updatePhotoAvatar(avatarId, userId, { 
-        status: 'processing',
-        metadata: { ...dbAvatar.metadata, is_motion: true }
-      });
+      // Try to update status in database if avatar exists
+      try {
+        const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(avatarId, userId);
+        if (dbAvatar) {
+          await storage.updatePhotoAvatar(avatarId, userId, { 
+            status: 'processing',
+            metadata: { ...dbAvatar.metadata, is_motion: true }
+          });
+        }
+      } catch (e) {
+        console.warn("Could not update avatar in database:", e);
+      }
 
       res.json(result);
     } catch (error) {
@@ -3857,22 +3881,44 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
       const { avatarId } = req.params;
 
-      // Ownership validation
-      const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(avatarId, userId);
-      if (!dbAvatar) {
+      // Ownership validation: verify user owns a group containing this avatar
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const allUserGroups = await storage.listPhotoAvatarGroups(userId);
+      
+      let ownsAvatar = false;
+      
+      for (const group of allUserGroups) {
+        try {
+          const looks = await photoAvatarService.getAvatarGroupLooks(group.heygenGroupId);
+          if (looks.avatar_list && looks.avatar_list.some((a: any) => a.id === avatarId)) {
+            ownsAvatar = true;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+      
+      if (!ownsAvatar) {
         return res.status(404).json({ error: "Avatar not found" });
       }
 
       console.log("🔊 Adding sound effect to avatar:", avatarId);
 
-      const photoAvatarService = new HeyGenPhotoAvatarService();
       const result = await photoAvatarService.addSoundEffect(avatarId);
 
-      // Update status in database
-      await storage.updatePhotoAvatar(avatarId, userId, { 
-        status: 'processing',
-        metadata: { ...dbAvatar.metadata, background_sound_effect: true }
-      });
+      // Try to update status in database if avatar exists
+      try {
+        const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(avatarId, userId);
+        if (dbAvatar) {
+          await storage.updatePhotoAvatar(avatarId, userId, { 
+            status: 'processing',
+            metadata: { ...dbAvatar.metadata, background_sound_effect: true }
+          });
+        }
+      } catch (e) {
+        console.warn("Could not update avatar in database:", e);
+      }
 
       res.json(result);
     } catch (error) {
