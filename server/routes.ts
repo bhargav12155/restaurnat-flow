@@ -33,8 +33,9 @@ import {
   insertCompanyProfileSchema,
   tutorialVideos,
   socialApiKeys,
+  contentOpportunities,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -2024,7 +2025,6 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   app.get("/api/ai/opportunities", requireAuth, async (req: any, res) => {
     try {
       const userId = req.user.id;
-      const db = getDb();
       
       // Get stored opportunities for this user
       const opportunities = await db.select().from(contentOpportunities)
@@ -2051,9 +2051,6 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       const userId = req.user.id;
       console.log(`🎯 Generating AI content opportunities for user ${userId}...`);
       
-      const db = getDb();
-      const openaiService = new OpenAIService();
-      
       // 1. Load user's market data (top neighborhoods)
       const marketData = await storage.getMarketData(userId);
       const topNeighborhoods = marketData
@@ -2067,7 +2064,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         }));
       
       // 2. Load user's SEO keywords (top priority)
-      const keywords = await storage.getSEOKeywords(userId);
+      const keywords = await storage.getSeoKeywords(userId);
       const topKeywords = keywords
         .slice(0, 10)
         .map(k => ({

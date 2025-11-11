@@ -18,29 +18,32 @@ interface MarketData {
   lastUpdated?: Date | string;
 }
 
-const contentOpportunities = [
-  {
-    id: 1,
-    title: "Aksarben Market Update",
-    description: "High search volume",
-    priority: "high",
-    color: "bg-primary/10 text-primary",
-  },
-  {
-    id: 2,
-    title: "First-Time Buyer Guide",
-    description: "Trending topic",
-    priority: "medium",
-    color: "bg-accent/10 text-accent",
-  },
-  {
-    id: 3,
-    title: "Luxury Home Features",
-    description: "Seasonal interest",
-    priority: "medium",
-    color: "bg-chart-3/10 text-black",
-  },
-];
+interface ContentOpportunity {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  priority: "high" | "medium" | "low";
+  neighborhood: string | null;
+  keywordId: string | null;
+  trendSource: "market" | "keyword" | "trend";
+  searchSignal: number;
+  metadata: any;
+  generatedAt: Date | string;
+}
+
+const getPriorityColor = (priority: string) => {
+  switch (priority) {
+    case "high":
+      return "bg-primary/10 text-primary border-primary/20";
+    case "medium":
+      return "bg-accent/10 text-accent border-accent/20";
+    case "low":
+      return "bg-muted/50 text-muted-foreground border-muted";
+    default:
+      return "bg-muted/50 text-muted-foreground border-muted";
+  }
+};
 
 const getTrendColor = (trend: string) => {
   switch (trend) {
@@ -75,6 +78,10 @@ export function LocalMarketTools() {
     queryKey: ["/api/market/data"],
   });
 
+  const { data: contentOpportunities = [], isLoading: opportunitiesLoading } = useQuery<ContentOpportunity[]>({
+    queryKey: ["/api/ai/opportunities"],
+  });
+
   const refreshMutation = useMutation({
     mutationFn: async () => {
       return await apiRequest("POST", "/api/market/refresh");
@@ -90,6 +97,26 @@ export function LocalMarketTools() {
       toast({
         title: "Refresh Failed",
         description: error.message || "Could not refresh market data. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const refreshOpportunitiesMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/ai/opportunities/generate");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/opportunities"] });
+      toast({
+        title: "Content Opportunities Generated",
+        description: "AI has created fresh content suggestions based on market data.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Generation Failed",
+        description: error.message || "Could not generate content opportunities. Please try again.",
         variant: "destructive",
       });
     },
@@ -215,21 +242,68 @@ export function LocalMarketTools() {
 
           {/* Content Opportunities */}
           <div>
-            <h3 className="text-sm font-medium text-foreground mb-3">Content Opportunities</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                Content Opportunities
+                <Badge variant="secondary" className="text-xs">AI Generated</Badge>
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => refreshOpportunitiesMutation.mutate()}
+                disabled={refreshOpportunitiesMutation.isPending}
+                className="h-7 px-2"
+                data-testid="button-refresh-opportunities"
+              >
+                <RefreshCw className={`h-3 w-3 ${refreshOpportunitiesMutation.isPending ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
             <div className="space-y-2">
-              {contentOpportunities.map((opportunity) => (
-                <Button
-                  key={opportunity.id}
-                  variant="ghost"
-                  className={`w-full p-2 ${opportunity.color} rounded-md text-left justify-start hover:opacity-80 transition-opacity`}
-                  data-testid={`opportunity-${opportunity.id}`}
-                >
-                  <div className="text-left">
-                    <div className="text-sm font-medium">{opportunity.title}</div>
-                    <div className="text-xs opacity-80">{opportunity.description}</div>
-                  </div>
-                </Button>
-              ))}
+              {opportunitiesLoading ? (
+                <div className="space-y-2">
+                  <div className="h-12 bg-muted rounded animate-pulse"></div>
+                  <div className="h-12 bg-muted rounded animate-pulse"></div>
+                  <div className="h-12 bg-muted rounded animate-pulse"></div>
+                </div>
+              ) : contentOpportunities.length > 0 ? (
+                contentOpportunities.slice(0, 5).map((opportunity) => (
+                  <Button
+                    key={opportunity.id}
+                    variant="ghost"
+                    className={`w-full p-3 ${getPriorityColor(opportunity.priority)} rounded-lg text-left justify-start hover:opacity-80 transition-opacity border`}
+                    data-testid={`opportunity-${opportunity.id}`}
+                  >
+                    <div className="text-left w-full">
+                      <div className="text-sm font-medium flex items-center justify-between">
+                        <span>{opportunity.title}</span>
+                        {opportunity.searchSignal >= 70 && (
+                          <Badge variant="secondary" className="text-xs ml-2">High demand</Badge>
+                        )}
+                      </div>
+                      <div className="text-xs opacity-80 mt-1">{opportunity.description}</div>
+                    </div>
+                  </Button>
+                ))
+              ) : (
+                <div className="text-center py-6 px-4 border-2 border-dashed rounded-lg bg-muted/30">
+                  <p className="text-sm text-muted-foreground mb-3">No content opportunities yet</p>
+                  <Button
+                    onClick={() => refreshOpportunitiesMutation.mutate()}
+                    disabled={refreshOpportunitiesMutation.isPending}
+                    size="sm"
+                    data-testid="button-generate-first-opportunities"
+                  >
+                    {refreshOpportunitiesMutation.isPending ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      "Generate Opportunities"
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
