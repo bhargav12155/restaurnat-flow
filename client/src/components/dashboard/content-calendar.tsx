@@ -4,13 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload } from "lucide-react";
+import { Plus, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, Check, X } from "lucide-react";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const calendarDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -376,8 +377,16 @@ interface ScheduledPost {
   postType: string | null;
   content: string;
   scheduledFor: string;
+  status: string;
+  isEdited: boolean;
+  originalContent: string;
+  hashtags: string[];
   metadata?: {
     imageUrl?: string;
+    planId?: string;
+    aiGenerated?: boolean;
+    backfilled?: boolean;
+    theme?: string;
     [key: string]: any;
   };
 }
@@ -386,16 +395,86 @@ export function ContentCalendar() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [localGeneratedPosts, setLocalGeneratedPosts] = useState<typeof initialScheduledContent>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const [previewContent, setPreviewContent] = useState<typeof initialScheduledContent[0] | null>(null);
+  const [previewContent, setPreviewContent] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState("");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [savedPhotoUrl, setSavedPhotoUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const { toast } = useToast();
 
   const { data: apiScheduledPosts = [], isLoading } = useQuery<ScheduledPost[]>({
-    queryKey: ["/api/scheduled-posts"],
+    queryKey: ["/api/scheduled-posts", statusFilter],
+    queryFn: async () => {
+      const url = statusFilter === "all" 
+        ? "/api/scheduled-posts"
+        : `/api/scheduled-posts?status=${statusFilter}`;
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch scheduled posts");
+      return await response.json();
+    },
+  });
+
+  const updatePostMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<ScheduledPost> }) => {
+      // Only send mutable fields to match updateScheduledPostSchema
+      const allowedFields: Array<keyof ScheduledPost> = ['status', 'content', 'scheduledFor', 'hashtags', 'metadata'];
+      const payload: any = {};
+      allowedFields.forEach(field => {
+        if (updates[field] !== undefined) {
+          payload[field] = updates[field];
+        }
+      });
+      
+      const response = await apiRequest('PATCH', `/api/scheduled-posts/${id}`, payload);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      toast({
+        title: "Post Updated",
+        description: "Your changes have been saved successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Update Failed",
+        description: "Could not save changes. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const approvePostMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest('PATCH', `/api/scheduled-posts/${id}`, { status: 'approved' });
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      setShowPreview(false);
+      toast({
+        title: "Post Approved",
+        description: "The post has been approved and will be published on schedule.",
+      });
+    },
+  });
+
+  const declinePostMutation = useMutation({
+    mutationFn: async (id: string) => {
+      // Use PATCH to set status='cancelled' instead of DELETE
+      const response = await apiRequest('PATCH', `/api/scheduled-posts/${id}`, { status: 'cancelled' });
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      setShowPreview(false);
+      toast({
+        title: "Post Declined",
+        description: "The post has been cancelled and won't be published.",
+      });
+    },
   });
 
   const platformColors = {

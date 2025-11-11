@@ -27,6 +27,7 @@ import {
   insertSocialMediaAccountSchema,
   insertSeoKeywordSchema,
   insertScheduledPostSchema,
+  updateScheduledPostSchema,
   insertAvatarSchema,
   insertVideoContentSchema,
   insertCompanyProfileSchema,
@@ -2200,6 +2201,37 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         scheduledFor: scheduledFor ? new Date(scheduledFor) : undefined,
         status,
       });
+
+      if (!updatedPost) {
+        return res.status(404).json({ error: "Scheduled post not found" });
+      }
+
+      res.json(updatedPost);
+    } catch (error) {
+      console.error("Update scheduled post error:", error);
+      res.status(500).json({ error: "Failed to update scheduled post" });
+    }
+  });
+
+  app.patch("/api/scheduled-posts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Validate using Zod schema for mutable fields only
+      const result = updateScheduledPostSchema.safeParse(req.body);
+      
+      if (!result.success) {
+        return res.status(400).json({ 
+          error: "Invalid update data", 
+          details: result.error.format() 
+        });
+      }
+      
+      if (Object.keys(result.data).length === 0) {
+        return res.status(400).json({ error: "No valid fields to update" });
+      }
+      
+      const updatedPost = await storage.updateScheduledPost(id, result.data);
 
       if (!updatedPost) {
         return res.status(404).json({ error: "Scheduled post not found" });

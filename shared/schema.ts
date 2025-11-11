@@ -444,6 +444,16 @@ export const insertScheduledPostSchema = createInsertSchema(
   updatedAt: true,
 });
 
+// Update schema for PATCH operations - only mutable fields
+export const updateScheduledPostSchema = z.object({
+  status: z.enum(['pending', 'approved', 'posted', 'cancelled']).optional(),
+  content: z.string().min(1).optional(),
+  scheduledFor: z.coerce.date().optional(),
+  hashtags: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional(),
+}).strict();
+export type UpdateScheduledPostInput = z.infer<typeof updateScheduledPostSchema>;
+
 export const insertPublicUserSchema = createInsertSchema(publicUsers).omit({
   id: true,
   createdAt: true,
