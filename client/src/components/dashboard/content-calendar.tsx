@@ -486,6 +486,11 @@ export function ContentCalendar() {
   };
 
   const postTypeLabels: Record<string, string> = {
+    market_update: "Market Update",
+    buyer_tips: "Buyer Tips",
+    seller_tips: "Seller Tips",
+    neighborhood: "Neighborhood",
+    neighborhood_tour: "Neighborhood Tour",
     local_market: "Local Market",
     moving_guide: "Moving Guide",
     open_houses: "Open House",
