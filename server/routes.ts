@@ -2734,15 +2734,15 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Video Content endpoints
-  app.get("/api/videos", async (req, res) => {
+  app.get("/api/videos", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
       }
 
       const status = req.query.status as string;
-      const videos = await storage.getVideoContent(user.id, status);
+      const videos = await storage.getVideoContent(userId, status);
       res.json(videos);
     } catch (error) {
       console.error("Get videos error:", error);
@@ -2778,16 +2778,16 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  app.post("/api/videos", async (req, res) => {
+  app.post("/api/videos", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
       }
 
       const validatedData = insertVideoContentSchema.parse({
         ...req.body,
-        userId: user.id,
+        userId,
       });
 
       const video = await storage.createVideoContent(validatedData);
@@ -2816,9 +2816,15 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  app.post("/api/videos/:id/generate-script", async (req, res) => {
+  app.post("/api/videos/:id/generate-script", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = String(req.user?.id);
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const {
         topic,
         neighborhood,
@@ -2827,7 +2833,8 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         duration = 60,
       } = req.body;
 
-      const video = await storage.getVideoById(id);
+      // Ownership check - only allow users to generate scripts for their own videos
+      const video = await storage.getVideoByIdAndUser(id, userId);
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
       }
@@ -2878,18 +2885,22 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
     }
   });
 
-  app.post("/api/videos/:id/generate-video", async (req, res) => {
+  app.post("/api/videos/:id/generate-video", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = String(req.user?.id);
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { avatarId } = req.body;
 
-      const video = await storage.getVideoById(id);
+      // Ownership check - only allow users to generate videos for their own video content
+      const video = await storage.getVideoByIdAndUser(id, userId);
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
       }
-
-      // Store user ID for notification later
-      const userId = video.userId;
 
       const avatar = avatarId ? await storage.getAvatarById(avatarId) : null;
 
@@ -3035,12 +3046,19 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
 
   // Note: Old video status route removed - using HeyGen-compatible route at line ~3425
 
-  app.post("/api/videos/:id/upload-youtube", async (req, res) => {
+  app.post("/api/videos/:id/upload-youtube", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = String(req.user?.id);
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { title, description, tags, privacy = "public" } = req.body;
 
-      const video = await storage.getVideoById(id);
+      // Ownership check - only allow users to upload their own videos
+      const video = await storage.getVideoByIdAndUser(id, userId);
       if (!video || !video.videoUrl) {
         return res.status(404).json({ error: "Video not ready for upload" });
       }
@@ -3204,8 +3222,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   // ==================== PHOTO AVATAR ENDPOINTS ====================
 
   // Generate AI photos for avatars
-  app.post("/api/photo-avatars/generate-photos", async (req, res) => {
+  app.post("/api/photo-avatars/generate-photos", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       console.log("📸 Photo generation request:", req.body);
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
@@ -3214,13 +3237,11 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       console.log("✅ Photo generation result:", result);
 
       // Send real-time notification
-      if (req.session?.userId) {
-        realtimeService.notifyPhotoGenerated(
-          req.session.userId,
-          req.body.name || "Avatar",
-          5 // HeyGen generates 5 photos
-        );
-      }
+      realtimeService.notifyPhotoGenerated(
+        userId,
+        req.body.name || "Avatar",
+        5 // HeyGen generates 5 photos
+      );
 
       res.json(result);
     } catch (error) {
@@ -3235,8 +3256,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Get photo generation status
-  app.get("/api/photo-avatars/generation/:generationId", async (req, res) => {
+  app.get("/api/photo-avatars/generation/:generationId", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { generationId } = req.params;
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
@@ -3250,14 +3276,30 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Create avatar group
-  app.post("/api/photo-avatars/groups", async (req, res) => {
+  app.post("/api/photo-avatars/groups", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { name, imageKey } = req.body;
 
+      // Create group in HeyGen
       const photoAvatarService = new HeyGenPhotoAvatarService();
-      const group = await photoAvatarService.createAvatarGroup(name, imageKey);
+      const heygenGroup = await photoAvatarService.createAvatarGroup(name, imageKey);
 
-      res.json(group);
+      // Persist to database with userId for ownership tracking
+      const dbGroup = await storage.createPhotoAvatarGroup({
+        userId,
+        heygenGroupId: heygenGroup.group_id,
+        name,
+        status: 'created',
+      });
+
+      console.log("✅ Avatar group created and persisted to database:", dbGroup.id);
+
+      res.json(heygenGroup);
     } catch (error) {
       console.error("Failed to create avatar group:", error);
       res.status(500).json({ error: "Failed to create avatar group" });
@@ -3265,10 +3307,21 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Add photos to avatar group
-  app.post("/api/photo-avatars/groups/:groupId/photos", async (req, res) => {
+  app.post("/api/photo-avatars/groups/:groupId/photos", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
       const { imageKeys, name } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Ownership check - ensure user owns this avatar group
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(groupId, userId);
+      if (!dbGroup) {
+        return res.status(404).json({ error: "Avatar group not found" });
+      }
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
       const result = await photoAvatarService.addPhotosToGroup(
@@ -3596,8 +3649,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Delete individual avatar
-  app.delete("/api/photo-avatars/:avatarId", async (req, res) => {
+  app.delete("/api/photo-avatars/:avatarId", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { avatarId } = req.params;
 
       console.log("🗑️ Deleting individual avatar:", avatarId);
@@ -3686,8 +3744,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Add motion to photo avatar
-  app.post("/api/photo-avatars/:avatarId/add-motion", async (req, res) => {
+  app.post("/api/photo-avatars/:avatarId/add-motion", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { avatarId } = req.params;
 
       console.log("🎬 Adding motion to avatar:", avatarId);
@@ -3703,8 +3766,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Add sound effect to photo avatar
-  app.post("/api/photo-avatars/:avatarId/add-sound-effect", async (req, res) => {
+  app.post("/api/photo-avatars/:avatarId/add-sound-effect", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { avatarId } = req.params;
 
       console.log("🔊 Adding sound effect to avatar:", avatarId);
@@ -3720,8 +3788,13 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
   });
 
   // Get avatar status (for checking motion/sound effect processing)
-  app.get("/api/photo-avatars/:avatarId/status", async (req, res) => {
+  app.get("/api/photo-avatars/:avatarId/status", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
       const { avatarId } = req.params;
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
