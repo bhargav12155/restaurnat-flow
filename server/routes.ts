@@ -4437,6 +4437,34 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       });
 
       console.log("✅ Backend: Video generation result:", result);
+
+      // Validate that we got a video_id from HeyGen
+      if (!result.data?.video_id) {
+        console.error("❌ Backend: HeyGen did not return a video_id");
+        return res.status(500).json({
+          error: "Video generation failed - no video ID received",
+        });
+      }
+
+      // Save video to database
+      const user = (req as any).user;
+      const videoRecord = await storage.createVideoContent({
+        userId: String(user.id),
+        avatarId,
+        title: title || "Generated Video",
+        script,
+        status: "generating",
+        metadata: {
+          heygenVideoId: result.data.video_id,
+          test,
+          voiceSpeed,
+          voiceId: finalVoiceId,
+          audioAssetId,
+        },
+      });
+
+      console.log("💾 Backend: Saved video to database:", videoRecord.id);
+
       res.json(result);
     } catch (error: any) {
       console.error("❌ Backend: Failed to generate video");
@@ -4465,52 +4493,82 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
       // Extended response with S3 backup URLs
       let response: any = { ...status };
 
-      // If video is completed and has a URL, backup to S3
+      // If video is completed, update database first with HeyGen URLs
       if (status.status === 'completed' && status.video_url && userId) {
+        // Find and update the database record
         try {
-          console.log("💾 Backend: Video completed, backing up to S3...");
-          
-          // Download video from HeyGen CDN
-          const videoResponse = await fetch(status.video_url);
-          if (videoResponse.ok) {
-            const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
-            
-            // Upload to S3
-            const s3Service = new S3UploadService();
-            const s3VideoUrl = await s3Service.uploadFile(
-              userId,
-              videoBuffer,
-              `generated-videos/${videoId}.mp4`,
-              'video/mp4'
-            );
-            
-            console.log("✅ Backend: Video backed up to S3:", s3VideoUrl);
-            
-            // Add S3 URL to the response
-            response.s3_video_url = s3VideoUrl;
-            
-            // Download and backup thumbnail if available
-            if (status.thumbnail_url) {
-              try {
-                const thumbnailResponse = await fetch(status.thumbnail_url);
-                if (thumbnailResponse.ok) {
-                  const thumbnailBuffer = Buffer.from(await thumbnailResponse.arrayBuffer());
-                  const s3ThumbnailUrl = await s3Service.uploadFile(
-                    userId,
-                    thumbnailBuffer,
-                    `generated-videos/${videoId}_thumbnail.jpg`,
-                    'image/jpeg'
-                  );
-                  response.s3_thumbnail_url = s3ThumbnailUrl;
-                  console.log("✅ Backend: Thumbnail backed up to S3:", s3ThumbnailUrl);
+          const allVideos = await storage.getVideoContent(String(userId));
+          const videoRecord = allVideos.find((v: any) => 
+            v.metadata && 
+            typeof v.metadata === 'object' && 
+            'heygenVideoId' in v.metadata && 
+            v.metadata.heygenVideoId === videoId
+          );
+
+          if (videoRecord) {
+            // First, mark video as ready with HeyGen URLs
+            await storage.updateVideoContent(videoRecord.id, {
+              status: 'ready',
+              videoUrl: status.video_url,
+              thumbnailUrl: status.thumbnail_url,
+            });
+            console.log("💾 Backend: Updated video record with HeyGen URLs:", videoRecord.id);
+
+            // Then attempt S3 backup (optional enhancement)
+            try {
+              console.log("💾 Backend: Attempting S3 backup...");
+              
+              // Download video from HeyGen CDN
+              const videoResponse = await fetch(status.video_url);
+              if (videoResponse.ok) {
+                const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+                
+                // Upload to S3
+                const s3Service = new S3UploadService();
+                const s3VideoUrl = await s3Service.uploadFile(
+                  userId,
+                  videoBuffer,
+                  `generated-videos/${videoId}.mp4`,
+                  'video/mp4'
+                );
+                
+                console.log("✅ Backend: Video backed up to S3:", s3VideoUrl);
+                response.s3_video_url = s3VideoUrl;
+                
+                // Download and backup thumbnail if available
+                let s3ThumbnailUrl = null;
+                if (status.thumbnail_url) {
+                  try {
+                    const thumbnailResponse = await fetch(status.thumbnail_url);
+                    if (thumbnailResponse.ok) {
+                      const thumbnailBuffer = Buffer.from(await thumbnailResponse.arrayBuffer());
+                      s3ThumbnailUrl = await s3Service.uploadFile(
+                        userId,
+                        thumbnailBuffer,
+                        `generated-videos/${videoId}_thumbnail.jpg`,
+                        'image/jpeg'
+                      );
+                      response.s3_thumbnail_url = s3ThumbnailUrl;
+                      console.log("✅ Backend: Thumbnail backed up to S3:", s3ThumbnailUrl);
+                    }
+                  } catch (thumbError) {
+                    console.error("⚠️ Backend: Thumbnail backup failed:", thumbError);
+                  }
                 }
-              } catch (thumbError) {
-                console.error("⚠️ Backend: Thumbnail backup failed:", thumbError);
+
+                // Update database with S3 URLs (enhancement)
+                await storage.updateVideoContent(videoRecord.id, {
+                  videoUrl: s3VideoUrl,
+                  thumbnailUrl: s3ThumbnailUrl || status.thumbnail_url,
+                });
+                console.log("💾 Backend: Updated video record with S3 URLs:", videoRecord.id);
               }
+            } catch (backupError) {
+              console.error("⚠️ Backend: S3 backup failed, HeyGen URLs still available:", backupError);
             }
           }
-        } catch (backupError) {
-          console.error("⚠️ Backend: S3 backup failed, continuing anyway:", backupError);
+        } catch (dbError) {
+          console.error("⚠️ Backend: Database update failed:", dbError);
         }
       }
 
