@@ -816,6 +816,23 @@ export const engagementLeads = pgTable("engagement_leads", {
   contactedAt: timestamp("contacted_at"),
 });
 
+// Content Opportunities - AI-generated content suggestions
+export const contentOpportunities = pgTable("content_opportunities", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  priority: text("priority").notNull().default("medium"), // 'high', 'medium', 'low'
+  neighborhood: text("neighborhood"),
+  keywordId: text("keyword_id"),
+  trendSource: text("trend_source").notNull(), // 'market', 'keyword', 'trend'
+  searchSignal: integer("search_signal").default(50), // 0-100 score
+  metadata: jsonb("metadata"),
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
 export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
   id: true,
   createdAt: true,
@@ -837,6 +854,11 @@ export const insertEngagementLeadSchema = createInsertSchema(engagementLeads).om
   createdAt: true,
 });
 
+export const insertContentOpportunitySchema = createInsertSchema(contentOpportunities).omit({
+  id: true,
+  generatedAt: true,
+});
+
 export type UserSession = typeof userSessions.$inferSelect;
 export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
 export type PropertyInteraction = typeof propertyInteractions.$inferSelect;
@@ -845,3 +867,5 @@ export type PropertyLike = typeof propertyLikes.$inferSelect;
 export type InsertPropertyLike = z.infer<typeof insertPropertyLikeSchema>;
 export type EngagementLead = typeof engagementLeads.$inferSelect;
 export type InsertEngagementLead = z.infer<typeof insertEngagementLeadSchema>;
+export type ContentOpportunity = typeof contentOpportunities.$inferSelect;
+export type InsertContentOpportunity = z.infer<typeof insertContentOpportunitySchema>;
