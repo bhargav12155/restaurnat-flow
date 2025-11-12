@@ -111,18 +111,26 @@ class UnifiedAIService {
       throw new Error(data.error || 'Copilot request failed');
     }
 
-    let content = options.jsonMode ? JSON.stringify(data.data) : data.data.content;
+    // Always extract content from data.data.content
+    // The response structure is: { success: true, data: { content: "...", provider: "...", model: "..." } }
+    let content = data.data?.content;
     
     // Debug: Log what we extracted
-    console.log('📤 Extracted content:', content ? content.substring(0, 100) + '...' : 'EMPTY/UNDEFINED');
+    console.log('📤 Extracted content (raw):', typeof content, content ? content.substring(0, 100) + '...' : 'EMPTY/UNDEFINED');
+
+    if (!content) {
+      throw new Error('No content in Copilot response');
+    }
 
     // GitHub Copilot sometimes returns markdown-wrapped JSON, clean it up
-    if (content && typeof content === 'string') {
+    if (typeof content === 'string') {
       content = content.trim();
       if (content.startsWith('```json')) {
         content = content.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
+        console.log('🧹 Cleaned markdown wrapper from JSON response');
       } else if (content.startsWith('```')) {
         content = content.replace(/```\n?/g, '').trim();
+        console.log('🧹 Cleaned markdown wrapper from response');
       }
     }
 
