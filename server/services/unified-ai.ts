@@ -75,9 +75,9 @@ class UnifiedAIService {
   }
 
   private async callCopilot(prompt: string, options: UnifiedAIOptions): Promise<UnifiedAIResponse> {
-    const endpoint = options.jsonMode 
-      ? `${this.copilotBaseUrl}/generate-json`
-      : `${this.copilotBaseUrl}/generate`;
+    // Always use /generate endpoint and parse JSON ourselves
+    // The /generate-json endpoint has issues with markdown-wrapped responses
+    const endpoint = `${this.copilotBaseUrl}/generate`;
 
     const requestBody: any = {
       prompt,
@@ -108,8 +108,20 @@ class UnifiedAIService {
       throw new Error(data.error || 'Copilot request failed');
     }
 
+    let content = options.jsonMode ? JSON.stringify(data.data) : data.data.content;
+
+    // GitHub Copilot sometimes returns markdown-wrapped JSON, clean it up
+    if (content && typeof content === 'string') {
+      content = content.trim();
+      if (content.startsWith('```json')) {
+        content = content.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
+      } else if (content.startsWith('```')) {
+        content = content.replace(/```\n?/g, '').trim();
+      }
+    }
+
     return {
-      content: options.jsonMode ? JSON.stringify(data.data) : data.data.content,
+      content,
       provider: 'github-copilot',
       model: data.metadata?.model || data.data?.model
     };
@@ -129,9 +141,11 @@ class UnifiedAIService {
     const requestOptions: any = {
       model: 'gpt-5',
       messages,
-      temperature: options.temperature,
       max_completion_tokens: options.maxTokens
     };
+
+    // GPT-5 only supports default temperature (1.0), don't set custom values
+    // temperature parameter removed for GPT-5 compatibility
 
     if (options.jsonMode) {
       requestOptions.response_format = { type: 'json_object' };
