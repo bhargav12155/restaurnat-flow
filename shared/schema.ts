@@ -399,6 +399,8 @@ export const socialApiKeys = pgTable("social_api_keys", {
   twitterApiSecret: text("twitter_api_secret"),
   twitterAccessToken: text("twitter_access_token"),
   twitterAccessTokenSecret: text("twitter_access_token_secret"),
+  linkedinClientId: text("linkedin_client_id"),
+  linkedinClientSecret: text("linkedin_client_secret"),
   linkedinAccessToken: text("linkedin_access_token"),
   youtubeApiKey: text("youtube_api_key"),
   youtubeChannelId: text("youtube_channel_id"),
