@@ -768,7 +768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         linkedin: process.env.LINKEDIN_CLIENT_ID
           ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/linkedin"
-            )}&scope=w_member_social&state=${encodeURIComponent(state)}`
+            )}&scope=profile%20email%20w_member_social&state=${encodeURIComponent(state)}`
           : null,
         twitter: process.env.TWITTER_CLIENT_ID
           ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(
