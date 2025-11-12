@@ -484,11 +484,21 @@ export function SocialMediaManager() {
         data.platforms.includes("x") ||
         data.platforms.includes("twitter")
       ) {
-        // Use Twitter API for Twitter posting
-        const twitterResponse = await apiRequest("POST", "/api/twitter/post", {
-          content: data.content,
+        // Use Twitter API for Twitter posting - must use FormData for multer
+        const formData = new FormData();
+        formData.append("content", data.content);
+        
+        const response = await fetch("/api/twitter/post", {
+          method: "POST",
+          body: formData,
         });
-        return twitterResponse.json();
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Failed to post to Twitter");
+        }
+        
+        return response.json();
       } else {
         // For other platforms, use the general endpoint
         const response = await apiRequest("POST", "/api/social/post", data);
