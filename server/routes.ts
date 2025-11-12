@@ -626,35 +626,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Social Media OAuth Routes
-  app.post("/api/social/connect/:platform", async (req, res) => {
+  app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
     try {
       const { platform } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
 
       // Read credentials from Replit Secrets (environment variables)
       const baseUrl = process.env.BASE_URL || process.env.REPLIT_DEV_DOMAIN 
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
         : "http://localhost:5000";
 
+      // Create state parameter with userId for OAuth callback
+      const state = Buffer.from(JSON.stringify({ userId, platform })).toString('base64');
+
       const oauthUrls: Record<string, string | null> = {
         facebook: process.env.FACEBOOK_CLIENT_ID
           ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.FACEBOOK_CLIENT_ID}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/facebook"
-            )}&scope=pages_manage_posts,pages_read_engagement`
+            )}&scope=pages_manage_posts,pages_read_engagement&state=${encodeURIComponent(state)}`
           : null,
         instagram: process.env.INSTAGRAM_CLIENT_ID
           ? `https://api.instagram.com/oauth/authorize?client_id=${process.env.INSTAGRAM_CLIENT_ID}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/instagram"
-            )}&scope=user_profile,user_media&response_type=code`
+            )}&scope=user_profile,user_media&response_type=code&state=${encodeURIComponent(state)}`
           : null,
         linkedin: process.env.LINKEDIN_CLIENT_ID
           ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/linkedin"
-            )}&scope=w_member_social`
+            )}&scope=w_member_social&state=${encodeURIComponent(state)}`
           : null,
         twitter: process.env.TWITTER_CLIENT_ID
           ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/twitter"
-            )}&scope=tweet.read%20tweet.write%20users.read`
+            )}&scope=tweet.read%20tweet.write%20users.read&state=${encodeURIComponent(state)}`
           : null,
       };
 
@@ -756,7 +764,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/social/callback/:platform", async (req, res) => {
     try {
       const { platform } = req.params;
-      const { code, error } = req.query;
+      const { code, error, state } = req.query;
 
       // Use production URL for Replit deployments
       const baseUrl = process.env.BASE_URL || (process.env.REPLIT_DEV_DOMAIN 
@@ -773,6 +781,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect(
           `${baseUrl}/?oauth_error=no_code`
         );
+      }
+
+      // Extract userId from state parameter
+      let userId: number | null = null;
+      if (state) {
+        try {
+          // LinkedIn URL-encodes the state, so decode it first
+          const urlDecodedState = decodeURIComponent(state as string);
+          const decodedState = JSON.parse(Buffer.from(urlDecodedState, 'base64').toString());
+          userId = decodedState.userId;
+          
+          console.log(`OAuth callback for ${platform}: extracted userId ${userId} from state parameter`);
+        } catch (e) {
+          console.error("Failed to decode state parameter:", e);
+        }
+      }
+
+      if (!userId) {
+        console.error("OAuth callback: no userId found in state parameter");
+        return res.redirect(`${baseUrl}/?oauth_error=invalid_state`);
       }
 
       // Exchange authorization code for access token
@@ -817,8 +845,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const tokenData = await tokenResponse.json();
           const accessToken = tokenData.access_token;
 
-          // Get current user (simplified - in production, use session)
-          const user = await storage.getUserByUsername("mikebjork");
+          // Get user from database using userId from state parameter
+          const user = await storage.getUserById(userId);
           if (!user) {
             return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
           }
@@ -948,7 +976,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/social/post", upload.single("photo"), async (req, res) => {
+  app.post("/api/social/post", requireAuth, upload.single("photo"), async (req, res) => {
     try {
       const { platform, content, platforms, scheduledFor } = req.body;
       const photo = req.file;
