@@ -372,13 +372,65 @@ export class SocialMediaService {
     accessToken: string
   ): Promise<{ postId: string }> {
     try {
-      // LinkedIn API integration would go here
       console.log("Posting to LinkedIn:", content);
 
-      return { postId: `li_${Date.now()}` };
+      // Step 1: Get user's LinkedIn profile ID (person URN)
+      const profileResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (!profileResponse.ok) {
+        const errorText = await profileResponse.text();
+        console.error("LinkedIn profile fetch failed:", errorText);
+        throw new Error("Failed to fetch LinkedIn profile");
+      }
+
+      const profileData = await profileResponse.json();
+      const authorUrn = `urn:li:person:${profileData.sub}`;
+      console.log("LinkedIn author URN:", authorUrn);
+
+      // Step 2: Create post on LinkedIn
+      const postData = {
+        author: authorUrn,
+        lifecycleState: "PUBLISHED",
+        specificContent: {
+          "com.linkedin.ugc.ShareContent": {
+            shareCommentary: {
+              text: content,
+            },
+            shareMediaCategory: "NONE",
+          },
+        },
+        visibility: {
+          "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+        },
+      };
+
+      const postResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+        body: JSON.stringify(postData),
+      });
+
+      if (!postResponse.ok) {
+        const errorText = await postResponse.text();
+        console.error("LinkedIn post failed:", errorText);
+        throw new Error(`Failed to post to LinkedIn: ${errorText}`);
+      }
+
+      const postResult = await postResponse.json();
+      console.log("✅ LinkedIn post successful:", postResult.id);
+
+      return { postId: postResult.id || `li_${Date.now()}` };
     } catch (error) {
       console.error("LinkedIn posting error:", error);
-      throw new Error("Failed to post to LinkedIn");
+      throw new Error(`Failed to post to LinkedIn: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
