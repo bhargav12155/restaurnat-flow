@@ -7,7 +7,7 @@ import express from "express";
 import { nanoid } from "nanoid";
 import { storage } from "./storage";
 import { db } from "./db";
-import { openaiService, getAPIKeyStatus } from "./services/openai";
+import { openaiService, getAPIKeyStatus, multiOpenAI } from "./services/openai";
 import { socialMediaService } from "./services/socialMedia";
 import { seoService } from "./services/seo";
 import { MLSService } from "./services/mls";
@@ -2082,7 +2082,7 @@ ${topNeighborhoods.map(n => `- ${n.name}: $${n.avgPrice?.toLocaleString()} avg p
 Top SEO Keywords:
 ${topKeywords.map(k => `- "${k.keyword}" (volume: ${k.volume}, difficulty: ${k.difficulty})`).join('\n')}
 
-Generate exactly 5 content opportunities as a JSON array. Each opportunity must include:
+Generate exactly 5 content opportunities as a JSON object with an "opportunities" array. Each opportunity must include:
 - title: Catchy title for the content piece (e.g., "Aksarben Market Update", "First-Time Buyer Guide")
 - description: Brief reason why this content is valuable (e.g., "High search volume", "Trending topic", "Seasonal interest")
 - priority: "high", "medium", or "low"
@@ -2098,23 +2098,35 @@ Focus on:
 4. First-time buyer guides and educational content
 5. Local market analysis and comparisons
 
-Return ONLY the JSON array, no other text.`;
+Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
-      const response = await openaiService.chatCompletion([
-        { role: 'system', content: 'You are a real estate content strategist who generates data-driven content opportunities in JSON format.' },
-        { role: 'user', content: prompt }
-      ], {
-        temperature: 0.7,
-        max_tokens: 1500
-      });
+      const response = await multiOpenAI.makeRequest(
+        "content",
+        async (client) => {
+          return await client.chat.completions.create({
+            model: "gpt-5",
+            messages: [
+              { role: 'system', content: 'You are a real estate content strategist who generates data-driven content opportunities in JSON format.' },
+              { role: 'user', content: prompt }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.7,
+            max_tokens: 1500,
+          });
+        }
+      );
       
       // Parse AI response
       let generatedOpportunities;
       try {
-        const content = response.choices[0].message.content || '[]';
-        // Remove markdown code blocks if present
-        const jsonContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        generatedOpportunities = JSON.parse(jsonContent);
+        const content = response.choices[0].message.content || '{}';
+        const result = JSON.parse(content);
+        // The response_format forces JSON object, so we expect {opportunities: [...]}
+        generatedOpportunities = result.opportunities || result || [];
+        if (!Array.isArray(generatedOpportunities)) {
+          // If it's a single object, wrap in array
+          generatedOpportunities = [generatedOpportunities];
+        }
       } catch (parseError) {
         console.error('Failed to parse AI response:', parseError);
         console.error('Raw response:', response.choices[0].message.content);
