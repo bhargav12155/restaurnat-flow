@@ -625,6 +625,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // LinkedIn OAuth diagnostic page
+  app.get("/api/linkedin/test", async (req, res) => {
+    const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
+    const clientId = process.env.LINKEDIN_CLIENT_ID;
+    const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
+    
+    const state = Buffer.from(JSON.stringify({ userId: 2, platform: 'linkedin' })).toString('base64');
+    const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20email%20w_member_social`;
+    
+    res.send(`
+      <html>
+        <head>
+          <title>LinkedIn OAuth Test</title>
+          <style>
+            body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+            .box { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .success { background: #d4edda; color: #155724; }
+            .info { background: #d1ecf1; color: #0c5460; }
+            code { background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+            a.button { display: inline-block; background: #0077b5; color: white; padding: 12px 24px; 
+                       text-decoration: none; border-radius: 6px; margin: 10px 0; font-weight: 600; }
+            a.button:hover { background: #006097; }
+          </style>
+        </head>
+        <body>
+          <h1>🔗 LinkedIn OAuth Test</h1>
+          
+          <div class="box info">
+            <h3>Configuration Status</h3>
+            <p>✅ Client ID: ${clientId ? 'Set' : '❌ Missing'}</p>
+            <p>✅ Client Secret: ${process.env.LINKEDIN_CLIENT_SECRET ? 'Set' : '❌ Missing'}</p>
+            <p>✅ Redirect URI: <code>${redirectUri}</code></p>
+          </div>
+
+          <div class="box">
+            <h3>Step 1: Verify LinkedIn App Settings</h3>
+            <p>Make sure these redirect URIs are added in your LinkedIn Developer App:</p>
+            <ul>
+              <li><code>${redirectUri}</code></li>
+              <li><code>${redirectUri}/</code> (with trailing slash)</li>
+            </ul>
+          </div>
+
+          <div class="box success">
+            <h3>Step 2: Connect LinkedIn</h3>
+            <p>Click the button below to authorize this app with LinkedIn:</p>
+            <a href="${authUrl}" class="button">🔗 Connect LinkedIn Account</a>
+          </div>
+
+          <div class="box">
+            <h3>What Happens Next?</h3>
+            <ol>
+              <li>You'll be redirected to LinkedIn to authorize the app</li>
+              <li>LinkedIn will redirect back to this app</li>
+              <li>The app will save your access token</li>
+              <li>You can then post to LinkedIn automatically!</li>
+            </ol>
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
   // Social Media OAuth Routes
   app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
     try {
