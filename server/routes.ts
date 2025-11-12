@@ -853,66 +853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // OAuth callback handlers (these would handle the actual OAuth responses)
-  // Twitter OAuth callback route (matches user's Twitter app configuration)
-  app.get("/auth/twitter/callback", async (req, res) => {
-    try {
-      const { code, error, oauth_token, oauth_verifier } = req.query;
-
-      if (error) {
-        return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:5000"
-          }/?oauth_error=${error}`
-        );
-      }
-
-      // For OAuth 1.0a, we get oauth_token and oauth_verifier
-      if (oauth_token && oauth_verifier) {
-        // OAuth 1.0a callback handling would go here
-        res.send(`
-          <html>
-            <body>
-              <h1>Twitter Authorization Successful</h1>
-              <p>Twitter OAuth 1.0a authorization completed successfully.</p>
-              <p>oauth_token: ${oauth_token}</p>
-              <script>
-                window.opener?.postMessage({ success: true, platform: 'twitter' }, '*');
-                window.close();
-              </script>
-            </body>
-          </html>
-        `);
-      }
-      // For OAuth 2.0, we get authorization code
-      else if (code) {
-        res.send(`
-          <html>
-            <body>
-              <h1>Twitter Authorization Successful</h1>
-              <p>Twitter OAuth 2.0 authorization completed successfully.</p>
-              <script>
-                window.opener?.postMessage({ success: true, platform: 'twitter', code: '${code}' }, '*');
-                window.close();
-              </script>
-            </body>
-          </html>
-        `);
-      } else {
-        // Use production URL for Replit deployments
-        const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : (process.env.CLIENT_URL || "http://localhost:5000");
-        
-        return res.redirect(
-          `${baseUrl}/?oauth_error=no_auth_data`
-        );
-      }
-    } catch (error) {
-      console.error("Twitter OAuth callback error:", error);
-      res.status(500).send("Twitter OAuth callback failed");
-    }
-  });
+  // OAuth callback handlers are now unified under /api/social/callback/:platform
 
   app.get("/api/social/callback/:platform", async (req, res) => {
     try {
