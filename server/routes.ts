@@ -626,12 +626,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // LinkedIn OAuth diagnostic page
-  app.get("/api/linkedin/test", async (req, res) => {
+  app.get("/api/linkedin/test", requireAuth, async (req, res) => {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return res.status(401).send('<h1>Please log in first</h1><p>Visit the dashboard and log in, then come back to this page.</p>');
+    }
+    
     const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
     const clientId = process.env.LINKEDIN_CLIENT_ID;
     const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
     
-    const state = Buffer.from(JSON.stringify({ userId: 2, platform: 'linkedin' })).toString('base64');
+    const state = Buffer.from(JSON.stringify({ userId, platform: 'linkedin' })).toString('base64');
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20email%20w_member_social`;
     
     res.send(`
@@ -654,6 +660,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           <div class="box info">
             <h3>Configuration Status</h3>
+            <p>✅ User ID: <code>${userId}</code></p>
             <p>✅ Client ID: ${clientId ? 'Set' : '❌ Missing'}</p>
             <p>✅ Client Secret: ${process.env.LINKEDIN_CLIENT_SECRET ? 'Set' : '❌ Missing'}</p>
             <p>✅ Redirect URI: <code>${redirectUri}</code></p>
