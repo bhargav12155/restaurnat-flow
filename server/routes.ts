@@ -775,6 +775,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               baseUrl + "/api/social/callback/twitter"
             )}&scope=tweet.read%20tweet.write%20users.read&state=${encodeURIComponent(state)}`
           : null,
+        youtube: process.env.YOUTUBE_CLIENT_ID
+          ? `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${process.env.YOUTUBE_CLIENT_ID}&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/youtube"
+            )}&scope=https://www.googleapis.com/auth/youtube.upload%20https://www.googleapis.com/auth/youtube.force-ssl&access_type=offline&state=${encodeURIComponent(state)}`
+          : null,
       };
 
       const authUrl = oauthUrls[platform];
@@ -1001,6 +1006,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
           `);
         } catch (fetchError) {
           console.error("LinkedIn OAuth error:", fetchError);
+          return res.redirect(
+            `${baseUrl}/?oauth_error=token_exchange_error`
+          );
+        }
+      } else if (platform.toLowerCase() === "youtube") {
+        const clientId = process.env.YOUTUBE_CLIENT_ID;
+        const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/youtube`;
+
+        if (!clientId || !clientSecret) {
+          return res.redirect(
+            `${baseUrl}/?oauth_error=missing_credentials`
+          );
+        }
+
+        try {
+          // Exchange code for access token using Google OAuth
+          const tokenResponse = await fetch(
+            "https://oauth2.googleapis.com/token",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code as string,
+                redirect_uri: redirectUri,
+                client_id: clientId,
+                client_secret: clientSecret,
+              }),
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error("YouTube token exchange failed:", errorData);
+            return res.redirect(
+              `${baseUrl}/?oauth_error=token_exchange_failed`
+            );
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token; // YouTube provides refresh tokens
+
+          // Get user from database using userId from state parameter
+          const user = await storage.getUser(String(userId));
+          if (!user) {
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          // Save access token and refresh token to database
+          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          const youtubeAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === "youtube"
+          );
+
+          if (youtubeAccount) {
+            // Update existing account
+            await storage.updateSocialMediaAccount(youtubeAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date().toISOString(),
+            });
+          } else {
+            // Create new account
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "youtube",
+              accountId: "youtube_account",
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+          }
+
+          // Success! Show confirmation and close window
+          res.send(`
+            <html>
+              <body>
+                <h1>✅ YouTube Connected Successfully!</h1>
+                <p>Your YouTube channel has been connected. You can now post videos and community posts.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'youtube' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error("YouTube OAuth error:", fetchError);
           return res.redirect(
             `${baseUrl}/?oauth_error=token_exchange_error`
           );
