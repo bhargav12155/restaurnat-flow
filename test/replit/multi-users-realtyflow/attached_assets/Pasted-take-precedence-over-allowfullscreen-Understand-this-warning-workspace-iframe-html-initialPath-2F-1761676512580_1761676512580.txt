@@ -1,0 +1,22 @@
+take precedence over 'allowfullscreen'.Understand this warning
+workspace_iframe.html?initialPath=%2F%23photo-avatars&id=%3Ar4i4%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.Understand this warning
+client:536 WebSocket connection to 'wss://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/?token=gvdghy5WQBb-' failed: 
+setupWebSocket @ client:536Understand this error
+596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/facebook/pages:1  Failed to load resource: the server responded with a status of 500 (Internal Server Error)Understand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=490525701&gjid=1499902897&_gid=1183697847.1761610532&_u=SCKAgEAjQAAAAGgCIAD~&z=551682570:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+client:536 WebSocket connection to 'wss://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/?token=gvdghy5WQBb-' failed: 
+setupWebSocket @ client:536Understand this error
+client:536 Uncaught (in promise) SyntaxError: Failed to construct 'WebSocket': The URL 'wss://localhost:undefined/?token=gvdghy5WQBb-' is invalid.
+    at setupWebSocket (client:536:19)
+    at fallback (client:509:16)
+    at WebSocket.<anonymous> (client:555:7)Understand this error
+injected.js:27 🔌 Connecting to WebSocket: wss://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/ws?userId=2
+596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/facebook/pages:1  Failed to load resource: the server responded with a status of 500 (Internal Server Error)Understand this error
+injected.js:27 ✅ WebSocket connected
+injected.js:27 📨 WebSocket message: Object
+_app-db43ea450327956f.js:13 [Coframe] failed to send event beacon
+(anonymous) @ _app-db43ea450327956f.js:13Understand this warning
+injected.js:27 🎤 saveVoiceToGroup called Object
+injected.js:27 📤 Sending voice save request to: /api/photo-avatars/groups/1c051cb3579d4c5bacce8f01c00e559b/voice
+injected.js:27 📨 Response received: Object
+injected.js:27 ✅ Voice saved successfully: Object
