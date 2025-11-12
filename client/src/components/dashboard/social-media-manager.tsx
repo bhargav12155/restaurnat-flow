@@ -210,7 +210,7 @@ export function SocialMediaManager() {
   const { toast } = useToast();
 
   // OAuth-enabled platforms (only platforms with full OAuth backend support)
-  const oauthPlatforms = ['linkedin', 'youtube'];
+  const oauthPlatforms = ['linkedin', 'youtube', 'x', 'twitter'];
   
   // Handle OAuth connection
   const handleOAuthConnect = async (platform: string) => {
