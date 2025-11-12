@@ -1145,29 +1145,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const accessToken = tokenData.access_token;
           const refreshToken = tokenData.refresh_token;
 
+          console.log(`✅ Twitter token exchange successful for user ${userId}`);
+          console.log(`   Access token: ${accessToken ? accessToken.substring(0, 20) + '...' : 'MISSING'}`);
+
           // Get user from database using userId from state parameter
           const user = await storage.getUser(String(userId));
           if (!user) {
+            console.error(`❌ User not found: ${userId}`);
             return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
           }
 
+          console.log(`✅ Found user: ${user.id} (${user.email})`);
+
           // Save access token and refresh token to database
           const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          console.log(`📊 Existing social accounts for user ${user.id}:`, existingAccounts.map(a => a.platform));
+          
           const twitterAccount = existingAccounts.find(
             (acc) => acc.platform.toLowerCase() === "twitter" || acc.platform.toLowerCase() === "x"
           );
 
           if (twitterAccount) {
             // Update existing account
+            console.log(`🔄 Updating existing Twitter account: ${twitterAccount.id}`);
             await storage.updateSocialMediaAccount(twitterAccount.id, {
               accessToken,
               refreshToken: refreshToken || undefined,
               isConnected: true,
               lastSync: new Date().toISOString(),
             });
+            console.log(`✅ Twitter account updated successfully`);
           } else {
             // Create new account
-            await storage.createSocialMediaAccount({
+            console.log(`➕ Creating new Twitter account for user ${user.id}`);
+            const newAccount = await storage.createSocialMediaAccount({
               userId: user.id,
               platform: "x",
               accountId: "x_account",
@@ -1175,6 +1186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               refreshToken: refreshToken || undefined,
               isConnected: true,
             });
+            console.log(`✅ Twitter account created successfully:`, newAccount);
           }
 
           // Success! Show confirmation and close window
