@@ -627,18 +627,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // LinkedIn OAuth diagnostic page
   app.get("/api/linkedin/test", requireAuth, async (req, res) => {
-    const userId = req.user?.id;
-    
-    if (!userId) {
-      return res.status(401).send('<h1>Please log in first</h1><p>Visit the dashboard and log in, then come back to this page.</p>');
+    try {
+      const sessionId = req.user?.id;
+      
+      if (!sessionId) {
+        return res.status(401).send('<h1>Please log in first</h1><p>Visit the dashboard and log in, then come back to this page.</p>');
+      }
+      
+      // Resolve session ID to actual UUID from database
+      // Try direct lookup first, then by username if numeric session ID
+      let user = await storage.getUser(String(sessionId));
+      if (!user && req.user?.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+      
+      if (!user) {
+        return res.status(500).send('<h1>User Not Found</h1><p>Could not find your user account in the database. Please contact support.</p>');
+      }
+      
+      const userId = user.id; // This is the actual UUID
+      const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
+      const clientId = process.env.LINKEDIN_CLIENT_ID;
+      const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
+      
+      const state = Buffer.from(JSON.stringify({ userId, platform: 'linkedin' })).toString('base64');
+      const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20email%20w_member_social`;
+    } catch (error) {
+      console.error('LinkedIn test page error:', error);
+      return res.status(500).send('<h1>Error</h1><p>Failed to generate OAuth URL. Check server logs.</p>');
     }
-    
-    const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
-    const clientId = process.env.LINKEDIN_CLIENT_ID;
-    const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
-    
-    const state = Buffer.from(JSON.stringify({ userId, platform: 'linkedin' })).toString('base64');
-    const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=profile%20email%20w_member_social`;
     
     res.send(`
       <html>
@@ -699,11 +716,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
     try {
       const { platform } = req.params;
-      const userId = req.user?.id;
+      const sessionId = req.user?.id;
 
-      if (!userId) {
+      if (!sessionId) {
         return res.status(401).json({ error: "User not authenticated" });
       }
+
+      // Resolve session ID to actual UUID from database
+      let user = await storage.getUser(String(sessionId));
+      if (!user && req.user?.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+      
+      if (!user) {
+        return res.status(500).json({ error: "User not found in database" });
+      }
+      
+      const userId = user.id; // This is the actual UUID
 
       // Read credentials from Replit Secrets (environment variables)
       const baseUrl = process.env.BASE_URL || process.env.REPLIT_DEV_DOMAIN 
