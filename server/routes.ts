@@ -726,10 +726,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           </html>
         `);
       } else {
+        // Use production URL for Replit deployments
+        const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : (process.env.CLIENT_URL || "http://localhost:5000");
+        
         return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:5000"
-          }/?oauth_error=no_auth_data`
+          `${baseUrl}/?oauth_error=no_auth_data`
         );
       }
     } catch (error) {
@@ -743,19 +746,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { platform } = req.params;
       const { code, error } = req.query;
 
+      // Use production URL for Replit deployments
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : (process.env.CLIENT_URL || "http://localhost:5000");
+
       if (error) {
         return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:5000"
-          }/?oauth_error=${error}`
+          `${baseUrl}/?oauth_error=${error}`
         );
       }
 
       if (!code) {
         return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:5000"
-          }/?oauth_error=no_code`
+          `${baseUrl}/?oauth_error=no_code`
         );
       }
 
