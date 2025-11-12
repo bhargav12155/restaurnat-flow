@@ -37,10 +37,13 @@ import {
   Brain,
   Music,
   Video,
+  RefreshCw,
+  Plug,
+  PlugZap,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SocialMediaSetup } from "@/components/setup/social-media-setup";
-import { Settings, Plug, PlugZap } from "lucide-react";
+import { Settings } from "lucide-react";
 
 interface SocialMediaAccount {
   id: string;
@@ -203,7 +206,114 @@ export function SocialMediaManager() {
   const [videoUploadUrl, setVideoUploadUrl] = useState<string | null>(null);
   const [showVideoUpload, setShowVideoUpload] = useState(false);
   const [showSocialSetup, setShowSocialSetup] = useState(false);
+  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // OAuth-enabled platforms (only platforms with full OAuth backend support)
+  const oauthPlatforms = ['linkedin', 'youtube'];
+  
+  // Handle OAuth connection
+  const handleOAuthConnect = async (platform: string) => {
+    let popup: Window | null = null;
+    let checkClosedInterval: NodeJS.Timeout | null = null;
+    
+    try {
+      setConnectingPlatform(platform);
+      
+      // Get OAuth URL from backend
+      const response = await fetch(`/api/social/connect/${platform}`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to get OAuth URL for ${platform}`);
+      }
+      
+      const data = await response.json();
+      const { authUrl } = data;
+      
+      // Open OAuth popup window
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      
+      popup = window.open(
+        authUrl,
+        `${platform}_oauth`,
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+      
+      if (!popup) {
+        throw new Error('Popup blocked. Please allow popups for this site.');
+      }
+      
+      // Listen for OAuth callback message
+      const messageHandler = (event: MessageEvent) => {
+        // Security: Validate origin AND source window
+        if (event.origin !== window.location.origin) return;
+        if (event.source !== popup) return;
+        
+        // Handle success
+        if (event.data.success && event.data.platform === platform) {
+          // Success! Refresh accounts list
+          queryClient.invalidateQueries({ queryKey: ['/api/social/accounts'] });
+          
+          toast({
+            title: "Connected Successfully!",
+            description: `Your ${platform} account has been connected.`,
+          });
+          
+          cleanup();
+        }
+        // Handle errors
+        else if (event.data.error) {
+          toast({
+            title: "Connection Failed",
+            description: event.data.error || `Failed to connect ${platform} account.`,
+            variant: "destructive",
+          });
+          
+          cleanup();
+        }
+      };
+      
+      const cleanup = () => {
+        if (checkClosedInterval) {
+          clearInterval(checkClosedInterval);
+          checkClosedInterval = null;
+        }
+        window.removeEventListener('message', messageHandler);
+        setConnectingPlatform(null);
+      };
+      
+      window.addEventListener('message', messageHandler);
+      
+      // Also check if popup was closed without success
+      checkClosedInterval = setInterval(() => {
+        if (popup && popup.closed) {
+          toast({
+            title: "Connection Cancelled",
+            description: `${platform} connection was cancelled.`,
+          });
+          cleanup();
+        }
+      }, 500);
+      
+    } catch (error: any) {
+      console.error('OAuth connection error:', error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || `Failed to connect ${platform} account.`,
+        variant: "destructive",
+      });
+      setConnectingPlatform(null);
+      
+      if (checkClosedInterval) {
+        clearInterval(checkClosedInterval);
+      }
+    }
+  };
 
   const { data: accounts, isLoading } = useQuery<SocialMediaAccount[]>({
     queryKey: ["/api/social/accounts"],
@@ -991,14 +1101,38 @@ Mike Bjork | Berkshire Hathaway HomeServices
                   </span>
                 </div>
                 <div 
-                  className="flex items-center gap-1"
+                  className="flex items-center gap-2"
                   data-testid={`status-${account.platform}`}
                   title={account.isConnected ? "Connected" : "Disconnected"}
                 >
                   {account.isConnected ? (
                     <Plug className="h-5 w-5 text-green-600" />
                   ) : (
-                    <PlugZap className="h-5 w-5 text-red-600" />
+                    <>
+                      <PlugZap className="h-5 w-5 text-red-600" />
+                      {oauthPlatforms.includes(account.platform.toLowerCase()) && (
+                        <Button
+                          onClick={() => handleOAuthConnect(account.platform.toLowerCase())}
+                          disabled={connectingPlatform === account.platform.toLowerCase()}
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          data-testid={`button-connect-${account.platform}`}
+                        >
+                          {connectingPlatform === account.platform.toLowerCase() ? (
+                            <>
+                              <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                              Connecting...
+                            </>
+                          ) : (
+                            <>
+                              <Plug className="mr-1 h-3 w-3" />
+                              Connect
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
