@@ -846,7 +846,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const accessToken = tokenData.access_token;
 
           // Get user from database using userId from state parameter
-          const user = await storage.getUserById(userId);
+          const user = await storage.getUser(String(userId));
           if (!user) {
             return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
           }
@@ -993,7 +993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "User not authenticated" });
         }
 
-        const user = await storage.getUserById(userId);
+        const user = await storage.getUser(String(userId));
         if (!user) {
           return res.status(404).json({ error: "User not found" });
         }
