@@ -1103,6 +1103,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
             `${baseUrl}/?oauth_error=token_exchange_error`
           );
         }
+      } else if (platform.toLowerCase() === "twitter" || platform.toLowerCase() === "x") {
+        const clientId = process.env.TWITTER_CLIENT_ID;
+        const clientSecret = process.env.TWITTER_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/twitter`;
+
+        if (!clientId || !clientSecret) {
+          return res.redirect(
+            `${baseUrl}/?oauth_error=missing_credentials`
+          );
+        }
+
+        try {
+          // Exchange code for access token using Twitter OAuth 2.0
+          const tokenResponse = await fetch(
+            "https://api.twitter.com/2/oauth2/token",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+              },
+              body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code as string,
+                redirect_uri: redirectUri,
+                code_verifier: "challenge", // Twitter requires PKCE; for now using placeholder
+              }),
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error("Twitter token exchange failed:", errorData);
+            return res.redirect(
+              `${baseUrl}/?oauth_error=token_exchange_failed`
+            );
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token;
+
+          // Get user from database using userId from state parameter
+          const user = await storage.getUser(String(userId));
+          if (!user) {
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          // Save access token and refresh token to database
+          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          const twitterAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === "twitter" || acc.platform.toLowerCase() === "x"
+          );
+
+          if (twitterAccount) {
+            // Update existing account
+            await storage.updateSocialMediaAccount(twitterAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date().toISOString(),
+            });
+          } else {
+            // Create new account
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "x",
+              accountId: "x_account",
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+          }
+
+          // Success! Show confirmation and close window
+          res.send(`
+            <html>
+              <body>
+                <h1>✅ Twitter/X Connected Successfully!</h1>
+                <p>Your Twitter/X account has been connected. You can now post tweets directly.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'twitter' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error("Twitter OAuth error:", fetchError);
+          return res.redirect(
+            `${baseUrl}/?oauth_error=token_exchange_error`
+          );
+        }
       } else {
         // Other platforms - show placeholder message
         res.send(`
