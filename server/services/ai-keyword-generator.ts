@@ -10,28 +10,13 @@ export interface GeneratedKeywords {
 }
 
 export class AIKeywordGenerator {
-  private openai: any;
   private userId: string;
 
   constructor(userId: string) {
     this.userId = userId;
   }
 
-  async initialize() {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OpenAI API key not configured');
-    }
-    
-    const { OpenAI } = await import('openai');
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
-
   async generateKeywords(serviceAreas: string[], specialties?: string[]): Promise<GeneratedKeywords> {
-    if (!this.openai) {
-      await this.initialize();
-    }
 
     const areasText = serviceAreas.length > 0 ? serviceAreas.join(', ') : 'Omaha metro area';
     const specialtiesText = specialties && specialties.length > 0 
@@ -71,17 +56,17 @@ Example keywords:
 - "moving to West Omaha"`;
 
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+      // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
+      const { unifiedAI } = await import('./unified-ai');
+      const aiResponse = await unifiedAI.generate(prompt, {
         temperature: 0.7,
-        max_completion_tokens: 1000,
+        maxTokens: 1000,
+        jsonMode: true // Enable JSON mode for better structure enforcement
       });
 
-      let responseText = completion.choices[0]?.message?.content?.trim();
-      if (!responseText) {
-        throw new Error('Empty response from OpenAI');
-      }
+      console.log(`✅ Keyword generation AI response from: ${aiResponse.provider}`);
+
+      let responseText = aiResponse.content.trim();
 
       // Remove markdown code blocks if present
       if (responseText.startsWith('```json')) {
@@ -133,7 +118,7 @@ Example keywords:
         keywords: validatedKeywords,
         metadata: {
           generatedAt: new Date().toISOString(),
-          model: 'gpt-4o-mini',
+          model: `${aiResponse.provider}${aiResponse.model ? ` (${aiResponse.model})` : ''}`,
           userContext: `Service areas: ${areasText}${specialtiesText}`,
         },
       };

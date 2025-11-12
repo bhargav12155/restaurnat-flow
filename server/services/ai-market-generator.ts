@@ -10,28 +10,13 @@ export interface GeneratedMarketData {
 }
 
 export class AIMarketDataGenerator {
-  private openai: any;
   private userId: string;
 
   constructor(userId: string) {
     this.userId = userId;
   }
 
-  async initialize() {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OpenAI API key not configured');
-    }
-    
-    const { OpenAI } = await import('openai');
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-  }
-
   async generateOmahaMarketData(): Promise<GeneratedMarketData> {
-    if (!this.openai) {
-      await this.initialize();
-    }
 
     const prompt = `You are a real estate market data analyst for Omaha, Nebraska. Generate realistic, current market statistics for major Omaha neighborhoods.
 
@@ -66,17 +51,17 @@ Return ONLY a valid JSON array with this exact structure:
 ]`;
 
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
+      // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
+      const { unifiedAI } = await import('./unified-ai');
+      const aiResponse = await unifiedAI.generate(prompt, {
         temperature: 0.7,
-        max_completion_tokens: 800,
+        maxTokens: 800,
+        jsonMode: true // Enable JSON mode for better structure enforcement
       });
 
-      let responseText = completion.choices[0]?.message?.content?.trim();
-      if (!responseText) {
-        throw new Error('Empty response from OpenAI');
-      }
+      console.log(`✅ Market data generation AI response from: ${aiResponse.provider}`);
+
+      let responseText = aiResponse.content.trim();
 
       // Remove markdown code blocks if present
       if (responseText.startsWith('```json')) {
@@ -128,7 +113,7 @@ Return ONLY a valid JSON array with this exact structure:
         neighborhoods: validatedNeighborhoods,
         metadata: {
           generatedAt: new Date().toISOString(),
-          model: 'gpt-4o-mini',
+          model: `${aiResponse.provider}${aiResponse.model ? ` (${aiResponse.model})` : ''}`,
           prompt: prompt.substring(0, 200) + '...',
         },
       };

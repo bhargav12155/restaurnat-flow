@@ -1765,30 +1765,17 @@ Return ONLY a JSON object with this structure:
 
 Focus on: ${focus} content that drives leads and showcases local market expertise.`;
 
-      const { multiOpenAI } = await import("./services/openai");
-      const response = await multiOpenAI.makeRequest(
-        "content",
-        async (client) => {
-          return await client.chat.completions.create({
-            model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are an expert real estate marketing AI that creates optimized content schedules based on SEO data and market analytics. Always respond with valid JSON only.",
-              },
-              {
-                role: "user",
-                content: prompt,
-              },
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.7,
-          });
-        }
-      );
+      // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
+      const { unifiedAI } = await import('./services/unified-ai');
+      const aiResponse = await unifiedAI.generate(prompt, {
+        systemPrompt: 'You are an expert real estate marketing AI that creates optimized content schedules based on SEO data and market analytics. Always respond with valid JSON only.',
+        temperature: 0.7,
+        maxTokens: 1500,
+        jsonMode: true
+      });
 
-      const aiSchedule = JSON.parse(response.choices[0].message.content);
+      console.log(`✅ Content calendar AI response from: ${aiResponse.provider}`);
+      const aiSchedule = JSON.parse(aiResponse.content);
 
       // Store the generated schedule (in a real app, you'd save to database)
       // For now, we'll just return it
@@ -2100,27 +2087,21 @@ Focus on:
 
 Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
-      const response = await multiOpenAI.makeRequest(
-        "content",
-        async (client) => {
-          return await client.chat.completions.create({
-            model: "gpt-5",
-            messages: [
-              { role: 'system', content: 'You are a real estate content strategist who generates data-driven content opportunities in JSON format.' },
-              { role: 'user', content: prompt }
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.7,
-            max_completion_tokens: 1500,
-          });
-        }
-      );
+      // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
+      const { unifiedAI } = await import('./services/unified-ai');
+      const aiResponse = await unifiedAI.generate(prompt, {
+        systemPrompt: 'You are a real estate content strategist who generates data-driven content opportunities in JSON format.',
+        temperature: 0.7,
+        maxTokens: 1500,
+        jsonMode: true
+      });
+      
+      console.log(`✅ AI Response from: ${aiResponse.provider}`);
       
       // Parse AI response
       let generatedOpportunities;
       try {
-        const content = response.choices[0].message.content || '{}';
-        const result = JSON.parse(content);
+        const result = JSON.parse(aiResponse.content);
         // The response_format forces JSON object, so we expect {opportunities: [...]}
         generatedOpportunities = result.opportunities || result || [];
         if (!Array.isArray(generatedOpportunities)) {
@@ -2129,7 +2110,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         }
       } catch (parseError) {
         console.error('Failed to parse AI response:', parseError);
-        console.error('Raw response:', response.choices[0].message.content);
+        console.error('Raw response:', aiResponse.content);
         throw new Error('Failed to parse AI-generated opportunities');
       }
       
@@ -2145,7 +2126,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         searchSignal: Math.min(100, Math.max(0, opp.searchSignal || 50)),
         metadata: {
           relatedKeyword: opp.relatedKeyword,
-          generatedBy: 'gpt-5',
+          generatedBy: aiResponse.provider,
+          model: aiResponse.model,
           marketContext: topNeighborhoods.length > 0,
           keywordContext: topKeywords.length > 0
         }
