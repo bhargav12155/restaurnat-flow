@@ -1740,8 +1740,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Twitter endpoints
   app.post("/api/twitter/post", upload.single("photo"), async (req, res) => {
     try {
-      const { content } = req.body;
+      // Support both JSON (from old frontend) and FormData (from new frontend)
+      let content = req.body.content;
       const photo = req.file;
+      
+      // Debug logging
+      console.log('📝 Twitter post request:', {
+        contentType: req.get('content-type'),
+        bodyKeys: Object.keys(req.body),
+        content: content ? content.substring(0, 50) + '...' : 'MISSING',
+        hasPhoto: !!photo
+      });
 
       if (!content) {
         return res.status(400).json({ error: "Content is required" });
