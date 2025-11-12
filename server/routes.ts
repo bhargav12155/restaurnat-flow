@@ -2111,7 +2111,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             ],
             response_format: { type: "json_object" },
             temperature: 0.7,
-            max_tokens: 1500,
+            max_completion_tokens: 1500,
           });
         }
       );
