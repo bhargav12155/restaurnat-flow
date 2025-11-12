@@ -50,6 +50,8 @@ interface SocialConfig {
   twitterApiSecret?: string;
   twitterAccessToken?: string;
   twitterAccessTokenSecret?: string;
+  linkedinClientId?: string;
+  linkedinClientSecret?: string;
   linkedinAccessToken?: string;
   youtubeApiKey?: string;
   youtubeAccessToken?: string;
@@ -164,17 +166,30 @@ const platformConfig = [
     description: "Connect your LinkedIn profile or company page",
     fields: [
       {
+        key: "linkedinClientId",
+        label: "Client ID",
+        type: "text",
+        placeholder: "771mriueblnr0x",
+      },
+      {
+        key: "linkedinClientSecret",
+        label: "Client Secret",
+        type: "password",
+        placeholder: "Enter your LinkedIn Client Secret",
+      },
+      {
         key: "linkedinAccessToken",
         label: "Access Token",
         type: "password",
-        placeholder: "AQX...",
+        placeholder: "AQUgXmoF...",
       },
     ],
     instructions: [
       "Create LinkedIn Developer App",
+      "Copy your Client ID and Client Secret",
       "Request 'w_member_social' permission",
-      "Complete OAuth 2.0 flow",
-      "Store the access token securely",
+      "Complete OAuth 2.0 flow to get Access Token",
+      "Paste all three credentials above",
     ],
   },
   {
