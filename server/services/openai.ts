@@ -446,7 +446,6 @@ export class OpenAIService {
               },
             ],
             response_format: { type: "json_object" },
-            temperature: 0.7,
             max_completion_tokens: 2000,
           });
         }
@@ -623,7 +622,6 @@ export class OpenAIService {
               },
               { role: "user", content: prompt },
             ],
-            temperature: 0.7,
             max_completion_tokens: 300,
           });
         }
@@ -679,7 +677,6 @@ export class OpenAIService {
               },
             ],
             response_format: { type: "json_object" },
-            temperature: 0.8,
             max_completion_tokens: 4000,
           });
         }
@@ -868,7 +865,6 @@ Respond with JSON in this format:
               { role: "user", content: prompt },
             ],
             response_format: { type: "json_object" },
-            temperature: 0.7,
             max_completion_tokens: 800,
           });
         }
@@ -994,7 +990,6 @@ Respond with JSON in this format:
               },
               { role: "user", content: prompt },
             ],
-            temperature: 0.7,
             max_completion_tokens: 1500,
           });
         }
@@ -1161,7 +1156,6 @@ Please enhance this content while keeping the same core message and format.`;
                 content: prompt,
               },
             ],
-            temperature: 0.7,
             max_completion_tokens: 500,
           });
         }
