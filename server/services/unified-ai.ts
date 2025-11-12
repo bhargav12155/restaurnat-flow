@@ -104,11 +104,17 @@ class UnifiedAIService {
 
     const data = await response.json();
 
+    // Debug: Log the full response structure
+    console.log('📥 GitHub Copilot API Response:', JSON.stringify(data, null, 2));
+
     if (!data.success) {
       throw new Error(data.error || 'Copilot request failed');
     }
 
     let content = options.jsonMode ? JSON.stringify(data.data) : data.data.content;
+    
+    // Debug: Log what we extracted
+    console.log('📤 Extracted content:', content ? content.substring(0, 100) + '...' : 'EMPTY/UNDEFINED');
 
     // GitHub Copilot sometimes returns markdown-wrapped JSON, clean it up
     if (content && typeof content === 'string') {
