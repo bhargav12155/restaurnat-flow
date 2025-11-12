@@ -1,0 +1,294 @@
+# User Identification Guide for NebraskaHomeHub
+
+This document provides a comprehensive guide on how to identify users in the NebraskaHomeHub application, especially when passing user information to external applications like AI SEO tools.
+
+## User Types & Unique Identifiers
+
+### 1. Main Users (Real Estate Agents/Admins)
+
+**Database Table**: `users`
+
+**Unique Identifiers**:
+- **Primary ID**: `id` (integer, auto-increment) - **RECOMMENDED FOR EXTERNAL APPS**
+- **Username**: `username` (text, unique)
+- **Email**: `email` (text, unique)
+- **Custom Slug**: `customSlug` (text, unique) - Used for public agent pages
+
+**JWT Token Structure**:
+```json
+{
+  "id": 123,
+  "username": "john_doe",
+  "email": "john@example.com",
+  "iat": 1234567890,
+  "exp": 1234567890
+}
+```
+
+### 2. Public Users (Website Visitors/Clients)
+
+**Database Table**: `public_users`
+
+**Unique Identifiers**:
+- **Primary ID**: `id` (integer, auto-increment) - **RECOMMENDED FOR EXTERNAL APPS**
+- **Composite Key**: `agentSlug + email` (unique together)
+
+**JWT Token Structure**:
+```json
+{
+  "id": 456,
+  "email": "client@example.com",
+  "agentSlug": "john-doe-realtor",
+  "type": "public",
+  "iat": 1234567890,
+  "exp": 1234567890
+}
+```
+
+## Code Examples for External API Integration
+
+### 1. Extract User ID from Request
+
+```javascript
+// Middleware to extract user ID from JWT token
+const extractUserId = (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '') || 
+                  req.cookies?.authToken;
+    
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Determine user type and extract ID
+    if (decoded.type === 'public') {
+      req.userId = decoded.id; // Public user ID
+      req.userType = 'public';
+      req.agentSlug = decoded.agentSlug;
+    } else {
+      req.userId = decoded.id; // Main user (agent) ID
+      req.userType = 'agent';
+      req.username = decoded.username;
+    }
+    
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+```
+
+### 2. Pass User ID to External AI SEO Application
+
+```javascript
+// Function to call external AI SEO service
+const callAiSeoService = async (req, additionalParams = {}) => {
+  const userIdentifier = {
+    userId: req.userId,           // Primary identifier (RECOMMENDED)
+    userType: req.userType,       // 'agent' or 'public'
+    
+    // Optional additional context
+    ...(req.userType === 'public' && { agentSlug: req.agentSlug }),
+    ...(req.userType === 'agent' && { username: req.username })
+  };
+
+  const apiPayload = {
+    user: userIdentifier,
+    ...additionalParams
+  };
+
+  try {
+    const response = await fetch(`${AI_SEO_SERVICE_URL}/api/process`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${AI_SEO_SERVICE_API_KEY}`
+      },
+      body: JSON.stringify(apiPayload)
+    });
+
+    return await response.json();
+  } catch (error) {
+    console.error('AI SEO Service Error:', error);
+    throw error;
+  }
+};
+```
+
+### 3. Route Handler Example
+
+```javascript
+// Example route that uses AI SEO service
+app.post('/api/generate-seo-content', extractUserId, async (req, res) => {
+  try {
+    const { contentType, keywords, targetUrl } = req.body;
+
+    // Call AI SEO service with user identification
+    const seoResult = await callAiSeoService(req, {
+      contentType,
+      keywords,
+      targetUrl,
+      // Additional context based on user type
+      ...(req.userType === 'agent' && {
+        agentProfile: {
+          customSlug: req.customSlug,
+          publicProfileEnabled: true
+        }
+      })
+    });
+
+    res.json({
+      success: true,
+      userId: req.userId,
+      userType: req.userType,
+      seoContent: seoResult
+    });
+
+  } catch (error) {
+    console.error('SEO generation failed:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate SEO content'
+    });
+  }
+});
+```
+
+### 4. Database Queries by User ID
+
+```javascript
+// Get user details by ID (works for both user types)
+const getUserById = async (userId, userType) => {
+  if (userType === 'public') {
+    const [user] = await db
+      .select()
+      .from(publicUsers)
+      .where(eq(publicUsers.id, userId))
+      .limit(1);
+    return user;
+  } else {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user;
+  }
+};
+
+// Get user's properties/content for SEO processing
+const getUserContent = async (userId, userType) => {
+  if (userType === 'agent') {
+    // Get agent's properties, blog posts, etc.
+    const userProperties = await db
+      .select()
+      .from(properties)
+      .where(eq(properties.userId, userId));
+      
+    const userBlogs = await db
+      .select()
+      .from(blogPosts)
+      .where(eq(blogPosts.userId, userId));
+      
+    return { properties: userProperties, blogs: userBlogs };
+  } else {
+    // Get public user's saved searches, favorites, etc.
+    const favorites = await db
+      .select()
+      .from(publicFavoriteProperties)
+      .where(eq(publicFavoriteProperties.publicUserId, userId));
+      
+    return { favorites };
+  }
+};
+```
+
+## Best Practices
+
+### 1. Always Use Numeric ID as Primary Identifier
+```javascript
+// ✅ GOOD - Stable, secure, performant
+const userId = decoded.id; // e.g., 123
+
+// ❌ AVOID - Can change, security risk
+const userEmail = decoded.email; // e.g., "user@example.com"
+```
+
+### 2. Include User Type for Context
+```javascript
+const userContext = {
+  id: decoded.id,
+  type: decoded.type || 'agent', // Helps external service understand user context
+};
+```
+
+### 3. Handle Both User Types Gracefully
+```javascript
+const buildUserPayload = (decodedToken) => {
+  const basePayload = {
+    userId: decodedToken.id,
+    userType: decodedToken.type || 'agent'
+  };
+
+  // Add type-specific context
+  if (decodedToken.type === 'public') {
+    basePayload.agentSlug = decodedToken.agentSlug;
+    basePayload.context = 'client';
+  } else {
+    basePayload.username = decodedToken.username;
+    basePayload.context = 'agent';
+  }
+
+  return basePayload;
+};
+```
+
+## Environment Variables to Set
+
+```env
+# Add these to your .env file for external API integration
+AI_SEO_SERVICE_URL=https://your-ai-seo-service.com
+AI_SEO_SERVICE_API_KEY=your_api_key_here
+JWT_SECRET=your_jwt_secret_here
+```
+
+## Testing User Identification
+
+```javascript
+// Test function to verify user identification works
+const testUserIdentification = async (token) => {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('User ID:', decoded.id);
+    console.log('User Type:', decoded.type || 'agent');
+    
+    if (decoded.type === 'public') {
+      console.log('Agent Slug:', decoded.agentSlug);
+      console.log('Email:', decoded.email);
+    } else {
+      console.log('Username:', decoded.username);
+      console.log('Email:', decoded.email);
+    }
+    
+    return {
+      isValid: true,
+      userId: decoded.id,
+      userType: decoded.type || 'agent'
+    };
+  } catch (error) {
+    console.error('Invalid token:', error.message);
+    return { isValid: false };
+  }
+};
+```
+
+## Quick Reference
+
+| User Type | Primary ID | Token Field | Recommended for External APIs |
+|-----------|------------|-------------|-------------------------------|
+| Agent     | `users.id` | `decoded.id` | ✅ Use `id` |
+| Public    | `public_users.id` | `decoded.id` | ✅ Use `id` |
+
+**Bottom Line**: Always use the numeric `id` field as your primary user identifier when integrating with external applications. It's stable, secure, and works consistently across both user types.
