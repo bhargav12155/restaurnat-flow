@@ -630,34 +630,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { platform } = req.params;
 
-      // OAuth URLs for each platform - these would need real client IDs in production
-      const oauthUrls: Record<string, string> = {
-        facebook: `https://www.facebook.com/v18.0/dialog/oauth?client_id=YOUR_FACEBOOK_CLIENT_ID&redirect_uri=${encodeURIComponent(
-          process.env.BASE_URL + "/api/social/callback/facebook"
-        )}&scope=pages_manage_posts,pages_read_engagement`,
-        instagram: `https://api.instagram.com/oauth/authorize?client_id=YOUR_INSTAGRAM_CLIENT_ID&redirect_uri=${encodeURIComponent(
-          process.env.BASE_URL + "/api/social/callback/instagram"
-        )}&scope=user_profile,user_media&response_type=code`,
-        linkedin: `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=YOUR_LINKEDIN_CLIENT_ID&redirect_uri=${encodeURIComponent(
-          process.env.BASE_URL + "/api/social/callback/linkedin"
-        )}&scope=w_member_social`,
-        twitter: `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=YOUR_TWITTER_CLIENT_ID&redirect_uri=${encodeURIComponent(
-          process.env.BASE_URL + "/api/social/callback/twitter"
-        )}&scope=tweet.read%20tweet.write%20users.read`,
+      // Read credentials from Replit Secrets (environment variables)
+      const baseUrl = process.env.BASE_URL || process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : "http://localhost:5000";
+
+      const oauthUrls: Record<string, string | null> = {
+        facebook: process.env.FACEBOOK_CLIENT_ID
+          ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.FACEBOOK_CLIENT_ID}&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/facebook"
+            )}&scope=pages_manage_posts,pages_read_engagement`
+          : null,
+        instagram: process.env.INSTAGRAM_CLIENT_ID
+          ? `https://api.instagram.com/oauth/authorize?client_id=${process.env.INSTAGRAM_CLIENT_ID}&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/instagram"
+            )}&scope=user_profile,user_media&response_type=code`
+          : null,
+        linkedin: process.env.LINKEDIN_CLIENT_ID
+          ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/linkedin"
+            )}&scope=w_member_social`
+          : null,
+        twitter: process.env.TWITTER_CLIENT_ID
+          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/twitter"
+            )}&scope=tweet.read%20tweet.write%20users.read`
+          : null,
       };
 
-      if (!oauthUrls[platform]) {
+      const authUrl = oauthUrls[platform];
+      
+      if (!authUrl) {
         return res.status(400).json({
           error: `OAuth not configured for ${platform}`,
-          message:
-            "This platform requires OAuth app setup with valid client credentials",
+          message: `Please add ${platform.toUpperCase()}_CLIENT_ID to Replit Secrets to enable OAuth`,
         });
       }
 
       res.json({
-        authUrl: oauthUrls[platform],
-        message:
-          "OAuth URL generated - configure client credentials for production use",
+        authUrl,
+        message: "OAuth URL generated successfully",
       });
     } catch (error) {
       console.error("OAuth initiation error:", error);
@@ -747,9 +759,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { code, error } = req.query;
 
       // Use production URL for Replit deployments
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      const baseUrl = process.env.BASE_URL || (process.env.REPLIT_DEV_DOMAIN 
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : (process.env.CLIENT_URL || "http://localhost:5000");
+        : "http://localhost:5000");
 
       if (error) {
         return res.redirect(
@@ -763,22 +775,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       }
 
-      // Here you would exchange the code for access tokens
-      // For now, just show a success page
-      res.send(`
-        <html>
-          <body>
-            <h1>${platform} OAuth Callback</h1>
-            <p>OAuth setup is not complete. To enable real social media posting:</p>
-            <ol>
-              <li>Create developer apps on ${platform}</li>
-              <li>Add client credentials to environment variables</li>
-              <li>Implement token exchange logic</li>
-            </ol>
-            <script>window.close();</script>
-          </body>
-        </html>
-      `);
+      // Exchange authorization code for access token
+      if (platform.toLowerCase() === "linkedin") {
+        const clientId = process.env.LINKEDIN_CLIENT_ID;
+        const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
+
+        if (!clientId || !clientSecret) {
+          return res.redirect(
+            `${baseUrl}/?oauth_error=missing_credentials`
+          );
+        }
+
+        try {
+          // Exchange code for access token
+          const tokenResponse = await fetch(
+            "https://www.linkedin.com/oauth/v2/accessToken",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code as string,
+                redirect_uri: redirectUri,
+                client_id: clientId,
+                client_secret: clientSecret,
+              }),
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error("LinkedIn token exchange failed:", errorData);
+            return res.redirect(
+              `${baseUrl}/?oauth_error=token_exchange_failed`
+            );
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+
+          // Get current user (simplified - in production, use session)
+          const user = await storage.getUserByUsername("mikebjork");
+          if (!user) {
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          // Save access token to database
+          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          const linkedinAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === "linkedin"
+          );
+
+          if (linkedinAccount) {
+            // Update existing account
+            await storage.updateSocialMediaAccount(linkedinAccount.id, {
+              accessToken,
+              isConnected: true,
+              lastSync: new Date().toISOString(),
+            });
+          } else {
+            // Create new account
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "linkedin",
+              accountId: "linkedin_account",
+              accessToken,
+              isConnected: true,
+            });
+          }
+
+          // Success! Show confirmation and close window
+          res.send(`
+            <html>
+              <body>
+                <h1>✅ LinkedIn Connected Successfully!</h1>
+                <p>Your LinkedIn account has been connected. You can now post content to LinkedIn.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'linkedin' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error("LinkedIn OAuth error:", fetchError);
+          return res.redirect(
+            `${baseUrl}/?oauth_error=token_exchange_error`
+          );
+        }
+      } else {
+        // Other platforms - show placeholder message
+        res.send(`
+          <html>
+            <body>
+              <h1>${platform} OAuth Callback</h1>
+              <p>OAuth setup for ${platform} requires additional configuration.</p>
+              <p>Please add ${platform.toUpperCase()}_CLIENT_ID and ${platform.toUpperCase()}_CLIENT_SECRET to Replit Secrets.</p>
+              <script>setTimeout(() => window.close(), 3000);</script>
+            </body>
+          </html>
+        `);
+      }
     } catch (error) {
       console.error("OAuth callback error:", error);
       res.status(500).send("OAuth callback failed");
