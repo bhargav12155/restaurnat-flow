@@ -779,7 +779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate PKCE parameters for Twitter (required by Twitter OAuth 2.0)
       let twitterUrl: string | null = null;
-      if (platform === 'twitter' && process.env.TWITTER_CLIENT_ID) {
+      if ((platform === 'twitter' || platform === 'x') && process.env.TWITTER_CLIENT_ID) {
         const codeVerifier = generateCodeVerifier();
         const codeChallenge = generateCodeChallenge(codeVerifier);
         
@@ -811,6 +811,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             )}&scope=openid%20profile%20email%20w_member_social&state=${encodeURIComponent(state)}`
           : null,
         twitter: twitterUrl,
+        x: twitterUrl, // X (Twitter) uses same OAuth flow
         youtube: process.env.YOUTUBE_CLIENT_ID
           ? `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${process.env.YOUTUBE_CLIENT_ID}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/youtube"
