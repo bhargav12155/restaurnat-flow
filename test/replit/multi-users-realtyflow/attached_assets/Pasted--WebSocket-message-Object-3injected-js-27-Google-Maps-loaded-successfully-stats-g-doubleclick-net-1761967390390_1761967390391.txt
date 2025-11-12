@@ -1,0 +1,33 @@
+📨 WebSocket message: Object
+3injected.js:27 Google Maps loaded successfully
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=265285176&gjid=1776902919&_gid=804054853.1761746648&_u=SCCAgEAjQAAAAGgCIAD~&z=1934473204:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=1434886096&gjid=1750792767&_gid=804054853.1761746648&_u=SCCAgEAjQAAAAGgCIAD~&z=1323428052:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/streaming/sessions:1  Failed to load resource: the server responded with a status of 500 (Internal Server Error)Understand this error
+injected.js:204  POST https://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/streaming/sessions 500 (Internal Server Error)
+apply @ injected.js:204
+apiRequest @ queryClient.ts:18
+mutationFn @ streaming-avatar.tsx:53
+fn @ @tanstack_react-query.js?v=e9778585:1189
+run @ @tanstack_react-query.js?v=e9778585:494
+start @ @tanstack_react-query.js?v=e9778585:536
+execute @ @tanstack_react-query.js?v=e9778585:1225
+await in execute
+mutate @ @tanstack_react-query.js?v=e9778585:2630
+(anonymous) @ @tanstack_react-query.js?v=e9778585:3295
+onClick @ streaming-avatar.tsx:288
+callCallback2 @ chunk-RPCDYKBN.js?v=e9778585:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=e9778585:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=e9778585:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=e9778585:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=e9778585:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=e9778585:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=e9778585:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=e9778585:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=e9778585:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=e9778585:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=e9778585:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=e9778585:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=e9778585:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=e9778585:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=e9778585:5449Understand this error
+injected.js:204  POST https://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/streaming/sessions 500 (Internal Server Error)
