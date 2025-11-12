@@ -1196,7 +1196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 <h1>✅ Twitter/X Connected Successfully!</h1>
                 <p>Your Twitter/X account has been connected. You can now post tweets directly.</p>
                 <script>
-                  window.opener?.postMessage({ success: true, platform: 'twitter' }, '*');
+                  window.opener?.postMessage({ success: true, platform: 'x' }, '*');
                   setTimeout(() => window.close(), 2000);
                 </script>
               </body>
