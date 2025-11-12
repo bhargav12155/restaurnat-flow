@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import express from "express";
+import crypto from "crypto";
 import { nanoid } from "nanoid";
 import { storage } from "./storage";
 import { db } from "./db";
@@ -36,6 +37,28 @@ import {
   contentOpportunities,
 } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
+
+// In-memory store for PKCE code verifiers (in production, use Redis or session storage)
+const pkceStore = new Map<string, { codeVerifier: string; expiresAt: number }>();
+
+// PKCE helper functions
+function generateCodeVerifier(): string {
+  return crypto.randomBytes(32).toString('base64url');
+}
+
+function generateCodeChallenge(verifier: string): string {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
+}
+
+// Clean up expired PKCE entries every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of pkceStore.entries()) {
+    if (value.expiresAt < now) {
+      pkceStore.delete(key);
+    }
+  }
+}, 10 * 60 * 1000);
 
 // Configure multer for file uploads
 const upload = multer({
@@ -754,6 +777,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create state parameter with userId for OAuth callback
       const state = Buffer.from(JSON.stringify({ userId, platform })).toString('base64');
 
+      // Generate PKCE parameters for Twitter (required by Twitter OAuth 2.0)
+      let twitterUrl: string | null = null;
+      if (platform === 'twitter' && process.env.TWITTER_CLIENT_ID) {
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = generateCodeChallenge(codeVerifier);
+        
+        // Store code verifier with state as key (expires in 10 minutes)
+        pkceStore.set(state, {
+          codeVerifier,
+          expiresAt: Date.now() + 10 * 60 * 1000,
+        });
+        
+        twitterUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(
+          baseUrl + "/api/social/callback/twitter"
+        )}&scope=tweet.read%20tweet.write%20users.read%20offline.access&state=${encodeURIComponent(state)}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+      }
+
       const oauthUrls: Record<string, string | null> = {
         facebook: process.env.FACEBOOK_CLIENT_ID
           ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.FACEBOOK_CLIENT_ID}&redirect_uri=${encodeURIComponent(
@@ -770,11 +810,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               baseUrl + "/api/social/callback/linkedin"
             )}&scope=openid%20profile%20email%20w_member_social&state=${encodeURIComponent(state)}`
           : null,
-        twitter: process.env.TWITTER_CLIENT_ID
-          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(
-              baseUrl + "/api/social/callback/twitter"
-            )}&scope=tweet.read%20tweet.write%20users.read&state=${encodeURIComponent(state)}`
-          : null,
+        twitter: twitterUrl,
         youtube: process.env.YOUTUBE_CLIENT_ID
           ? `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${process.env.YOUTUBE_CLIENT_ID}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/youtube"
@@ -1114,6 +1150,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
         }
 
+        // Retrieve code verifier from PKCE store using state parameter
+        const pkceData = pkceStore.get(state as string);
+        if (!pkceData) {
+          console.error("Twitter OAuth: PKCE code verifier not found for state:", state);
+          return res.redirect(
+            `${baseUrl}/?oauth_error=pkce_verifier_not_found`
+          );
+        }
+
+        // Check if PKCE data has expired
+        if (pkceData.expiresAt < Date.now()) {
+          pkceStore.delete(state as string);
+          console.error("Twitter OAuth: PKCE code verifier expired");
+          return res.redirect(
+            `${baseUrl}/?oauth_error=pkce_verifier_expired`
+          );
+        }
+
+        // Clean up PKCE data after use
+        const codeVerifier = pkceData.codeVerifier;
+        pkceStore.delete(state as string);
+
         try {
           // Exchange code for access token using Twitter OAuth 2.0
           const tokenResponse = await fetch(
@@ -1128,7 +1186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 grant_type: "authorization_code",
                 code: code as string,
                 redirect_uri: redirectUri,
-                code_verifier: "challenge", // Twitter requires PKCE; for now using placeholder
+                code_verifier: codeVerifier,
               }),
             }
           );
