@@ -258,6 +258,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
   // Style options for all content types
   const styleOptions = [
     { value: "None", label: "None" },
+    { value: "Professional", label: "Professional" },
     { value: "Funny", label: "Funny" },
     { value: "Luxury", label: "Luxury" },
     { value: "Market data", label: "Market data" },
