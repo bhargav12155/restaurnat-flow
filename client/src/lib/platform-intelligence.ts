@@ -140,14 +140,14 @@ const baseContentFitMatrix: Record<
     general: 30,
   },
   LinkedIn: {
-    listing: 20,
-    market_update: 40,
-    buyer_tips: 25,
-    seller_tips: 30,
-    neighborhood: 20,
-    investment: 45,
-    testimonial: 30,
-    general: 25,
+    listing: 25,
+    market_update: 45,
+    buyer_tips: 35,
+    seller_tips: 35,
+    neighborhood: 30,
+    investment: 50,
+    testimonial: 35,
+    general: 35,
   },
   "X (Twitter)": {
     listing: 25,
@@ -297,14 +297,20 @@ export function scorePlatform(
       score += 15;
       reasons.push("Educational content valued on LinkedIn");
     }
-    if (profile.wordCount >= 200) {
-      score += 10;
+    if (profile.wordCount >= 100) {
+      score += 15;
       reasons.push("Detailed content performs well on LinkedIn");
     }
-    if (!profile.hasEmojis || profile.hasEmojis) {
-      score += 5;
-      reasons.push("Professional tone fits LinkedIn");
+    if (profile.contentType === "market_update" || profile.contentType === "neighborhood") {
+      score += 10;
+      reasons.push("Market insights and local expertise valued on LinkedIn");
     }
+    if (profile.hasNumbers) {
+      score += 10;
+      reasons.push("Data-driven content builds credibility on LinkedIn");
+    }
+    score += 5;
+    reasons.push("Professional real estate content fits LinkedIn");
   } else if (platform === "X (Twitter)") {
     if (profile.wordCount <= 200) {
       score += 15;
