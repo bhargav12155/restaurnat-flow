@@ -959,16 +959,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Content is required" });
         }
 
-        const user = await storage.getUserByUsername("mikebjork");
+        // Get logged-in user from session
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const user = await storage.getUserById(userId);
         if (!user) {
           return res.status(404).json({ error: "User not found" });
         }
 
         // Get user's social accounts to check if platform is connected
         const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        console.log(`Found ${socialAccounts.length} social accounts for user ${user.id}`);
+        console.log('Social accounts:', socialAccounts.map(a => ({ platform: a.platform, hasToken: !!a.accessToken })));
+        
         const connectedAccount = socialAccounts.find(
           (account) => account.platform.toLowerCase() === platform.toLowerCase()
         );
+
+        console.log(`Looking for ${platform} account:`, connectedAccount ? `Found (hasToken: ${!!connectedAccount.accessToken})` : 'Not found');
 
         if (
           !connectedAccount &&
