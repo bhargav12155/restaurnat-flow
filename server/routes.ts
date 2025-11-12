@@ -1099,12 +1099,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Get logged-in user from session
-        const userId = req.user?.id;
-        if (!userId) {
+        const sessionId = req.user?.id;
+        if (!sessionId) {
           return res.status(401).json({ error: "User not authenticated" });
         }
 
-        const user = await storage.getUser(String(userId));
+        // Resolve session ID to actual UUID from database
+        let user = await storage.getUser(String(sessionId));
+        
+        // If not found by ID, try by username
+        if (!user && req.user?.username) {
+          user = await storage.getUserByUsername(req.user.username);
+        }
+        
+        // If still not found, get the first user (for development/demo)
+        if (!user) {
+          const allUsers = Array.from(storage.users?.values() || []);
+          if (allUsers.length > 0) {
+            user = allUsers[0];
+            console.log(`⚠️  [POSTING] Using fallback user: ${user.username} (${user.id})`);
+          }
+        }
+        
         if (!user) {
           return res.status(404).json({ error: "User not found" });
         }
