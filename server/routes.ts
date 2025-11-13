@@ -9173,6 +9173,22 @@ Always end with a helpful suggestion or call-to-action.`;
     },
   });
 
+  // Configure multer for YouTube video uploads (larger limit)
+  const videoUpload = multer({
+    dest: "uploads/videos/",
+    limits: {
+      fileSize: 100 * 1024 * 1024, // 100MB limit for video uploads
+    },
+    fileFilter: (req, file, cb) => {
+      // Only allow video files
+      if (file.mimetype.startsWith("video/")) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only video files are allowed"));
+      }
+    },
+  });
+
   // Import social media service
   const { socialMediaService } = await import("./services/socialMedia");
 
@@ -9355,6 +9371,222 @@ Always end with a helpful suggestion or call-to-action.`;
       }
     }
   );
+
+  // YouTube Post Endpoint
+  app.post("/api/youtube/post", requireAuth, videoUpload.single("video"), async (req: any, res) => {
+    try {
+      const { title, description } = req.body;
+      const videoFile = req.file;
+
+      console.log("\n📺 YouTube Post Request:", {
+        title,
+        hasVideo: !!videoFile,
+        userAuth: !!req.user,
+      });
+
+      if (!title) {
+        return res.status(400).json({ error: "Title is required" });
+      }
+
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Resolve user and get YouTube access token
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+
+      if (!user && req.user.email) {
+        const allUsers = Array.from((storage as any).users?.values() || []);
+        user = allUsers.find((u: any) => u.email === req.user.email);
+      }
+
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Get YouTube access token from social accounts
+      const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+      const youtubeAccount = socialAccounts.find(
+        (acc) => acc.platform.toLowerCase() === "youtube"
+      );
+
+      if (!youtubeAccount || !youtubeAccount.accessToken) {
+        return res.status(400).json({
+          error: "YouTube account not connected. Please connect your YouTube account first.",
+        });
+      }
+
+      console.log(`   ✅ Found YouTube account for user: ${user.id}`);
+
+      let videoUrl: string | undefined;
+      let usedSampleVideo = false;
+
+      if (videoFile) {
+        // Use uploaded video
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        videoUrl = `${baseUrl}/uploads/videos/${path.basename(videoFile.path)}`;
+        console.log(`   📹 Using uploaded video: ${videoUrl}`);
+      } else {
+        // Fallback to sample video
+        const sampleVideoPath = process.env.YOUTUBE_SAMPLE_VIDEO_PATH || "uploads/videos/demo-property-tour.mp4";
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        videoUrl = `${baseUrl}/${sampleVideoPath}`;
+        usedSampleVideo = true;
+        console.log(`   📹 Using sample video: ${videoUrl}`);
+      }
+
+      // Upload video to YouTube
+      const postResult = await socialMediaService.postToYoutube(
+        title,
+        description || title,
+        videoUrl,
+        youtubeAccount.accessToken
+      );
+
+      const watchUrl = `https://www.youtube.com/watch?v=${postResult.postId}`;
+      const studioUrl = `https://studio.youtube.com/video/${postResult.postId}/edit`;
+
+      console.log(`   ✅ YouTube video uploaded! ID: ${postResult.postId}`);
+      console.log(`   🔗 Watch URL: ${watchUrl}`);
+      console.log(`   🔧 Studio URL: ${studioUrl}`);
+
+      res.json({
+        success: true,
+        message: "Video posted successfully to YouTube",
+        postId: postResult.postId,
+        watchUrl,
+        studioUrl,
+        usedSampleVideo,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("❌ YouTube post error:", error);
+
+      // Clean up uploaded file on error
+      if (req.file && req.file.path) {
+        try {
+          const fs = await import("fs");
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          console.error("Failed to cleanup uploaded file:", cleanupError);
+        }
+      }
+
+      res.status(500).json({
+        error: `Failed to post to YouTube: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      });
+    }
+  });
+
+  // YouTube Video Upload Endpoint (dedicated)
+  app.post("/api/youtube/upload-video", requireAuth, videoUpload.single("video"), async (req: any, res) => {
+    try {
+      const { title, description } = req.body;
+      const videoFile = req.file;
+
+      console.log("\n📺 YouTube Video Upload Request");
+
+      if (!videoFile) {
+        return res.status(400).json({ error: "Video file is required" });
+      }
+
+      if (!title) {
+        return res.status(400).json({ error: "Video title is required" });
+      }
+
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Resolve user
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+
+      if (!user && req.user.email) {
+        const allUsers = Array.from((storage as any).users?.values() || []);
+        user = allUsers.find((u: any) => u.email === req.user.email);
+      }
+
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Get YouTube access token
+      const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+      const youtubeAccount = socialAccounts.find(
+        (acc) => acc.platform.toLowerCase() === "youtube"
+      );
+
+      if (!youtubeAccount || !youtubeAccount.accessToken) {
+        return res.status(400).json({
+          error: "YouTube account not connected",
+        });
+      }
+
+      // Build video URL
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const videoUrl = `${baseUrl}/uploads/videos/${path.basename(videoFile.path)}`;
+
+      console.log("   Processing YouTube video upload:", {
+        title,
+        description,
+        videoPath: videoFile.path,
+        videoUrl,
+        fileSize: videoFile.size,
+        mimetype: videoFile.mimetype,
+      });
+
+      // Upload to YouTube
+      const uploadResult = await socialMediaService.postToYoutube(
+        title,
+        description || title,
+        videoUrl,
+        youtubeAccount.accessToken
+      );
+
+      const watchUrl = `https://www.youtube.com/watch?v=${uploadResult.postId}`;
+      const studioUrl = `https://studio.youtube.com/video/${uploadResult.postId}/edit`;
+
+      res.json({
+        success: true,
+        message: "Video uploaded successfully to YouTube",
+        videoId: uploadResult.postId,
+        watchUrl,
+        studioUrl,
+        videoUrl: videoUrl,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("❌ YouTube video upload error:", error);
+
+      // Clean up uploaded file on error
+      if (req.file && req.file.path) {
+        try {
+          const fs = await import("fs");
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          console.error("Failed to cleanup uploaded file:", cleanupError);
+        }
+      }
+
+      res.status(500).json({
+        error: `Failed to upload video to YouTube: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      });
+    }
+  });
 
   // Social Media OAuth Connection Route
   app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
