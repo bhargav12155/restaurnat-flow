@@ -1780,7 +1780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Twitter endpoints
-  app.post("/api/twitter/post", upload.single("photo"), async (req: any, res) => {
+  app.post("/api/twitter/post", requireAuth, upload.single("photo"), async (req: any, res) => {
     try {
       // Require authentication
       if (!req.user?.id) {
