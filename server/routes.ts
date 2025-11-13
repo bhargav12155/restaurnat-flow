@@ -4,6 +4,21 @@ import { cacheMiddleware } from "./middleware/cache";
 import { searchLimiter } from "./middleware/rate-limit";
 import multer from "multer";
 import path from "path";
+import crypto from "crypto";
+
+// PKCE (Proof Key for Code Exchange) store for OAuth
+// Maps state parameter -> { codeVerifier, expiresAt }
+const pkceStore = new Map<string, { codeVerifier: string; expiresAt: number }>();
+
+// Helper: Generate PKCE code verifier (random string)
+function generateCodeVerifier(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+// Helper: Generate PKCE code challenge from verifier (SHA256)
+function generateCodeChallenge(verifier: string): string {
+  return crypto.createHash("sha256").update(verifier).digest("base64url");
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("🚀 REGISTERING ROUTES - SERVER STARTING");
@@ -9395,6 +9410,20 @@ Always end with a helpful suggestion or call-to-action.`;
       // Create state parameter with userId for OAuth callback
       const state = Buffer.from(JSON.stringify({ userId, platform })).toString("base64");
 
+      // Generate PKCE code verifier and challenge for Twitter/X (OAuth 2.0 requires PKCE)
+      let codeChallenge = '';
+      let codeVerifier = '';
+      if (platform === 'twitter' || platform === 'x') {
+        codeVerifier = generateCodeVerifier();
+        codeChallenge = generateCodeChallenge(codeVerifier);
+        // Store code verifier with 10-minute expiration
+        pkceStore.set(state, {
+          codeVerifier,
+          expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+        });
+        console.log(`   🔑 Generated PKCE codes for state: ${state.substring(0, 20)}...`);
+      }
+
       // Generate OAuth URLs for different platforms
       const oauthUrls: Record<string, string | null> = {
         facebook: null,
@@ -9402,11 +9431,11 @@ Always end with a helpful suggestion or call-to-action.`;
         linkedin: process.env.LINKEDIN_CLIENT_ID
           ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/linkedin")}&scope=openid%20profile%20email%20w_member_social&state=${encodeURIComponent(state)}`
           : null,
-        twitter: process.env.TWITTER_CLIENT_ID
-          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/twitter")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=challenge&code_challenge_method=plain`
+        twitter: process.env.TWITTER_CLIENT_ID && codeChallenge
+          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/twitter")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=${codeChallenge}&code_challenge_method=S256`
           : null,
-        x: process.env.TWITTER_CLIENT_ID
-          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/x")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=challenge&code_challenge_method=plain`
+        x: process.env.TWITTER_CLIENT_ID && codeChallenge
+          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/x")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=${codeChallenge}&code_challenge_method=S256`
           : null,
         youtube: process.env.YOUTUBE_CLIENT_ID
           ? `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${process.env.YOUTUBE_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/youtube")}&scope=https://www.googleapis.com/auth/youtube.upload%20https://www.googleapis.com/auth/youtube.force-ssl&access_type=offline&state=${encodeURIComponent(state)}`
@@ -9430,6 +9459,233 @@ Always end with a helpful suggestion or call-to-action.`;
     } catch (error) {
       console.error("OAuth initiation error:", error);
       res.status(500).json({ error: "Failed to initiate OAuth flow" });
+    }
+  });
+
+  // OAuth Callback Handler for all platforms
+  app.get("/api/social/callback/:platform", async (req, res) => {
+    try {
+      const { platform } = req.params;
+      const { code, state, error: oauthError } = req.query;
+
+      console.log(`\n🔄 OAuth Callback received for ${platform}`);
+      console.log(`   State: ${String(state).substring(0, 30)}...`);
+      console.log(`   Code: ${code ? 'Present' : 'Missing'}`);
+      console.log(`   Error: ${oauthError || 'None'}`);
+
+      // Read base URL from environment
+      const baseUrl = process.env.BASE_URL || 
+        (process.env.REPLIT_DEV_DOMAIN 
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+          : "http://localhost:5000");
+
+      // Handle OAuth errors from provider
+      if (oauthError) {
+        console.error(`❌ OAuth error from ${platform}:`, oauthError);
+        return res.redirect(`${baseUrl}/?oauth_error=${oauthError}`);
+      }
+
+      // Validate required parameters
+      if (!state || !code) {
+        console.error('❌ Missing state or code parameter');
+        return res.redirect(`${baseUrl}/?oauth_error=missing_parameters`);
+      }
+
+      // Decode and validate state parameter
+      let decodedState: { userId: string; platform: string };
+      try {
+        decodedState = JSON.parse(Buffer.from(String(state), 'base64').toString());
+      } catch (e) {
+        console.error('❌ Invalid state parameter');
+        return res.redirect(`${baseUrl}/?oauth_error=invalid_state`);
+      }
+
+      const { userId, platform: statePlatform } = decodedState;
+
+      // Verify platform matches
+      if (statePlatform !== platform && !(statePlatform === 'x' && platform === 'twitter') && !(statePlatform === 'twitter' && platform === 'x')) {
+        console.error(`❌ Platform mismatch: expected ${statePlatform}, got ${platform}`);
+        return res.redirect(`${baseUrl}/?oauth_error=platform_mismatch`);
+      }
+
+      console.log(`   User ID from state: ${userId}`);
+
+      // Handle Twitter/X OAuth
+      if (platform === 'twitter' || platform === 'x') {
+        const clientId = process.env.TWITTER_CLIENT_ID;
+        const clientSecret = process.env.TWITTER_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/${platform}`;
+
+        if (!clientId || !clientSecret) {
+          console.error('❌ Twitter OAuth credentials not configured');
+          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
+        }
+
+        // Retrieve PKCE code verifier from store
+        const pkceData = pkceStore.get(String(state));
+        if (!pkceData) {
+          console.error('❌ PKCE code verifier not found for state');
+          return res.redirect(`${baseUrl}/?oauth_error=pkce_verifier_not_found`);
+        }
+
+        // Check if PKCE data expired
+        if (pkceData.expiresAt < Date.now()) {
+          pkceStore.delete(String(state));
+          console.error('❌ PKCE code verifier expired');
+          return res.redirect(`${baseUrl}/?oauth_error=pkce_verifier_expired`);
+        }
+
+        // Clean up PKCE data after retrieval
+        const codeVerifier = pkceData.codeVerifier;
+        pkceStore.delete(String(state));
+
+        console.log('   🔑 Retrieved PKCE code verifier');
+
+        try {
+          // Exchange authorization code for access token
+          console.log('   🔄 Exchanging code for access token...');
+          const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+            },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              code: String(code),
+              redirect_uri: redirectUri,
+              code_verifier: codeVerifier,
+            }),
+          });
+
+          if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            console.error('❌ Twitter token exchange failed:', errorText);
+            return res.redirect(`${baseUrl}/?oauth_error=token_exchange_failed`);
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token;
+
+          console.log('   ✅ Twitter token exchange successful');
+          console.log('   Access token:', accessToken ? 'Present' : 'Missing');
+          console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
+
+          // Get user from storage
+          const user = await storage.getUser(userId);
+          if (!user) {
+            console.error(`❌ User not found: ${userId}`);
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          console.log(`   ✅ Found user: ${user.id} (${user.email || user.username})`);
+
+          // Check if Twitter/X account already exists
+          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          const twitterAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === 'twitter' || acc.platform.toLowerCase() === 'x'
+          );
+
+          if (twitterAccount) {
+            // Update existing account
+            console.log(`   🔄 Updating existing Twitter account: ${twitterAccount.id}`);
+            await storage.updateSocialMediaAccount(twitterAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+            console.log('   ✅ Twitter account updated');
+          } else {
+            // Create new account
+            console.log('   ➕ Creating new Twitter account');
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: 'x',
+              accountId: 'x_account',
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+            console.log('   ✅ Twitter account created');
+          }
+
+          // Success! Return HTML that closes the popup
+          res.send(`
+            <html>
+              <head>
+                <title>Twitter Connected</title>
+                <style>
+                  body {
+                    font-family: system-ui, -apple-system, sans-serif;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                  }
+                  .container {
+                    text-align: center;
+                    padding: 2rem;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 1rem;
+                    backdrop-filter: blur(10px);
+                  }
+                  h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
+                  p { margin: 0; opacity: 0.9; }
+                  .checkmark {
+                    font-size: 4rem;
+                    margin-bottom: 1rem;
+                    animation: scaleIn 0.5s ease-out;
+                  }
+                  @keyframes scaleIn {
+                    from { transform: scale(0); }
+                    to { transform: scale(1); }
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="checkmark">✅</div>
+                  <h1>Twitter/X Connected!</h1>
+                  <p>Your Twitter account has been connected successfully.</p>
+                  <p style="margin-top: 1rem; font-size: 0.9rem;">This window will close automatically...</p>
+                </div>
+                <script>
+                  // Notify parent window of success
+                  if (window.opener) {
+                    window.opener.postMessage({ success: true, platform: 'x' }, '*');
+                  }
+                  // Close window after 2 seconds
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error('❌ Twitter OAuth error:', fetchError);
+          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
+        }
+      } else {
+        // Other platforms not yet implemented
+        res.send(`
+          <html>
+            <head><title>${platform} OAuth</title></head>
+            <body style="font-family: system-ui; padding: 2rem; text-align: center;">
+              <h1>${platform} OAuth Callback</h1>
+              <p>OAuth setup for ${platform} requires additional configuration.</p>
+              <p>Platform: ${platform} is not yet fully implemented.</p>
+              <script>setTimeout(() => window.close(), 3000);</script>
+            </body>
+          </html>
+        `);
+      }
+    } catch (error) {
+      console.error('❌ OAuth callback error:', error);
+      res.status(500).send('OAuth callback failed');
     }
   });
 
