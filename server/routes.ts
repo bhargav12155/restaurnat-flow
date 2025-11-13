@@ -9,6 +9,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   console.log("🚀 REGISTERING ROUTES - SERVER STARTING");
   // Import necessary modules
   const { authenticateUser } = await import("./auth-middleware");
+  const { requireAuth, optionalAuth } = await import("./middleware/auth");
   const { db } = await import("./db");
   const { storage } = await import("./storage");
   const { openaiChat, generateContextualSuggestions } = await import(
@@ -6252,7 +6253,6 @@ Format the response as JSON with these fields:
   });
 
   // CMA Comparables Proxy - proxy requests to external CMA API
-  const { optionalAuth } = await import("./auth-middleware");
   app.get("/api/cma-comparables", optionalAuth, async (req, res) => {
     try {
       console.log("🏘️ CMA Comparables proxy request with params:", req.query);
@@ -9137,8 +9137,11 @@ Always end with a helpful suggestion or call-to-action.`;
   });
 
   // =======================================================
-  // TWITTER/X POSTING INTEGRATION (OAuth 2.0)
+  // SOCIAL MEDIA INTEGRATION
   // =======================================================
+  
+  // Import nanoid for generating IDs
+  const { nanoid } = await import("nanoid");
   
   // Configure multer for Twitter uploads
   const upload = multer({
@@ -9157,6 +9160,100 @@ Always end with a helpful suggestion or call-to-action.`;
 
   // Import social media service
   const { socialMediaService } = await import("./services/socialMedia");
+
+  // Get all social media accounts with connection status
+  app.get("/api/social/accounts", requireAuth, async (req: any, res) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      // Resolve DB user ID to storage UUID
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+
+      // If not found by ID, try by email
+      if (!user && req.user.email) {
+        const allUsers = Array.from((storage as any).users?.values() || []);
+        user = allUsers.find((u: any) => u.email === req.user.email);
+      }
+
+      // If not found by email, try by username
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+
+      // Get social media accounts (empty if user not found)
+      const socialAccounts = user
+        ? await storage.getSocialMediaAccounts(user.id)
+        : [];
+
+      // Map accounts to include connection status
+      const connectedPlatforms = new Set(
+        socialAccounts.map((acc) => acc.platform.toLowerCase())
+      );
+
+      // Return all platforms with their connection status
+      const platforms = [
+        {
+          id: nanoid(),
+          platform: "facebook",
+          isConnected: connectedPlatforms.has("facebook"),
+          lastSync: connectedPlatforms.has("facebook")
+            ? new Date().toISOString()
+            : null,
+        },
+        {
+          id: nanoid(),
+          platform: "instagram",
+          isConnected: connectedPlatforms.has("instagram"),
+          lastSync: connectedPlatforms.has("instagram")
+            ? new Date().toISOString()
+            : null,
+        },
+        {
+          id: nanoid(),
+          platform: "linkedin",
+          isConnected: connectedPlatforms.has("linkedin"),
+          lastSync: connectedPlatforms.has("linkedin")
+            ? new Date().toISOString()
+            : null,
+        },
+        {
+          id: nanoid(),
+          platform: "x",
+          isConnected:
+            connectedPlatforms.has("x") || connectedPlatforms.has("twitter"),
+          lastSync:
+            connectedPlatforms.has("x") || connectedPlatforms.has("twitter")
+              ? new Date().toISOString()
+              : null,
+        },
+        {
+          id: nanoid(),
+          platform: "tiktok",
+          isConnected: connectedPlatforms.has("tiktok"),
+          lastSync: connectedPlatforms.has("tiktok")
+            ? new Date().toISOString()
+            : null,
+        },
+        {
+          id: nanoid(),
+          platform: "youtube",
+          isConnected: connectedPlatforms.has("youtube"),
+          lastSync: connectedPlatforms.has("youtube")
+            ? new Date().toISOString()
+            : null,
+        },
+      ];
+
+      console.log(`📱 Returned ${platforms.length} platforms for user ${user?.id || 'unknown'}`);
+      res.json(platforms);
+    } catch (error) {
+      console.error("Get social accounts error:", error);
+      res.status(500).json({ error: "Failed to fetch social media accounts" });
+    }
+  });
 
   // Twitter post endpoint
   app.post(
