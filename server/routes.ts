@@ -767,21 +767,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`   → Trying getUserByUsername("${req.user.username}")`);
         user = await storage.getUserByUsername(req.user.username);
         console.log(`   → getUserByUsername:`, user ? `✅ Found ${user.id}` : '❌ Not found');
-        
-        if (!user) {
-          console.error(`❌ User not found in storage: ${userId} (username: ${req.user.username})`);
-          return res.status(404).json({ error: "User account not found. Please contact support." });
-        }
-        
-        // Use the resolved user's UUID
-        userId = user.id;
-        console.log(`✅ Resolved user via username → UUID: ${userId}`);
-      } else if (!user) {
-        console.error(`❌ User not found in storage: ${userId}`);
-        return res.status(404).json({ error: "User account not found. Please contact support." });
-      } else {
-        console.log(`✅ OAuth connect for user: ${userId} (${user.email || user.username})`);
       }
+      
+      // If user still not found, create them in MemStorage
+      // This handles database-authenticated users not yet in MemStorage
+      if (!user) {
+        console.log(`   → User not in MemStorage, creating with auto-generated UUID...`);
+        user = await storage.createUser({
+          username: req.user.username || req.user.email?.split('@')[0] || `user_${userId}`,
+          email: req.user.email || undefined,
+          password: '', // Not needed for OAuth-only users
+          name: req.user.email || `User ${userId}`,
+          role: (req.user.type === 'agent' ? 'agent' : 'public') as 'agent' | 'public' | 'team_lead',
+        });
+        console.log(`   ✅ Created user in MemStorage: ${user.id} (DB ID was: ${userId})`);
+      }
+      
+      // Use the MemStorage UUID for all social account operations
+      userId = user.id;
+      console.log(`✅ OAuth connect for user: ${userId} (${user.email || user.username})`);
+
 
       // Read credentials from Replit Secrets (environment variables)
       const baseUrl = process.env.BASE_URL || process.env.REPLIT_DEV_DOMAIN 
