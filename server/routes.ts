@@ -1787,13 +1787,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Authentication required" });
       }
 
+      // Resolve DB user ID to MemStorage UUID (same logic as other endpoints)
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+      
+      // If not found by ID, try by email (CRITICAL for DB-authenticated users)
+      if (!user && req.user?.email) {
+        const allUsers = Array.from(storage.users?.values() || []);
+        user = allUsers.find(u => u.email === req.user.email);
+      }
+      
+      // If not found by email, try by username
+      if (!user && req.user?.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found in storage. Please reconnect your Twitter account." });
+      }
+
       // Support both JSON (from old frontend) and FormData (from new frontend)
       let content = req.body.content;
       const photo = req.file;
       
       // Debug logging
       console.log('📝 Twitter post request:', {
-        userId: req.user.id,
+        userId: user.id,
         contentType: req.get('content-type'),
         bodyKeys: Object.keys(req.body),
         content: content ? content.substring(0, 50) + '...' : 'MISSING',
@@ -1815,7 +1834,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Pass userId to use OAuth 2.0 token from database
       const postResult = await socialMediaService.postToTwitter(
-        req.user.id,
+        user.id,
         content,
         fullPhotoUrl
       );
