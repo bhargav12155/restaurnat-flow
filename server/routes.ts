@@ -1740,14 +1740,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Twitter endpoints
-  app.post("/api/twitter/post", upload.single("photo"), async (req, res) => {
+  app.post("/api/twitter/post", upload.single("photo"), async (req: any, res) => {
     try {
+      // Require authentication
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
       // Support both JSON (from old frontend) and FormData (from new frontend)
       let content = req.body.content;
       const photo = req.file;
       
       // Debug logging
       console.log('📝 Twitter post request:', {
+        userId: req.user.id,
         contentType: req.get('content-type'),
         bodyKeys: Object.keys(req.body),
         content: content ? content.substring(0, 50) + '...' : 'MISSING',
@@ -1767,7 +1773,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const baseUrl = `${req.protocol}://${req.get("host")}`;
       const fullPhotoUrl = photoUrl ? baseUrl + photoUrl : undefined;
 
+      // Pass userId to use OAuth 2.0 token from database
       const postResult = await socialMediaService.postToTwitter(
+        req.user.id,
         content,
         fullPhotoUrl
       );
