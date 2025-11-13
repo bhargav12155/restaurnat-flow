@@ -3,8 +3,10 @@
 This document lists every file we modified to bring YouTube + X posting online, plus the exact behaviors you need to replicate inside Replit. Hand this file to whoever deploys the Replit instance so it stays in parity with local dev.
 
 ## ✅ Summary
-- **YouTube**: OAuth tokens are pulled from the logged-in user's stored social account. The API uploads an actual video (user-provided or bundled sample) and returns both the public watch link and the Studio edit link.
-- **Dashboard UI**: The YouTube Quick Test card can optionally upload a video file; otherwise it falls back to the bundled sample clip.
+- **YouTube OAuth**: ✅ **IMPLEMENTED** - OAuth callback endpoint handles Google token exchange, stores access/refresh tokens, and shows success page with auto-close
+- **Twitter/X OAuth**: ✅ **IMPLEMENTED** - OAuth callback with PKCE (S256) security, token exchange, and account management
+- **YouTube Video Upload**: ⏳ **PENDING** - API endpoint `/api/youtube/post` needs implementation for video uploads with sample fallback
+- **Dashboard UI**: ⏳ **PENDING** - YouTube Quick Test card needs file input and video upload functionality
 - **Env hygiene**: The committed `.env` only contains placeholders. Real secrets live in your local/Replit environment variables.
 
 ---
