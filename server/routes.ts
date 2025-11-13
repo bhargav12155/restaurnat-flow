@@ -15,6 +15,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     "./openai-chat"
   );
 
+  // Register auth routes FIRST (before other routes)
+  const authRoutes = (await import("./routes/auth")).default;
+  app.use("/api/auth", authRoutes);
+  console.log("✅ Auth routes registered at /api/auth");
+
   // Health check endpoint
   app.get("/health", (req, res) => {
     res.status(200).json({
