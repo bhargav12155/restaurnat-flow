@@ -439,7 +439,7 @@ export class SocialMediaService {
     refreshToken?: string;
     scopes?: string[];
   }> {
-    const { storage } = await import('./storage');
+    const { storage } = await import('../storage.js');
     const accounts = await storage.getSocialMediaAccounts(userId);
     const twitterAccount = accounts.find(acc => acc.platform === 'x' || acc.platform === 'twitter');
 
