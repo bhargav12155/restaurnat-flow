@@ -742,19 +742,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { platform } = req.params;
       
+      console.log('\n🔐 OAuth Connect Request for', platform);
+      console.log('📋 Session user object:', JSON.stringify({
+        id: req.user?.id,
+        username: req.user?.username,
+        email: req.user?.email,
+        role: req.user?.role
+      }, null, 2));
+      
       if (!req.user?.id) {
         return res.status(401).json({ error: "User not authenticated" });
       }
 
       // CRITICAL FIX: Resolve the authenticated user to their UUID
       let userId = String(req.user.id);
+      console.log(`🔍 Looking up user ID: "${userId}" (type: ${typeof req.user.id})`);
       
       // Try to find user by ID first
       let user = await storage.getUser(userId);
+      console.log(`   → getUser(${userId}):`, user ? `✅ Found ${user.username}` : '❌ Not found');
       
       // If not found by ID, try by username as fallback
       if (!user && req.user.username) {
+        console.log(`   → Trying getUserByUsername("${req.user.username}")`);
         user = await storage.getUserByUsername(req.user.username);
+        console.log(`   → getUserByUsername:`, user ? `✅ Found ${user.id}` : '❌ Not found');
         
         if (!user) {
           console.error(`❌ User not found in storage: ${userId} (username: ${req.user.username})`);
@@ -763,7 +775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Use the resolved user's UUID
         userId = user.id;
-        console.log(`✅ Resolved user via username: ${userId}`);
+        console.log(`✅ Resolved user via username → UUID: ${userId}`);
       } else if (!user) {
         console.error(`❌ User not found in storage: ${userId}`);
         return res.status(404).json({ error: "User account not found. Please contact support." });
