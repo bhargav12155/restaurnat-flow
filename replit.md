@@ -18,6 +18,14 @@ The client application is built with React and TypeScript, using Vite as the bui
 ### Backend Architecture
 The server runs on Express.js with TypeScript in ESM mode. Authentication is handled through Replit's OpenID Connect integration with session storage. The API follows RESTful conventions with middleware for user context extraction and authorization. WebSocket support enables real-time communication for live updates and notifications.
 
+**Social Media OAuth System**: Implements secure OAuth 2.0 flows for third-party platform integrations:
+- **PKCE Implementation**: Uses SHA-256 code challenge/verifier pairs with 10-minute expiration for enhanced security
+- **State Management**: Temporary in-memory storage for PKCE codes with automatic cleanup
+- **User Reconciliation**: Automatically creates users in MemStorage from OIDC tokens during OAuth flows
+- **Token Storage**: Securely stores access tokens and refresh tokens in social media account records
+- **Callback Handling**: Platform-specific callback handlers with comprehensive error handling and user-friendly success pages
+- **Multi-Platform Support**: Extensible architecture supporting Twitter/X, YouTube, LinkedIn with consistent patterns
+
 ### Database Design
 The application uses PostgreSQL with Drizzle ORM for type-safe database operations. The schema supports both main users (real estate agents) and public users (clients) with multi-tenancy through agent slugs. Key tables include users, properties, AI-generated content, social posts, SEO keywords, user activity tracking, and file uploads. Session storage is implemented for authentication persistence.
 
@@ -62,7 +70,10 @@ The platform includes a comprehensive engagement tracking system that monitors a
 
 **Authentication**: Replit OpenID Connect for secure user authentication and session management
 
-**Social Media APIs**: Integration endpoints for Facebook, Instagram, Twitter, and YouTube for multi-platform content distribution
+**Social Media APIs**: 
+- **Twitter/X OAuth 2.0**: Full OAuth implementation with PKCE (S256) security for secure token exchange. Supports tweet posting with media uploads, automatic token refresh, and account connection management.
+- **YouTube OAuth**: Video upload integration with OAuth token management
+- Integration endpoints for Facebook, Instagram, LinkedIn, and TikTok (placeholder support)
 
 **UI Components**: Radix UI primitives for accessible component foundation, styled with Tailwind CSS
 
