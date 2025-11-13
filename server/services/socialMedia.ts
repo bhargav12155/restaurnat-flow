@@ -434,42 +434,42 @@ export class SocialMediaService {
     }
   }
 
+  async getTwitterAccessToken(userId: string): Promise<{
+    accessToken: string;
+    refreshToken?: string;
+    scopes?: string[];
+  }> {
+    const { storage } = await import('./storage');
+    const accounts = await storage.getSocialMediaAccounts(userId);
+    const twitterAccount = accounts.find(acc => acc.platform === 'x' || acc.platform === 'twitter');
+
+    if (!twitterAccount || !twitterAccount.accessToken) {
+      throw new Error('Twitter account not connected. Please connect your Twitter/X account first.');
+    }
+
+    if (!twitterAccount.isConnected) {
+      throw new Error('Twitter account is disconnected. Please reconnect your account.');
+    }
+
+    // TODO: Add token refresh logic here if token is expired
+    // For now, just return the stored token
+    return {
+      accessToken: twitterAccount.accessToken,
+      refreshToken: twitterAccount.refreshToken || undefined,
+      scopes: [] // TODO: Parse scopes from metadata
+    };
+  }
+
   async postToTwitter(
+    userId: string,
     content: string,
     imageUrl?: string
   ): Promise<{ postId: string }> {
     try {
-      const consumerKey = process.env.TWITTER_CONSUMER_KEY;
-      const consumerSecret = process.env.TWITTER_CONSUMER_SECRET;
-      const accessToken = process.env.TWITTER_ACCESS_TOKEN;
-      const accessTokenSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+      // Get user's OAuth 2.0 Bearer token from database
+      const { accessToken, scopes } = await this.getTwitterAccessToken(userId);
 
-      console.log("Twitter credentials loaded successfully");
-
-      if (
-        !consumerKey ||
-        !consumerSecret ||
-        !accessToken ||
-        !accessTokenSecret
-      ) {
-        throw new Error("Twitter API credentials not available");
-      }
-
-      // Initialize OAuth 1.0a
-      const oauth = new OAuth({
-        consumer: {
-          key: consumerKey,
-          secret: consumerSecret,
-        },
-        signature_method: "HMAC-SHA1",
-        hash_function: (baseString: string, key: string) =>
-          crypto.createHmac("sha1", key).update(baseString).digest("base64"),
-      });
-
-      const token = {
-        key: accessToken,
-        secret: accessTokenSecret,
-      };
+      console.log("✅ Retrieved Twitter OAuth 2.0 token for user:", userId);
 
       const endpointURL = "https://api.twitter.com/2/tweets";
 
@@ -478,22 +478,11 @@ export class SocialMediaService {
         text: content,
       };
 
-      // Generate OAuth header (don't include JSON body in signature for Twitter v2 API)
-      const authHeader = oauth.toHeader(
-        oauth.authorize(
-          {
-            url: endpointURL,
-            method: "POST",
-          },
-          token
-        )
-      );
-
-      // Make the API call
+      // Make the API call with OAuth 2.0 Bearer token
       const response = await fetch(endpointURL, {
         method: "POST",
         headers: {
-          Authorization: authHeader["Authorization"],
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
           "User-Agent": "RealEstateAI/1.0",
         },
@@ -504,14 +493,14 @@ export class SocialMediaService {
         const errorData = await response.json();
         console.error("Twitter API Error:", errorData);
 
-        if (errorData.errors?.[0]?.code === 403) {
+        if (errorData.status === 403 || errorData.errors?.[0]?.code === 403) {
           throw new Error(
-            "Twitter API access denied. Please check your credentials and permissions."
+            "Twitter posting permission denied. Your account may not have tweet.write permission. Please reconnect your Twitter account."
           );
         }
-        if (errorData.errors?.[0]?.code === 401) {
+        if (errorData.status === 401 || errorData.errors?.[0]?.code === 401) {
           throw new Error(
-            "Twitter authentication failed. Please verify your API keys."
+            "Twitter authentication failed. Your token may have expired. Please reconnect your Twitter account."
           );
         }
 
@@ -519,6 +508,7 @@ export class SocialMediaService {
           `Twitter posting failed: ${
             errorData.detail ||
             errorData.errors?.[0]?.message ||
+            errorData.title ||
             "Unknown error"
           }`
         );
