@@ -9341,6 +9341,98 @@ Always end with a helpful suggestion or call-to-action.`;
     }
   );
 
+  // Social Media OAuth Connection Route
+  app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
+    try {
+      const { platform } = req.params;
+
+      console.log("\n🔐 OAuth Connect Request for", platform);
+
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Resolve the authenticated user
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+
+      // If not found by ID, try by email
+      if (!user && req.user.email) {
+        const allUsers = Array.from((storage as any).users?.values() || []);
+        user = allUsers.find((u: any) => u.email === req.user.email);
+      }
+
+      // If not found by email, try by username
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+
+      // If user still not found, create them in MemStorage
+      if (!user) {
+        console.log(`   → User not in MemStorage, creating with auto-generated UUID...`);
+        user = await storage.createUser({
+          username: req.user.username || req.user.email?.split("@")[0] || `user_${userId}`,
+          email: req.user.email || undefined,
+          password: "", // Not needed for OAuth-only users
+          name: req.user.email || `User ${userId}`,
+          role: ((req.user as any).type === "agent" ? "agent" : "public") as "agent" | "public" | "team_lead",
+        });
+        console.log(`   ✅ Created user in MemStorage: ${user.id} (DB ID was: ${userId})`);
+      } else {
+        console.log(`   ✅ Reusing existing MemStorage user: ${user.id}`);
+      }
+
+      // Use the MemStorage UUID for all social account operations
+      userId = user.id;
+      console.log(`✅ OAuth connect for user: ${userId} (${user.email || user.username})`);
+
+      // Read base URL from environment
+      const baseUrl = process.env.BASE_URL || 
+        (process.env.REPLIT_DEV_DOMAIN 
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+          : "http://localhost:5000");
+
+      // Create state parameter with userId for OAuth callback
+      const state = Buffer.from(JSON.stringify({ userId, platform })).toString("base64");
+
+      // Generate OAuth URLs for different platforms
+      const oauthUrls: Record<string, string | null> = {
+        facebook: null,
+        instagram: null,
+        linkedin: process.env.LINKEDIN_CLIENT_ID
+          ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/linkedin")}&scope=openid%20profile%20email%20w_member_social&state=${encodeURIComponent(state)}`
+          : null,
+        twitter: process.env.TWITTER_CLIENT_ID
+          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/twitter")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=challenge&code_challenge_method=plain`
+          : null,
+        x: process.env.TWITTER_CLIENT_ID
+          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/x")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=challenge&code_challenge_method=plain`
+          : null,
+        youtube: process.env.YOUTUBE_CLIENT_ID
+          ? `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${process.env.YOUTUBE_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/youtube")}&scope=https://www.googleapis.com/auth/youtube.upload%20https://www.googleapis.com/auth/youtube.force-ssl&access_type=offline&state=${encodeURIComponent(state)}`
+          : null,
+        tiktok: null,
+      };
+
+      const authUrl = oauthUrls[platform];
+
+      if (!authUrl) {
+        return res.status(400).json({
+          error: `OAuth not configured for ${platform}`,
+          message: `Please add ${platform.toUpperCase()}_CLIENT_ID to environment variables to enable OAuth`,
+        });
+      }
+
+      res.json({
+        authUrl,
+        message: "OAuth URL generated successfully",
+      });
+    } catch (error) {
+      console.error("OAuth initiation error:", error);
+      res.status(500).json({ error: "Failed to initiate OAuth flow" });
+    }
+  });
+
   // Twitter validation endpoint
   app.get("/api/twitter/validate", async (req, res) => {
     try {
