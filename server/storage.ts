@@ -212,8 +212,61 @@ export class MemStorage implements IStorage {
       this.analytics.set(analyticsId, analytic);
     });
 
-    // Scheduled posts will be generated on-demand via "Generate Content Plan" button
-    // No seed posts - users start with empty calendar
+    // Seed test posts for quick testing
+    const testPosts = [
+      {
+        content: "🏡 Just listed! Beautiful 4-bedroom home in Aksarben with modern upgrades and stunning backyard. Perfect for families looking for urban convenience with suburban charm. DM me for details! #OmahaRealEstate #AksarbenHomes #JustListed",
+        postType: "just_listed",
+        neighborhood: "Aksarben"
+      },
+      {
+        content: "🌟 Market Update: Dundee neighborhood is HOT right now! Homes selling 15% faster than last month. If you've been thinking about selling, now is the time. Let's chat about your home's value! #DundeeOmaha #RealEstateMarket #MikeBjork",
+        postType: "market_update",
+        neighborhood: "Dundee"
+      },
+      {
+        content: "💡 First-time homebuyer tip: Getting pre-approved for a mortgage BEFORE house hunting gives you a huge advantage in this competitive market. Want to know more? Drop a comment or send me a message! #FirstTimeHomeBuyer #OmahaHomes #RealEstateTips",
+        postType: "tips",
+        neighborhood: null
+      },
+      {
+        content: "🎉 SOLD! Another happy family found their dream home in Old Market! Congrats to the new homeowners - I'm so excited for you! If you're ready to find your perfect home, let's make it happen. #JustSold #OldMarket #OmahaRealtor #DreamHome",
+        postType: "just_sold",
+        neighborhood: "Old Market"
+      }
+    ];
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+
+    testPosts.forEach((post, index) => {
+      const postId = randomUUID();
+      const scheduledFor = new Date(tomorrow);
+      scheduledFor.setHours(scheduledFor.getHours() + (index * 3)); // Space them 3 hours apart
+
+      const scheduledPost: ScheduledPost = {
+        id: postId,
+        userId,
+        platform: "x",
+        postType: post.postType,
+        content: post.content,
+        hashtags: null,
+        scheduledFor,
+        status: "pending",
+        isEdited: false,
+        originalContent: null,
+        neighborhood: post.neighborhood,
+        seoScore: null,
+        metadata: {
+          testPost: true,
+          prePopulated: true
+        },
+        createdAt: new Date(),
+        updatedAt: null
+      };
+      this.scheduledPosts.set(postId, scheduledPost);
+    });
 
     // Create default avatar with user's actual name
     this.createDefaultAvatar(userId, user.name);
