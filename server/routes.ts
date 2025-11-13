@@ -756,21 +756,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // CRITICAL FIX: Resolve the authenticated user to their UUID
       let userId = String(req.user.id);
-      console.log(`🔍 Looking up user ID: "${userId}" (type: ${typeof req.user.id})`);
+      console.log(`🔍 Looking up user by DB ID: "${userId}" and email: "${req.user.email}"`);
       
       // Try to find user by ID first
       let user = await storage.getUser(userId);
       console.log(`   → getUser(${userId}):`, user ? `✅ Found ${user.username}` : '❌ Not found');
       
-      // If not found by ID, try by username as fallback
+      // If not found by ID, try by email (critical for DB-authenticated users)
+      if (!user && req.user.email) {
+        console.log(`   → Trying to find by email: "${req.user.email}"`);
+        const allUsers = Array.from(storage.users?.values() || []);
+        user = allUsers.find(u => u.email === req.user.email);
+        console.log(`   → Email search:`, user ? `✅ Found ${user.id}` : '❌ Not found');
+      }
+      
+      // If not found by email, try by username as fallback
       if (!user && req.user.username) {
         console.log(`   → Trying getUserByUsername("${req.user.username}")`);
         user = await storage.getUserByUsername(req.user.username);
         console.log(`   → getUserByUsername:`, user ? `✅ Found ${user.id}` : '❌ Not found');
       }
       
-      // If user still not found, create them in MemStorage
-      // This handles database-authenticated users not yet in MemStorage
+      // If user still not found, create them ONCE in MemStorage
       if (!user) {
         console.log(`   → User not in MemStorage, creating with auto-generated UUID...`);
         user = await storage.createUser({
@@ -781,6 +788,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           role: (req.user.type === 'agent' ? 'agent' : 'public') as 'agent' | 'public' | 'team_lead',
         });
         console.log(`   ✅ Created user in MemStorage: ${user.id} (DB ID was: ${userId})`);
+      } else {
+        console.log(`   ✅ Reusing existing MemStorage user: ${user.id}`);
       }
       
       // Use the MemStorage UUID for all social account operations
@@ -1249,10 +1258,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Social media endpoints
   app.get("/api/social/accounts", requireAuth, async (req, res) => {
     try {
-      const userId = req.user?.id;
-      if (!userId) {
+      if (!req.user?.id) {
         return res.status(401).json({ error: "Unauthorized" });
       }
+
+      // Resolve DB user ID to MemStorage UUID (same logic as connect endpoint)
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+      
+      // If not found by ID, try by email
+      if (!user && req.user.email) {
+        const allUsers = Array.from(storage.users?.values() || []);
+        user = allUsers.find(u => u.email === req.user.email);
+      }
+      
+      // If not found by email, try by username
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+      
+      // If still not found, return empty array (user hasn't connected any accounts yet)
+      if (!user) {
+        return res.json([]);
+      }
+      
+      userId = user.id;
 
       // Get social media accounts from social_media_accounts table (same as posting endpoint)
       const socialAccounts = await storage.getSocialMediaAccounts(userId);
