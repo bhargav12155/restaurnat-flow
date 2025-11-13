@@ -9669,6 +9669,144 @@ Always end with a helpful suggestion or call-to-action.`;
           console.error('❌ Twitter OAuth error:', fetchError);
           return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
         }
+      } else if (platform.toLowerCase() === 'youtube') {
+        const clientId = process.env.YOUTUBE_CLIENT_ID;
+        const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/youtube`;
+
+        if (!clientId || !clientSecret) {
+          console.error('❌ YouTube OAuth credentials not configured');
+          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
+        }
+
+        try {
+          // Exchange code for access token using Google OAuth
+          console.log('   🔄 Exchanging code for YouTube access token...');
+          const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              code: String(code),
+              redirect_uri: redirectUri,
+              client_id: clientId,
+              client_secret: clientSecret,
+            }),
+          });
+
+          if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            console.error('❌ YouTube token exchange failed:', errorText);
+            return res.redirect(`${baseUrl}/?oauth_error=token_exchange_failed`);
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token;
+
+          console.log('   ✅ YouTube token exchange successful');
+          console.log('   Access token:', accessToken ? 'Present' : 'Missing');
+          console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
+
+          // Get user from storage
+          const user = await storage.getUser(userId);
+          if (!user) {
+            console.error(`❌ User not found: ${userId}`);
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          console.log(`   ✅ Found user: ${user.id} (${user.email || user.username})`);
+
+          // Check if YouTube account already exists
+          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          const youtubeAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === 'youtube'
+          );
+
+          if (youtubeAccount) {
+            // Update existing account
+            console.log(`   🔄 Updating existing YouTube account: ${youtubeAccount.id}`);
+            await storage.updateSocialMediaAccount(youtubeAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+            console.log('   ✅ YouTube account updated');
+          } else {
+            // Create new account
+            console.log('   ➕ Creating new YouTube account');
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: 'youtube',
+              accountId: 'youtube_account',
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+            console.log('   ✅ YouTube account created');
+          }
+
+          // Success! Return HTML that closes the popup
+          res.send(`
+            <html>
+              <head>
+                <title>YouTube Connected</title>
+                <style>
+                  body {
+                    font-family: system-ui, -apple-system, sans-serif;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #FF0000 0%, #CC0000 100%);
+                    color: white;
+                  }
+                  .container {
+                    text-align: center;
+                    padding: 2rem;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 1rem;
+                    backdrop-filter: blur(10px);
+                  }
+                  h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
+                  p { margin: 0; opacity: 0.9; }
+                  .checkmark {
+                    font-size: 4rem;
+                    margin-bottom: 1rem;
+                    animation: scaleIn 0.5s ease-out;
+                  }
+                  @keyframes scaleIn {
+                    from { transform: scale(0); }
+                    to { transform: scale(1); }
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="checkmark">✅</div>
+                  <h1>YouTube Connected!</h1>
+                  <p>Your YouTube channel has been connected successfully.</p>
+                  <p style="margin-top: 1rem; font-size: 0.9rem;">This window will close automatically...</p>
+                </div>
+                <script>
+                  // Notify parent window of success
+                  if (window.opener) {
+                    window.opener.postMessage({ success: true, platform: 'youtube' }, '*');
+                  }
+                  // Close window after 2 seconds
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error('❌ YouTube OAuth error:', fetchError);
+          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
+        }
       } else {
         // Other platforms not yet implemented
         res.send(`
