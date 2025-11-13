@@ -1351,25 +1351,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "User not authenticated" });
         }
 
-        // Resolve session ID to actual UUID from database
-        let user = await storage.getUser(String(sessionId));
+        // Resolve DB user ID to MemStorage UUID (same logic as connect/accounts endpoints)
+        let userId = String(sessionId);
+        let user = await storage.getUser(userId);
         
-        // If not found by ID, try by username
+        // If not found by ID, try by email (CRITICAL for DB-authenticated users)
+        if (!user && req.user?.email) {
+          const allUsers = Array.from(storage.users?.values() || []);
+          user = allUsers.find(u => u.email === req.user.email);
+        }
+        
+        // If not found by email, try by username
         if (!user && req.user?.username) {
           user = await storage.getUserByUsername(req.user.username);
         }
         
-        // If still not found, get the first user (for development/demo)
         if (!user) {
-          const allUsers = Array.from(storage.users?.values() || []);
-          if (allUsers.length > 0) {
-            user = allUsers[0];
-            console.log(`⚠️  [POSTING] Using fallback user: ${user.username} (${user.id})`);
-          }
-        }
-        
-        if (!user) {
-          return res.status(404).json({ error: "User not found" });
+          return res.status(404).json({ error: "User not found in storage. Please reconnect your social accounts." });
         }
 
         // Get user's social accounts to check if platform is connected
