@@ -741,35 +741,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
     try {
       const { platform } = req.params;
-      const sessionId = req.user?.id;
-
-      if (!sessionId) {
+      
+      if (!req.user?.id) {
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      // Resolve session ID to actual UUID from database
-      // The session might have a numeric ID, but we need the UUID
-      let user = await storage.getUser(String(sessionId));
+      // CRITICAL FIX: Resolve the authenticated user to their UUID
+      let userId = String(req.user.id);
       
-      // If not found by ID, try by username
-      if (!user && req.user?.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
+      // Try to find user by ID first
+      let user = await storage.getUser(userId);
       
-      // If still not found, get the first user (for development/demo)
+      // If not found by ID, try by email or username as fallback
       if (!user) {
-        const allUsers = Array.from(storage.users?.values() || []);
-        if (allUsers.length > 0) {
-          user = allUsers[0];
-          console.log(`⚠️  Using fallback user: ${user.username} (${user.id})`);
+        const userByEmail = req.user.email ? await storage.getUserByEmail(req.user.email) : null;
+        const userByUsername = req.user.username ? await storage.getUserByUsername(req.user.username) : null;
+        user = userByEmail || userByUsername || null;
+        
+        if (!user) {
+          console.error(`❌ User not found in storage: ${userId} (${req.user.email || req.user.username})`);
+          return res.status(404).json({ error: "User account not found. Please contact support." });
         }
+        
+        // Use the resolved user's UUID
+        userId = user.id;
+        console.log(`✅ Resolved user via ${userByEmail ? 'email' : 'username'}: ${userId}`);
+      } else {
+        console.log(`✅ OAuth connect for user: ${userId} (${user.email || user.username})`);
       }
-      
-      if (!user) {
-        return res.status(500).json({ error: "User not found in database" });
-      }
-      
-      const userId = user.id; // This is the actual UUID
 
       // Read credentials from Replit Secrets (environment variables)
       const baseUrl = process.env.BASE_URL || process.env.REPLIT_DEV_DOMAIN 
