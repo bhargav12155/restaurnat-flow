@@ -1,30 +1,30 @@
-import { Sidebar } from "@/components/layout/sidebar";
-import { OverviewCards } from "@/components/dashboard/overview-cards";
 import { AIContentGenerator } from "@/components/dashboard/ai-content-generator";
-import { SocialMediaManager } from "@/components/dashboard/social-media-manager";
-import { SEOOptimizer } from "@/components/dashboard/seo-optimizer";
+import { AISearchOptimizer } from "@/components/dashboard/ai-search-optimizer";
+import { APIKeyManager } from "@/components/dashboard/api-key-manager";
+import { BrandSettings } from "@/components/dashboard/brand-settings";
 import { ContentCalendar } from "@/components/dashboard/content-calendar";
 import { LocalMarketTools } from "@/components/dashboard/local-market-tools";
-import { ScheduledPostsManager } from "@/components/dashboard/scheduled-posts-manager";
-import { VideoGenerator } from "@/components/dashboard/video-generator";
-import { AISearchOptimizer } from "@/components/dashboard/ai-search-optimizer";
-import { BrandSettings } from "@/components/dashboard/brand-settings";
-import { APIKeyManager } from "@/components/dashboard/api-key-manager";
-import { StreamingAvatar } from "@/components/dashboard/streaming-avatar";
+import { OverviewCards } from "@/components/dashboard/overview-cards";
 import { PhotoAvatarManager } from "@/components/dashboard/photo-avatar-manager";
-import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
-import { TemplateManager } from "@/components/dashboard/template-manager";
-import { VideoTemplates } from "@/components/dashboard/video-templates";
+import { ScheduledPostsManager } from "@/components/dashboard/scheduled-posts-manager";
+import { SEOOptimizer } from "@/components/dashboard/seo-optimizer";
 import { SocialLinksPrompt } from "@/components/dashboard/social-links-prompt";
-import { SocialMediaSetup } from "@/components/setup/social-media-setup";
-import UserMenu from "@/components/UserMenu";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { SocialMediaManager } from "@/components/dashboard/social-media-manager";
+import { StreamingAvatar } from "@/components/dashboard/streaming-avatar";
+import { TemplateManager } from "@/components/dashboard/template-manager";
+import { TwitterTestPosts } from "@/components/dashboard/twitter-test-posts";
+import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
+import { VideoGenerator } from "@/components/dashboard/video-generator";
+import { VideoTemplates } from "@/components/dashboard/video-templates";
+import { Sidebar } from "@/components/layout/sidebar";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { SocialMediaSetup } from "@/components/setup/social-media-setup";
+import { Button } from "@/components/ui/button";
+import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
-import { useState, useEffect } from "react";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import { Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 
 export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -144,8 +144,9 @@ export default function Dashboard() {
               <div className="lg:col-span-2">
                 <AIContentGenerator isGenerating={isGenerating} />
               </div>
-              <div>
+              <div className="space-y-6">
                 <SocialMediaManager />
+                <TwitterTestPosts />
               </div>
             </div>
 

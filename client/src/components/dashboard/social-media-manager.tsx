@@ -44,6 +44,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SocialMediaSetup } from "@/components/setup/social-media-setup";
 import { Settings } from "lucide-react";
+import { TwitterTestPosts } from "./twitter-test-posts";
 
 interface SocialMediaAccount {
   id: string;
