@@ -4,9 +4,11 @@ This document lists every file we modified to bring YouTube + X posting online, 
 
 ## ✅ Summary
 - **YouTube OAuth**: ✅ **IMPLEMENTED** - OAuth callback endpoint handles Google token exchange, stores access/refresh tokens, and shows success page with auto-close
-- **Twitter/X OAuth**: ✅ **IMPLEMENTED** - OAuth callback with PKCE (S256) security, token exchange, and account management
-- **YouTube Video Upload**: ⏳ **PENDING** - API endpoint `/api/youtube/post` needs implementation for video uploads with sample fallback
-- **Dashboard UI**: ⏳ **PENDING** - YouTube Quick Test card needs file input and video upload functionality
+- **Twitter/X OAuth**: ✅ **IMPLEMENTED** - OAuth callback with PKCE (S256) security, token exchange, and account management  
+- **YouTube Video Upload**: ✅ **IMPLEMENTED** - API endpoints `/api/youtube/post` and `/api/youtube/upload-video` with video file upload, sample video fallback, watch/studio URLs
+- **Video Multer Config**: ✅ **IMPLEMENTED** - 100MB file size limit, video-only file filter, dedicated uploads/videos/ directory
+- **User Resolution**: ✅ **IMPLEMENTED** - Automatic user lookup/creation from OIDC tokens, YouTube token retrieval from social accounts
+- **Dashboard UI**: ⏳ **PENDING** - YouTube Quick Test card with file input (optional - backend is ready)
 - **Env hygiene**: The committed `.env` only contains placeholders. Real secrets live in your local/Replit environment variables.
 
 ---
