@@ -9427,14 +9427,16 @@ Always end with a helpful suggestion or call-to-action.`;
       let usedSampleVideo = false;
 
       if (videoFile) {
-        // Use uploaded video
-        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        // Use uploaded video - Force HTTPS for Replit
+        const host = req.get("host");
+        const baseUrl = host?.includes("replit.dev") ? `https://${host}` : `${req.protocol}://${host}`;
         videoUrl = `${baseUrl}/uploads/videos/${path.basename(videoFile.path)}`;
         console.log(`   📹 Using uploaded video: ${videoUrl}`);
       } else {
-        // Fallback to sample video
+        // Fallback to sample video - Force HTTPS for Replit
         const sampleVideoPath = process.env.YOUTUBE_SAMPLE_VIDEO_PATH || "uploads/videos/demo-property-tour.mp4";
-        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const host = req.get("host");
+        const baseUrl = host?.includes("replit.dev") ? `https://${host}` : `${req.protocol}://${host}`;
         videoUrl = `${baseUrl}/${sampleVideoPath}`;
         usedSampleVideo = true;
         console.log(`   📹 Using sample video: ${videoUrl}`);
@@ -9534,8 +9536,9 @@ Always end with a helpful suggestion or call-to-action.`;
         });
       }
 
-      // Build video URL
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      // Build video URL - Force HTTPS for Replit
+      const host = req.get("host");
+      const baseUrl = host?.includes("replit.dev") ? `https://${host}` : `${req.protocol}://${host}`;
       const videoUrl = `${baseUrl}/uploads/videos/${path.basename(videoFile.path)}`;
 
       console.log("   Processing YouTube video upload:", {
