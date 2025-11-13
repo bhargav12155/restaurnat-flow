@@ -13,6 +13,7 @@ import { SocialMediaManager } from "@/components/dashboard/social-media-manager"
 import { StreamingAvatar } from "@/components/dashboard/streaming-avatar";
 import { TemplateManager } from "@/components/dashboard/template-manager";
 import { TwitterTestPosts } from "@/components/dashboard/twitter-test-posts";
+import { YouTubeTestPosts } from "@/components/dashboard/youtube-test-posts";
 import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
 import { VideoGenerator } from "@/components/dashboard/video-generator";
 import { VideoTemplates } from "@/components/dashboard/video-templates";
@@ -147,6 +148,7 @@ export default function Dashboard() {
               <div className="space-y-6">
                 <SocialMediaManager />
                 <TwitterTestPosts />
+                <YouTubeTestPosts />
               </div>
             </div>
 
