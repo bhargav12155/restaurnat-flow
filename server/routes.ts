@@ -460,7 +460,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         companyProfile = await storage.getCompanyProfile(userId);
       }
 
-      const generatedContent = await openaiService.generateContent({
+      // Use unified AI service (GitHub Copilot primary, OpenAI fallback)
+      const { unifiedAI } = await import('./services/unified-ai');
+      const generatedContent = await unifiedAI.generateStructuredContent({
         type,
         topic,
         aiPrompt,
