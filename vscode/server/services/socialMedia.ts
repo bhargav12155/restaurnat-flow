@@ -463,8 +463,7 @@ export class SocialMediaService {
   async postToTwitter(
     userId: string,
     content: string,
-    imageUrl?: string,
-    imagePath?: string
+    imageUrl?: string
   ): Promise<{ postId: string }> {
     try {
       // Get user's OAuth 2.0 Bearer token from database
@@ -472,91 +471,12 @@ export class SocialMediaService {
 
       console.log("✅ Retrieved Twitter OAuth 2.0 token for user:", userId);
 
+      const endpointURL = "https://api.twitter.com/2/tweets";
+
       // Prepare tweet data
       const tweetData: any = {
         text: content,
       };
-
-      // Handle media upload if provided
-      let uploadedImagePath: string | undefined = imagePath;
-      if (imagePath) {
-        try {
-          console.log("📸 Uploading media to Twitter v2:", imagePath);
-          
-          // Read the file
-          const fs = await import('fs/promises');
-          const path = await import('path');
-          const fileBuffer = await fs.readFile(imagePath);
-          
-          // Get file extension and mime type
-          const ext = path.extname(imagePath).toLowerCase();
-          const mimeTypes: Record<string, string> = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.gif': 'image/gif',
-            '.webp': 'image/webp',
-          };
-          const mimeType = mimeTypes[ext] || 'image/jpeg';
-          
-          // Upload media to Twitter v2 media endpoint (supports OAuth 2.0 User Context)
-          const mediaEndpoint = "https://api.x.com/2/media/upload";
-          const mediaFormData = new FormData();
-          const blob = new Blob([fileBuffer], { type: mimeType });
-          const filename = path.basename(imagePath);
-          mediaFormData.append('media', blob, filename);
-          
-          const mediaResponse = await fetch(mediaEndpoint, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-            },
-            body: mediaFormData,
-          });
-
-          if (!mediaResponse.ok) {
-            const mediaError = await mediaResponse.json();
-            console.error("Twitter media upload error:", mediaError);
-            
-            if (mediaError.detail?.includes('media.write')) {
-              throw new Error('Twitter account missing media.write scope. Please reconnect your Twitter account with media upload permissions.');
-            }
-            
-            throw new Error(`Media upload failed: ${mediaError.detail || mediaError.errors?.[0]?.message || 'Unknown error'}`);
-          }
-
-          const mediaResult = await mediaResponse.json();
-          
-          // v2 endpoint returns { data: { media_id, media_key } }
-          // v1 endpoint returns { media_id_string }
-          const mediaId = mediaResult.data?.media_id || mediaResult.media_id_string;
-          
-          if (!mediaId) {
-            console.error("No media ID in response:", mediaResult);
-            throw new Error('Media upload succeeded but no media ID was returned');
-          }
-          
-          console.log("✅ Media uploaded successfully, ID:", mediaId);
-          
-          // Add media to tweet data
-          tweetData.media = {
-            media_ids: [String(mediaId)]
-          };
-        } finally {
-          // Clean up uploaded file (always runs, even if upload fails)
-          if (uploadedImagePath) {
-            try {
-              const fs = await import('fs/promises');
-              await fs.unlink(uploadedImagePath);
-              console.log("🗑️ Cleaned up temporary file:", uploadedImagePath);
-            } catch (err) {
-              console.warn("Warning: Failed to delete temporary file:", uploadedImagePath, err);
-            }
-          }
-        }
-      }
-
-      const endpointURL = "https://api.twitter.com/2/tweets";
 
       // Make the API call with OAuth 2.0 Bearer token
       const response = await fetch(endpointURL, {
