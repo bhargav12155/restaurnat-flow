@@ -1277,15 +1277,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user = await storage.getUserByUsername(req.user.username);
       }
       
-      // If still not found, return empty array (user hasn't connected any accounts yet)
-      if (!user) {
-        return res.json([]);
-      }
-      
-      userId = user.id;
-
-      // Get social media accounts from social_media_accounts table (same as posting endpoint)
-      const socialAccounts = await storage.getSocialMediaAccounts(userId);
+      // Get social media accounts (empty if user not found)
+      const socialAccounts = user 
+        ? await storage.getSocialMediaAccounts(user.id)
+        : [];
 
       // Map accounts to include connection status
       const connectedPlatforms = new Set(
