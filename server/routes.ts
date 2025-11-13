@@ -2,6 +2,8 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { cacheMiddleware } from "./middleware/cache";
 import { searchLimiter } from "./middleware/rate-limit";
+import multer from "multer";
+import path from "path";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   console.log("🚀 REGISTERING ROUTES - SERVER STARTING");
@@ -9126,6 +9128,158 @@ Always end with a helpful suggestion or call-to-action.`;
         error
       );
       res.status(500).json({ error: "Failed to fetch social media keys" });
+    }
+  });
+
+  // =======================================================
+  // TWITTER/X POSTING INTEGRATION (OAuth 2.0)
+  // =======================================================
+  
+  // Configure multer for Twitter uploads
+  const upload = multer({
+    dest: "uploads/",
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype.startsWith("image/") || file.mimetype.startsWith("video/")) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only image and video files are allowed"));
+      }
+    },
+  });
+
+  // Import social media service
+  const { socialMediaService } = await import("./services/socialMedia");
+
+  // Twitter post endpoint
+  app.post(
+    "/api/twitter/post",
+    authenticateUser,
+    upload.single("photo"),
+    async (req: any, res) => {
+      try {
+        // Require authentication
+        if (!req.user?.id) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        // Resolve DB user ID to storage UUID
+        let userId = String(req.user.id);
+        let user = await storage.getUser(userId);
+
+        // If not found by ID, try by email
+        if (!user && req.user?.email) {
+          const allUsers = Array.from((storage as any).users?.values() || []);
+          user = allUsers.find((u: any) => u.email === req.user.email);
+        }
+
+        // If not found by email, try by username
+        if (!user && req.user?.username) {
+          user = await storage.getUserByUsername(req.user.username);
+        }
+
+        if (!user) {
+          return res.status(404).json({
+            error: "User not found in storage. Please reconnect your Twitter account.",
+          });
+        }
+
+        // Support both JSON and FormData
+        let content = req.body.content;
+        const photo = req.file;
+
+        // Debug logging
+        console.log("📝 Twitter post request:", {
+          userId: user.id,
+          contentType: req.get("content-type"),
+          bodyKeys: Object.keys(req.body),
+          content: content ? content.substring(0, 50) + "..." : "MISSING",
+          hasPhoto: !!photo,
+        });
+
+        if (!content) {
+          return res.status(400).json({ error: "Content is required" });
+        }
+
+        let photoUrl = null;
+        let photoPath = null;
+        if (photo) {
+          photoUrl = `/uploads/${path.basename(photo.path)}`;
+          photoPath = photo.path; // Pass the actual file path for media upload
+        }
+
+        // Build absolute URL for image if provided (for display purposes)
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const fullPhotoUrl = photoUrl ? baseUrl + photoUrl : undefined;
+
+        // Pass userId and file path to use OAuth 2.0 token from database
+        const postResult = await socialMediaService.postToTwitter(
+          user.id,
+          content,
+          fullPhotoUrl,
+          photoPath
+        );
+
+        res.json({
+          success: true,
+          message: "Content posted successfully to Twitter",
+          postId: postResult.postId,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("Twitter post error:", error);
+        res.status(500).json({
+          error: `Failed to post to Twitter: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+        });
+      }
+    }
+  );
+
+  // Twitter validation endpoint
+  app.get("/api/twitter/validate", async (req, res) => {
+    try {
+      const isValid = await socialMediaService.validateConnection("twitter");
+      res.json({
+        valid: isValid,
+        platform: "twitter",
+        message: isValid
+          ? "Twitter connection is valid"
+          : "Twitter connection failed",
+      });
+    } catch (error) {
+      console.error("Twitter validation error:", error);
+      res.status(500).json({ error: "Failed to validate Twitter connection" });
+    }
+  });
+
+  // Twitter delete tweet endpoint
+  app.delete("/api/twitter/post/:tweetId", async (req, res) => {
+    try {
+      const { tweetId } = req.params;
+
+      if (!tweetId) {
+        return res.status(400).json({ error: "Tweet ID is required" });
+      }
+
+      const deleteResult = await socialMediaService.deleteTwitterPost(tweetId);
+
+      res.json({
+        success: deleteResult.success,
+        message: "Tweet deleted successfully",
+        tweetId: tweetId,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Twitter delete error:", error);
+      res.status(500).json({
+        error: `Failed to delete Twitter post: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      });
     }
   });
 
