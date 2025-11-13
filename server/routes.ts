@@ -752,20 +752,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Try to find user by ID first
       let user = await storage.getUser(userId);
       
-      // If not found by ID, try by email or username as fallback
-      if (!user) {
-        const userByEmail = req.user.email ? await storage.getUserByEmail(req.user.email) : null;
-        const userByUsername = req.user.username ? await storage.getUserByUsername(req.user.username) : null;
-        user = userByEmail || userByUsername || null;
+      // If not found by ID, try by username as fallback
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
         
         if (!user) {
-          console.error(`❌ User not found in storage: ${userId} (${req.user.email || req.user.username})`);
+          console.error(`❌ User not found in storage: ${userId} (username: ${req.user.username})`);
           return res.status(404).json({ error: "User account not found. Please contact support." });
         }
         
         // Use the resolved user's UUID
         userId = user.id;
-        console.log(`✅ Resolved user via ${userByEmail ? 'email' : 'username'}: ${userId}`);
+        console.log(`✅ Resolved user via username: ${userId}`);
+      } else if (!user) {
+        console.error(`❌ User not found in storage: ${userId}`);
+        return res.status(404).json({ error: "User account not found. Please contact support." });
       } else {
         console.log(`✅ OAuth connect for user: ${userId} (${user.email || user.username})`);
       }
