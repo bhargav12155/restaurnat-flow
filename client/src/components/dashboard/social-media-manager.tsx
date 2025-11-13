@@ -127,20 +127,6 @@ const postTypes = [
   },
 ];
 
-const scheduledPosts = [
-  {
-    id: 1,
-    content: "Market Update: Omaha home sales...",
-    date: "Tomorrow 9:00 AM",
-    platforms: "FB, IG, LI",
-  },
-  {
-    id: 2,
-    content: "New listing in Aksarben...",
-    date: "Friday 2:00 PM",
-    platforms: "All platforms",
-  },
-];
 
 // Stock real estate photos collection
 const stockPhotos = [
@@ -318,6 +304,25 @@ export function SocialMediaManager() {
   const { data: accounts, isLoading } = useQuery<SocialMediaAccount[]>({
     queryKey: ["/api/social/accounts"],
   });
+
+  // Fetch real scheduled posts from backend
+  const { data: scheduledPostsData } = useQuery({
+    queryKey: ["/api/scheduled-posts"],
+  });
+
+  // Transform scheduled posts for display
+  const scheduledPosts = (scheduledPostsData || []).map((post: any) => ({
+    id: post.id,
+    content: post.content.substring(0, 50) + (post.content.length > 50 ? "..." : ""),
+    date: new Date(post.scheduledFor).toLocaleDateString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    }),
+    platforms: post.platform === 'x' ? 'X (Twitter)' : post.platform,
+  }));
 
   // Load Facebook pages when component mounts
   useEffect(() => {
