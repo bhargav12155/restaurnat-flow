@@ -441,6 +441,22 @@ export class SocialMediaService {
     }
   }
 
+  async getLinkedInAccessToken(userId: string): Promise<string> {
+    const { storage } = await import('../storage.js');
+    const accounts = await storage.getSocialMediaAccounts(userId);
+    const linkedinAccount = accounts.find(acc => acc.platform.toLowerCase() === 'linkedin');
+
+    if (!linkedinAccount || !linkedinAccount.accessToken) {
+      throw new Error('LinkedIn account not connected. Please connect your LinkedIn account first.');
+    }
+
+    if (!linkedinAccount.isConnected) {
+      throw new Error('LinkedIn account is disconnected. Please reconnect your account.');
+    }
+
+    return linkedinAccount.accessToken;
+  }
+
   async getTwitterAccessToken(userId: string): Promise<{
     accessToken: string;
     refreshToken?: string;
