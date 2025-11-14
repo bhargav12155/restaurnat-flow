@@ -57,6 +57,7 @@ export interface IStorage {
   getSocialMediaAccountById(id: string): Promise<SocialMediaAccount | undefined>;
   createSocialMediaAccount(account: InsertSocialMediaAccount): Promise<SocialMediaAccount>;
   updateSocialMediaAccount(id: string, updates: Partial<SocialMediaAccount>): Promise<SocialMediaAccount | undefined>;
+  disconnectSocialMediaAccount(userId: string, platform: string): Promise<SocialMediaAccount | undefined>;
 
   // SEO
   getSeoKeywords(userId: string): Promise<SeoKeyword[]>;
@@ -308,6 +309,28 @@ export class MemStorage implements IStorage {
     
     const updated = { ...account, ...updates };
     this.socialMediaAccounts.set(id, updated);
+    return updated;
+  }
+
+  async disconnectSocialMediaAccount(userId: string, platform: string): Promise<SocialMediaAccount | undefined> {
+    // Find account by userId and platform
+    const account = Array.from(this.socialMediaAccounts.values()).find(
+      acc => acc.userId === userId && acc.platform.toLowerCase() === platform.toLowerCase()
+    );
+    
+    if (!account) return undefined;
+    if (!account.isConnected) return account; // Already disconnected
+    
+    // Mark as disconnected and clear OAuth credentials
+    const updated = {
+      ...account,
+      isConnected: false,
+      accessToken: null,
+      refreshToken: null,
+      lastSync: null
+    };
+    
+    this.socialMediaAccounts.set(account.id, updated);
     return updated;
   }
 
