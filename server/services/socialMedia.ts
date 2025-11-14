@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import OAuth from "oauth-1.0a";
-import { youtube_v3 } from "@googleapis/youtube";
+import { google } from "googleapis";
 import { Readable } from "stream";
 
 export interface SocialMediaPost {
@@ -101,9 +101,16 @@ export class SocialMediaService {
         };
       }
 
+      // Create OAuth2 client with the access token
+      const oauth2Client = new google.auth.OAuth2();
+      oauth2Client.setCredentials({
+        access_token: accessToken,
+      });
+
       // Create YouTube client with OAuth2 credentials
-      const youtube = new youtube_v3.Youtube({
-        auth: accessToken,
+      const youtube = google.youtube({
+        version: 'v3',
+        auth: oauth2Client,
       });
 
       // Download video file from URL to upload
