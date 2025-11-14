@@ -1841,14 +1841,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               : "Not found"
           );
 
-          if (
-            !connectedAccount &&
-            socialAccounts.length > 0 &&
-            platform.toLowerCase() !== "youtube"
-          ) {
-            return res.status(400).json({
-              error: `${platform} account not connected. Please connect your account first.`,
-            });
+          // Check if account is connected (except YouTube which uses mock token)
+          if (platform.toLowerCase() !== "youtube") {
+            if (!connectedAccount) {
+              return res.status(401).json({
+                error: `${platform} account not connected. Please connect your ${platform} account first.`,
+                action: "connect_account",
+                platform: platform.toLowerCase(),
+              });
+            }
+            
+            if (!connectedAccount.accessToken || connectedAccount.accessToken.trim() === "") {
+              return res.status(401).json({
+                error: `${platform} account token is missing or expired. Please reconnect your ${platform} account.`,
+                action: "reconnect_account",
+                platform: platform.toLowerCase(),
+              });
+            }
           }
 
           // Get photo URL if uploaded
