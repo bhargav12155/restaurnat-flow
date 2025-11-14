@@ -1,25 +1,23 @@
-import {
-  Home,
-  Bot,
-  Share2,
-  Search,
-  Calendar,
-  MapPin,
-  BarChart3,
-  Plus,
-  Camera,
-  Settings,
-  Palette,
-  Video,
-  Target,
-  Radio,
-  Users,
-  FileVideo,
-  Mic,
-  Sparkles,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import {
+  BarChart3,
+  Bot,
+  Calendar,
+  Camera,
+  FileVideo,
+  Home,
+  MapPin,
+  Palette,
+  Plus,
+  Radio,
+  Search,
+  Settings,
+  Share2,
+  Target,
+  Users,
+  Video,
+} from "lucide-react";
 import { Link } from "wouter";
 
 const navigationItems = [

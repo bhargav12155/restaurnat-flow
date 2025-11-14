@@ -162,7 +162,6 @@ export function YouTubeTestPosts() {
           size="icon"
           onClick={() => setSeed(Math.floor(Math.random() * 1000))}
           aria-label="Refresh mock posts"
-          data-testid="button-refresh-youtube-posts"
         >
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -180,7 +179,6 @@ export function YouTubeTestPosts() {
               accept="video/*"
               onChange={handleVideoChange}
               disabled={postMutation.isPending}
-              data-testid="input-youtube-video-file"
             />
             {selectedVideo && (
               <Button
@@ -189,14 +187,13 @@ export function YouTubeTestPosts() {
                 size="sm"
                 onClick={clearSelectedVideo}
                 disabled={postMutation.isPending}
-                data-testid="button-clear-video"
               >
                 Clear file
               </Button>
             )}
           </div>
           {selectedVideo && (
-            <p className="text-xs text-muted-foreground" data-testid="text-selected-video-info">
+            <p className="text-xs text-muted-foreground">
               Selected: {selectedVideo.name} (
               {(selectedVideo.size / (1024 * 1024)).toFixed(2)} MB)
             </p>
@@ -206,12 +203,11 @@ export function YouTubeTestPosts() {
           <div
             key={post.id}
             className="rounded-md border border-dashed border-border bg-muted/30 p-4 space-y-3"
-            data-testid={`card-youtube-post-${post.id}`}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">Mock</Badge>
-                <span className="font-medium text-foreground" data-testid={`text-post-title-${post.id}`}>
+                <span className="font-medium text-foreground">
                   {post.title}
                 </span>
               </div>
@@ -225,7 +221,6 @@ export function YouTubeTestPosts() {
                   })
                 }
                 disabled={postMutation.isPending}
-                data-testid={`button-post-youtube-${post.id}`}
               >
                 <Send className="mr-2 h-4 w-4" />
                 {postMutation.isPending ? "Posting..." : "Post to YouTube"}
@@ -235,15 +230,14 @@ export function YouTubeTestPosts() {
               value={post.description}
               readOnly
               className="min-h-[140px] text-sm"
-              data-testid={`textarea-post-description-${post.id}`}
             />
           </div>
         ))}
         {lastUpload && (
-          <div className="rounded-md border border-border bg-muted/50 p-4 text-sm" data-testid="card-last-upload">
+          <div className="rounded-md border border-border bg-muted/50 p-4 text-sm">
             <p className="font-medium">
               Last upload:{" "}
-              <span className="font-semibold" data-testid="text-last-upload-title">{lastUpload.title}</span>
+              <span className="font-semibold">{lastUpload.title}</span>
             </p>
             <div className="mt-2 flex flex-wrap gap-4">
               {lastUpload.watchUrl && (
@@ -252,7 +246,6 @@ export function YouTubeTestPosts() {
                   target="_blank"
                   rel="noreferrer"
                   className="text-primary underline"
-                  data-testid="link-watch-youtube"
                 >
                   Watch on YouTube
                 </a>
@@ -263,7 +256,6 @@ export function YouTubeTestPosts() {
                   target="_blank"
                   rel="noreferrer"
                   className="text-primary underline"
-                  data-testid="link-open-studio"
                 >
                   Open in Studio
                 </a>
