@@ -379,24 +379,46 @@ export class SocialMediaService {
     accessToken: string
   ): Promise<{ postId: string }> {
     try {
-      console.log("Posting to LinkedIn:", content);
+      console.log("📝 Posting to LinkedIn:", content.substring(0, 50) + "...");
 
       // Step 1: Get user's LinkedIn profile ID (person URN)
+      console.log("🔍 Fetching LinkedIn profile...");
       const profileResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
 
+      // Check Content-Type to detect HTML error pages
+      const contentType = profileResponse.headers.get("content-type") || "";
+      const isJson = contentType.includes("application/json");
+
       if (!profileResponse.ok) {
         const errorText = await profileResponse.text();
-        console.error("LinkedIn profile fetch failed:", errorText);
-        throw new Error("Failed to fetch LinkedIn profile");
+        console.error("❌ LinkedIn profile fetch failed (HTTP " + profileResponse.status + "):", errorText);
+        
+        if (profileResponse.status === 401) {
+          throw new Error("LinkedIn access token expired or invalid. Please reconnect your LinkedIn account.");
+        }
+        
+        throw new Error(`LinkedIn API error (${profileResponse.status}): ${errorText.substring(0, 200)}`);
+      }
+
+      if (!isJson) {
+        const errorText = await profileResponse.text();
+        console.error("❌ LinkedIn returned HTML instead of JSON:", errorText.substring(0, 500));
+        throw new Error("LinkedIn access token invalid. Please reconnect your LinkedIn account.");
       }
 
       const profileData = await profileResponse.json();
+      
+      if (!profileData.sub) {
+        console.error("❌ LinkedIn profile missing 'sub' field:", profileData);
+        throw new Error("Invalid LinkedIn profile response. Please reconnect your account.");
+      }
+
       const authorUrn = `urn:li:person:${profileData.sub}`;
-      console.log("LinkedIn author URN:", authorUrn);
+      console.log("✅ LinkedIn author URN:", authorUrn);
 
       // Step 2: Create post on LinkedIn
       const postData = {
@@ -415,6 +437,7 @@ export class SocialMediaService {
         },
       };
 
+      console.log("📤 Sending post to LinkedIn API...");
       const postResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
         method: "POST",
         headers: {
@@ -425,19 +448,38 @@ export class SocialMediaService {
         body: JSON.stringify(postData),
       });
 
+      const postContentType = postResponse.headers.get("content-type") || "";
+      const postIsJson = postContentType.includes("application/json");
+
       if (!postResponse.ok) {
         const errorText = await postResponse.text();
-        console.error("LinkedIn post failed:", errorText);
-        throw new Error(`Failed to post to LinkedIn: ${errorText}`);
+        console.error("❌ LinkedIn post failed (HTTP " + postResponse.status + "):", errorText);
+        
+        if (postResponse.status === 401) {
+          throw new Error("LinkedIn access token expired. Please reconnect your account.");
+        }
+        
+        throw new Error(`LinkedIn posting failed (${postResponse.status}): ${errorText.substring(0, 200)}`);
+      }
+
+      if (!postIsJson) {
+        const errorText = await postResponse.text();
+        console.error("❌ LinkedIn post returned HTML instead of JSON:", errorText.substring(0, 500));
+        throw new Error("LinkedIn API returned an error. Please try again or reconnect your account.");
       }
 
       const postResult = await postResponse.json();
-      console.log("✅ LinkedIn post successful:", postResult.id);
+      console.log("✅ LinkedIn post successful! Post ID:", postResult.id);
 
       return { postId: postResult.id || `li_${Date.now()}` };
     } catch (error) {
-      console.error("LinkedIn posting error:", error);
-      throw new Error(`Failed to post to LinkedIn: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("❌ LinkedIn posting error:", error);
+      
+      if (error instanceof Error) {
+        throw error; // Preserve the detailed error message
+      }
+      
+      throw new Error(`Failed to post to LinkedIn: Unknown error`);
     }
   }
 

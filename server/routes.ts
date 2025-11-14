@@ -7302,6 +7302,41 @@ Always end with a helpful suggestion or call-to-action.`;
     }
   );
 
+  // Social Media Configuration Validation endpoint
+  app.get("/api/admin/social-config", requireAuth, async (req, res) => {
+    try {
+      const { SocialConfigValidator } = await import("./utils/social-config-validator");
+      const validator = new SocialConfigValidator();
+      
+      // Get all platform checks
+      const platformChecks = await validator.validateAll();
+      const baseUrlCheck = validator.validateBaseUrl();
+      
+      // Generate full report
+      const report = await validator.generateReport();
+      
+      console.log("\n" + report);
+      
+      res.json({
+        baseUrl: validator['baseUrl'],
+        baseUrlCheck,
+        platforms: platformChecks,
+        report,
+        summary: {
+          total: platformChecks.length,
+          valid: platformChecks.filter(p => p.status === 'valid').length,
+          warnings: platformChecks.filter(p => p.status === 'warning').length,
+          errors: platformChecks.filter(p => p.status === 'error').length,
+        },
+      });
+    } catch (error) {
+      console.error("Error validating social media config:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to validate configuration",
+      });
+    }
+  });
+
   // Logo generation endpoint using Gemini API
   app.post(
     "/api/generate-logo",
