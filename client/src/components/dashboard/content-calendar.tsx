@@ -939,7 +939,7 @@ export function ContentCalendar() {
       
       {/* Preview Dialog */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden">
+        <DialogContent className="max-w-sm">
           <DialogHeader className="sr-only">
             <DialogTitle>Content Preview</DialogTitle>
           </DialogHeader>
