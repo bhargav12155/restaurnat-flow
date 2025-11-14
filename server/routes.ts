@@ -1994,7 +1994,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get Instagram Business Account linked to Facebook Page
+  // Get all Instagram Business Accounts linked to user's Facebook Pages
+  app.get("/api/instagram/accounts", requireAuth, async (req: any, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+      const facebookAccount = socialAccounts.find(
+        (acc) => acc.platform.toLowerCase() === "facebook"
+      );
+
+      const metadata = (facebookAccount?.metadata as any) || {};
+      const delegatedToken =
+        metadata?.pageAccessToken ||
+        facebookAccount?.accessToken ||
+        process.env.FACEBOOK_USER_TOKEN;
+
+      if (!delegatedToken) {
+        return res.json([]);
+      }
+
+      // First, get all Facebook Pages
+      const pages = await socialMediaService.getFacebookPageInfo(delegatedToken);
+      
+      // Then fetch Instagram Business Account for each page
+      const instagramAccounts = [];
+      for (const page of pages) {
+        try {
+          const response = await fetch(
+            `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{username,id}&access_token=${delegatedToken}`
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.instagram_business_account) {
+              instagramAccounts.push({
+                instagramBusinessAccountId: data.instagram_business_account.id,
+                pageId: page.id,
+                pageName: page.name,
+                username: data.instagram_business_account.username,
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching Instagram for page ${page.id}:`, error);
+          // Continue with other pages
+        }
+      }
+
+      res.json(instagramAccounts);
+    } catch (error: any) {
+      console.error("Error fetching Instagram accounts:", error?.message || error);
+      res.status(500).json({
+        error: "Failed to fetch Instagram accounts",
+        details: error?.message || "Unknown error"
+      });
+    }
+  });
+
+  // Get Instagram Business Account linked to specific Facebook Page
   app.get("/api/instagram/account/:pageId", requireAuth, async (req: any, res) => {
     try {
       const { pageId } = req.params;
@@ -2338,11 +2399,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     upload.single("photo"),
     async (req: any, res) => {
       try {
-        const { content } = req.body;
+        const { content, instagramBusinessAccountId } = req.body;
         const photo = req.file;
 
         if (!content) {
           return res.status(400).json({ error: "Content is required" });
+        }
+
+        if (!instagramBusinessAccountId) {
+          return res.status(400).json({ 
+            error: "Instagram Business Account ID is required. Please select an Instagram account." 
+          });
         }
 
         const user = await resolveMemStorageUser(req);
@@ -2350,34 +2417,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "Authentication required" });
         }
 
+        // Instagram uses Facebook's Graph API, so we need the Facebook token
         const socialAccounts = await storage.getSocialMediaAccounts(user.id);
-        const instagramAccount = socialAccounts.find(
-          (acc) => acc.platform.toLowerCase() === "instagram"
+        const facebookAccount = socialAccounts.find(
+          (acc) => acc.platform.toLowerCase() === "facebook"
         );
 
-        const metadata = (instagramAccount?.metadata as any) || {};
-        const instagramUserId =
-          metadata?.instagramUserId ||
-          metadata?.instagramBusinessAccountId ||
-          instagramAccount?.accountId ||
-          process.env.INSTAGRAM_USER_ID;
-
-        if (!instagramUserId) {
-          return res.status(400).json({
-            error:
-              "Instagram Business/Creator account ID missing. Connect Instagram or supply INSTAGRAM_USER_ID.",
-          });
-        }
-
+        const metadata = (facebookAccount?.metadata as any) || {};
         const resolvedToken =
-          instagramAccount?.accessToken ||
-          metadata?.instagramAccessToken ||
-          process.env.INSTAGRAM_ACCESS_TOKEN;
+          metadata?.pageAccessToken ||
+          facebookAccount?.accessToken ||
+          process.env.FACEBOOK_USER_TOKEN;
 
         if (!resolvedToken) {
           return res.status(400).json({
-            error:
-              "Instagram token missing. Reconnect Instagram or set INSTAGRAM_ACCESS_TOKEN.",
+            error: "Facebook token missing. Instagram posting requires Facebook connection.",
           });
         }
 
@@ -2405,7 +2459,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           content,
           photoUrl,
           resolvedToken,
-          instagramUserId
+          instagramBusinessAccountId
         );
 
         const scheduledPost = await storage.createScheduledPost({
@@ -2432,7 +2486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           success: true,
           message: "Content posted successfully to Instagram",
           postId: postResult.postId,
-          instagramUserId,
+          instagramBusinessAccountId,
           usedSampleImage,
           scheduledPostId: scheduledPost.id,
           permalinkHint: "https://www.instagram.com",
