@@ -1012,6 +1012,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Disconnect social media account
+  app.post("/api/social/disconnect/:platform", requireAuth, async (req, res) => {
+    try {
+      const { platform } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log(`🔌 Disconnecting ${platform} for user ${userId}`);
+
+      // Disconnect the account (marks isConnected=false and clears tokens)
+      const disconnectedAccount = await storage.disconnectSocialMediaAccount(userId, platform);
+
+      if (!disconnectedAccount) {
+        return res.status(404).json({ 
+          error: "Account not found",
+          message: `No ${platform} account found for this user` 
+        });
+      }
+
+      console.log(`✅ ${platform} disconnected successfully`);
+
+      res.json({
+        success: true,
+        message: `${platform} account disconnected successfully`,
+        account: {
+          id: disconnectedAccount.id,
+          platform: disconnectedAccount.platform,
+          isConnected: disconnectedAccount.isConnected
+        }
+      });
+    } catch (error) {
+      console.error("Disconnect error:", error);
+      res.status(500).json({ error: "Failed to disconnect account" });
+    }
+  });
+
   app.get("/api/social/status/:platform", async (req, res) => {
     try {
       const { platform } = req.params;

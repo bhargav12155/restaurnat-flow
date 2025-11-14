@@ -331,6 +331,28 @@ export function SocialMediaManager() {
     queryKey: ["/api/social/accounts"],
   });
 
+  // Handle disconnect
+  const disconnectMutation = useMutation({
+    mutationFn: async (platform: string) => {
+      const response = await apiRequest("POST", `/api/social/disconnect/${platform}`, {});
+      return response.json();
+    },
+    onSuccess: (_, platform) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
+      toast({
+        title: "Disconnected Successfully",
+        description: `Your ${platform} account has been disconnected.`,
+      });
+    },
+    onError: (error: Error, platform) => {
+      toast({
+        title: "Disconnect Failed",
+        description: error.message || `Failed to disconnect ${platform} account.`,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Load Facebook pages when component mounts
   useEffect(() => {
     const loadFacebookPages = async () => {
@@ -1128,7 +1150,29 @@ Mike Bjork | Berkshire Hathaway HomeServices
                   title={account.isConnected ? "Connected" : "Disconnected"}
                 >
                   {account.isConnected ? (
-                    <Plug className="h-5 w-5 text-green-600" />
+                    <>
+                      <Plug className="h-5 w-5 text-green-600" />
+                      <Button
+                        onClick={() => disconnectMutation.mutate(account.platform.toLowerCase())}
+                        disabled={disconnectMutation.isPending}
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                        data-testid={`button-disconnect-${account.platform}`}
+                      >
+                        {disconnectMutation.isPending ? (
+                          <>
+                            <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                            Disconnecting...
+                          </>
+                        ) : (
+                          <>
+                            <PlugZap className="mr-1 h-3 w-3" />
+                            Disconnect
+                          </>
+                        )}
+                      </Button>
+                    </>
                   ) : (
                     <>
                       <PlugZap className="h-5 w-5 text-red-600" />
@@ -1145,7 +1189,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
                           }
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-xs"
+                          className="h-7 px-2 text-xs border-green-200 text-green-600 hover:bg-green-50 hover:border-green-300"
                           data-testid={`button-connect-${account.platform}`}
                         >
                           {connectingPlatform ===
@@ -1157,7 +1201,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
                           ) : (
                             <>
                               <Plug className="mr-1 h-3 w-3" />
-                              Connect
+                              Reconnect
                             </>
                           )}
                         </Button>
