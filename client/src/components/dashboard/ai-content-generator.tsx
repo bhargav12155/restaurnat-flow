@@ -795,8 +795,9 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
     // For Facebook and Instagram, show dialog to select page/account
     if (platform.toLowerCase() === "facebook" || platform.toLowerCase() === "instagram") {
-      // Don't auto-hydrate from hooks - force explicit selection each time
-      // (Selectors will auto-select if there's only one option available)
+      // Pre-fill dialog with current defaults from hooks for better UX
+      setSelectedPageForPosting(selectedPageId);
+      setSelectedInstagramForPosting(selectedInstagramAccountId);
       setPlatformToPost(platform);
       setShowPostingDialog(true);
     } else {
