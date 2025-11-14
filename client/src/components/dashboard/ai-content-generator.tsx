@@ -16,6 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useFacebookPages } from "@/hooks/use-facebook-pages";
+import { FacebookPageSelector } from "@/components/facebook/facebook-page-selector";
 import {
   Sparkles,
   FileText,
@@ -249,6 +251,16 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Facebook Pages hook for page selection
+  const {
+    pages: facebookPages,
+    isLoading: isLoadingPages,
+    isError: isPagesError,
+    selectedPageId,
+    setSelectedPageId,
+    isReady: isFacebookPagesReady,
+  } = useFacebookPages({ autoSelect: true });
 
   const { data: marketData } = useQuery({
     queryKey: ['/api/market/data'],
@@ -634,15 +646,18 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     }) => {
       // Handle Facebook posting separately using Facebook Pages API
       if (platform.toLowerCase() === "facebook") {
+        const payload: Record<string, any> = { content };
+        // Only include pageId if explicitly selected, otherwise backend uses saved default
+        if (selectedPageId) {
+          payload.pageId = selectedPageId;
+        }
+        
         const response = await fetch("/api/facebook/post", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            content: content,
-            pageId: "61581294927027", // Golden Brick page ID
-          }),
+          body: JSON.stringify(payload),
         });
 
         if (!response.ok) {
@@ -1621,6 +1636,20 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                 </div>
               </div>
             )}
+
+            {/* Facebook Page Selector */}
+            <div className="mt-3 pt-3 border-t">
+              <FacebookPageSelector
+                pages={facebookPages}
+                isLoading={isLoadingPages}
+                isError={isPagesError}
+                value={selectedPageId}
+                onChange={setSelectedPageId}
+                label="Facebook Page"
+                placeholder="Select a page to post to Facebook..."
+                showLabel={true}
+              />
+            </div>
 
             {/* Platform Suggestions */}
             <div className="mt-3 pt-3 border-t">
