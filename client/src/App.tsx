@@ -32,11 +32,6 @@ function Router() {
           <SocialMediaPage />
         </ProtectedRoute>
       </Route>
-      <Route path="/dashboard/social-media">
-        <ProtectedRoute>
-          <SocialMediaPage />
-        </ProtectedRoute>
-      </Route>
       <Route path="/settings">
         <ProtectedRoute>
           <SettingsPage />

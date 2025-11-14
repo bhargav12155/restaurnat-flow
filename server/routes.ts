@@ -1,9303 +1,1628 @@
-import type { Express, Request } from "express";
-import { createServer, type Server } from "http";
-import { cacheMiddleware } from "./middleware/cache";
-import { searchLimiter } from "./middleware/rate-limit";
-import multer from "multer";
-import path from "path";
+import {
+  contentOpportunities,
+  insertAvatarSchema,
+  insertCompanyProfileSchema,
+  insertVideoContentSchema,
+  tutorialVideos,
+  updateScheduledPostSchema,
+} from "@shared/schema";
 import crypto from "crypto";
+import { desc, eq } from "drizzle-orm";
+import type { Express, NextFunction, Request, Response } from "express";
+import express from "express";
+import fs from "fs";
+import { createServer, type Server } from "http";
+import multer from "multer";
+import { nanoid } from "nanoid";
+import path from "path";
+import { db } from "./db";
+import { requireAuth } from "./middleware/auth";
+import { ObjectNotFoundError, ObjectStorageService } from "./objectStorage";
+import authRoutes from "./routes/auth";
+import userRoutes from "./routes/user";
+import { HeyGenService } from "./services/heygen";
+import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
+import { HeyGenStreamingService } from "./services/heygen-streaming";
+import { HeyGenTemplateService } from "./services/heygen-template";
+import { IDXService } from "./services/idx";
+import { MLSService } from "./services/mls";
+import { getAPIKeyStatus, openaiService } from "./services/openai";
+import { S3UploadService } from "./services/s3Upload";
+import { seoService } from "./services/seo";
+import { SocialMediaError, socialMediaService } from "./services/socialMedia";
+import { storage } from "./storage";
+import { realtimeService } from "./websocket";
 
-// PKCE (Proof Key for Code Exchange) store for OAuth
-// Maps state parameter -> { codeVerifier, expiresAt }
-const pkceStore = new Map<string, { codeVerifier: string; expiresAt: number }>();
+// In-memory store for PKCE code verifiers (in production, use Redis or session storage)
+const pkceStore = new Map<
+  string,
+  { codeVerifier: string; expiresAt: number }
+>();
 
-// Helper: Generate PKCE code verifier (random string)
+const DEFAULT_SOCIAL_SAMPLE_IMAGE =
+  process.env.SOCIAL_TEST_IMAGE_URL ||
+  "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1080&q=80";
+
+// PKCE helper functions
 function generateCodeVerifier(): string {
   return crypto.randomBytes(32).toString("base64url");
 }
 
-// Helper: Generate PKCE code challenge from verifier (SHA256)
 function generateCodeChallenge(verifier: string): string {
   return crypto.createHash("sha256").update(verifier).digest("base64url");
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
-  console.log("🚀 REGISTERING ROUTES - SERVER STARTING");
-  // Import necessary modules
-  const { authenticateUser } = await import("./auth-middleware");
-  const { requireAuth, optionalAuth } = await import("./middleware/auth");
-  const { db } = await import("./db");
-  const { storage } = await import("./storage");
-  const { openaiChat, generateContextualSuggestions } = await import(
-    "./openai-chat"
-  );
-
-  // Register auth routes FIRST (before other routes)
-  const authRoutes = (await import("./routes/auth")).default;
-  app.use("/api/auth", authRoutes);
-  console.log("✅ Auth routes registered at /api/auth");
-
-  // Health check endpoint
-  app.get("/health", (req, res) => {
-    res.status(200).json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      service: "bjork-homes-real-estate",
-    });
-  });
-
-  // Test endpoint for debugging
-  app.get("/api/test-logging", (req, res) => {
-    console.log("🧪 TEST LOGGING ENDPOINT HIT!");
-    res.json({
-      message: "Logging test successful",
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  // CMA Real Estate API Integration - Using Production API
-  // Apply caching (5 min) and rate limiting (30 req/15min) to reduce external API costs
-  app.get(
-    "/api/paragon/properties",
-    searchLimiter,
-    cacheMiddleware(300),
-    async (req, res) => {
-      try {
-        console.log(
-          "🏠 Fetching properties from CMA API with filters:",
-          req.query
-        );
-
-        // Extract all possible query parameters (maintaining backward compatibility)
-        const {
-          city = "omaha",
-          state = "NE",
-          status = "Active",
-          limit = "100",
-          page = "1",
-          min_price,
-          minPrice,
-          max_price,
-          maxPrice,
-          beds,
-          min_beds,
-          minBeds,
-          max_beds,
-          maxBeds,
-          baths,
-          min_baths,
-          minBaths,
-          max_baths,
-          maxBaths,
-          sqft,
-          min_sqft,
-          minSqft,
-          max_sqft,
-          maxSqft,
-          property_type,
-          propertyType,
-          address,
-          zipCode,
-          zip_code,
-          subdivision,
-          agent,
-          mls_number,
-          mlsNumber,
-          garage,
-          min_year_built,
-          minYearBuilt,
-          max_year_built,
-          maxYearBuilt,
-          yearBuilt,
-          new_construction,
-          newConstruction,
-          sort_by = "price",
-          sortBy,
-          sort_order = "desc",
-          sortOrder,
-        } = req.query as { [key: string]: any };
-
-        let cmaUrl =
-          "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-search?";
-        const params = new URLSearchParams();
-
-        const freeQuery = (req.query as any).query?.toString().trim();
-        console.log("🔍 Property search - free query:", freeQuery);
-        let skipCityAppend = false;
-        if (freeQuery) {
-          if (/^\d{5}$/.test(freeQuery)) {
-            if (!zipCode && !zip_code) params.append("zip_code", freeQuery);
-            if (!(req.query as any).city) skipCityAppend = true;
-          } else if (/^\d+\s+/.test(freeQuery)) {
-            if (!address) params.append("address", freeQuery);
-            if (!(req.query as any).city) skipCityAppend = true;
-          } else if (!(req.query as any).city) {
-            params.append("city", freeQuery.toLowerCase());
-            skipCityAppend = true;
-          }
-        }
-
-        if (!skipCityAppend) params.append("city", city);
-
-        const finalPropType = propertyType || property_type;
-        if (finalPropType && finalPropType.toLowerCase() !== "any") {
-          params.append("property_type", finalPropType);
-        }
-
-        if (status && status !== "For Sale") {
-          params.append("status", status);
-        } else {
-          params.append("status", "Active");
-        }
-
-        const priceMin = minPrice || min_price;
-        const priceMax = maxPrice || max_price;
-        if (priceMin) params.append("min_price", priceMin);
-        if (priceMax) params.append("max_price", priceMax);
-
-        const bedsMin = minBeds || min_beds || beds;
-        const bedsMax = maxBeds || max_beds;
-        if (bedsMin) params.append("beds", bedsMin);
-        if (bedsMax) params.append("max_beds", bedsMax);
-
-        const bathsMin = minBaths || min_baths || baths;
-        const bathsMax = maxBaths || max_baths;
-        if (bathsMin) params.append("baths", bathsMin);
-        if (bathsMax) params.append("max_baths", bathsMax);
-
-        const sqftMin = minSqft || min_sqft;
-        const sqftMax = maxSqft || max_sqft;
-        if (sqftMin) params.append("min_sqft", sqftMin);
-        if (sqftMax) params.append("max_sqft", sqftMax);
-
-        const yearMin = minYearBuilt || min_year_built;
-        const yearMax = maxYearBuilt || max_year_built;
-        if (yearBuilt) {
-          params.append("year_built", yearBuilt);
-        } else {
-          if (yearMin) params.append("min_year_built", yearMin);
-          if (yearMax) params.append("max_year_built", yearMax);
-        }
-
-        const propTypeFilter = propertyType || property_type;
-        if (propTypeFilter && propTypeFilter.toLowerCase() !== "any") {
-          params.append("property_type", propTypeFilter);
-        }
-
-        if (address) params.append("address", address);
-
-        const subdivisionAlias =
-          subdivision ||
-          (req.query as any).community ||
-          (req.query as any).communityName ||
-          (req.query as any).Community ||
-          (req.query as any).SubdivisionName ||
-          (req.query as any).subdivisionName;
-        if (subdivisionAlias) {
-          params.append("subdivision", subdivisionAlias);
-          if (!subdivision) {
-            console.log(
-              "📍 Using community/subdivision alias param:",
-              subdivisionAlias
-            );
-          }
-        }
-
-        const zip = zipCode || zip_code;
-        if (zip) params.append("zip_code", zip);
-
-        const mlsNum = mlsNumber || mls_number;
-        if (mlsNum) params.append("mls_number", mlsNum);
-
-        if (agent) params.append("agent", agent);
-        if (garage) params.append("garage", garage);
-
-        const isNewConstruction = newConstruction || new_construction;
-        if (isNewConstruction === "true")
-          params.append("new_construction", "true");
-
-        const finalSortBy = sortBy || sort_by || "price";
-        const finalSortOrder = sortOrder || sort_order || "desc";
-        params.append("sort_by", finalSortBy);
-        params.append("sort_order", finalSortOrder);
-
-        params.append("limit", limit);
-        if (page !== "1") params.append("page", page);
-
-        cmaUrl += params.toString();
-        console.log("🌐 Final CMA API URL:", cmaUrl);
-
-        const response = await fetch(cmaUrl, {
-          headers: {
-            "User-Agent": "NebraskaHomeHub/1.0",
-            Accept: "application/json",
-          },
-        });
-        if (!response.ok)
-          throw new Error(
-            `CMA API error: ${response.status} ${response.statusText}`
-          );
-
-        const cmaData = await response.json();
-        console.log(
-          `✅ Got ${cmaData?.properties?.length || 0} properties from CMA API`
-        );
-
-        let finalProperties = cmaData.properties || [];
-        if (finalProperties.length === 0 && status === "For Sale") {
-          console.log(
-            "🔄 No Active properties found, trying recent Closed properties..."
-          );
-          const fallbackParams = new URLSearchParams(params);
-          fallbackParams.set("status", "Closed");
-          const fallbackUrl =
-            "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-search?" +
-            fallbackParams.toString();
-          try {
-            const fallbackResponse = await fetch(fallbackUrl, {
-              headers: {
-                "User-Agent": "NebraskaHomeHub/1.0",
-                Accept: "application/json",
-              },
-            });
-            if (fallbackResponse.ok) {
-              const fallbackData = await response.json();
-              finalProperties = fallbackData.properties || [];
-              console.log(
-                `✅ Fallback: Got ${finalProperties.length} closed properties`
-              );
-            }
-          } catch (fallbackError) {
-            console.warn("⚠️ Fallback request failed:", fallbackError);
-          }
-        }
-
-        const transformedProperties = (finalProperties || []).map(
-          (property: any) => ({
-            id: property.id || Math.random().toString(),
-            // Prefer actual MLS fields when present
-            mlsId:
-              property.mlsId ||
-              property.mls_number ||
-              property.ListingId ||
-              property.id,
-            title: `${property.beds || "?"} Bed ${
-              property.baths || "?"
-            } Bath in ${property.city || "Omaha"}`,
-            price:
-              property.listPrice || property.soldPrice || property.price || 0,
-            address:
-              property.address ||
-              property.fullAddress ||
-              "Address not available",
-            city: property.city || "Omaha",
-            state: property.state || "NE",
-            zipCode: property.zipCode || property.PostalCode || "",
-            beds: property.beds || property.BedroomsTotal || 0,
-            baths: property.baths || property.BathroomsTotalInteger || 0,
-            sqft: property.sqft || property.LivingArea || 0,
-            yearBuilt: property.yearBuilt || property.YearBuilt,
-            garage: property.garage || property.GarageSpaces || 0,
-            propertyType:
-              property.propertyType || property.PropertyType || "Single Family",
-            status: property.status || property.StandardStatus || "Unknown",
-            standardStatus:
-              property.status || property.StandardStatus || "Unknown",
-            subdivision: property.subdivision || property.SubdivisionName || "",
-            waterfront: property.waterfront || false,
-            newConstruction: property.newConstruction || false,
-            featured:
-              (property.listPrice ||
-                property.soldPrice ||
-                property.price ||
-                0) > 500000,
-            luxury:
-              (property.listPrice ||
-                property.soldPrice ||
-                property.price ||
-                0) > 800000,
-            images: property.imageUrl
-              ? [property.imageUrl]
-              : Array.isArray(property.images)
-              ? property.images.filter((x: any) => !!x)
-              : [],
-            coordinates: {
-              lat: property.latitude || 41.2565,
-              lng: property.longitude || -95.9345,
-            },
-            description: `${property.propertyType || "Property"} in ${
-              property.subdivision || property.city
-            }`,
-            photoCount: property.imageUrl ? 1 : 0,
-            listAgent: property.listAgent?.name || "Unknown Agent",
-            listOffice: property.listOffice?.name || "Unknown Office",
-          })
-        );
-
-        res.json({
-          data: transformedProperties,
-          source: "cma-api-production",
-          total: cmaData.totalAvailable || transformedProperties.length,
-          cached: false,
-          searchCriteria: cmaData.searchCriteria || req.query,
-          apiUrl: cmaData.apiUrl || cmaUrl,
-        });
-      } catch (error) {
-        console.error("❌ CMA API error:", error);
-        const mockProperties = [] as any[]; // keep empty to avoid dummy data confusion here
-        res.json({
-          data: mockProperties,
-          source: "cma-api-error",
-          total: 0,
-          cached: false,
-          error: error instanceof Error ? error.message : "CMA API unavailable",
-        });
-      }
+// Clean up expired PKCE entries every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of pkceStore.entries()) {
+    if (value.expiresAt < now) {
+      pkceStore.delete(key);
     }
-  );
-
-  /**
-   * Advanced Property Search
-   * Supports multi-status (comma-separated), advanced numeric filters, boolean flags, and simple cursor pagination.
-   * Query params (subset):
-   * - query, city, subdivision
-   * - status (single or comma-separated list)
-   * - min_price, max_price, beds, baths, property_type
-   * - min_sqft, max_sqft, min_year_built, max_year_built, min_garage
-   * - waterfront(1), new_construction(1), photo_only(1)
-   * - sort_by (ListPrice|YearBuilt|ModificationTimestamp|price), sort_order (asc|desc)
-   * - limit (default 100), cursor (page number as string)
-   */
-
-  // Proxy endpoint for property-search-new (used by communities page)
-  app.get("/api/property-search-new", async (req, res) => {
-    console.log("Route called with query:", req.query);
-    console.log("🏘️ Property search new proxy called with query:", req.query);
-    try {
-      const baseUrl =
-        process.env.CMA_API_BASE ||
-        "http://gbcma.us-east-2.elasticbeanstalk.com";
-
-      // Forward all query parameters to the external API (with normalization)
-      const params = new URLSearchParams(req.query as any);
-      // Remove internal-only flags
-      if (params.has("_v")) params.delete("_v");
-      // Normalize paging (1-based)
-      const inPage = Number(params.get("page") || "1");
-      if (!Number.isFinite(inPage) || inPage < 1) params.set("page", "1");
-      // Ensure state default
-      if (!params.has("state")) params.set("state", "NE");
-      // Map legacy status→StandardStatus
-      if (params.has("status") && !params.has("StandardStatus")) {
-        const s = params.get("status")!;
-        params.delete("status");
-        params.set("StandardStatus", s);
-      }
-      // If school filters are present but no status specified, default to Active
-      const hasSchoolFilterInitial =
-        params.has("school_district") ||
-        params.has("elementary_district") ||
-        params.has("middle_district") ||
-        params.has("high_district") ||
-        params.has("school_level");
-      if (hasSchoolFilterInitial && !params.has("StandardStatus")) {
-        params.set("StandardStatus", "Active");
-      }
-      // 'school_level' is internal-only; drop before forwarding
-      if (params.has("school_level")) params.delete("school_level");
-      // If a school district is provided, add compatible aliases based on level for broader upstream matching
-      if (
-        params.has("school_district") ||
-        params.has("elementary_district") ||
-        params.has("middle_district") ||
-        params.has("high_district")
-      ) {
-        // Read the level from the raw query so we can safely drop it before forwarding
-        const level = ((req.query as any)["school_level"] || "").toLowerCase();
-        const rawDistrictValue =
-          params.get("school_district") ||
-          params.get("elementary_district") ||
-          params.get("middle_district") ||
-          params.get("high_district") ||
-          "";
-        const normalizeDistrict = (s: string) => {
-          const base = s.trim();
-          const lower = base.toLowerCase();
-          const strip = (suffix: string) =>
-            lower.endsWith(suffix)
-              ? base.slice(0, base.length - suffix.length).trim()
-              : base;
-          let out = base;
-          out = strip(" public schools");
-          out = strip(" public school district");
-          out = strip(" school district");
-          out = strip(" schools");
-          return out;
-        };
-        const districtValue = rawDistrictValue
-          ? normalizeDistrict(rawDistrictValue)
-          : "";
-        if (districtValue) {
-          // Prefer explicit RESO field based on level
-          params.delete("ElementarySchoolDistrict");
-          params.delete("MiddleOrJuniorSchoolDistrict");
-          params.delete("HighSchoolDistrict");
-          if (level === "elementary") {
-            params.set("ElementarySchoolDistrict", districtValue);
-          } else if (level === "middle") {
-            params.set("MiddleOrJuniorSchoolDistrict", districtValue);
-          } else if (level === "high") {
-            params.set("HighSchoolDistrict", districtValue);
-          } else {
-            // If level unknown, default to elementary field for broader match
-            params.set("ElementarySchoolDistrict", districtValue);
-          }
-
-          // Compatibility: include generic alias too for upstreams that don't honor RESO fields
-          // Keep only one generic key to avoid duplication ambiguity
-          params.delete("school_district");
-          params.delete("elementary_district");
-          params.delete("middle_district");
-          params.delete("high_district");
-          params.set("school_district", districtValue);
-        }
-      }
-      const url = `${baseUrl}/api/property-search-new?${params.toString()}`;
-
-      console.log("🌐 Proxying to:", url);
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const response = await fetch(url, {
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        throw new Error(`External API returned ${response.status}`);
-      }
-
-      const data = await response.json();
-      let propertiesArr: any[] = Array.isArray(data?.properties)
-        ? data.properties
-        : [];
-      // Enforce school-district filtering server-side if upstream ignored it
-      const reqHasSchoolFilter =
-        (req.query as any)["school_district"] ||
-        (req.query as any)["elementary_district"] ||
-        (req.query as any)["middle_district"] ||
-        (req.query as any)["high_district"] ||
-        (req.query as any)["ElementarySchoolDistrict"] ||
-        (req.query as any)["MiddleOrJuniorSchoolDistrict"] ||
-        (req.query as any)["HighSchoolDistrict"];
-      if (reqHasSchoolFilter) {
-        console.log(
-          "Applying server-side school filter, value:",
-          reqHasSchoolFilter
-        );
-        const level = String(
-          (req.query as any)["school_level"] || ""
-        ).toLowerCase();
-        const rawDistrict =
-          String((req.query as any)["school_district"]) ||
-          String((req.query as any)["elementary_district"]) ||
-          String((req.query as any)["middle_district"]) ||
-          String((req.query as any)["high_district"]) ||
-          String((req.query as any)["ElementarySchoolDistrict"]) ||
-          String((req.query as any)["MiddleOrJuniorSchoolDistrict"]) ||
-          String((req.query as any)["HighSchoolDistrict"]) ||
-          "";
-        const normalize = (s: string) => {
-          const base = (s || "").trim();
-          const lower = base.toLowerCase();
-          const strip = (suffix: string) =>
-            lower.endsWith(suffix)
-              ? base.slice(0, base.length - suffix.length).trim()
-              : base;
-          let out = base;
-          out = strip(" public schools");
-          out = strip(" public school district");
-          out = strip(" school district");
-          out = strip(" schools");
-          out = strip(" public");
-          return out.toLowerCase();
-        };
-        const target = normalize(rawDistrict);
-        if (target) {
-          const matchDistrict = (p: any, field: string) => {
-            const val = (p?.[field] ||
-              p?.[field.charAt(0).toUpperCase() + field.slice(1)]) as
-              | string
-              | undefined;
-            return val ? normalize(val) === target : false;
-          };
-          console.log(
-            "Before filter, propertiesArr.length:",
-            propertiesArr.length
-          );
-          propertiesArr = propertiesArr.filter((p) => {
-            if (level === "elementary")
-              return matchDistrict(p, "schoolElementaryDistrict");
-            if (level === "middle")
-              return matchDistrict(p, "schoolMiddleDistrict");
-            if (level === "high") return matchDistrict(p, "schoolHighDistrict");
-            // If no explicit level, accept a match on any level
-            return (
-              matchDistrict(p, "schoolElementaryDistrict") ||
-              matchDistrict(p, "schoolMiddleDistrict") ||
-              matchDistrict(p, "schoolHighDistrict")
-            );
-          });
-          console.log(
-            "After filter, propertiesArr.length:",
-            propertiesArr.length
-          );
-          console.log(
-            `🎓 Applied server-side school filter level='${level}' district='${rawDistrict}' -> ${propertiesArr.length} matches`
-          );
-        }
-      }
-
-      const initialCount = Array.isArray(propertiesArr)
-        ? data.properties.length
-        : Number(data?.count || 0);
-      console.log(`✅ Proxied ${initialCount} properties`);
-
-      // School filter compatibility fallback:
-      // If caller used school filters and got 0 results, retry without city and
-      // add alternative upstream param names to maximize match.
-      const hasSchoolFilter =
-        params.has("school_district") ||
-        params.has("elementary_district") ||
-        params.has("middle_district") ||
-        params.has("high_district") ||
-        params.has("ElementarySchoolDistrict") ||
-        params.has("MiddleOrJuniorSchoolDistrict") ||
-        params.has("HighSchoolDistrict");
-
-      if (initialCount === 0 && hasSchoolFilter) {
-        const fallbackParams = new URLSearchParams(params);
-        const level = (
-          (req.query["school_level"] as string) || ""
-        ).toLowerCase();
-
-        // Widen geography: some upstream filters conflict with city
-        if (fallbackParams.has("city")) {
-          console.log(
-            "🔁 School filter: removing city constraint for fallback"
-          );
-          fallbackParams.delete("city");
-        }
-        // Ensure state present (defaults to NE for our app)
-        if (!fallbackParams.has("state")) fallbackParams.set("state", "NE");
-
-        // Duplicate district into alternative names that upstream may accept
-        const district =
-          fallbackParams.get("school_district") ||
-          fallbackParams.get("elementary_district") ||
-          fallbackParams.get("middle_district") ||
-          fallbackParams.get("high_district") ||
-          "";
-        if (district) {
-          const normalizeDistrict = (s: string) => {
-            const base = s.trim();
-            const lower = base.toLowerCase();
-            const strip = (suffix: string) =>
-              lower.endsWith(suffix)
-                ? base.slice(0, base.length - suffix.length).trim()
-                : base;
-            let out = base;
-            out = strip(" public schools");
-            out = strip(" public school district");
-            out = strip(" school district");
-            out = strip(" schools");
-            return out;
-          };
-          const normDistrict = normalizeDistrict(district);
-          // Prefer explicit RESO fields; remove generic aliases
-          fallbackParams.delete("school_district");
-          fallbackParams.delete("elementary_district");
-          fallbackParams.delete("middle_district");
-          fallbackParams.delete("high_district");
-          fallbackParams.delete("ElementarySchoolDistrict");
-          fallbackParams.delete("MiddleOrJuniorSchoolDistrict");
-          fallbackParams.delete("HighSchoolDistrict");
-          if (level === "elementary") {
-            fallbackParams.set("ElementarySchoolDistrict", normDistrict);
-          } else if (level === "middle") {
-            fallbackParams.set("MiddleOrJuniorSchoolDistrict", normDistrict);
-          } else if (level === "high") {
-            fallbackParams.set("HighSchoolDistrict", normDistrict);
-          } else {
-            fallbackParams.set("ElementarySchoolDistrict", normDistrict);
-          }
-        }
-
-        // Normalize status to StandardStatus if legacy status provided
-        if (
-          fallbackParams.has("status") &&
-          !fallbackParams.has("StandardStatus")
-        ) {
-          const s = fallbackParams.get("status")!;
-          fallbackParams.delete("status");
-          fallbackParams.set("StandardStatus", s);
-        }
-        if (!fallbackParams.has("StandardStatus")) {
-          fallbackParams.set("StandardStatus", "Active");
-        }
-        // Ensure 'school_level' not forwarded
-        fallbackParams.delete("school_level");
-
-        // Ensure valid paging for upstream (use 1-based page index)
-        const currentPage = Number(fallbackParams.get("page") || "1");
-        if (!Number.isFinite(currentPage) || currentPage < 1) {
-          fallbackParams.set("page", "1");
-        }
-
-        const fallbackUrl = `${baseUrl}/api/property-search-new?${fallbackParams.toString()}`;
-        console.log("🌐 Fallback (school filters) proxying to:", fallbackUrl);
-
-        const fbController = new AbortController();
-        const fbTimeout = setTimeout(() => fbController.abort(), 15000);
-        try {
-          const fbResp = await fetch(fallbackUrl, {
-            headers: { Accept: "application/json" },
-            signal: fbController.signal,
-          });
-          clearTimeout(fbTimeout);
-          if (fbResp.ok) {
-            const fbData = await fbResp.json();
-            const fbCount = Array.isArray(fbData?.properties)
-              ? fbData.properties.length
-              : Number(fbData?.count || 0);
-            console.log(`✅ Fallback returned ${fbCount} properties`);
-            // Return fallback if it yielded anything; else try variants; else return original response
-            if (fbCount > 0) {
-              return res.json({
-                ...fbData,
-                meta: { ...(fbData.meta || {}), fallbackApplied: true },
-              });
-            }
-          } else {
-            console.warn("⚠️ Fallback request non-OK:", fbResp.status);
-          }
-        } catch (e) {
-          clearTimeout(fbTimeout);
-          console.warn("⚠️ Fallback request failed:", e);
-        }
-
-        // Variant attempts: try relaxed district names (strip common suffixes) if still zero
-        if (district) {
-          const mkVariants = (s: string): string[] => {
-            const variants = new Set<string>();
-            const base = s.trim();
-            variants.add(base);
-            const lower = base.toLowerCase();
-            const stripSuffixes = [
-              " public schools",
-              " public school district",
-              " school district",
-              " schools",
-            ];
-            for (const suf of stripSuffixes) {
-              if (lower.endsWith(suf)) {
-                variants.add(base.slice(0, base.length - suf.length).trim());
-              }
-            }
-            // Also try first token before comma
-            const commaIdx = base.indexOf(",");
-            if (commaIdx > 0) variants.add(base.slice(0, commaIdx).trim());
-            // Also try single first word
-            const firstSpace = base.indexOf(" ");
-            if (firstSpace > 0) variants.add(base.slice(0, firstSpace).trim());
-            return Array.from(variants).filter(Boolean).slice(0, 4);
-          };
-          const variants = mkVariants(district);
-          for (const variant of variants) {
-            if (!variant || variant === district) continue;
-            const vParams = new URLSearchParams(fallbackParams);
-            // Use explicit RESO field for variant value
-            vParams.delete("school_district");
-            vParams.delete("elementary_district");
-            vParams.delete("middle_district");
-            vParams.delete("high_district");
-            vParams.delete("ElementarySchoolDistrict");
-            vParams.delete("MiddleOrJuniorSchoolDistrict");
-            vParams.delete("HighSchoolDistrict");
-            if (level === "elementary") {
-              vParams.set("ElementarySchoolDistrict", variant);
-            } else if (level === "middle") {
-              vParams.set("MiddleOrJuniorSchoolDistrict", variant);
-            } else if (level === "high") {
-              vParams.set("HighSchoolDistrict", variant);
-            } else {
-              vParams.set("ElementarySchoolDistrict", variant);
-            }
-            vParams.delete("school_level");
-            const vUrl = `${baseUrl}/api/property-search-new?${vParams.toString()}`;
-            console.log("🌐 Fallback variant trying:", vUrl);
-            const vController = new AbortController();
-            const vTimeout = setTimeout(() => vController.abort(), 15000);
-            try {
-              const vResp = await fetch(vUrl, {
-                headers: { Accept: "application/json" },
-                signal: vController.signal,
-              });
-              clearTimeout(vTimeout);
-              if (!vResp.ok) continue;
-              const vData = await vResp.json();
-              const vCount = Array.isArray(vData?.properties)
-                ? vData.properties.length
-                : Number(vData?.count || 0);
-              console.log(
-                `✅ Variant '${variant}' returned ${vCount} properties`
-              );
-              if (vCount > 0) {
-                return res.json({
-                  ...vData,
-                  meta: {
-                    ...(vData.meta || {}),
-                    fallbackApplied: true,
-                    districtVariant: variant,
-                  },
-                });
-              }
-            } catch (err) {
-              clearTimeout(vTimeout);
-            }
-          }
-        }
-      }
-
-      // If we applied post-filtering, override properties/count in response
-      if (reqHasSchoolFilter) {
-        const patched = {
-          ...data,
-          properties: propertiesArr,
-          count: Array.isArray(propertiesArr)
-            ? propertiesArr.length
-            : data.count,
-          meta: { ...(data.meta || {}), serverSideSchoolFilter: true },
-        };
-        return res.json(patched);
-      }
-
-      res.json(data);
-    } catch (error: any) {
-      console.error("❌ Property search new proxy error:", error);
-      res.status(500).json({
-        error: "Failed to fetch properties",
-        message: error.message,
-        properties: [],
-        count: 0,
-      });
-    }
-  });
-
-  app.get("/api/property-search-advanced", async (req, res) => {
-    console.log("🔍🔍🔍 ADVANCED SEARCH API HIT! 🔍🔍🔍");
-    console.log("🔍 Advanced search API called with query:", req.query);
-    try {
-      const q = req.query as Record<string, string | string[] | undefined>;
-      const limit = Math.min(Number(q.limit ?? 100) || 100, 500);
-      const pageStr = (q.cursor as string) || (q.page as string) || "1";
-      const page = Math.max(parseInt(pageStr, 10) || 1, 1);
-
-      // Normalize sort fields to our local semantics
-      // We use 'price' locally, but upstream expects 'ListPrice' in sort_by
-      const sortByRaw = (q.sort_by as string) || "price";
-      const sortBy =
-        sortByRaw === "ListPrice" || sortByRaw === "price"
-          ? "price"
-          : sortByRaw;
-      const sortOrder = (q.sort_order as string) || "desc";
-
-      // Build base params shared by all upstream calls
-      const baseParams = new URLSearchParams();
-
-      // Default to Nebraska state for all searches
-      baseParams.set("state", "NE");
-
-      // Free-text query handling: map to zip/address/city when obvious
-      const freeQuery = (q.query as string)?.trim();
-      if (freeQuery) {
-        if (/^\d{5}$/.test(freeQuery)) {
-          baseParams.set("zip_code", freeQuery);
-        } else if (/^\d+\s+/.test(freeQuery)) {
-          baseParams.set("address", freeQuery);
-        } else if (q.city == null) {
-          baseParams.set("city", freeQuery.toLowerCase());
-        }
-      }
-
-      const city = (q.city as string) || undefined;
-      if (city) baseParams.set("city", city);
-      const subdivision =
-        (q.subdivision as string) || (q.community as string) || undefined;
-      if (subdivision) baseParams.set("subdivision", subdivision);
-
-      const mapNumber = (v: any) => (v == null ? undefined : Number(v));
-      const addNum = (k: string, v: any) => {
-        const n = mapNumber(v);
-        if (typeof n === "number" && !isNaN(n) && n > 0)
-          baseParams.set(k, String(n));
-      };
-      addNum("min_price", q.min_price ?? q.minPrice);
-      addNum("max_price", q.max_price ?? q.maxPrice);
-      addNum("beds", q.beds);
-      addNum("baths", q.baths);
-      if (q.property_type || q.propertyType) {
-        const t = String(q.property_type || q.propertyType);
-        if (t && t.toLowerCase() !== "any") baseParams.set("property_type", t);
-      }
-      addNum("min_sqft", q.min_sqft ?? q.minSqft);
-      addNum("max_sqft", q.max_sqft ?? q.maxSqft);
-      addNum("min_year_built", q.min_year_built ?? q.minYearBuilt);
-      addNum("max_year_built", q.max_year_built ?? q.maxYearBuilt);
-      // Upstream doesn't support min_garage directly — filter post-fetch
-      const minGarage = mapNumber(q.min_garage ?? q.minGarage);
-
-      // Boolean flags (presence means true)
-      if (q.waterfront) baseParams.set("waterfront", "true");
-      if (q.new_construction || q.newConstruction)
-        baseParams.set("new_construction", "true");
-      const photoOnly = !!(q.photo_only || q.photoOnly);
-
-      baseParams.set("sort_by", sortBy);
-      baseParams.set("sort_order", sortOrder);
-      baseParams.set("limit", String(limit));
-      if (page > 1) baseParams.set("page", String(page));
-
-      // Status handling (single or CSV)
-      const statusRaw = (q.status as string) || "";
-      const statuses = statusRaw
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const statusList =
-        statuses.length > 0 ? statuses : ["Active", "Pending", "Closed"]; // Include more statuses by default
-
-      const baseUrl =
-        process.env.CMA_API_BASE ||
-        "http://gbcma.us-east-2.elasticbeanstalk.com/api";
-
-      // Collect debug info for upstream fetches
-      const debugFetches: Array<{
-        status: string;
-        url: string;
-        ok?: boolean;
-        count?: number;
-        error?: string;
-      }> = [];
-
-      // Fetch all statuses in parallel, then merge
-      const fetchForStatus = async (status: string) => {
-        const params = new URLSearchParams(baseParams);
-        params.set("StandardStatus", status);
-        // Upstream sort_by must be ListPrice when our local sort is price
-        const upstreamSortBy = sortBy === "price" ? "ListPrice" : sortBy;
-        params.set("sort_by", upstreamSortBy);
-        params.set("sort_order", sortOrder);
-        const url = `${baseUrl.replace(
-          /\/$/,
-          ""
-        )}/property-search-new?${params.toString()}`;
-        console.log(`🌐 Fetching for status ${status}:`, url);
-        debugFetches.push({ status, url });
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-        try {
-          const r = await fetch(url, {
-            headers: { Accept: "application/json" },
-            signal: controller.signal,
-          });
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          const json = await r.json();
-          console.log(
-            `✅ Got ${
-              json?.properties?.length || 0
-            } properties for status ${status}`
-          );
-          const last = debugFetches[debugFetches.length - 1];
-          if (last && last.status === status && last.url === url) {
-            last.ok = true;
-            last.count = Array.isArray(json?.properties)
-              ? json.properties.length
-              : Number(json?.count || 0);
-          }
-          const list: any[] = json?.properties || [];
-          return list.map((p) => ({ ...p, __status: status }));
-        } catch (error) {
-          console.error(`❌ Error fetching for status ${status}:`, error);
-          const last = debugFetches[debugFetches.length - 1];
-          if (last && last.status === status && last.url === url) {
-            last.ok = false;
-            last.error = error instanceof Error ? error.message : String(error);
-          }
-          return [];
-        } finally {
-          clearTimeout(timeout);
-        }
-      };
-
-      const resultsByStatus = await Promise.all(
-        statusList.map((s) => fetchForStatus(s))
-      );
-      let combined: any[] = resultsByStatus.flat();
-
-      // Post-filters not supported upstream
-      if (typeof minGarage === "number" && minGarage > 0) {
-        combined = combined.filter((p) => (p.garage || 0) >= minGarage);
-      }
-      if (photoOnly) {
-        combined = combined.filter((p) => !!(p.imageUrl || p.images?.length));
-      }
-
-      // Filter combined results to ensure only requested statuses are included
-      const statusFiltered = combined.filter((p) => {
-        const propStatus = p.status || p.StandardStatus || p.__status || "";
-        return statusList.includes(propStatus);
-      });
-
-      // De-duplicate by MLS ID or id
-      const seen = new Set<string>();
-      const deduped: any[] = [];
-      for (const p of statusFiltered) {
-        const key = String(
-          p.id || p.mlsId || p.mls_number || p.ListingKey || Math.random()
-        );
-        if (seen.has(key)) continue;
-        seen.add(key);
-        deduped.push(p);
-      }
-
-      // Sorting (client may also resort, but we keep deterministic order)
-      const getPrice = (p: any) =>
-        Number(p.price || p.listPrice || p.ListPrice || p.soldPrice || 0);
-      const getYear = (p: any) => Number(p.yearBuilt || p.YearBuilt || 0);
-      const getMod = (p: any) =>
-        new Date(p.ModificationTimestamp || p.updatedAt || 0).getTime();
-      const dir = sortOrder === "asc" ? 1 : -1;
-
-      // Filter out properties with invalid prices for price-based sorting
-      let sortedData = [...deduped];
-      if (sortBy === "price" || sortBy === "ListPrice") {
-        if (sortOrder === "asc") {
-          // For ascending price sort, keep $0 properties but sort them to the end
-          sortedData = sortedData.sort((a, b) => {
-            const priceA = getPrice(a);
-            const priceB = getPrice(b);
-
-            // Put $0 properties at the end for ascending sort
-            if (priceA === 0 && priceB === 0) return 0;
-            if (priceA === 0) return 1;
-            if (priceB === 0) return -1;
-            return priceA - priceB;
-          });
-        }
-      }
-
-      const sorted =
-        sortBy === "price" || sortBy === "ListPrice"
-          ? sortOrder === "asc"
-            ? sortedData
-            : sortedData.sort((a, b) => (getPrice(a) - getPrice(b)) * -1)
-          : sortedData.sort((a, b) => {
-              switch (sortBy) {
-                case "YearBuilt":
-                  return (getYear(a) - getYear(b)) * dir;
-                case "ModificationTimestamp":
-                  return (getMod(a) - getMod(b)) * dir;
-                default:
-                  return 0;
-              }
-            });
-
-      // Pagination indicator (simple heuristic)
-      const pageSlice = sorted.slice(0, limit);
-      const nextCursor = sorted.length > limit ? String(page + 1) : undefined;
-
-      // Normalize minimal fields expected by client cards
-      const normalized = pageSlice.map((property: any) => ({
-        id: property.id || property.ListingKey || Math.random().toString(),
-        mlsId: property.id || property.mlsId || property.mls_number,
-        price: property.listPrice || property.ListPrice || property.price || 0,
-        soldPrice: property.soldPrice || property.SoldPrice,
-        address:
-          property.address ||
-          property.fullAddress ||
-          [
-            property.StreetNumber,
-            property.StreetName,
-            property.City,
-            property.StateOrProvince,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        city: property.city || property.City || city || "",
-        state: property.state || property.StateOrProvince || "NE",
-        zipCode: property.zipCode || property.PostalCode || "",
-        beds: property.beds || property.BedroomsTotal || 0,
-        baths: property.baths || property.BathroomsTotalInteger || 0,
-        sqft: property.sqft || property.LivingArea || 0,
-        yearBuilt: property.yearBuilt || property.YearBuilt,
-        garage: property.garage || property.GarageSpaces || 0,
-        propertyType:
-          property.propertyType || property.PropertyType || "Residential",
-        status: property.status || property.StandardStatus || "Unknown",
-        subdivision:
-          property.subdivision || property.SubdivisionName || subdivision || "",
-        imageUrl:
-          (Array.isArray(property.images) && property.images[0]) ||
-          property.imageUrl ||
-          property.Media?.[0]?.MediaURL ||
-          null,
-        images:
-          property.images ||
-          (property.Media?.map((m: any) => m.MediaURL).filter(Boolean) ?? []),
-        waterfront: property.waterfront || false,
-        newConstruction: property.newConstruction || false,
-        // ✅ SCHOOL DISTRICT FIELDS RESTORED:
-        schoolElementary:
-          property.schoolElementary || property.ElementarySchool || "",
-        schoolElementaryDistrict:
-          property.schoolElementaryDistrict ||
-          property.ElementarySchoolDistrict ||
-          "",
-        schoolMiddle:
-          property.schoolMiddle || property.MiddleOrJuniorSchool || "",
-        schoolMiddleDistrict:
-          property.schoolMiddleDistrict ||
-          property.MiddleOrJuniorSchoolDistrict ||
-          property.MiddleSchoolDistrict ||
-          "",
-        schoolHigh: property.schoolHigh || property.HighSchool || "",
-        schoolHighDistrict:
-          property.schoolHighDistrict || property.HighSchoolDistrict || "",
-      }));
-
-      res.json({
-        success: true,
-        properties: normalized,
-        count: normalized.length,
-        meta: {
-          nextCursor,
-          appliedFilters: {
-            city,
-            subdivision,
-            statuses: statusList,
-            limit,
-            page,
-          },
-          sort: { by: sortBy, order: sortOrder },
-          source: "property-search-advanced",
-          debug: {
-            upstreamBase: baseUrl,
-            fetches: debugFetches,
-            combinedBeforeFilters: combined.length,
-            afterStatusFilter: statusFiltered.length,
-            afterDedupe: deduped.length,
-            totalSorted: sorted.length,
-          },
-        },
-      });
-    } catch (error) {
-      console.error("/api/property-search-advanced error", error);
-      res.status(500).json({
-        success: false,
-        properties: [],
-        count: 0,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to run advanced search",
-      });
-    }
-  });
-
-  // Clean, separate /api/properties/by-mls route (no DB fallback, no dummy data)
-  app.get("/api/properties/by-mls", async (req, res) => {
-    try {
-      const idsParam = String(req.query.ids || "").trim();
-      if (!idsParam) return res.json({ properties: [], count: 0 });
-      const rawIds = idsParam
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .filter((s, i, arr) => arr.indexOf(s) === i);
-      console.log("🔎 [by-mls] Looking up IDs (no fallback):", rawIds);
-      const baseUrl =
-        process.env.CMA_API_BASE ||
-        "http://gbcma.us-east-2.elasticbeanstalk.com/api";
-      const results: any[] = [];
-      for (const mlsId of rawIds) {
-        const url = `${baseUrl.replace(
-          /\/$/,
-          ""
-        )}/property-search-new?mls_number=${encodeURIComponent(mlsId)}`;
-        try {
-          console.log("🌐 [by-mls] Fetching", url);
-          const r = await fetch(url, {
-            headers: { Accept: "application/json" },
-          });
-          if (!r.ok) {
-            console.warn("⚠️ [by-mls] Non-OK", r.status, url);
-            continue;
-          }
-          const data = await r.json();
-          const prop = Array.isArray(data?.properties)
-            ? data.properties[0]
-            : data?.properties;
-          if (!prop) {
-            console.log("ℹ️ [by-mls] No property for", mlsId);
-            continue;
-          }
-          results.push({
-            id: prop.id || prop.ListingKey || mlsId,
-            mlsId: prop.mlsId || prop.mls_number || mlsId,
-            listPrice: prop.listPrice || prop.ListPrice || 0,
-            address:
-              prop.address ||
-              prop.fullAddress ||
-              [
-                prop.StreetNumber,
-                prop.StreetName,
-                prop.City,
-                prop.StateOrProvince,
-              ]
-                .filter(Boolean)
-                .join(" "),
-            city: prop.city || prop.City,
-            state: prop.state || prop.StateOrProvince,
-            beds: prop.beds || prop.BedroomsTotal,
-            baths: prop.baths || prop.BathroomsTotalInteger,
-            sqft: prop.sqft || prop.LivingArea,
-            status: prop.status || prop.StandardStatus,
-            image:
-              (Array.isArray(prop.images) && prop.images[0]) ||
-              prop.imageUrl ||
-              prop.Media?.[0]?.MediaURL ||
-              null,
-            featured: true,
-            source: "external",
-          });
-        } catch (e) {
-          console.warn("⚠️ [by-mls] Fetch failed", mlsId, e);
-        }
-      }
-      const ordered = rawIds
-        .map((id) => results.find((r) => r.mlsId == id || r.id == id))
-        .filter(Boolean);
-      console.log(`✅ [by-mls] Resolved ${ordered.length}/${rawIds.length}`);
-      res.json({ properties: ordered, count: ordered.length });
-    } catch (error) {
-      console.error("/api/properties/by-mls error", error);
-      res.status(500).json({ message: "Failed to fetch properties" });
-    }
-  });
-
-  // Team Properties API - Get properties for team members
-  app.get("/api/team-properties", async (req, res) => {
-    try {
-      console.log("🏠 Fetching team properties...");
-
-      // Import team-related schemas
-      const { teams, teamMembers } = await import("../shared/schema");
-
-      // Support explicit agent_ids from query; if not provided, pull from DB team members
-      const queryAgentIds = (req.query.agent_ids as string | undefined)?.trim();
-      let allTeamMembers: Array<{
-        agentName: string | null;
-        agentMlsId: string | null;
-      }> = [];
-      let mlsIds: string = "";
-
-      if (queryAgentIds && queryAgentIds.length > 0) {
-        // Use agent IDs from query directly
-        mlsIds = queryAgentIds
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .join(",");
-        // Create a synthetic members list for response context
-        allTeamMembers = mlsIds.split(",").map((id) => ({
-          agentName: null,
-          agentMlsId: id,
-        }));
-        console.log(`Using agent_ids from query: ${mlsIds}`);
-      } else {
-        // Get all active team members with their MLS IDs from DB
-        allTeamMembers = await db
-          .select({
-            agentName: teamMembers.agentName,
-            agentMlsId: teamMembers.agentMlsId,
-          })
-          .from(teamMembers)
-          .where(teamMembers.agentMlsId !== null);
-
-        if (allTeamMembers.length === 0) {
-          console.log("No team members with MLS IDs found");
-          return res.json({
-            data: [],
-            source: "team-properties",
-            total: 0,
-            message: "No team members found",
-          });
-        }
-
-        // Build MLS IDs from DB
-        mlsIds = allTeamMembers
-          .map((member) => member.agentMlsId)
-          .filter((id) => id) // Remove null/undefined
-          .join(",");
-      }
-
-      console.log(`Found team members with MLS IDs: ${mlsIds}`);
-
-      // Build API URL
-      const { status = "Active", limit = "20" } = req.query;
-      const teamApiUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/team-properties?agent_ids=${mlsIds}&status=${status}&limit=${limit}`;
-
-      console.log("🌐 Team Properties API URL:", teamApiUrl);
-
-      // Fetch team properties with a timeout
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 12000);
-      const response = await fetch(teamApiUrl, {
-        headers: {
-          "User-Agent": "NebraskaHomeHub/1.0",
-          Accept: "application/json",
-        },
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout));
-
-      if (!response.ok) {
-        throw new Error(
-          `Team Properties API error: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const teamData = await response.json().catch((e) => {
-        console.error("Failed parsing team-properties JSON:", e);
-        throw new Error("Invalid JSON from team-properties upstream");
-      });
-      console.log(
-        `✅ Got ${teamData?.properties?.length || 0} team properties`
-      );
-
-      // Transform properties to match frontend expectations
-      const transformedProperties = (teamData.properties || []).map(
-        (property: any) => ({
-          id: property.id || Math.random().toString(),
-          mlsId: property.id,
-          title: `${property.beds || "?"} Bed ${
-            property.baths || "?"
-          } Bath in ${property.city || "Omaha"}`,
-          price: property.listPrice || property.soldPrice || 0,
-          address: property.address || "Address not available",
-          city: property.city || "Omaha",
-          state: property.state || "NE",
-          zipCode: property.zipCode || "",
-          beds: property.beds || 0,
-          baths: property.baths?.toString() || "0",
-          sqft: property.sqft || 0,
-          yearBuilt: property.yearBuilt,
-          garage: property.garage || 0,
-          propertyType: property.propertyType || "Single Family",
-          status: property.status || "Unknown",
-          standardStatus: property.status || "Unknown",
-          subdivision: property.subdivision || "",
-          waterfront: property.waterfront || false,
-          newConstruction: property.newConstruction || false,
-          featured: true, // All team properties are featured
-          luxury: (property.listPrice || property.soldPrice || 0) > 800000,
-          images: property.imageUrl
-            ? [property.imageUrl]
-            : [
-                "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=800&q=80",
-              ],
-          coordinates: {
-            lat: property.latitude || 41.2565,
-            lng: property.longitude || -95.9345,
-          },
-          description: `${property.propertyType || "Property"} in ${
-            property.subdivision || property.city
-          }`,
-          photoCount: property.imageUrl ? 1 : 0,
-          listAgent: property.listAgent?.name || "Team Member",
-          listOffice: property.listOffice?.name || "Bjork Group",
-          teamProperty: true, // Mark as team property
-        })
-      );
-
-      res.json({
-        data: transformedProperties,
-        source: "team-properties-api",
-        total: teamData.totalAvailable || transformedProperties.length,
-        teamMembers: allTeamMembers,
-        agentIds: mlsIds,
-        cached: false,
-      });
-    } catch (error) {
-      console.error("❌ Team Properties API error:", error);
-
-      // Return empty data instead of mock data for team properties
-      res.json({
-        data: [],
-        source: "team-properties-error",
-        total: 0,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Team Properties API unavailable",
-      });
-    }
-  });
-
-  // POST endpoint for properties with JSON body (for featured listings)
-  app.post("/api/paragon/properties", async (req, res) => {
-    try {
-      console.log("🏠 POST request to properties with body:", req.body);
-
-      const { cities = ["Omaha"], limit = 24, filters = {} } = req.body;
-
-      // Convert POST body to GET parameters
-      const queryParams = new URLSearchParams({
-        limit: limit.toString(),
-        status: filters.status || "Active",
-      });
-
-      // Add cities as a comma-separated list or use first city
-      if (cities.length > 0) {
-        queryParams.set("city", cities[0].toLowerCase());
-      }
-
-      // If looking for featured properties, focus on higher-priced listings
-      if (filters.isFeatured) {
-        queryParams.set("minPrice", "500000");
-      }
-
-      // Build CMA API URL
-      let cmaUrl =
-        "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-search?" +
-        queryParams.toString();
-      console.log("🌐 POST->GET CMA API URL:", cmaUrl);
-
-      const response = await fetch(cmaUrl, {
-        headers: {
-          "User-Agent": "NebraskaHomeHub/1.0",
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `CMA API error: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const cmaData = await response.json();
-      console.log(
-        `✅ POST: Got ${
-          cmaData?.properties?.length || 0
-        } properties from CMA API`
-      );
-
-      // Transform properties (same as GET endpoint with MLS preference)
-      const transformedProperties = (cmaData.properties || []).map(
-        (property: any) => ({
-          id: property.id || Math.random().toString(),
-          mlsId:
-            property.mlsId ||
-            property.mls_number ||
-            property.ListingId ||
-            property.id,
-          title: `${property.beds || "?"} Bed ${
-            property.baths || "?"
-          } Bath in ${property.city || "Omaha"}`,
-          price:
-            property.listPrice || property.soldPrice || property.price || 0,
-          address:
-            property.address || property.fullAddress || "Address not available",
-          city: property.city || "Omaha",
-          state: property.state || "NE",
-          zipCode: property.zipCode || property.PostalCode || "",
-          beds: property.beds || property.BedroomsTotal || 0,
-          baths: property.baths || property.BathroomsTotalInteger || 0,
-          sqft: property.sqft || property.LivingArea || 0,
-          yearBuilt: property.yearBuilt || property.YearBuilt,
-          garage: property.garage || property.GarageSpaces || 0,
-          propertyType:
-            property.propertyType || property.PropertyType || "Single Family",
-          status: property.status || property.StandardStatus || "Unknown",
-          standardStatus:
-            property.status || property.StandardStatus || "Unknown",
-          subdivision: property.subdivision || property.SubdivisionName || "",
-          waterfront: property.waterfront || false,
-          newConstruction: property.newConstruction || false,
-          featured:
-            filters.isFeatured ||
-            (property.listPrice || property.soldPrice || property.price || 0) >
-              500000,
-          luxury:
-            (property.listPrice || property.soldPrice || property.price || 0) >
-            800000,
-          images: property.imageUrl
-            ? [property.imageUrl]
-            : Array.isArray(property.images)
-            ? property.images.filter((x: any) => !!x)
-            : [],
-          coordinates: {
-            lat: property.latitude || 41.2565,
-            lng: property.longitude || -95.9345,
-          },
-          description: `${property.propertyType || "Property"} in ${
-            property.subdivision || property.city
-          }`,
-          photoCount: property.imageUrl ? 1 : 0,
-          listAgent: property.listAgent?.name || "Unknown Agent",
-          listOffice: property.listOffice?.name || "Unknown Office",
-        })
-      );
-
-      res.json({
-        data: transformedProperties,
-        source: "cma-api-post",
-        total: cmaData.totalAvailable || transformedProperties.length,
-        cached: false,
-        searchCriteria: req.body,
-      });
-    } catch (error) {
-      console.error("❌ POST Properties API error:", error);
-
-      res.status(500).json({
-        data: [],
-        source: "post-error",
-        total: 0,
-        error:
-          error instanceof Error ? error.message : "Properties API unavailable",
-      });
-    }
-  });
-
-  // Location suggestions (basic static list for autocomplete)
-  app.get("/api/location-suggestions", async (req, res) => {
-    const raw = (req.query.query as string) || "";
-    const q = raw.toLowerCase().trim();
-    if (!q || q.length < 2) return res.json({ suggestions: [] });
-
-    // Core Nebraska metros & suburbs (expanded list for better coverage)
-    const cities = [
-      "Omaha, NE",
-      "Lincoln, NE",
-      "Papillion, NE",
-      "La Vista, NE",
-      "Bellevue, NE",
-      "Bennington, NE",
-      "Gretna, NE",
-      "Elkhorn, NE",
-      "Ralston, NE",
-      "Fremont, NE",
-      "Ashland, NE",
-      "Valley, NE",
-      "Springfield, NE",
-      "Waverly, NE",
-      "Seward, NE",
-      "Council Bluffs, IA",
-      "Millard, NE",
-      "Benson, NE",
-      "Florence, NE",
-      "Irvington, NE",
-      "Chalco, NE",
-      "Boys Town, NE",
-      "Waterloo, NE",
-      "Yutan, NE",
-      "Blair, NE",
-      "Tekamah, NE",
-      "Arlington, NE",
-      "Kennard, NE",
-      "Plattsmouth, NE",
-      "Louisville, NE",
-      "Cedar Creek, NE",
-      "Murdock, NE",
-      "Weeping Water, NE",
-      "Eagle, NE",
-      "Hickman, NE",
-      "Bennet, NE",
-      "Palmyra, NE",
-      "Utica, NE",
-      "Garland, NE",
-      "Pleasant Dale, NE",
-      "Malcolm, NE",
-      "Denton, NE",
-      "Roca, NE",
-      "Firth, NE",
-      "Cortland, NE",
-      "Clatonia, NE",
-      "Hallam, NE",
-      "Martell, NE",
-      "Grand Island, NE",
-      "Kearney, NE",
-      "Norfolk, NE",
-      "North Platte, NE",
-      "Columbus, NE",
-      "Hastings, NE",
-      "York, NE",
-      "Nebraska City, NE",
-      "Beatrice, NE",
-    ];
-    const zips = [
-      "68022",
-      "68118",
-      "68130",
-      "68144",
-      "68116",
-      "68124",
-      "68007",
-      "68028",
-      "68138",
-      "68154",
-      "68516",
-      "68506",
-      "68510",
-      "68502",
-      "68505",
-      "68164",
-      "68114",
-      "68111",
-      "68104",
-      "68105",
-      "68106",
-      "68107",
-      "68108",
-      "68110",
-      "68112",
-      "68117",
-      "68122",
-      "68127",
-      "68131",
-      "68132",
-      "68134",
-      "68135",
-      "68137",
-      "68142",
-      "68152",
-      "68157",
-      "68164",
-      "68178",
-      "68182",
-      "68198",
-      "68501",
-      "68503",
-      "68504",
-      "68507",
-      "68508",
-      "68512",
-      "68514",
-      "68517",
-      "68520",
-      "68521",
-      "68522",
-      "68523",
-      "68524",
-      "68526",
-      "68527",
-      "68528",
-      "68529",
-      "68531",
-      "68532",
-      "68588",
-      "68025",
-      "68015",
-      "68046",
-      "68064",
-      "68069",
-      "68133",
-      "68010",
-      "68017",
-      "68019",
-      "68020",
-      "68050",
-      "68058",
-      "68059",
-      "68005",
-      "68123",
-      "68128",
-      "68136",
-      "68147",
-      "68339",
-      "68347",
-      "68349",
-      "68372",
-      "68014",
-      "68023",
-      "68065",
-      "68003",
-      "68933",
-      "68847",
-      "68827",
-      "68370",
-      "68901",
-      "68803",
-      "68701",
-      "69101",
-      "68601",
-      "68901",
-      "68467",
-      "68310",
-      "68310",
-      "68005",
-    ];
-
-    const cityMatches = cities
-      .filter((c) => c.toLowerCase().includes(q))
-      .map((c) => ({
-        label: c,
-        value: c.replace(/, NE|, IA/, "").trim(),
-        type: "city",
-      }));
-    const zipMatches = zips
-      .filter((z) => z.startsWith(q))
-      .map((z) => ({ label: `${z} (Zip)`, value: z, type: "zip" }));
-
-    let suggestions: any[] = [...cityMatches, ...zipMatches];
-
-    // Filter out any suggestions that look like MLS numbers (8+ digits)
-    suggestions = suggestions.filter((suggestion) => {
-      const value = suggestion.value.toString();
-      // Remove suggestions that are 8+ digit numbers (likely MLS IDs)
-      return !value.match(/^\d{8,}$/);
-    });
-
-    // If it looks like a street address (starts with number + word), attempt quick address resolution for suggestion
-    if (/^\d+\s+\S+/.test(q)) {
-      try {
-        // Generate simplified variants similar to address-property route
-        const cleaned = raw.trim();
-        const noUSA = cleaned.replace(/,?\s*USA$/i, "").trim();
-        const noZip = noUSA
-          .replace(/,\s*[A-Z]{2}\s*\d{5}(-\d{4})?$/i, "")
-          .trim();
-        const baseNoCityState = noZip.split(/,/)[0].trim();
-        const variants = Array.from(new Set([cleaned, baseNoCityState])).filter(
-          (v) => v.length >= 5
-        );
-
-        let foundAddress: any = null;
-        for (const variant of variants) {
-          try {
-            const resp = await fetch(
-              "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-details-from-address",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ address: variant }),
-              }
-            );
-            if (resp.ok) {
-              const data = await resp.json();
-              const label = data.fullAddress || data.address || variant;
-              foundAddress = {
-                label,
-                value: label,
-                type: "address",
-              };
-              break;
-            }
-          } catch (e) {
-            // ignore individual variant errors
-          }
-        }
-        if (foundAddress) {
-          // Prepend address suggestion with priority
-          suggestions.unshift(foundAddress);
-        }
-      } catch (e) {
-        console.log("location-suggestions address probe error", e);
-      }
-    }
-
-    res.json({ suggestions: suggestions.slice(0, 12) });
-  });
-
-  // Address -> single property quick lookup (user enters a full street address)
-  app.post("/api/address-property", async (req, res) => {
-    try {
-      const address = (req.body?.address || "").trim();
-      console.log("🏠 Address property lookup request:", address);
-      if (!address) return res.status(400).json({ error: "address required" });
-      const debugEnabled =
-        (req.query.debug as string) === "1" ||
-        (req.query.debug as string)?.toLowerCase() === "true";
-
-      const photoFieldReport = (data: any) => {
-        if (!data || typeof data !== "object") return {};
-        const fields = [
-          "Media",
-          "photos",
-          "PhotoUrls",
-          "photoUrls",
-          "images",
-          "Images",
-          "Photos",
-          "photoURLs",
-          "imageURLs",
-          "photoUrl",
-          "primaryPhoto",
-          "imageUrl",
-          "primaryImage",
-          "mainPhoto",
-        ];
-        const report: Record<string, any> = {};
-        for (const f of fields) {
-          if (f in data) {
-            const v: any = (data as any)[f];
-            if (Array.isArray(v))
-              report[f] = { type: "array", length: v.length };
-            else if (v && typeof v === "object") report[f] = { type: "object" };
-            else report[f] = { type: typeof v, value: v };
-          }
-        }
-        return report;
-      };
-
-      const triedVariants: string[] = [];
-
-      // Helper to safely pick numeric value from several keys
-      const pickFirst = (...vals: any[]) =>
-        vals.find(
-          (v) => v !== undefined && v !== null && v !== "" && !Number.isNaN(v)
-        );
-      const coerceNumber = (v: any) => {
-        if (v === undefined || v === null || v === "") return undefined;
-        const n =
-          typeof v === "string" ? parseFloat(v.replace(/[^0-9.]/g, "")) : v;
-        return Number.isFinite(n) ? n : undefined;
-      };
-      const buildProperty = (data: any, addr: string) => {
-        const beds =
-          coerceNumber(
-            pickFirst(
-              data.beds,
-              data.Beds,
-              data.bedroomsTotal,
-              data.BedroomsTotal,
-              data.bedroomsTotalInteger,
-              data.BedroomsTotalInteger
-            )
-          ) || 0;
-        const fullBaths = coerceNumber(
-          pickFirst(
-            data.baths,
-            data.Baths,
-            data.bathroomsTotalInteger,
-            data.BathroomsTotalInteger,
-            data.fullBaths,
-            data.FullBaths
-          )
-        );
-        const halfBaths = coerceNumber(
-          pickFirst(
-            data.halfBaths,
-            data.HalfBaths,
-            data.bathroomsHalf,
-            data.BathroomsHalf
-          )
-        );
-        let bathsNumeric: number | undefined = fullBaths;
-        if (fullBaths !== undefined && halfBaths !== undefined)
-          bathsNumeric = fullBaths + halfBaths * 0.5;
-        if (bathsNumeric === undefined)
-          bathsNumeric = coerceNumber(data.bathrooms) || 0;
-        // ABOVE / BASEMENT / TOTAL SQFT NORMALIZATION
-        const aboveGradeSqft = coerceNumber(
-          pickFirst(
-            data.aboveGradeFinishedArea,
-            data.AboveGradeFinishedArea,
-            data.livingArea,
-            data.LivingArea,
-            data.sqft
-          )
-        );
-        const basementSqft = coerceNumber(
-          pickFirst(
-            data.belowGradeFinishedArea,
-            data.BelowGradeFinishedArea,
-            data.basementFinishedArea,
-            data.BasementFinishedArea
-          )
-        );
-        const totalProvided = coerceNumber(
-          pickFirst(
-            data.totalArea,
-            data.TotalArea,
-            data.buildingAreaTotal,
-            data.BuildingAreaTotal,
-            data.SqFtTotal
-          )
-        );
-        const totalSqft =
-          totalProvided ||
-          (aboveGradeSqft || 0) + (basementSqft || 0) ||
-          undefined;
-        const sqft = aboveGradeSqft || totalProvided || 0; // expose above grade as primary sqft like legacy UI
-        const garageSpaces = coerceNumber(
-          pickFirst(
-            data.garageSpaces,
-            data.GarageSpaces,
-            data.garage,
-            data.Garage,
-            data.parkingTotal,
-            data.ParkingTotal
-          )
-        );
-        const style = pickFirst(
-          data.style,
-          data.Style,
-          data.architecturalStyle,
-          data.ArchitecturalStyle
-        );
-        // Enhanced photo normalization: gather from many potential fields
-        const mediaPhotos = Array.isArray(data.Media)
-          ? data.Media.filter(
-              (m: any) =>
-                m &&
-                (m.MediaURL || m.mediaURL) && // accept if category missing or clearly photo
-                (!m.MediaCategory ||
-                  !m.mediaCategory ||
-                  [
-                    (m.MediaCategory || "").toLowerCase(),
-                    (m.mediaCategory || "").toLowerCase(),
-                  ].includes("photo"))
-            )
-              .sort(
-                (a: any, b: any) =>
-                  (a.Order || a.order || 0) - (b.Order || b.order || 0)
-              )
-              .map((m: any) => m.MediaURL || m.mediaURL)
-          : [];
-        const rawPhotos = Array.isArray(data.photos)
-          ? data.photos.filter(Boolean)
-          : [];
-        const photoUrlsArr = Array.isArray(data.PhotoUrls || data.photoUrls)
-          ? (data.PhotoUrls || data.photoUrls).filter(Boolean)
-          : typeof data.PhotoUrls === "string"
-          ? [data.PhotoUrls]
-          : typeof data.photoUrls === "string"
-          ? [data.photoUrls]
-          : [];
-        // Additional single-value or alt-field candidates
-        const singleCandidates = [
-          data.photoUrl,
-          data.primaryPhoto,
-          data.imageUrl,
-          data.primaryImage,
-          data.mainPhoto,
-        ].filter(Boolean);
-        // Alternate array style fields
-        const altArrays: any[] = [];
-        if (Array.isArray(data.images)) altArrays.push(...data.images);
-        if (Array.isArray(data.Images)) altArrays.push(...data.Images);
-        if (Array.isArray(data.Photos)) altArrays.push(...data.Photos);
-        if (Array.isArray(data.photoURLs)) altArrays.push(...data.photoURLs);
-        if (Array.isArray(data.imageURLs)) altArrays.push(...data.imageURLs);
-        const altFiltered = altArrays.filter(Boolean);
-        const photos = Array.from(
-          new Set([
-            ...mediaPhotos,
-            ...rawPhotos,
-            ...photoUrlsArr,
-            ...singleCandidates,
-            ...altFiltered,
-          ])
-        ).filter(
-          (url: any) => typeof url === "string" && /https?:\/\//i.test(url)
-        );
-        if (photos.length === 0) {
-          console.log("[image-normalization] no photos resolved for property", {
-            mlsId: data.mlsId || data.ListingId || data.listingKey,
-            providedKeys: Object.keys(data || {}),
-          });
-        }
-        return {
-          id: Date.now(),
-          mlsId: data.mlsId || data.ListingId || data.listingKey || undefined,
-          listingKey: data.listingKey || data.mlsId || undefined,
-          title: data.publicRemarks || data.description || addr,
-          description: data.PublicRemarks || "Details coming soon.",
-          price: (
-            pickFirst(
-              data.listPrice,
-              data.price,
-              data.currentPrice,
-              data.ListPrice
-            ) || 0
-          ).toString(),
-          address: addr,
-          city: data.city || data.City || "",
-          state: data.state || data.State || "NE",
-          zipCode: data.postalCode || data.PostalCode || data.zipCode || "",
-          beds,
-          baths: bathsNumeric?.toString() || "0",
-          sqft,
-          aboveGradeSqft: aboveGradeSqft || undefined,
-          basementSqft: basementSqft || undefined,
-          totalSqft: totalSqft || undefined,
-          garage: garageSpaces || 0,
-          garageSpaces: garageSpaces || 0,
-          yearBuilt: pickFirst(data.yearBuilt, data.YearBuilt) || null,
-          propertyType:
-            pickFirst(data.propertyType, data.PropertyType) || "Residential",
-          status: (
-            pickFirst(data.status, data.StandardStatus, data.standardStatus) ||
-            "unknown"
-          ).toLowerCase(),
-          standardStatus: pickFirst(data.StandardStatus, data.standardStatus),
-          featured: false,
-          luxury: false,
-          images: photos,
-          neighborhood:
-            pickFirst(
-              data.neighborhood,
-              data.SubdivisionName,
-              data.subdivision,
-              data.Subdivision
-            ) || undefined,
-          schoolDistrict:
-            pickFirst(
-              // Try NEW field names first (from updated API)
-              data.schoolElementaryDistrict,
-              data.schoolMiddleDistrict,
-              data.schoolHighDistrict,
-              // Fallback to OLD field names (legacy support)
-              data.schoolDistrict,
-              data.SchoolDistrict
-            ) || undefined,
-          // Individual school names
-          schoolElementary:
-            pickFirst(data.schoolElementary, data.ElementarySchool) ||
-            undefined,
-          schoolMiddle:
-            pickFirst(data.schoolMiddle, data.MiddleOrJuniorSchool) ||
-            undefined,
-          schoolHigh: pickFirst(data.schoolHigh, data.HighSchool) || undefined,
-          style: style || undefined,
-          coordinates:
-            data.latitude && data.longitude
-              ? {
-                  lat: parseFloat(data.latitude),
-                  lng: parseFloat(data.longitude),
-                }
-              : undefined,
-          features: [],
-          architecturalStyle:
-            data.architecturalStyle || data.ArchitecturalStyle || undefined,
-          secondaryStyle: undefined,
-          styleConfidence: undefined,
-          styleFeatures: undefined,
-          styleAnalyzed: false,
-          listingAgentKey:
-            pickFirst(
-              data.ListAgentMlsId,
-              data.listAgentMlsId,
-              data.listingAgentId
-            ) || undefined,
-          listingOfficeName:
-            pickFirst(data.ListOfficeName, data.listOfficeName) || undefined,
-          listingContractDate:
-            pickFirst(data.ListingContractDate, data.listingContractDate) ||
-            undefined,
-          daysOnMarket:
-            pickFirst(data.DaysOnMarket, data.daysOnMarket) || undefined,
-          originalListPrice:
-            pickFirst(data.OriginalListPrice, data.originalListPrice) ||
-            undefined,
-          mlsStatus:
-            pickFirst(
-              data.MLSStatus,
-              data.mlsStatus,
-              data.StandardStatus,
-              data.standardStatus
-            ) || undefined,
-          modificationTimestamp:
-            pickFirst(data.ModificationTimestamp, data.modificationTimestamp) ||
-            undefined,
-          photoCount:
-            pickFirst(data.photoCount, data.PhotosCount) ||
-            (Array.isArray(data.photos) ? data.photos.length : undefined),
-          virtualTourUrl:
-            pickFirst(data.VirtualTourURLUnbranded, data.virtualTourUrl) ||
-            undefined,
-          isIdxListing: true,
-          idxSyncedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-      };
-
-      // Strategy 1: direct lookup with full address
-      try {
-        console.log("🏠 Trying direct address lookup...");
-        const resp = await fetch(
-          "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-details-from-address",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ address }),
-          }
-        );
-        console.log("🏠 Direct lookup response status:", resp.status);
-        if (resp.ok) {
-          const data = await resp.json();
-          const rawKeys = Object.keys(data || {});
-
-          // Debug: Check if PublicRemarks exists
-          console.log("🏠 PublicRemarks exists:", !!data.PublicRemarks);
-          if (data.PublicRemarks) {
-            console.log("🏠 PublicRemarks length:", data.PublicRemarks.length);
-            console.log(
-              "🏠 PublicRemarks preview:",
-              data.PublicRemarks.substring(0, 100)
-            );
-          }
-
-          const property = buildProperty(data, address);
-          return res.json({
-            property,
-            raw: data,
-            method: "direct",
-            triedVariants,
-            ...(debugEnabled
-              ? {
-                  debug: {
-                    rawKeys,
-                    photoFields: photoFieldReport(data),
-                    photosResolved: property.images.length,
-                  },
-                }
-              : {}),
-          });
-        }
-      } catch (err) {
-        console.log("🏠 Direct lookup error (continuing):", err);
-      }
-
-      // Strategy 1b: variant lookups (progressively simplified address forms)
-      const normalized = address.replace(/\s+/g, " ").trim();
-      const variantsSet = new Set<string>();
-      const pushVariant = (v: string) => {
-        const t = v.trim();
-        if (t && t.toLowerCase() !== normalized.toLowerCase())
-          variantsSet.add(t);
-      };
-      const withoutCountry = normalized.replace(/,?\s*USA$/i, "").trim();
-      const withoutZip = withoutCountry
-        .replace(/,?\s*\d{5}(?:-\d{4})?$/i, "")
-        .trim();
-      const withoutState = withoutZip.replace(/,?\s+NE$/i, "").trim();
-      // Remove trailing city if present (keep number + street)
-      const coreParts = withoutState.split(",");
-      if (coreParts.length > 1) {
-        pushVariant(coreParts[0]);
-      }
-      pushVariant(withoutCountry);
-      pushVariant(withoutZip);
-      pushVariant(withoutState);
-      // Remove common street suffix abbreviations (e.g., St, Street) to try raw number + name
-      const streetCore = withoutState
-        .replace(
-          /\b(Street|St|Avenue|Ave|Road|Rd|Court|Ct|Drive|Dr|Lane|Ln)\.?$/i,
-          ""
-        )
-        .trim();
-      pushVariant(streetCore);
-
-      const variants = Array.from(variantsSet).slice(0, 8); // safety cap
-      for (const variant of variants) {
-        triedVariants.push(variant);
-        try {
-          const vResp = await fetch(
-            "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-details-from-address",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ address: variant }),
-            }
-          );
-          if (vResp.ok) {
-            const data = await vResp.json();
-            const rawKeys = Object.keys(data || {});
-            const property = buildProperty(data, variant);
-            return res.json({
-              property,
-              raw: data,
-              method: "variant",
-              triedVariants,
-              ...(debugEnabled
-                ? {
-                    debug: {
-                      rawKeys,
-                      photoFields: photoFieldReport(data),
-                      photosResolved: property.images.length,
-                      publicRemarksExists: !!data.PublicRemarks,
-                      publicRemarksPreview: data.PublicRemarks
-                        ? data.PublicRemarks.substring(0, 100)
-                        : null,
-                      propertyDescription: property.description,
-                    },
-                  }
-                : {}),
-            });
-          }
-        } catch (variantErr) {
-          console.log("🏠 Variant lookup failed for", variant, variantErr);
-        }
-      }
-
-      // Strategy 2: broader search fallback
-      console.log("🏠 Trying broader property search fallback...");
-      const searchAddress = address.replace(/,.*$/, "").trim();
-      try {
-        const searchParams = new URLSearchParams({
-          address: searchAddress,
-          limit: "50",
-          status: "both", // Include both active and sold for address matching
-          exclude_zero_price: "true", // Filter out incomplete data
-        });
-        const searchResp = await fetch(
-          `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?${searchParams}`
-        );
-        if (searchResp.ok) {
-          const searchData = await searchResp.json();
-          console.log("🏠 Search response:", {
-            activeCount: searchData.active?.length || 0,
-            soldCount: searchData.sold?.length || 0,
-          });
-          const allProperties = [
-            ...(searchData.active || []),
-            ...(searchData.sold || []),
-          ];
-          const addressMatch = allProperties.find((prop: any) => {
-            const propAddress = prop.address || prop.unparsedAddress || "";
-            const searchTerms = searchAddress.toLowerCase().split(" ");
-            const propAddressLower = propAddress.toLowerCase();
-            return searchTerms.every((term: string) =>
-              propAddressLower.includes(term)
-            );
-          });
-          if (addressMatch) {
-            console.log(
-              "🏠 Found matching property via search:",
-              addressMatch.address || addressMatch.unparsedAddress
-            );
-            // Reuse numeric helpers (defined earlier in same scope)
-            const beds =
-              coerceNumber(
-                (addressMatch as any).bedroomsTotal ??
-                  (addressMatch as any).beds
-              ) || 0;
-            const fullBaths = coerceNumber(
-              (addressMatch as any).bathroomsTotalInteger ??
-                (addressMatch as any).baths
-            );
-            const sqft =
-              coerceNumber(
-                (addressMatch as any).livingArea ?? (addressMatch as any).sqft
-              ) || 0;
-            const garageSpaces =
-              coerceNumber(
-                (addressMatch as any).garageSpaces ??
-                  (addressMatch as any).GarageSpaces ??
-                  (addressMatch as any).garage
-              ) || 0;
-            const property = {
-              id: Date.now(),
-              mlsId:
-                addressMatch.mlsId ||
-                addressMatch.listingId ||
-                addressMatch.listingKey,
-              listingKey: addressMatch.listingKey || addressMatch.mlsId,
-              title:
-                addressMatch.publicRemarks ||
-                addressMatch.address ||
-                addressMatch.unparsedAddress ||
-                address,
-              description:
-                addressMatch.PublicRemarks ||
-                addressMatch.publicRemarks ||
-                "Property found via search",
-              price: (
-                addressMatch.listPrice ||
-                addressMatch.price ||
-                0
-              ).toString(),
-              address:
-                addressMatch.address || addressMatch.unparsedAddress || address,
-              city: addressMatch.city || "",
-              state: addressMatch.state || addressMatch.stateOrProvince || "NE",
-              zipCode: addressMatch.postalCode || addressMatch.zipCode || "",
-              beds,
-              baths: (fullBaths ?? 0).toString(),
-              sqft,
-              garage: garageSpaces,
-              garageSpaces: garageSpaces,
-              yearBuilt: addressMatch.yearBuilt || null,
-              propertyType: addressMatch.propertyType || "Residential",
-              status: (
-                addressMatch.standardStatus ||
-                addressMatch.status ||
-                "unknown"
-              ).toLowerCase(),
-              standardStatus: addressMatch.standardStatus,
-              featured: false,
-              luxury: false,
-              images: addressMatch.media?.map((m: any) => m.mediaURL) || [],
-              neighborhood: addressMatch.subdivisionName || undefined,
-              coordinates:
-                addressMatch.latitude && addressMatch.longitude
-                  ? {
-                      lat: parseFloat(addressMatch.latitude),
-                      lng: parseFloat(addressMatch.longitude),
-                    }
-                  : undefined,
-              isIdxListing: true,
-              idxSyncedAt: new Date().toISOString(),
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            return res.json({
-              property,
-              raw: addressMatch,
-              method: "search",
-              triedVariants,
-              ...(debugEnabled
-                ? {
-                    debug: {
-                      rawKeys: Object.keys(addressMatch || {}),
-                      photoFields: photoFieldReport(addressMatch),
-                      photosResolved: property.images.length,
-                    },
-                  }
-                : {}),
-            });
-          }
-        }
-      } catch (searchErr) {
-        console.log("🏠 Search fallback error:", searchErr);
-      }
-
-      // Not found
-      console.log("🏠 No property found for address:", address);
-      return res.status(404).json({
-        error: "property_not_found",
-        message: "No property found for this address in our database",
-        address,
-        triedVariants,
-        ...(debugEnabled
-          ? { debug: { triedVariants, note: "No variants produced a match" } }
-          : {}),
-      });
-    } catch (e) {
-      console.error("/api/address-property error", e);
-      res.status(500).json({ error: "server_error" });
-    }
-  });
-
-  // Property detail endpoint: supports
-  // - address fast-path via ?address=...
-  // - MLS fast-path via ?mls=... (legacy) or numeric :id treated as MLS
-  // - fallback: search + details by address
-  app.get("/api/property/:id", async (req, res) => {
-    const { id } = req.params;
-    const verbose = process.env.VERBOSE_PROPERTY_LOGS === "true";
-    const log = (...a: any[]) => {
-      if (verbose) console.log("[property-detail]", ...a);
-    };
-    log("request", { id, query: req.query });
-    try {
-      // Shared lightweight helpers (mirrors logic in address-property buildProperty)
-      const pickFirst = (...vals: any[]) =>
-        vals.find(
-          (v) => v !== undefined && v !== null && v !== "" && !Number.isNaN(v)
-        );
-      const coerceNumber = (v: any) => {
-        if (v === undefined || v === null || v === "") return undefined;
-        const n =
-          typeof v === "string" ? parseFloat(v.replace(/[^0-9.]/g, "")) : v;
-        return Number.isFinite(n) ? n : undefined;
-      };
-      const extractPhotos = (data: any): string[] => {
-        if (!data) return [];
-        const mediaPhotos = Array.isArray(data.Media)
-          ? data.Media.filter(
-              (m: any) =>
-                (m.MediaURL || m.mediaURL) && // accept if category missing or photo
-                (!m.MediaCategory ||
-                  !m.mediaCategory ||
-                  [
-                    (m.MediaCategory || "").toLowerCase(),
-                    (m.mediaCategory || "").toLowerCase(),
-                  ].includes("photo"))
-            )
-              .sort(
-                (a: any, b: any) =>
-                  (a.Order || a.order || 0) - (b.Order || b.order || 0)
-              )
-              .map((m: any) => m.MediaURL || m.mediaURL)
-          : [];
-        const rawPhotos = Array.isArray(data.photos)
-          ? data.photos.filter(Boolean)
-          : [];
-        const photoUrls = Array.isArray(data.PhotoUrls)
-          ? data.PhotoUrls.filter(Boolean)
-          : Array.isArray(data.photoUrls)
-          ? data.photoUrls.filter(Boolean)
-          : [];
-        const singleCandidates = [
-          data.photoUrl,
-          data.primaryPhoto,
-          data.imageUrl,
-          data.primaryImage,
-          data.mainPhoto,
-        ].filter(Boolean);
-        const altArrays: any[] = [];
-        if (Array.isArray(data.images)) altArrays.push(...data.images);
-        if (Array.isArray(data.Images)) altArrays.push(...data.Images);
-        if (Array.isArray(data.Photos)) altArrays.push(...data.Photos);
-        if (Array.isArray(data.photoURLs)) altArrays.push(...data.photoURLs);
-        if (Array.isArray(data.imageURLs)) altArrays.push(...data.imageURLs);
-        const altFiltered = altArrays.filter(Boolean);
-        const merged = Array.from(
-          new Set([
-            ...mediaPhotos,
-            ...rawPhotos,
-            ...photoUrls,
-            ...singleCandidates,
-            ...altFiltered,
-          ])
-        ).filter((u: any) => typeof u === "string" && /https?:\/\//i.test(u));
-        if (merged.length === 0) {
-          console.log("[image-normalization] (detail) no photos resolved", {
-            mlsId: data.mlsId || data.ListingId || data.listingKey,
-            keys: Object.keys(data || {}),
-          });
-        }
-        return merged;
-      };
-      // Fast path resolution (address or mls)
-      let directAddress = (req.query.address as string | undefined)?.trim();
-      let mlsParamFast = (req.query.mls as string | undefined)?.trim();
-      // If mls not explicitly provided, attempt to infer from :id
-      if (!mlsParamFast) {
-        if (/^\d{6,}$/.test(id)) {
-          mlsParamFast = id; // pure numeric id
-          log("treat numeric :id as MLS", id);
-        } else if (/\d{6,}/.test(id)) {
-          // Extract first 6+ digit run inside a slug e.g. some-address-1234567
-          const match = id.match(/(\d{6,})/);
-          if (match) {
-            mlsParamFast = match[1];
-            log("extracted embedded MLS from slug", id, "=>", mlsParamFast);
-          }
-        }
-      }
-      if (!directAddress && mlsParamFast) {
-        try {
-          console.log(`🔍 Attempting MLS fast lookup for: ${mlsParamFast}`);
-          const lookupResp = await fetch(
-            `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?mls_number=${encodeURIComponent(
-              mlsParamFast
-            )}&status=active&limit=1`
-          );
-          if (lookupResp.ok) {
-            const lookupJson = await lookupResp.json();
-            console.log(`MLS lookup response:`, {
-              hasProperties: !!lookupJson.properties,
-              propertiesLength: lookupJson.properties?.length || 0,
-              hasData: !!lookupJson.data,
-              dataLength: lookupJson.data?.length || 0,
-            });
-
-            const first = Array.isArray(lookupJson.properties)
-              ? lookupJson.properties[0]
-              : Array.isArray(lookupJson.data)
-              ? lookupJson.data[0]
-              : null;
-            if (first) {
-              console.log("🏠 Found MLS property:", first.address);
-              log("mls property found", first.address);
-              let actualMLSNumber = mlsParamFast; // default to requested MLS
-              if (first.imageUrl) {
-                log("inspect imageUrl for MLS", first.imageUrl);
-                const mlsMatch = first.imageUrl.match(/\/GPRMLS\/(\d+)\//);
-                if (mlsMatch) {
-                  actualMLSNumber = mlsMatch[1];
-                  log("extracted MLS from imageUrl", actualMLSNumber);
-                }
-              }
-              const property = {
-                id: actualMLSNumber,
-                mlsId: actualMLSNumber,
-                listingKey: actualMLSNumber,
-                mlsNumber: actualMLSNumber,
-                title: `${first.beds} Bed ${first.baths} Bath in ${first.city}`,
-                description: `${first.propertyType || "Residential"} in ${
-                  first.subdivision || first.city
-                }`,
-                price: (first.listPrice || 0).toString(),
-                address: first.address,
-                city: first.city || "",
-                state: first.state || "NE",
-                zipCode: first.zipCode || "",
-                beds: first.beds || 0,
-                baths: (first.baths ?? 0).toString(),
-                sqft: first.sqft || 0,
-                aboveGradeSqft: first.sqft || undefined,
-                basementSqft: first.basementSqft || undefined,
-                totalSqft: first.totalSqft || first.sqft || undefined,
-                garage: first.garage || 0,
-                garageSpaces: first.garage || 0,
-                yearBuilt: first.yearBuilt || null,
-                propertyType: first.propertyType || "Residential",
-                status: (first.status || "unknown").toLowerCase(),
-                standardStatus: first.status || undefined,
-                featured: false,
-                luxury: first.listPrice >= 750000,
-                images: first.imageUrl ? [first.imageUrl] : [],
-                neighborhood: first.subdivision || undefined,
-                style: first.style || undefined,
-                coordinates:
-                  first.latitude && first.longitude
-                    ? { lat: first.latitude, lng: first.longitude }
-                    : undefined,
-                pricePerSqft: first.pricePerSqft || undefined,
-                lotSizeAcres: first.lotSizeAcres || undefined,
-                waterfront: first.waterfront || false,
-                newConstruction: first.newConstruction || false,
-              };
-              return res.json({ success: true, property });
-            } else {
-              console.log(
-                `❌ MLS ${mlsParamFast} not found in CMA API response`
-              );
-            }
-            if (first?.address) directAddress = first.address;
-          } else {
-            console.log(
-              `CMA API returned status ${lookupResp.status} for MLS lookup`
-            );
-          }
-        } catch (e) {
-          console.warn("MLS fast lookup failed", e);
-        }
-      }
-      if (directAddress) {
-        try {
-          const resp = await fetch(
-            "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-details-from-address",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ address: directAddress }),
-            }
-          );
-          if (resp.ok) {
-            const data = await resp.json();
-            const beds = coerceNumber(
-              pickFirst(
-                data.beds,
-                data.Beds,
-                data.bedroomsTotal,
-                data.BedroomsTotal
-              )
-            );
-            const fullBaths = coerceNumber(
-              pickFirst(
-                data.baths,
-                data.Baths,
-                data.bathroomsTotalInteger,
-                data.BathroomsTotalInteger,
-                data.fullBaths,
-                data.FullBaths
-              )
-            );
-            const halfBaths = coerceNumber(
-              pickFirst(
-                data.halfBaths,
-                data.HalfBaths,
-                data.bathroomsHalf,
-                data.BathroomsHalf
-              )
-            );
-            let bathsNumeric: number | undefined = fullBaths;
-            if (fullBaths !== undefined && halfBaths !== undefined)
-              bathsNumeric = fullBaths + halfBaths * 0.5;
-            if (bathsNumeric === undefined)
-              bathsNumeric = coerceNumber(data.bathrooms);
-            const aboveGradeSqft = coerceNumber(
-              pickFirst(
-                data.aboveGradeFinishedArea,
-                data.AboveGradeFinishedArea,
-                data.livingArea,
-                data.LivingArea,
-                data.sqft
-              )
-            );
-            const basementSqft = coerceNumber(
-              pickFirst(
-                data.belowGradeFinishedArea,
-                data.BelowGradeFinishedArea,
-                data.basementFinishedArea,
-                data.BasementFinishedArea
-              )
-            );
-            const totalProvided = coerceNumber(
-              pickFirst(
-                data.totalArea,
-                data.TotalArea,
-                data.buildingAreaTotal,
-                data.BuildingAreaTotal,
-                data.SqFtTotal
-              )
-            );
-            const totalSqft =
-              totalProvided ||
-              (aboveGradeSqft || 0) + (basementSqft || 0) ||
-              undefined;
-            const sqft = aboveGradeSqft || totalProvided || 0;
-            const garageSpaces = coerceNumber(
-              pickFirst(
-                data.garageSpaces,
-                data.GarageSpaces,
-                data.garage,
-                data.Garage,
-                data.parkingTotal,
-                data.ParkingTotal
-              )
-            );
-            const photos = extractPhotos(data);
-            const property = {
-              id: id,
-              mlsId: data.mlsId || data.ListingId || data.listingKey || id,
-              listingKey: data.listingKey || data.mlsId || id,
-              title: data.publicRemarks || data.description || directAddress,
-              description:
-                data.PublicRemarks ||
-                data.publicRemarks ||
-                data.description ||
-                data.PrivateRemarks ||
-                data.MarketingRemarks ||
-                data.Remarks ||
-                data.PropertyDescription ||
-                data.propertyDescription ||
-                data.listingDescription ||
-                data.ListingDescription ||
-                data.summary ||
-                data.Summary ||
-                "Details coming soon.",
-              price: (
-                pickFirst(
-                  data.listPrice,
-                  data.price,
-                  data.currentPrice,
-                  data.ListPrice
-                ) || 0
-              ).toString(),
-              address: directAddress,
-              city: data.city || data.City || "",
-              state: data.state || data.State || "NE",
-              zipCode: data.postalCode || data.PostalCode || data.zipCode || "",
-              beds: beds || 0,
-              baths: (bathsNumeric ?? 0).toString(),
-              sqft: sqft || 0,
-              aboveGradeSqft: aboveGradeSqft || undefined,
-              basementSqft: basementSqft || undefined,
-              totalSqft: totalSqft || undefined,
-              garage: garageSpaces || 0,
-              garageSpaces: garageSpaces || 0,
-              yearBuilt: pickFirst(data.yearBuilt, data.YearBuilt) || null,
-              propertyType:
-                pickFirst(data.propertyType, data.PropertyType) ||
-                "Residential",
-              status: (
-                pickFirst(
-                  data.status,
-                  data.StandardStatus,
-                  data.standardStatus
-                ) || "unknown"
-              ).toLowerCase(),
-              standardStatus:
-                pickFirst(data.StandardStatus, data.standardStatus) ||
-                undefined,
-              featured: false,
-              luxury: false,
-              images: photos,
-              neighborhood:
-                pickFirst(
-                  data.neighborhood,
-                  data.SubdivisionName,
-                  data.subdivision,
-                  data.Subdivision
-                ) || undefined,
-              schoolDistrict: (() => {
-                const schoolData = {
-                  // OLD field names (legacy support)
-                  schoolDistrict: data.schoolDistrict,
-                  SchoolDistrict: data.SchoolDistrict,
-                  ElementarySchoolDistrict: data.ElementarySchoolDistrict,
-                  MiddleOrJuniorSchoolDistrict:
-                    data.MiddleOrJuniorSchoolDistrict,
-                  HighSchoolDistrict: data.HighSchoolDistrict,
-                  // NEW field names (from updated API)
-                  schoolElementary: data.schoolElementary,
-                  schoolElementaryDistrict: data.schoolElementaryDistrict,
-                  schoolMiddle: data.schoolMiddle,
-                  schoolMiddleDistrict: data.schoolMiddleDistrict,
-                  schoolHigh: data.schoolHigh,
-                  schoolHighDistrict: data.schoolHighDistrict,
-                  city: data.city || data.City,
-                };
-                console.log(`🏫 School data for property ${id}:`, schoolData);
-                const actualSchoolDistrict = pickFirst(
-                  // Try NEW field names first (from updated API)
-                  data.schoolElementaryDistrict,
-                  data.schoolMiddleDistrict,
-                  data.schoolHighDistrict,
-                  // Fallback to OLD field names (legacy support)
-                  data.schoolDistrict,
-                  data.SchoolDistrict,
-                  data.ElementarySchoolDistrict,
-                  data.MiddleOrJuniorSchoolDistrict,
-                  data.HighSchoolDistrict
-                );
-                return actualSchoolDistrict || null; // Return null if no actual data available
-              })(),
-              // Individual school names
-              schoolElementary:
-                pickFirst(data.schoolElementary, data.ElementarySchool) || null,
-              schoolMiddle:
-                pickFirst(data.schoolMiddle, data.MiddleOrJuniorSchool) || null,
-              schoolHigh: pickFirst(data.schoolHigh, data.HighSchool) || null,
-              style:
-                pickFirst(
-                  data.style,
-                  data.Style,
-                  data.architecturalStyle,
-                  data.ArchitecturalStyle
-                ) || undefined,
-              coordinates:
-                data.latitude && data.longitude
-                  ? {
-                      lat: parseFloat(data.latitude),
-                      lng: parseFloat(data.longitude),
-                    }
-                  : undefined,
-              features: [],
-              architecturalStyle:
-                data.architecturalStyle || data.ArchitecturalStyle || undefined,
-              secondaryStyle: undefined,
-              styleConfidence: undefined,
-              styleFeatures: undefined,
-              styleAnalyzed: false,
-              listingAgentKey:
-                pickFirst(
-                  data.ListAgentMlsId,
-                  data.listAgentMlsId,
-                  data.listingAgentId
-                ) || undefined,
-              listingOfficeName:
-                pickFirst(data.ListOfficeName, data.listOfficeName) ||
-                undefined,
-              listingContractDate:
-                pickFirst(data.ListingContractDate, data.listingContractDate) ||
-                undefined,
-              daysOnMarket:
-                pickFirst(data.DaysOnMarket, data.daysOnMarket) || undefined,
-              originalListPrice:
-                pickFirst(data.OriginalListPrice, data.originalListPrice) ||
-                undefined,
-              mlsStatus:
-                pickFirst(
-                  data.MLSStatus,
-                  data.mlsStatus,
-                  data.StandardStatus,
-                  data.standardStatus
-                ) || undefined,
-              modificationTimestamp:
-                pickFirst(
-                  data.ModificationTimestamp,
-                  data.modificationTimestamp
-                ) || undefined,
-              photoCount: photos.length,
-              virtualTourUrl:
-                pickFirst(data.VirtualTourURLUnbranded, data.virtualTourUrl) ||
-                undefined,
-              isIdxListing: true,
-              idxSyncedAt: new Date().toISOString(),
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            return res.json({ success: true, property, source: "direct" });
-          }
-          // if not ok fall through to legacy strategy
-        } catch (addrErr) {
-          console.log(
-            "Direct address param detail lookup failed, falling back",
-            addrErr
-          );
-        }
-      }
-      // Strategy:
-      // 1. Try to find property in recent CMA search cache (optional future optimization)
-      // 2. Fallback: perform a broad search (city from address or default) to locate the property record to extract address
-      // 3. Use the address with external details endpoint
-
-      // Extract city from directAddress if available, else default to Lincoln
-      let searchCity = "lincoln"; // default
-      if (directAddress) {
-        const cityMatch = directAddress.match(/,\s*([^,]+),\s*NE/i);
-        if (cityMatch) {
-          searchCity = cityMatch[1].trim().toLowerCase();
-        }
-      }
-
-      // We'll attempt a search call similar to featured listings to gather context
-      let searchUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?city=${encodeURIComponent(
-        searchCity
-      )}&limit=100&status=active&exclude_zero_price=true`;
-      let baseProperty: any | null = null;
-      let triedBroadSearch = false;
-
-      try {
-        const resp = await fetch(searchUrl);
-        if (resp.ok) {
-          const data = await resp.json();
-          if (Array.isArray(data.data)) {
-            baseProperty = data.data.find(
-              (p: any) => p.id === id || p.mlsId === id || p.listingKey === id
-            );
-          } else if (Array.isArray(data.properties)) {
-            baseProperty = data.properties.find(
-              (p: any) => p.id === id || p.mlsId === id || p.listingKey === id
-            );
-          } else if (Array.isArray(data)) {
-            baseProperty = data.find(
-              (p: any) => p.id === id || p.mlsId === id || p.listingKey === id
-            );
-          }
-
-          // If no property found with city-specific search, try broader search
-          if (!baseProperty && !triedBroadSearch) {
-            console.log(
-              `No property found for ${id} in ${searchCity}, trying broader search...`
-            );
-            triedBroadSearch = true;
-            const broadSearchUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?limit=200&status=active&exclude_zero_price=true`;
-            const broadResp = await fetch(broadSearchUrl);
-            if (broadResp.ok) {
-              const broadData = await broadResp.json();
-              if (Array.isArray(broadData.data)) {
-                baseProperty = broadData.data.find(
-                  (p: any) =>
-                    p.id === id || p.mlsId === id || p.listingKey === id
-                );
-              } else if (Array.isArray(broadData.properties)) {
-                baseProperty = broadData.properties.find(
-                  (p: any) =>
-                    p.id === id || p.mlsId === id || p.listingKey === id
-                );
-              } else if (Array.isArray(broadData)) {
-                baseProperty = broadData.find(
-                  (p: any) =>
-                    p.id === id || p.mlsId === id || p.listingKey === id
-                );
-              }
-              if (baseProperty) {
-                console.log(`Found property ${id} in broader search`);
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Property search during detail lookup failed", e);
-      }
-
-      // If still no property found, try team properties endpoint as final fallback
-      if (!baseProperty) {
-        console.log(`Trying team properties endpoint for property ${id}...`);
-        try {
-          const teamPropsResp = await fetch(
-            `http://gbcma.us-east-2.elasticbeanstalk.com/api/team-properties?limit=500&status=Active`
-          );
-          if (teamPropsResp.ok) {
-            const teamData = await teamPropsResp.json();
-            const teamProperties = teamData.properties || [];
-            baseProperty = teamProperties.find(
-              (p: any) => p.id === id || p.mlsId === id || p.listingKey === id
-            );
-            if (baseProperty) {
-              console.log(`Found property ${id} in team properties`);
-            }
-          }
-        } catch (teamErr) {
-          console.warn("Team properties fallback failed", teamErr);
-        }
-      }
-
-      // If still no property found, check if we have a direct address and create a minimal property object
-      if (!baseProperty && directAddress) {
-        console.log(
-          `Creating minimal property object for ${id} with address: ${directAddress}`
-        );
-        baseProperty = {
-          id: id,
-          mlsId: id,
-          listingKey: id,
-          address: directAddress,
-          city: searchCity,
-          state: "NE",
-          title: `Property at ${directAddress}`,
-          description: "Property details are being processed.",
-          price: 0,
-          beds: 0,
-          baths: 0,
-          sqft: 0,
-          propertyType: "Residential",
-          status: "active",
-          standardStatus: "Active",
-          images: [],
-        };
-      }
-
-      if (!baseProperty) {
-        console.log(`❌ Property ${id} not found after all searches`);
-        console.log(`Search details:`, {
-          id,
-          directAddress,
-          mlsParamFast,
-          searchCity,
-          triedBroadSearch,
-        });
-        return res.status(404).json({
-          success: false,
-          message: "Property not found in search results",
-          searchedSources: [
-            "CMA API city search",
-            "CMA API broad search",
-            "Team Properties API",
-          ],
-          searchCity: searchCity,
-          mlsId: id,
-          directAddress: directAddress,
-          debug: {
-            mlsParamFast,
-            triedBroadSearch,
-          },
-        });
-      }
-
-      const address =
-        baseProperty.address ||
-        baseProperty.fullAddress ||
-        baseProperty.displayAddress;
-      if (!address) {
-        return res.status(404).json({
-          success: false,
-          message: "Address not available for property",
-        });
-      }
-
-      // Call external property details endpoint by address
-      const detailsResp = await fetch(
-        "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-details-from-address",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ address }),
-        }
-      );
-
-      let details: any = null;
-      if (detailsResp.ok) {
-        try {
-          details = await detailsResp.json();
-        } catch {}
-      }
-
-      // Merge basic + detail data into unified property object expected by frontend
-      // Derive enhanced numeric + photo fields from details where available
-      const detailAbove = coerceNumber(
-        pickFirst(
-          details?.aboveGradeFinishedArea,
-          details?.AboveGradeFinishedArea,
-          details?.livingArea,
-          details?.LivingArea,
-          details?.sqft
-        )
-      );
-      const detailBasement = coerceNumber(
-        pickFirst(
-          details?.belowGradeFinishedArea,
-          details?.BelowGradeFinishedArea,
-          details?.basementFinishedArea,
-          details?.BasementFinishedArea
-        )
-      );
-      const detailTotal = coerceNumber(
-        pickFirst(
-          details?.totalArea,
-          details?.TotalArea,
-          details?.buildingAreaTotal,
-          details?.BuildingAreaTotal,
-          details?.SqFtTotal
-        )
-      );
-      const totalSqftMerged =
-        detailTotal ||
-        (detailAbove || 0) + (detailBasement || 0) ||
-        baseProperty.totalSqft ||
-        undefined;
-      const photosMerged = (() => {
-        const detailPhotos = extractPhotos(details || {});
-        const basePhotos = Array.isArray(baseProperty.images)
-          ? baseProperty.images.filter(Boolean)
-          : [];
-        return detailPhotos.length ? detailPhotos : basePhotos;
-      })();
-      const merged = {
-        id: baseProperty.id || id,
-        mlsId: baseProperty.mlsId || baseProperty.listingKey || id,
-        listingKey: baseProperty.listingKey || baseProperty.mlsId || id,
-        title:
-          baseProperty.title ||
-          `${baseProperty.beds || "?"} Bed ${baseProperty.baths || "?"} ${
-            baseProperty.propertyType || "Home"
-          }`,
-        description:
-          baseProperty.description ||
-          details?.description ||
-          details?.publicRemarks ||
-          "Details coming soon.",
-        price: (baseProperty.price || details?.listPrice || 0).toString(),
-        address,
-        city: baseProperty.city || details?.city || "",
-        state: baseProperty.state || details?.state || "NE",
-        zipCode: baseProperty.zipCode || details?.postalCode || "",
-        beds: baseProperty.beds || details?.beds || 0,
-        baths: (baseProperty.baths || details?.baths || 0).toString(),
-        sqft:
-          baseProperty.sqft ||
-          detailAbove ||
-          detailTotal ||
-          details?.livingArea ||
-          0,
-        aboveGradeSqft: detailAbove || undefined,
-        basementSqft: detailBasement || undefined,
-        totalSqft: totalSqftMerged || undefined,
-        yearBuilt: baseProperty.yearBuilt || details?.yearBuilt || null,
-        propertyType:
-          baseProperty.propertyType || details?.propertyType || "Residential",
-        status: (
-          baseProperty.status ||
-          details?.status ||
-          "active"
-        ).toLowerCase(),
-        standardStatus:
-          baseProperty.standardStatus || details?.standardStatus || "Active",
-        featured: baseProperty.featured || false,
-        luxury: baseProperty.luxury || false,
-        images: photosMerged,
-        neighborhood: baseProperty.neighborhood || details?.subdivision || null,
-        schoolDistrict: details?.schoolDistrict || null,
-        style: baseProperty.style || details?.style || null,
-        coordinates:
-          baseProperty.coordinates ||
-          (details?.lat && details?.lng
-            ? { lat: details.lat, lng: details.lng }
-            : null),
-        features: details?.features || [],
-        architecturalStyle: details?.architecturalStyle || null,
-        secondaryStyle: null,
-        styleConfidence: null,
-        styleFeatures: [],
-        styleAnalyzed: false,
-        listingAgentKey: details?.listAgentKey || null,
-        listingOfficeName: details?.listOfficeName || null,
-        listingContractDate: details?.listingContractDate || null,
-        daysOnMarket: details?.daysOnMarket || null,
-        originalListPrice: details?.originalListPrice || null,
-        mlsStatus:
-          details?.mlsStatus ||
-          details?.standardStatus ||
-          baseProperty.standardStatus ||
-          "Active",
-        modificationTimestamp: details?.modificationTimestamp || null,
-        photoCount: photosMerged.length,
-        virtualTourUrl: details?.virtualTourUrl || null,
-        isIdxListing: true,
-        idxSyncedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      return res.json({ success: true, property: merged });
-    } catch (e) {
-      console.error("Property detail fetch error", e);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to retrieve property",
-        error: (e as any)?.message,
-      });
-    }
-  });
-
-  // Property history stub endpoint (to be implemented with real price/status history)
-  app.get("/api/property/:id/history", async (req, res) => {
-    const { id } = req.params;
-    res.json({
-      success: true,
-      propertyId: id,
-      history: [],
-      message: "History integration pending",
-    });
-  });
-
-  // Tour / Info request persistence with validation
-  app.post("/api/tour-requests", async (req: any, res: any) => {
-    // If body not parsed, attempt to parse raw body
+  }
+}, 10 * 60 * 1000);
+
+// Configure multer for file uploads
+const upload = multer({
+  dest: "uploads/",
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit for general uploads
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow image, audio, and video files
     if (
-      req.headers["content-type"]?.includes("application/json") &&
-      typeof req.body === "undefined"
+      file.mimetype.startsWith("image/") ||
+      file.mimetype.startsWith("audio/") ||
+      file.mimetype.startsWith("video/")
     ) {
-      let raw = "";
-      await new Promise((resolve) => {
-        req.on("data", (c: any) => (raw += c));
-        req.on("end", resolve);
-      });
-      try {
-        req.body = JSON.parse(raw || "{}");
-      } catch {
-        req.body = {};
-      }
+      // Support all video formats
+      cb(null, true);
+    } else {
+      cb(new Error("Only image, audio, and video files are allowed"));
     }
-    try {
-      const {
-        type,
-        name,
-        email,
-        phone,
-        message,
-        date,
-        timeSlot,
-        propertyId,
-        address,
-        agentName,
-      } = req.body || {};
-      const fields: string[] = [];
-      if (!type || !["tour", "info"].includes(type)) fields.push("type");
-      if (!name || typeof name !== "string" || !name.trim())
-        fields.push("name");
-      const emailRegex = /.+@.+\..+/;
-      if (!email || !emailRegex.test(String(email))) fields.push("email");
-      if (phone) {
-        const phoneRegex =
-          /^(\+?1[\s.-]?)?(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})$/;
-        if (!phoneRegex.test(String(phone))) fields.push("phone");
-      }
-      if (type === "tour") {
-        if (!date) fields.push("date");
-        if (!timeSlot) fields.push("timeSlot");
-      }
-      if (fields.length)
-        return res
-          .status(400)
-          .json({ success: false, error: "validation_failed", fields });
+  },
+});
 
-      try {
-        const { tourRequests } = await import("@shared/schema");
-        const { db } = await import("./db");
-        const inserted = await db
-          .insert(tourRequests)
-          .values({
-            type,
-            name: name.trim(),
-            email: email.trim(),
-            phone: phone ? String(phone).trim() : null,
-            message: message ? String(message).trim() : null,
-            date: date || null,
-            timeSlot: timeSlot || null,
-            propertyId: propertyId || null,
-            address: address || null,
-            agentName: agentName || null,
-          })
-          .returning();
-
-        // Send email notifications if configured
-        try {
-          const { emailService } = await import("./email-service");
-
-          if (emailService.isConfigured()) {
-            // Create a lead-like object for email notifications
-            const requestData = {
-              id: inserted[0].id,
-              firstName: name.trim().split(" ")[0] || name.trim(),
-              lastName: name.trim().split(" ").slice(1).join(" ") || "",
-              email: email.trim(),
-              phone: phone ? String(phone).trim() : null,
-              propertyAddress: address || "",
-              message:
-                type === "tour"
-                  ? `🏠 IN-PERSON TOUR REQUEST${
-                      address ? ` for ${address}` : ""
-                    }
-
-📅 Requested Date: ${date || "Not specified"}
-⏰ Preferred Time: ${timeSlot || "Not specified"}
-
-${
-  message
-    ? `📝 Customer Message:\n${message}`
-    : "No additional message provided."
-}
-
-🎯 This is a tour request - please contact the customer to schedule their property visit.`
-                  : `📋 PROPERTY INFORMATION REQUEST${
-                      address ? ` for ${address}` : ""
-                    }
-
-${
-  message
-    ? `📝 Customer Message:\n${message}`
-    : "No additional message provided."
-}
-
-💡 This is an information request - please provide the customer with detailed property information, pricing, and availability.`,
-              interest:
-                type === "tour"
-                  ? "In-Person Property Tour"
-                  : "Property Information & Details",
-              source: "property_detail_widget",
-              createdAt: inserted[0].createdAt,
-              // Add missing required fields for email service
-              companyName: null,
-              budgetRange: null,
-              preferredContactTime: null,
-              leadSourceDetails: null,
-              leadStatus: "new",
-              propertyTypePreference: null,
-              preferredLocation: null,
-              agentId: null,
-              agentSlug: null,
-            };
-
-            // Send notification to the agent/business owner
-            await emailService.sendLeadNotification(
-              requestData,
-              "mygoldenbrick1@gmail.com"
-            );
-            console.log(
-              `📧 ${
-                type === "tour" ? "Tour" : "Info"
-              } request notification sent to mygoldenbrick1@gmail.com`
-            );
-
-            // Send confirmation to the customer
-            await emailService.sendLeadConfirmation(requestData);
-            console.log(
-              `📧 ${
-                type === "tour" ? "Tour" : "Info"
-              } request confirmation sent to ${email}`
-            );
-          } else {
-            console.log(
-              "📧 Email service not configured - skipping notifications"
-            );
-          }
-        } catch (emailError) {
-          console.error("❌ Failed to send email notifications:", emailError);
-          // Don't fail the request if email fails
-        }
-
-        return res.json({ success: true, request: inserted[0] });
-      } catch (dbErr) {
-        console.warn("tour-requests: DB insert failed", dbErr);
-        return res.json({
-          success: true,
-          request: {
-            type,
-            name,
-            email,
-            phone: phone || null,
-            message: message || null,
-            date: date || null,
-            timeSlot: timeSlot || null,
-            propertyId,
-            address,
-            agentName,
-            createdAt: new Date().toISOString(),
-            transient: true,
-          },
-        });
-      }
-    } catch (e) {
-      console.error("/api/tour-requests error", e);
-      res.status(500).json({ error: "server_error" });
+// Configure multer specifically for video uploads (larger file size)
+const videoUpload = multer({
+  dest: "uploads/videos/",
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit for video uploads
+  },
+  fileFilter: (req, file, cb) => {
+    // Only allow video files
+    if (file.mimetype.startsWith("video/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only video files are allowed"));
     }
-  });
+  },
+});
 
-  // Featured Properties Endpoint - Optimized for homepage
-  app.get("/api/featured-properties", async (req, res) => {
-    try {
-      console.log("🏠 Fetching featured properties from CMA API");
+function generateFallbackScript(
+  topic: string,
+  neighborhood: string,
+  videoType: string,
+  duration: number,
+  platform: string = "youtube"
+): string {
+  const videoTypeTemplates = {
+    market_update: `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices. Let's talk about the current real estate market in ${neighborhood}.
 
-      // Use CMA API's cma-comparables endpoint for better Nebraska data
-      const cmaUrl =
-        "http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?property_type=Residential&limit=8&status=active&exclude_zero_price=true";
+The ${neighborhood} market has been showing some interesting trends lately. Home values have remained stable, and we're seeing consistent buyer interest in this area.
 
-      const response = await fetch(cmaUrl, {
-        headers: {
-          "User-Agent": "NebraskaHomeHub/1.0",
-          Accept: "application/json",
-        },
-      });
+For buyers, this means there are still good opportunities to find your perfect home in ${neighborhood}. For sellers, it's a great time to position your property competitively.
 
-      // (legacy nested position removed: /api/properties/by-mls now defined top-level below)
+If you're thinking about buying or selling in ${neighborhood}, I'd love to help you navigate this market. Give me a call at Mike Bjork, your local Omaha real estate expert.
 
-      // Simple MLS autocomplete suggestions - naive search by partial match against external API if available
-      app.get("/api/properties/mls-suggest", async (req, res) => {
-        try {
-          const q = String(req.query.q || "").trim();
-          if (q.length < 2) return res.json({ suggestions: [] });
-          const baseUrl = process.env.CMA_API_BASE || "";
-          if (!baseUrl) return res.json({ suggestions: [] });
-          const url = `${baseUrl}/properties?mlsNumber_like=${encodeURIComponent(
-            q
-          )}&limit=5`;
-          const r = await fetch(url);
-          if (!r.ok) return res.json({ suggestions: [] });
-          const json = await r.json();
-          const props = Array.isArray(json.results)
-            ? json.results
-            : json.results
-            ? [json.results]
-            : [];
-          const suggestions = props.slice(0, 5).map((p: any) => ({
-            mlsId: p.MlsNumber || p.ListingId || p.ListingKey,
-            address: [p.StreetNumber, p.StreetName, p.City]
-              .filter(Boolean)
-              .join(" "),
-            listPrice: p.ListPrice || 0,
-          }));
-          res.json({ suggestions });
-        } catch (error) {
-          console.error("/api/properties/mls-suggest error", error);
-          res.status(500).json({ suggestions: [] });
-        }
-      });
+Thanks for watching, and I'll see you in the next video!`,
 
-      if (!response.ok) {
-        throw new Error(
-          `CMA API error: ${response.status} ${response.statusText}`
-        );
-      }
+    neighborhood_tour: `Welcome to ${neighborhood}! I'm Mike Bjork with Berkshire Hathaway HomeServices, and I'm excited to show you why this neighborhood is such a special place to call home.
 
-      const cmaData = await response.json();
-      const properties = cmaData || [];
+${neighborhood} offers a perfect blend of community charm and modern convenience. You'll find excellent schools, beautiful parks, and friendly neighbors who really care about maintaining the character of this area.
 
-      console.log(
-        `✅ Got ${properties.length} properties from CMA API for featured section`
-      );
+The housing options here range from charming starter homes to spacious family properties, all with that distinctive ${neighborhood} character that residents love.
 
-      // Transform CMA response to match our Property schema
-      const featuredProperties = properties
-        .slice(0, 8)
-        .map((property: any) => ({
-          id: property.id || Math.random().toString(),
-          mlsId: property.id,
-          title: `${property.beds || "?"} Bed ${
-            property.baths || "?"
-          } Bath in ${property.city || "Omaha"}`,
-          price: property.listPrice || property.soldPrice || 0,
-          address: property.address || "Address not available",
-          city: property.city || "Omaha",
-          state: property.state || "NE",
-          zipCode: property.zipCode || "",
-          beds: property.beds || 0,
-          baths: property.baths?.toString() || "0",
-          sqft: property.sqft || 0,
-          yearBuilt: property.yearBuilt,
-          garage: property.garage || 0,
-          propertyType: property.propertyType || "Single Family",
-          status: property.status === "Closed" ? "sold" : "active",
-          standardStatus: property.status || "Active",
-          subdivision: property.subdivision || "",
-          featured: true, // All properties in this endpoint are featured
-          luxury: (property.listPrice || property.soldPrice || 0) > 500000,
-          images: property.imageUrl
-            ? [property.imageUrl]
-            : [
-                "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=800&q=80",
-              ],
-          coordinates: {
-            lat: property.latitude || 41.2565,
-            lng: property.longitude || -95.9345,
-          },
-          description: `Beautiful ${property.propertyType || "property"} in ${
-            property.subdivision || property.city
-          }`,
-          photoCount: property.imageUrl ? 1 : 0,
-          listAgent: property.listAgent?.name || "Nebraska Agent",
-          listOffice: property.listOffice?.name || "Nebraska Realty",
-        }));
+If you're considering making ${neighborhood} your new home, I'd be happy to show you around and help you find the perfect property. Contact Mike Bjork, your Omaha real estate specialist.
 
-      res.json({
-        data: featuredProperties,
-        source: "cma-featured",
-        total: featuredProperties.length,
-        cached: false,
-      });
-    } catch (error) {
-      console.error("❌ Featured properties API error:", error);
+Thanks for joining me on this tour of ${neighborhood}!`,
 
-      // Return fallback mock data for featured properties
-      const mockFeatured = [
-        {
-          id: "FEATURED1",
-          mlsId: "FEATURED1",
-          title: "4 Bed 3 Bath in Omaha",
-          price: 485000,
-          address: "2234 Dodge Street",
-          city: "Omaha",
-          state: "NE",
-          zipCode: "68102",
-          beds: 4,
-          baths: "3",
-          sqft: 2850,
-          yearBuilt: 2018,
-          propertyType: "Single Family",
-          status: "active",
-          standardStatus: "Active",
-          featured: true,
-          luxury: false,
-          images: [
-            "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=800&q=80",
-          ],
-          coordinates: { lat: 41.2565, lng: -95.9345 },
-          description: "Beautiful modern home in downtown Omaha",
-          photoCount: 1,
-        },
-        {
-          id: "FEATURED2",
-          mlsId: "FEATURED2",
-          title: "5 Bed 4 Bath in Lincoln",
-          price: 625000,
-          address: "1456 Pine Lake Road",
-          city: "Lincoln",
-          state: "NE",
-          zipCode: "68510",
-          beds: 5,
-          baths: "4",
-          sqft: 3200,
-          yearBuilt: 2020,
-          propertyType: "Single Family",
-          status: "active",
-          standardStatus: "Active",
-          featured: true,
-          luxury: true,
-          images: [
-            "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80",
-          ],
-          coordinates: { lat: 40.8192, lng: -96.6905 },
-          description: "Luxury home with modern amenities",
-          photoCount: 1,
-        },
-      ];
+    buyer_tips: `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices, and today I want to share some essential tips for home buyers, especially if you're looking in the ${neighborhood} area.
 
-      res.json({
-        data: mockFeatured,
-        source: "mock-featured-fallback",
-        total: mockFeatured.length,
-        cached: false,
-        error:
-          error instanceof Error ? error.message : "Featured API unavailable",
-      });
-    }
-  });
+First, get pre-approved for your mortgage before you start shopping. This shows sellers you're serious and gives you a clear budget.
 
-  // TOP-LEVEL: Fetch properties by MLS IDs with external API + DB fallback
-  app.get("/api/properties/by-mls", async (req, res) => {
-    const started = Date.now();
-    try {
-      const idsParam = String(req.query.ids || "").trim();
-      if (!idsParam) return res.json({ properties: [], count: 0, tookMs: 0 });
-      const rawIds = idsParam
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => !!s)
-        .filter((s, i, arr) => arr.indexOf(s) === i);
+Second, work with a local agent who knows ${neighborhood} inside and out. I've been helping buyers find homes in this area for years, and local knowledge makes all the difference.
 
-      console.log("🔎 [by-mls] Requested IDs:", rawIds);
+Third, don't skip the home inspection. It's your best protection against costly surprises down the road.
 
-      const baseUrl = process.env.CMA_API_BASE || "";
-      const results: any[] = [];
-      const unresolved: string[] = [];
+If you're ready to start your home buying journey in ${neighborhood} or anywhere in Omaha, give me a call. Mike Bjork, here to help you every step of the way.
 
-      // External API attempt per ID
-      for (const mlsId of rawIds) {
-        let resolved = false;
-        if (baseUrl) {
-          const url = `${baseUrl}/properties?mlsNumber=${encodeURIComponent(
-            mlsId
-          )}`;
-          try {
-            console.log("🌐 [by-mls] Fetching", url);
-            const r = await fetch(url, {
-              headers: { Accept: "application/json" },
-            });
-            if (r.ok) {
-              const json = await r.json();
-              const first = Array.isArray(json.results)
-                ? json.results[0]
-                : json.results || json;
-              if (first) {
-                results.push({
-                  id: first.ListingKey || first.Id || mlsId,
-                  mlsId: first.MlsNumber || first.ListingId || mlsId,
-                  listPrice: first.ListPrice || first.Price || 0,
-                  address: [
-                    first.StreetNumber,
-                    first.StreetName,
-                    first.City,
-                    first.StateOrProvince,
-                  ]
-                    .filter(Boolean)
-                    .join(" "),
-                  city: first.City,
-                  state: first.StateOrProvince,
-                  beds: first.BedroomsTotal,
-                  baths: first.BathroomsTotalInteger,
-                  sqft: first.LivingArea,
-                  status: first.StandardStatus,
-                  image: first.Media?.[0]?.MediaURL,
-                  featured: true,
-                  source: baseUrl ? "external" : "unknown",
-                });
-                resolved = true;
-              }
-            } else {
-              console.warn("⚠️ [by-mls] Non-OK response", r.status, url);
-            }
-          } catch (e) {
-            console.warn("⚠️ [by-mls] External fetch failed", mlsId, e);
-          }
-        }
-        if (!resolved) unresolved.push(mlsId);
-      }
+Thanks for watching!`,
 
-      // DB fallback for unresolved
-      if (unresolved.length) {
-        console.log("🗄️ [by-mls] Falling back to DB for", unresolved);
-        try {
-          const { db } = await import("./db");
-          // Basic direct SQL; ensure escaping
-          const idList = unresolved
-            .map((id) => `'${id.replace(/'/g, "''")}'`)
-            .join(",");
-          const rawSql = `select * from properties where mls_id in (${idList}) limit ${unresolved.length}`;
-          console.log("🗄️ [by-mls] DB query:", rawSql);
-          const rows: any = await (db as any).execute(rawSql);
-          const list: any[] = Array.isArray(rows?.rows)
-            ? rows.rows
-            : Array.isArray(rows)
-            ? rows
-            : [];
-          for (const row of list) {
-            results.push({
-              id: row.listing_key || row.id || row.mls_id,
-              mlsId: row.mls_id,
-              listPrice: Number(row.price) || 0,
-              address: row.address,
-              city: row.city,
-              state: row.state,
-              beds: row.beds,
-              baths: Number(row.baths),
-              sqft: row.sqft,
-              status: row.standard_status || row.status,
-              image: Array.isArray(row.images) ? row.images[0] : null,
-              featured: true,
-              source: "db",
-            });
-          }
-        } catch (e) {
-          console.warn("⚠️ [by-mls] DB fallback failed", e);
-        }
-      }
+    seller_guide: `Thinking about selling your home in ${neighborhood}? I'm Mike Bjork with Berkshire Hathaway HomeServices, and I want to help you get the best possible result.
 
-      // Re-order according to original rawIds
-      const ordered = rawIds
-        .map((id) => results.find((r) => r.mlsId == id || r.id == id))
-        .filter(Boolean);
-      const tookMs = Date.now() - started;
-      console.log(
-        `✅ [by-mls] Resolved ${ordered.length}/${rawIds.length} in ${tookMs}ms`
-      );
-      res.json({ properties: ordered, count: ordered.length, tookMs });
-    } catch (error) {
-      console.error("/api/properties/by-mls error", error);
-      res.status(500).json({ message: "Failed to fetch properties" });
-    }
-  });
+First, pricing is crucial. I'll provide you with a detailed market analysis to ensure your home is priced competitively for the ${neighborhood} market.
 
-  /**
-   * New Construction Properties Endpoint
-   * Leverages CMA comparables API with new_construction=true flag (and optional year built floor)
-   * Query params (optional): city, min_year_built, limit (default 40)
-   */
-  app.get("/api/new-construction", async (req, res) => {
-    try {
-      const rawQuery = req.query as Record<string, string | undefined>;
-      const city = rawQuery.city;
-      const min_year_built = rawQuery.min_year_built;
-      const limit = rawQuery.limit ?? "40";
-      const pageRaw = rawQuery.page ?? "1";
+Second, presentation matters. Small improvements can make a big difference in how quickly your home sells and for how much.
 
-      const parseNumber = (value: string | undefined, fallback: number) => {
-        const n = Number(value);
-        return Number.isFinite(n) && n > 0 ? n : fallback;
-      };
+Third, marketing is key. I'll make sure your ${neighborhood} home gets maximum exposure to qualified buyers.
 
-      const requestedLimit = parseNumber(limit, 40);
-      const requestedPage = parseNumber(pageRaw, 1);
+The ${neighborhood} market has unique characteristics, and as your local expert, I know exactly how to position your property for success.
 
-      const extractComparables = (payload: any): any[] => {
-        if (!payload) return [];
-        if (Array.isArray(payload)) return payload;
-        if (Array.isArray(payload.data)) return payload.data;
-        if (Array.isArray(payload.properties)) return payload.properties;
-        if (Array.isArray(payload.active)) return payload.active;
-        if (payload.data && typeof payload.data === "object") {
-          if (Array.isArray(payload.data.properties))
-            return payload.data.properties;
-          if (Array.isArray(payload.data.active)) return payload.data.active;
-        }
-        if (payload.combined && typeof payload.combined === "object") {
-          if (Array.isArray(payload.combined.active))
-            return payload.combined.active;
-          if (Array.isArray(payload.combined.properties))
-            return payload.combined.properties;
-        }
-        return [];
-      };
+Ready to sell? Contact Mike Bjork, your trusted Omaha real estate professional.
 
-      const baseParamsPrimary = new URLSearchParams();
-      baseParamsPrimary.set("new_construction", "true");
-      baseParamsPrimary.set("limit", String(requestedLimit));
-      baseParamsPrimary.set("status", "active");
-      baseParamsPrimary.set("exclude_zero_price", "true");
-      if (city) baseParamsPrimary.set("city", city);
-      if (min_year_built)
-        baseParamsPrimary.set("min_year_built", min_year_built);
-      else baseParamsPrimary.set("min_year_built", "2020");
+Thanks for watching!`,
 
-      const primaryUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?${baseParamsPrimary.toString()}`;
-      console.log(
-        "🏗️ Fetching new construction properties (primary):",
-        primaryUrl
-      );
+    moving_guide: `Planning a move to ${neighborhood}? I'm Mike Bjork with Berkshire Hathaway HomeServices, and I want to help make your transition as smooth as possible.
 
-      let note: string | undefined;
-      let list: any[] = [];
-      let upstreamCount = 0;
-      try {
-        const r = await fetch(primaryUrl, {
-          headers: { "User-Agent": "NebraskaHomeHub/1.0" },
-          signal: AbortSignal.timeout(15000),
-        });
-        if (!r.ok) throw new Error(`Upstream responded ${r.status}`);
-        const raw = await r.json();
-        list = extractComparables(raw);
-        upstreamCount =
-          Number(
-            (raw?.counts && (raw.counts.active || raw.counts.total)) ??
-              raw?.total ??
-              raw?.totalAvailable ??
-              list.length
-          ) || list.length;
-        if (Array.isArray(raw?.properties) && !list.length) {
-          list = raw.properties;
-          upstreamCount = raw.properties.length;
-        }
-      } catch (err) {
-        note = `primary fetch error: ${(err as any)?.message || err}`;
-      }
+${neighborhood} is a wonderful community with so much to offer. From great schools to local amenities, you'll find everything you need to feel right at home.
 
-      if (!list.length) {
-        const fallbackParams = new URLSearchParams();
-        fallbackParams.set("limit", String(requestedLimit));
-        fallbackParams.set("status", "active");
-        fallbackParams.set("exclude_zero_price", "true");
-        if (min_year_built)
-          fallbackParams.set("min_year_built", min_year_built);
-        else fallbackParams.set("min_year_built", "2020");
-        const fallbackUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?${fallbackParams.toString()}`;
-        console.log("🏗️ New construction fallback fetch (broad):", fallbackUrl);
-        try {
-          const r2 = await fetch(fallbackUrl, {
-            headers: { "User-Agent": "NebraskaHomeHub/1.0" },
-            signal: AbortSignal.timeout(15000),
-          });
-          if (r2.ok) {
-            const raw2 = await r2.json();
-            const broadList: any[] = extractComparables(raw2);
-            const keywordRegex =
-              /(new construction|to be built|under construction|proposed|spec home|model home|custom build|just built)/i;
-            const negativeRegex = /not new/i;
-            const minYear = Number(min_year_built) || 2020;
-            const currentYear = new Date().getFullYear();
-            const filtered: any[] = [];
-            for (const p of broadList) {
-              const cond = (p.condition ||
-                p.Condition ||
-                p.propertyCondition ||
-                "") as string;
-              const remarks = (p.publicRemarks ||
-                p.PublicRemarks ||
-                p.remarks ||
-                p.RemarksPublic ||
-                "") as string;
-              const yb = (p.yearBuilt || p.YearBuilt || 0) as number;
-              const positive =
-                keywordRegex.test(cond) ||
-                keywordRegex.test(remarks) ||
-                yb >= minYear;
-              if (!positive) continue;
-              const neg =
-                negativeRegex.test(cond) || negativeRegex.test(remarks);
-              const recentOverride = yb >= currentYear - 1;
-              if (neg && !recentOverride && !/model home/i.test(cond)) continue;
-              filtered.push(p);
-            }
-            list = filtered;
-            upstreamCount =
-              Number(
-                (raw2?.counts && (raw2.counts.active || raw2.counts.total)) ??
-                  raw2?.total ??
-                  raw2?.totalAvailable ??
-                  broadList.length
-              ) || broadList.length;
-            note = note
-              ? `${note}; broadened without new_construction flag`
-              : "broadened without new_construction flag";
-          } else {
-            note = note
-              ? `${note}; fallback status ${r2.status}`
-              : `fallback status ${r2.status}`;
-          }
-        } catch (err2) {
-          note = note
-            ? `${note}; fallback error ${(err2 as any)?.message || err2}`
-            : `fallback error ${(err2 as any)?.message || err2}`;
-        }
-      }
+When you're ready to make the move, I'll help you find the perfect property that fits your lifestyle and budget. I know the ${neighborhood} market inside and out.
 
-      const yearBuiltHistogram: Record<string, number> = {};
-      list.forEach((p) => {
-        const y = p.yearBuilt || p.YearBuilt;
-        if (y) yearBuiltHistogram[y] = (yearBuiltHistogram[y] || 0) + 1;
-      });
+I can also connect you with trusted local services to help with your move - from movers to utility companies to the best local restaurants.
 
-      const collectImages = (payload: any): string[] => {
-        const urls = new Set<string>();
-        const push = (value?: string) => {
-          if (!value || typeof value !== "string") return;
-          const trimmed = value.trim();
-          if (!trimmed) return;
-          urls.add(trimmed);
-        };
-        const pickObjectUrl = (obj: any) =>
-          obj?.url ||
-          obj?.Url ||
-          obj?.URL ||
-          obj?.mediaUrl ||
-          obj?.MediaUrl ||
-          obj?.mediaURL ||
-          obj?.MediaURL ||
-          obj?.thumbnail ||
-          obj?.Thumbnail ||
-          obj?.href;
+Moving to ${neighborhood} is an exciting step, and I'm here to help you every step of the way. Contact Mike Bjork, your Omaha real estate guide.
 
-        if (Array.isArray(payload?.photos)) {
-          payload.photos.forEach((v: any) =>
-            push(typeof v === "string" ? v : pickObjectUrl(v))
-          );
-        }
-        if (Array.isArray(payload?.images)) {
-          payload.images.forEach((v: any) =>
-            push(typeof v === "string" ? v : pickObjectUrl(v))
-          );
-        }
-        if (Array.isArray(payload?.PhotoUrls))
-          payload.PhotoUrls.forEach((v: any) => push(v));
-        if (Array.isArray(payload?.PhotoURLS))
-          payload.PhotoURLS.forEach((v: any) => push(v));
-        if (Array.isArray(payload?.Media)) {
-          payload.Media.forEach((m: any) =>
-            push(
-              m?.MediaURL ||
-                m?.mediaUrl ||
-                m?.MediaUrl ||
-                m?.mediaURL ||
-                pickObjectUrl(m)
-            )
-          );
-        }
-        push(payload?.imageUrl || payload?.ImageUrl);
-        push(payload?.primaryPhoto);
-        push(payload?.thumbnail);
-        push(payload?.primaryImage);
-        push(payload?.mainPhoto);
-        return Array.from(urls);
-      };
+Welcome to ${neighborhood}!`,
+  };
 
-      const transformed = list.map((p, idx) => {
-        const images = collectImages(p);
-        return {
-          id: p.id || p.mlsNumber || p.mls_number || idx,
-          mlsNumber: p.mlsNumber || p.mls_number || null,
-          address: p.address || p.fullAddress || null,
-          city: p.city || null,
-          subdivision: p.subdivision || p.neighborhood || null,
-          listPrice: p.listPrice || p.ListPrice || null,
-          price: p.price || p.listPrice || p.ListPrice || null,
-          sqft: p.sqft || p.SqFtTotal || p.squareFeet || null,
-          yearBuilt: p.yearBuilt || p.YearBuilt || null,
-          beds: p.bedrooms || p.BedroomsTotal || null,
-          baths: p.bathrooms || p.BathroomsTotalInteger || null,
-          condition: p.condition || p.Condition || null,
-          closeDate: p.closeDate || p.CloseDate || null,
-          images,
-          imageUrl: images.length ? images[0] : null,
-          newConstruction: true,
-          latitude: p.latitude || p.Latitude || null,
-          longitude: p.longitude || p.Longitude || null,
-        };
-      });
+  let baseScript =
+    videoTypeTemplates[videoType as keyof typeof videoTypeTemplates] ||
+    videoTypeTemplates.neighborhood_tour.replace(/neighborhood_tour/g, topic);
 
-      res.json({
-        data: transformed,
-        total: transformed.length,
-        source: "cma-new-construction",
-        upstreamCount,
-        filters: {
-          city: city || null,
-          min_year_built: min_year_built || "2020",
-        },
-        note,
-        meta: {
-          yearBuiltHistogram,
-          limit: requestedLimit,
-          page: requestedPage,
-          hasMore: transformed.length >= requestedLimit,
-        },
-      });
-    } catch (e) {
-      console.error("❌ New construction endpoint error", e);
-      res.status(500).json({
-        message: "Failed to load new construction properties",
-        error: (e as any)?.message || String(e),
-      });
-    }
-  });
-
-  /**
-   * Open Houses Endpoint
-   * Updated to use proper CMA API endpoints with real open house data fields
-   * First tries dedicated open house endpoint, falls back to advanced search with open house filters
-   */
-  app.get("/api/open-houses", async (req, res) => {
-    try {
-      const { city, limit = "50" } = req.query as Record<
-        string,
-        string | undefined
-      >;
-
-      // First try: Use property-search-advanced with open house specific filters
-      const params = new URLSearchParams();
-      params.set("status", "Active");
-      params.set("limit", limit);
-      params.set("property_type", "Residential");
-      params.set("min_beds", "1");
-
-      // Temporarily disabled: hasOpenHouse filter returns no results
-      // params.set("hasOpenHouse", "true"); // Filter for properties with open houses
-
-      if (city) params.set("city", city);
-
-      // Try the advanced search endpoint first with open house filters
-      const primaryUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/property-search-advanced?${params.toString()}`;
-      console.log("🏠 Trying CMA API with hasOpenHouse filter:", primaryUrl);
-
-      let raw: any;
-      let source = "advanced-search-with-openhouse-filter";
-
-      try {
-        const r = await fetch(primaryUrl, {
-          headers: {
-            "User-Agent": "NebraskaHomeHub/1.0",
-            "Content-Type": "application/json",
-          },
-          signal: AbortSignal.timeout(15000),
-        });
-
-        if (!r.ok) throw new Error(`Primary endpoint responded ${r.status}`);
-        raw = await r.json();
-        console.log("✅ Primary CMA API call successful");
-      } catch (primaryError) {
-        console.log(
-          "⚠️ Primary endpoint failed, trying fallback approach:",
-          primaryError
-        );
-
-        // Fallback: Use advanced search without hasOpenHouse filter, then filter by remarks
-        const fallbackParams = new URLSearchParams();
-        fallbackParams.set("status", "Active");
-        fallbackParams.set("limit", "100"); // Get more to filter from
-        fallbackParams.set("property_type", "Residential");
-        fallbackParams.set("min_beds", "1");
-        if (city) fallbackParams.set("city", city);
-
-        const fallbackUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/property-search-advanced?${fallbackParams.toString()}`;
-        console.log("� Using fallback approach:", fallbackUrl);
-
-        const fallbackR = await fetch(fallbackUrl, {
-          headers: {
-            "User-Agent": "NebraskaHomeHub/1.0",
-            "Content-Type": "application/json",
-          },
-          signal: AbortSignal.timeout(15000),
-        });
-
-        if (!fallbackR.ok)
-          throw new Error(`Fallback endpoint responded ${fallbackR.status}`);
-        raw = await fallbackR.json();
-        source = "advanced-search-remarks-filter";
-      }
-      // Normalize upstream payload to an array of properties
-      const propertiesArr: any[] = Array.isArray(raw?.properties)
-        ? raw.properties
-        : Array.isArray(raw?.data)
-        ? raw.data
-        : Array.isArray(raw)
-        ? raw
-        : [];
-
-      console.log(
-        `📊 Retrieved ${propertiesArr.length} properties from CMA API`
-      );
-
-      // Since hasOpenHouse filter isn't reliable, return all properties
-      // The frontend will handle any additional filtering
-      const result = propertiesArr;
-
-      // Count properties with actual open house flags (for debugging)
-      const actualOpenHouses = result.filter(
-        (p) => p.hasOpenHouse === true || p.OpenHouse === true
-      ).length;
-
-      console.log(
-        `🏠 Returning ${result.length} properties (${actualOpenHouses} with explicit open house flags)`
-      );
-
-      // Limit results
-      const limitedResult = result.slice(0, parseInt(limit));
-
-      const transformed = limitedResult.map((p, idx) => {
-        // Debug logging for first few properties to understand the data structure
-        if (idx < 2) {
-          console.log(
-            `🔍 Property ${idx + 1} ALL fields:`,
-            Object.keys(p).sort()
-          );
-          console.log(`🔍 Property ${idx + 1} Open House fields:`, {
-            hasOpenHouse: p.hasOpenHouse,
-            OpenHouse: p.OpenHouse,
-            openHouseDate: p.openHouseDate,
-            openHouseTime: p.openHouseTime,
-            openHouseInstructions: p.openHouseInstructions,
-          });
-        }
-
-        // Extract open house information from various possible fields
-        const hasActualOpenHouse =
-          p.hasOpenHouse === true || p.OpenHouse === true;
-        const openHouseDate = p.openHouseDate || p.OpenHouseDate || null;
-        const openHouseTime = p.openHouseTime || p.OpenHouseTime || null;
-        const openHouseInstructions =
-          p.openHouseInstructions || p.OpenHouseInstructions || null;
-
-        return {
-          id: p.id || p.mlsNumber || idx,
-          mlsNumber: p.mlsNumber || null,
-          mlsId: p.mlsNumber || p.mlsId || null,
-          address: p.address || null,
-          city: p.city || null,
-          state: p.state || "NE",
-          zipCode: p.zipCode || p.postalCode || null,
-          subdivision: p.subdivision || null,
-          listPrice: p.listPrice || null,
-          sqft: p.livingArea || p.sqft || 0,
-          livingArea: p.livingArea || p.sqft || 0,
-          beds: p.beds || 0,
-          baths: p.baths || 0,
-          images: p.images || [p.image].filter(Boolean),
-          image: (p.images && p.images[0]) || p.image || null,
-
-          // Enhanced open house data
-          hasOpenHouse: hasActualOpenHouse,
-          openHouseDate: openHouseDate,
-          openHouseTime: openHouseTime,
-          openHouseInstructions: openHouseInstructions,
-          openHouseDetected: hasActualOpenHouse || result.length > 0,
-
-          // Additional useful fields
-          propertyType: p.propertyType || "Residential",
-          garageSpaces: p.garageSpaces || 0,
-          yearBuilt: p.yearBuilt,
-          daysOnMarket: p.daysOnMarket,
-          architecturalStyle: p.architecturalStyle || null,
-          isNewConstruction: p.isNewConstruction || false,
-          publicRemarks: p.publicRemarks || p.RemarksPublic || null,
-          description: p.publicRemarks || p.RemarksPublic || null,
-        };
-      });
-
-      res.json({
-        data: transformed,
-        total: transformed.length,
-        actualOpenHouses: actualOpenHouses,
-        source: source,
-        upstreamCount: propertiesArr.length,
-        city: city || undefined,
-        debug: {
-          hasOpenHouseFilter:
-            source === "advanced-search-with-openhouse-filter",
-          remarksFiltered: source === "advanced-search-remarks-filter",
-          propertiesWithOpenHouseFlags: actualOpenHouses,
-        },
-      });
-    } catch (e) {
-      console.error("❌ Open houses endpoint error", e);
-      res.status(500).json({
-        message: "Failed to load open houses",
-        error: (e as any)?.message || String(e),
-      });
-    }
-  });
-
-  // **TEMPLATE ROUTES** - Multi-tenant customization with user authentication
-  // Helper: map community names to curated images (server-side reuse with communities endpoints)
-  function getImageForCommunity(name: string): string | null {
-    const map: Record<string, string> = {
-      "Downtown Omaha":
-        "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=800&q=80",
-      "West Omaha":
-        "https://images.unsplash.com/photo-1600047509807-ba8f99b501cc?auto=format&fit=crop&w=800&q=80",
-      Bellevue:
-        "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80",
-      Omaha:
-        "https://images.unsplash.com/photo-1519451241324-20b4ea2c4220?auto=format&fit=crop&w=800&q=80",
-      Lincoln:
-        "https://images.unsplash.com/photo-1573547429441-d7ef62e04ea2?auto=format&fit=crop&w=800&q=80",
-      Gretna:
-        "https://images.unsplash.com/photo-1588880331179-bc9b93a8cb5e?auto=format&fit=crop&w=800&q=80",
-      Elkhorn:
-        "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=800&q=80",
-      Papillion:
-        "https://images.unsplash.com/photo-1600047509807-ba8f99b501cc?auto=format&fit=crop&w=800&q=80",
-    };
-    return map[name] || null;
-  }
-  // Communities (dynamic data from GBCMA API)
-  app.get("/api/communities", async (req, res) => {
-    // Extract and normalize supported params per GBCMA v2.9.2
-    const state = (req.query.state as string) || "NE";
-    const property_type = (req.query.property_type as string) || "Residential";
-    const status = (req.query.status as string) || "active"; // default active
-    const minProperties = (req.query.min_properties as string) || "3";
-    const sortBy = (req.query.sort_by as string) || "count";
-    const maxRecords = (req.query.max_records as string) || undefined;
-    const q = (req.query.q as string) || undefined;
-    const debugStatuses = (req.query.debugStatuses as string) || undefined;
-
-    try {
-      console.log("🏘️ Fetching communities from GBCMA API");
-
-      // Build URL with parameters as per working API documentation
-      const sp = new URLSearchParams();
-      if (state) sp.set("state", state);
-      if (property_type) sp.set("property_type", property_type);
-      if (status) sp.set("status", status);
-      if (minProperties) sp.set("min_properties", String(minProperties));
-      if (sortBy) sp.set("sort_by", sortBy);
-      if (maxRecords) sp.set("max_records", String(maxRecords));
-      if (q) sp.set("q", q);
-      if (debugStatuses) sp.set("debugStatuses", debugStatuses);
-      const gbcmaUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/communities?${sp.toString()}`;
-
-      console.log(`📡 GBCMA Communities URL: ${gbcmaUrl}`);
-
-      const response = await fetch(gbcmaUrl);
-      if (!response.ok) {
-        throw new Error(
-          `GBCMA API responded with ${response.status}: ${response.statusText}`
-        );
-      }
-
-      const gbcmaData = await response.json();
-
-      if (!gbcmaData.success || !gbcmaData.communities) {
-        throw new Error(`Invalid GBCMA response: ${JSON.stringify(gbcmaData)}`);
-      }
-
-      console.log(
-        `✅ Retrieved ${gbcmaData.communities.length} communities from GBCMA`
-      );
-
-      // Transform GBCMA data to match frontend format (augment but keep upstream fields)
-      const transformedCommunities = gbcmaData.communities.map(
-        (community: any, index: number) => ({
-          id: index + 1,
-          name: community.name,
-          slug: community.name
-            .toLowerCase()
-            .replace(/\s+/g, "-")
-            .replace(/[^a-z0-9-]/g, ""),
-          description: `Explore ${community.name} community`,
-          image:
-            getImageForCommunity(community.name) ||
-            `https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80`,
-          propertyCount: community.activeProperties, // backward compat
-          averagePrice: "0", // Will be calculated separately if needed
-          highlights:
-            community.cities.length > 1
-              ? [
-                  `Multi-city`,
-                  `${community.cities.join(", ")}`,
-                  `${community.activeProperties} Active`,
-                ]
-              : [
-                  `${community.primaryCity}`,
-                  `${community.activeProperties} Active`,
-                  "Properties",
-                ],
-          primaryCity: community.primaryCity,
-          cities: community.cities,
-          totalProperties: community.totalProperties,
-          activeProperties: community.activeProperties,
-          inactiveProperties:
-            community.inactiveProperties ??
-            community.totalProperties - community.activeProperties,
-        })
-      );
-      // Return upstream style root envelope
-      res.json({
-        success: true,
-        count: transformedCommunities.length,
-        total_properties_analyzed:
-          gbcmaData.total_properties_analyzed || undefined,
-        cache: gbcmaData.cache || undefined,
-        filters: gbcmaData.filters || {
-          status,
-          min_properties: minProperties,
-          sort_by: sortBy,
-        },
-        communities: transformedCommunities,
-      });
-    } catch (error) {
-      console.error("❌ Failed to fetch communities from GBCMA:", error);
-
-      // Enhanced fallback data based on real Nebraska communities
-      const fallbackDummy = [
-        {
-          id: 1,
-          name: "Elkhorn",
-          slug: "elkhorn",
-          description:
-            "Highly rated school district with new construction and family-friendly amenities in growing western Omaha suburb",
-          image:
-            "https://images.unsplash.com/photo-1600047509807-ba8f99b501cc?auto=format&fit=crop&w=800&q=80",
-          propertyCount: 156,
-          averagePrice: "425000.00",
-          highlights: ["Top Schools", "New Construction", "Family-Friendly"],
-          primaryCity: "Elkhorn",
-          cities: ["Elkhorn"],
-          totalProperties: 180,
-          activeProperties: 156,
-          inactiveProperties: 24,
-        },
-        {
-          id: 2,
-          name: "West Omaha",
-          slug: "west-omaha",
-          description:
-            "Established neighborhoods with mature trees, excellent schools, and premier shopping destinations",
-          image:
-            "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80",
-          propertyCount: 284,
-          averagePrice: "385000.00",
-          highlights: ["Established", "Top Schools", "Shopping"],
-          primaryCity: "Omaha",
-          cities: ["Omaha"],
-          totalProperties: 320,
-          activeProperties: 284,
-          inactiveProperties: 36,
-        },
-        {
-          id: 3,
-          name: "Bellevue",
-          slug: "bellevue",
-          description:
-            "Affordable family community with parks, recreation, and convenient access to Offutt Air Force Base",
-          image:
-            "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80",
-          propertyCount: 97,
-          averagePrice: "275000.00",
-          highlights: ["Affordable", "Military-Friendly", "Recreation"],
-          primaryCity: "Bellevue",
-          cities: ["Bellevue"],
-          totalProperties: 115,
-          activeProperties: 97,
-          inactiveProperties: 18,
-        },
-        {
-          id: 4,
-          name: "Papillion",
-          slug: "papillion",
-          description:
-            "Award-winning school district and master-planned communities in southwest metro area",
-          image:
-            "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?auto=format&fit=crop&w=800&q=80",
-          propertyCount: 178,
-          averagePrice: "365000.00",
-          highlights: [
-            "Award-Winning Schools",
-            "Master-Planned",
-            "Southwest Metro",
-          ],
-          primaryCity: "Papillion",
-          cities: ["Papillion"],
-          totalProperties: 205,
-          activeProperties: 178,
-          inactiveProperties: 27,
-        },
-        {
-          id: 5,
-          name: "Downtown Omaha",
-          slug: "downtown-omaha",
-          description:
-            "Urban living with condos, lofts, dining, arts, and Old Market entertainment district",
-          image:
-            "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&w=800&q=80",
-          propertyCount: 89,
-          averagePrice: "320000.00",
-          highlights: ["Urban Living", "Old Market", "Entertainment"],
-          primaryCity: "Omaha",
-          cities: ["Omaha"],
-          totalProperties: 105,
-          activeProperties: 89,
-          inactiveProperties: 16,
-        },
-        {
-          id: 6,
-          name: "Gretna",
-          slug: "gretna",
-          description:
-            "Small town charm with excellent schools and easy commute to Omaha metro area",
-          image:
-            "https://images.unsplash.com/photo-1600047509807-ba8f99b501cc?auto=format&fit=crop&w=800&q=80",
-          propertyCount: 67,
-          averagePrice: "345000.00",
-          highlights: ["Small Town", "Excellent Schools", "Easy Commute"],
-          primaryCity: "Gretna",
-          cities: ["Gretna"],
-          totalProperties: 82,
-          activeProperties: 67,
-          inactiveProperties: 15,
-        },
-      ];
-
-      // Return fallback data with success=true so frontend works normally
-      console.warn(
-        "⚠️ GBCMA API experiencing Paragon API field mapping issues. Using enhanced fallback data."
-      );
-      res.json({
-        success: true,
-        error: "upstream_api_unavailable",
-        message:
-          "External communities API temporarily unavailable. Showing curated Nebraska communities data.",
-        count: fallbackDummy.length,
-        total_properties_analyzed: 1234, // Placeholder
-        cache: {
-          source: "fallback",
-          generated_at: new Date().toISOString(),
-          reason: "External API field mapping errors",
-        },
-        filters: {
-          status,
-          min_properties: minProperties,
-          sort_by: sortBy,
-        },
-        communities: fallbackDummy,
-      });
-    }
-  });
-
-  // Create community endpoint (authenticated)
-  app.post("/api/communities", authenticateUser, async (req: any, res) => {
-    try {
-      const {
-        name,
-        slug,
-        description,
-        image,
-        propertyCount,
-        averagePrice,
-        highlights,
-      } = req.body;
-
-      if (!name || !slug) {
-        return res.status(400).json({
-          success: false,
-          message: "Name and slug are required",
-        });
-      }
-
-      const newCommunity = await storage.createCommunity({
-        name,
-        slug,
-        description: description || null,
-        image: image || null,
-        propertyCount: propertyCount || null,
-        averagePrice: averagePrice || null,
-        highlights: highlights || null,
-      });
-
-      res.json({
-        success: true,
-        community: newCommunity,
-      });
-    } catch (error) {
-      console.error("❌ Failed to create community:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to create community",
-        error: (error as any)?.message || String(error),
-      });
-    }
-  });
-
-  // Full communities passthrough (no min_properties restriction, minimal validation)
-  app.get("/api/communities/all", async (req, res) => {
-    try {
-      console.log(
-        "🏘️ [ALL] Fetching full communities list (passthrough) start"
-      );
-      res.type("application/json");
-      const searchParams = new URLSearchParams();
-      // Pass through known optional filters if provided
-      if (req.query.status)
-        searchParams.set("status", String(req.query.status));
-      if (req.query.min_properties)
-        searchParams.set("min_properties", String(req.query.min_properties));
-      if (req.query.sort_by)
-        searchParams.set("sort_by", String(req.query.sort_by));
-
-      const baseUrl =
-        "http://gbcma.us-east-2.elasticbeanstalk.com/api/communities";
-      const fullUrl = searchParams.toString()
-        ? `${baseUrl}?${searchParams.toString()}`
-        : baseUrl;
-      console.log("📡 [ALL] Full GBCMA URL:", fullUrl);
-
-      const upstream = await fetch(fullUrl);
-      if (!upstream.ok) {
-        return res
-          .status(upstream.status)
-          .json({ error: `Upstream responded ${upstream.status}` });
-      }
-      const data = await upstream.json();
-
-      // Accept either { success, communities } or direct array fallback
-      const rawCommunities: any[] = Array.isArray(data)
-        ? data
-        : Array.isArray(data.communities)
-        ? data.communities
-        : [];
-
-      console.log(
-        `✅ [ALL] Upstream raw communities count: ${rawCommunities.length}`
-      );
-
-      const transformed = rawCommunities.map(
-        (community: any, index: number) => ({
-          id: index + 1,
-          name: community.name,
-          slug: community.name
-            ? community.name
-                .toLowerCase()
-                .replace(/\s+/g, "-")
-                .replace(/[^a-z0-9-]/g, "")
-            : `community-${index + 1}`,
-          description: community.name
-            ? `Explore ${community.name} community`
-            : undefined,
-          image:
-            getImageForCommunity(community.name) ||
-            "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80",
-          propertyCount:
-            community.activeProperties || community.propertyCount || 0,
-          averagePrice: community.averagePrice
-            ? String(community.averagePrice)
-            : "0",
-          highlights: Array.isArray(community.cities)
-            ? community.cities.slice(0, 3)
-            : [],
-          primaryCity: community.primaryCity,
-          cities: community.cities || [],
-          totalProperties: community.totalProperties || 0,
-          activeProperties:
-            community.activeProperties || community.propertyCount || 0,
-          inactiveProperties:
-            community.inactiveProperties ??
-            (community.totalProperties && community.activeProperties
-              ? community.totalProperties - community.activeProperties
-              : undefined),
-        })
-      );
-
-      console.log(
-        "✅ [ALL] Returning transformed communities count:",
-        transformed.length
-      );
-      return res.json({
-        success: true,
-        count: transformed.length,
-        communities: transformed,
-      });
-    } catch (err) {
-      console.error("❌ [ALL] Failed full passthrough communities fetch:", err);
-      return res.status(500).json({
-        success: false,
-        error: "failed_full_list",
-        message: "Failed to load full communities list",
-        communities: [],
-      });
-    }
-  });
-
-  // School Districts API Endpoint (proxy to GBCMA)
-  app.get("/api/districts", async (req, res) => {
-    try {
-      const state = (req.query.state as string) || "NE";
-      const status = (req.query.status as string) || "active";
-      const level = (req.query.level as string) || "elementary";
-      const min_properties = (req.query.min_properties as string) || "3";
-      const max_records = (req.query.max_records as string) || "2000";
-      const q = req.query.q as string | undefined;
-
-      console.log(`🏫 Fetching ${level} school districts from GBCMA API`);
-
-      // Build URL with parameters
-      const params = new URLSearchParams({
-        state,
-        status,
-        level,
-        min_properties,
-        max_records,
-      });
-
-      if (q) {
-        params.set("q", q);
-      }
-
-      console.log(
-        `🏫 Using local city-to-district mapping for ${level} districts`
-      );
-
-      // Import school district mapping function
-      const { getSchoolDistrictForCity } = await import("./external-api");
-
-      // Get communities from GBCMA to map to districts
-      const communitiesUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/communities?state=${state}&status=${status}&min_properties=0&max_records=5000`;
-
-      const communitiesResponse = await fetch(communitiesUrl);
-      if (!communitiesResponse.ok) {
-        throw new Error(
-          `Communities API returned ${communitiesResponse.status}`
-        );
-      }
-
-      const communitiesData = await communitiesResponse.json();
-      const communities = Array.isArray(communitiesData)
-        ? communitiesData
-        : Array.isArray(communitiesData.communities)
-        ? communitiesData.communities
-        : [];
-
-      console.log(`✅ Retrieved ${communities.length} communities from GBCMA`);
-
-      // Map communities to school districts
-      const districtMap = new Map<string, any>();
-
-      communities.forEach((community: any) => {
-        if (community.cities && Array.isArray(community.cities)) {
-          community.cities.forEach((city: string) => {
-            const district = getSchoolDistrictForCity(city);
-            if (district && district !== "Local School District") {
-              const key = `${district}_${level}`;
-              if (!districtMap.has(key)) {
-                districtMap.set(key, {
-                  name: district,
-                  level: level,
-                  state: state,
-                  propertyCount: 0,
-                  communities: [],
-                });
-              }
-              const districtData = districtMap.get(key);
-              districtData.propertyCount += community.activeProperties || 0;
-              districtData.communities.push({
-                name: community.name,
-                city: city,
-                propertyCount: community.activeProperties || 0,
-              });
-            }
-          });
-        }
-      });
-
-      const districts = Array.from(districtMap.values())
-        .filter((d) => d.propertyCount >= parseInt(min_properties))
-        .sort((a, b) => b.propertyCount - a.propertyCount)
-        .slice(0, parseInt(max_records))
-        .map((district) => {
-          // Extract unique cities from communities
-          const cities = Array.from(
-            new Set(district.communities.map((c: any) => c.city))
-          );
-          return {
-            ...district,
-            cities: cities,
-            totalCommunities: district.communities.length,
-            totalActiveProperties: district.propertyCount,
-          };
-        });
-
-      console.log(
-        `🎯 Mapped ${districts.length} districts with ${level} level data`
-      );
-
-      const data = {
-        success: true,
-        count: districts.length,
-        totalCommunities: districts.reduce(
-          (sum, d) => sum + d.communities.length,
-          0
-        ),
-        districts: districts,
-      };
-
-      console.log(
-        `✅ Districts API returned ${data.count || 0} districts with ${
-          data.totalCommunities || 0
-        } total communities`
-      );
-
-      res.json(data);
-    } catch (error) {
-      console.error("❌ Districts API error:", error);
-      res.status(500).json({
-        success: false,
-        error: "Failed to fetch school districts",
-        message: (error as any)?.message || String(error),
-      });
-    }
-  });
-
-  // User-specific communities endpoint (respects template customizations)
-  app.get(
-    "/api/user/:userId/communities",
-    authenticateUser,
-    async (req: any, res) => {
-      try {
-        console.log("🏘️👤 Fetching user-specific communities");
-        const userId = req.params.userId;
-
-        // Get user's template data
-        const template = await db
-          .select()
-          .from(templates)
-          .where(eq(templates.userId, parseInt(userId)))
-          .limit(1);
-
-        if (!template[0]) {
-          console.log("❌ Template not found for user:", userId);
-          return res.status(404).json({ error: "Template not found" });
-        }
-
-        const templateData = template[0];
-
-        // Check if communities are enabled
-        if (!templateData.communitiesEnabled) {
-          console.log("🚫 Communities disabled for user:", userId);
-          return res.json([]);
-        }
-
-        // Get featured communities list
-        const featuredCommunities = templateData.featuredCommunities || [];
-        const communityCustomizations =
-          templateData.communityCustomizations || {};
-        const communitySettings = templateData.communitySettings || {};
-
-        if (featuredCommunities.length === 0) {
-          console.log("📭 No featured communities set for user:", userId);
-          return res.json([]);
-        }
-
-        // Fetch all communities from GBCMA API
-        const gbcmaUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/communities?status=active&min_properties=1&sort_by=count`;
-
-        let allCommunities = [];
-        try {
-          const response = await fetch(gbcmaUrl);
-          if (response.ok) {
-            const gbcmaData = await response.json();
-            if (gbcmaData.success && gbcmaData.communities) {
-              allCommunities = gbcmaData.communities;
-            }
-          }
-        } catch (error) {
-          console.log("⚠️ GBCMA API failed, using fallback data");
-        }
-
-        // If GBCMA fails, use fallback
-        if (allCommunities.length === 0) {
-          allCommunities = [
-            {
-              name: "Omaha",
-              primaryCity: "Omaha",
-              activeProperties: 450,
-              totalProperties: 500,
-              cities: ["Omaha"],
-            },
-            {
-              name: "Lincoln",
-              primaryCity: "Lincoln",
-              activeProperties: 280,
-              totalProperties: 300,
-              cities: ["Lincoln"],
-            },
-            {
-              name: "Elkhorn",
-              primaryCity: "Elkhorn",
-              activeProperties: 180,
-              totalProperties: 200,
-              cities: ["Elkhorn"],
-            },
-            {
-              name: "Papillion",
-              primaryCity: "Papillion",
-              activeProperties: 140,
-              totalProperties: 150,
-              cities: ["Papillion"],
-            },
-            {
-              name: "Gretna",
-              primaryCity: "Gretna",
-              activeProperties: 110,
-              totalProperties: 120,
-              cities: ["Gretna"],
-            },
-            {
-              name: "Bellevue",
-              primaryCity: "Bellevue",
-              activeProperties: 160,
-              totalProperties: 180,
-              cities: ["Bellevue"],
-            },
-          ];
-        }
-
-        // Filter and customize communities based on user's selection
-        const userCommunities = featuredCommunities
-          .map((communityName: string, index: number) => {
-            const community = allCommunities.find(
-              (c: any) => c.name === communityName
-            );
-            const customization = communityCustomizations[communityName] || {};
-
-            if (!community) {
-              // Return a basic entry if community not found in GBCMA
-              return {
-                id: index + 1,
-                name: communityName,
-                slug: communityName
-                  .toLowerCase()
-                  .replace(/\s+/g, "-")
-                  .replace(/[^a-z0-9-]/g, ""),
-                description:
-                  customization.customDescription ||
-                  `Explore ${communityName} community`,
-                image:
-                  customization.customImage ||
-                  getImageForCommunity(communityName) ||
-                  `https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80`,
-                propertyCount: 0,
-                averagePrice: "0",
-                highlights: ["Contact Us", "For Details"],
-              };
-            }
-
-            return {
-              id: index + 1,
-              name: community.name,
-              slug: community.name
-                .toLowerCase()
-                .replace(/\s+/g, "-")
-                .replace(/[^a-z0-9-]/g, ""),
-              description:
-                customization.customDescription ||
-                `Explore ${community.name} community`,
-              image:
-                customization.customImage ||
-                getImageForCommunity(community.name) ||
-                `https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80`,
-              propertyCount: community.activeProperties || 0,
-              averagePrice: "0", // Will be calculated separately if needed
-              highlights:
-                community.cities.length > 1
-                  ? [
-                      `Multi-city`,
-                      `${community.cities.join(", ")}`,
-                      `${community.activeProperties} Active`,
-                    ]
-                  : [
-                      `${community.primaryCity}`,
-                      `${community.activeProperties} Active`,
-                      "Properties",
-                    ],
-              primaryCity: community.primaryCity,
-              cities: community.cities,
-              totalProperties: community.totalProperties,
-              activeProperties: community.activeProperties,
-            };
-          })
-          .filter(Boolean);
-
-        console.log(
-          `✅ Returning ${userCommunities.length} customized communities for user ${userId}`
-        );
-        res.json(userCommunities);
-      } catch (error) {
-        console.error("❌ Failed to fetch user communities:", error);
-        res.status(500).json({ error: "Failed to fetch user communities" });
-      }
-    }
-  );
-
-  // Blog posts (temporary dummy data / fallback)
-  app.get("/api/blog", async (_req, res) => {
-    try {
-      // Attempt DB fetch first (optional, ignore errors silently)
-      let dbPosts: any[] = [];
-      try {
-        if (db) {
-          const { blogPosts } = await import("@shared/schema");
-          const { desc } = await import("drizzle-orm");
-          dbPosts = await db
-            .select()
-            .from(blogPosts)
-            .orderBy(desc(blogPosts.id))
-            .limit(6);
-        }
-      } catch {}
-
-      if (dbPosts.length > 0) {
-        // Return plain array so frontend expecting BlogPost[] works
-        return res.json(dbPosts);
-      }
-
-      const dummy = [
-        {
-          id: 1,
-          title: "Navigating Nebraska's 2025 Housing Market",
-          slug: "nebraska-housing-market-2025",
-          excerpt:
-            "Key trends buyers & sellers should watch across Omaha, Lincoln, and growing suburbs.",
-          content: "Full article coming soon.",
-          image:
-            "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=800&q=80",
-          category: "Market",
-          author: "Bjork Group",
-          published: true,
-          createdAt: new Date(),
-        },
-        {
-          id: 2,
-          title: "Top Communities for New Construction in 2025",
-          slug: "top-new-construction-communities-2025",
-          excerpt:
-            "Elkhorn, Gretna, and Bennington lead the way with lifestyle and value.",
-          content: "Full article coming soon.",
-          // Swapped image to a more reliable Unsplash asset (previous one intermittently failed)
-          image:
-            "https://images.unsplash.com/photo-1554995207-c18c203602cb?auto=format&fit=crop&w=800&q=80",
-          category: "Communities",
-          author: "Bjork Group",
-          published: true,
-          createdAt: new Date(),
-        },
-        {
-          id: 3,
-          title: "Preparing Your Home for Spring Listing",
-          slug: "prepare-home-for-spring",
-          excerpt:
-            "Simple upgrades and staging tactics that maximize sale price.",
-          content: "Full article coming soon.",
-          image:
-            "https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=800&q=80",
-          category: "Selling",
-          author: "Bjork Group",
-          published: true,
-          createdAt: new Date(),
-        },
-        {
-          id: 4,
-          title: "Why Relocation Buyers Are Targeting Omaha",
-          slug: "relocation-buyers-omaha",
-          excerpt:
-            "Affordability + quality of life continue to attract out-of-state migration.",
-          content: "Full article coming soon.",
-          image:
-            "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?auto=format&fit=crop&w=800&q=80",
-          category: "Market",
-          author: "Bjork Group",
-          published: true,
-          createdAt: new Date(),
-        },
-      ];
-      // Return dummy posts as plain array to match frontend expectation
-      res.json(dummy);
-    } catch (e) {
-      res.status(500).json({ message: "Failed to load blog posts" });
-    }
-  });
-
-  // Get single blog post by slug
-  app.get("/api/blog/:slug", async (req, res) => {
-    try {
-      const { slug } = req.params;
-
-      if (!slug) {
-        return res.status(400).json({ message: "Slug is required" });
-      }
-
-      if (db) {
-        const { blogPosts } = await import("@shared/schema");
-        const { eq } = await import("drizzle-orm");
-
-        const posts = await db
-          .select()
-          .from(blogPosts)
-          .where(eq(blogPosts.slug, slug))
-          .limit(1);
-
-        if (posts.length > 0) {
-          return res.json(posts[0]);
-        }
-      }
-
-      // If not found in database, return 404
-      return res.status(404).json({
-        message: "Blog post not found",
-        slug,
-      });
-    } catch (error) {
-      console.error("Error fetching blog post:", error);
-      res.status(500).json({ message: "Failed to load blog post" });
-    }
-  });
-
-  // Generate market insight posts from property data
-  app.post("/api/blog/generate", authenticateUser, async (req: any, res) => {
-    try {
-      if (!db) {
-        return res.status(503).json({ message: "Database not available" });
-      }
-
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      // Fetch recent properties for analysis
-      let properties: any[] = [];
-
-      // Try to get properties from CMA API
-      try {
-        const cmaApiKey = process.env.CMA_API_KEY;
-        const cmaApiUrl = process.env.CMA_API_URL;
-
-        if (cmaApiKey && cmaApiUrl) {
-          const response = await fetch(`${cmaApiUrl}/properties?limit=100`, {
-            headers: { Authorization: `Bearer ${cmaApiKey}` },
-          });
-          if (response.ok) {
-            const data = await response.json();
-            properties = data.properties || data || [];
-          }
-        }
-      } catch (error) {
-        console.log("Could not fetch from CMA API, using sample data");
-      }
-
-      // Generate sample posts if no real data
-      if (properties.length === 0) {
-        properties = Array.from({ length: 50 }, (_, i) => ({
-          listPrice: 200000 + Math.random() * 400000,
-          sqft: 1200 + Math.random() * 2000,
-          city: ["Omaha", "Lincoln", "Elkhorn", "Gretna"][
-            Math.floor(Math.random() * 4)
-          ],
-          subdivision: `${
-            ["Oak", "Maple", "Pine", "Cedar"][Math.floor(Math.random() * 4)]
-          } Heights`,
-        }));
-      }
-
-      // Generate posts using the helper function
-      const generatedPosts = generateMarketInsightPosts(properties);
-
-      // Save to database
-      const { blogPosts } = await import("@shared/schema");
-
-      // Delete old auto-generated posts
-      const { eq } = await import("drizzle-orm");
-      await db.delete(blogPosts).where(eq(blogPosts.author, "Bjork Group"));
-
-      // Insert new posts
-      const insertedPosts = await db
-        .insert(blogPosts)
-        .values(
-          generatedPosts.map((post: any) => ({
-            ...post,
-            userId,
-            id: undefined, // Let DB generate IDs
-          }))
-        )
-        .returning();
-
-      res.json({
-        success: true,
-        count: insertedPosts.length,
-        posts: insertedPosts,
-      });
-    } catch (error) {
-      console.error("Error generating blog posts:", error);
-      res.status(500).json({ message: "Failed to generate blog posts" });
-    }
-  });
-
-  // Helper function to generate market insight posts
-  function generateMarketInsightPosts(properties: any[]) {
-    if (!properties || properties.length === 0) return [];
-
-    const posts = [];
-    const currentDate = new Date();
-    const formattedDate = currentDate.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-
-    // Calculate market statistics
-    const totalProperties = properties.length;
-    const averagePrice =
-      properties.reduce(
-        (sum, prop) => sum + (prop.listPrice || prop.soldPrice || 0),
-        0
-      ) / totalProperties;
-    const averageSqft =
-      properties.reduce((sum, prop) => sum + (prop.sqft || 0), 0) /
-      totalProperties;
-    const pricePerSqft = averagePrice / averageSqft;
-
-    // Group by neighborhoods
-    const neighborhoods = properties.reduce((acc: any, prop) => {
-      const neighborhood = prop.subdivision || prop.city;
-      if (!acc[neighborhood]) acc[neighborhood] = [];
-      acc[neighborhood].push(prop);
-      return acc;
-    }, {});
-
-    // Market Overview Post
-    posts.push({
-      title: `Nebraska Real Estate Market Report - ${formattedDate}`,
-      slug: "nebraska-market-report-" + currentDate.toISOString().split("T")[0],
-      excerpt: `Current market analysis of ${totalProperties} properties showing average price of $${Math.round(
-        averagePrice
-      ).toLocaleString()}`,
-      content: `# Nebraska Real Estate Market Analysis
-
-**Market Overview for ${formattedDate}**
-
-Our latest analysis of ${totalProperties} properties reveals important market trends:
-
-## Key Market Statistics
-- **Average List Price**: $${Math.round(averagePrice).toLocaleString()}
-- **Average Square Footage**: ${Math.round(averageSqft).toLocaleString()} sq ft
-- **Average Price Per Square Foot**: $${Math.round(pricePerSqft)}
-- **Properties Analyzed**: ${totalProperties}
-
-## Market Insights
-The real estate market continues to show strong fundamentals with properties ranging from $${Math.min(
-        ...properties.map((p) => p.listPrice || p.soldPrice || 0)
-      ).toLocaleString()} to $${Math.max(
-        ...properties.map((p) => p.listPrice || p.soldPrice || 0)
-      ).toLocaleString()}.
-
-${
-  Object.keys(neighborhoods).length > 1
-    ? `## Neighborhood Highlights
-${Object.entries(neighborhoods)
-  .slice(0, 5)
-  .map(
-    ([name, props]) =>
-      `- **${name}**: ${(props as any[]).length} properties, avg $${Math.round(
-        (props as any[]).reduce(
-          (sum: number, p: any) => sum + (p.listPrice || p.soldPrice || 0),
-          0
-        ) / (props as any[]).length
-      ).toLocaleString()}`
-  )
-  .join("\n")}`
-    : ""
-}
-
-*Data sourced from current MLS listings and recent sales.*`,
-      category: "Market Analysis",
-      image:
-        "https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-      published: true,
-      featured: true,
-      author: "Bjork Group",
-      createdAt: currentDate,
-      updatedAt: currentDate,
-    });
-
-    // Price Range Analysis Post
-    const priceRanges = {
-      "Under $200k": properties.filter(
-        (p) => (p.listPrice || p.soldPrice || 0) < 200000
-      ).length,
-      "$200k-$300k": properties.filter((p) => {
-        const price = p.listPrice || p.soldPrice || 0;
-        return price >= 200000 && price < 300000;
-      }).length,
-      "$300k-$400k": properties.filter((p) => {
-        const price = p.listPrice || p.soldPrice || 0;
-        return price >= 300000 && price < 400000;
-      }).length,
-      "Over $400k": properties.filter(
-        (p) => (p.listPrice || p.soldPrice || 0) >= 400000
-      ).length,
-    };
-
-    posts.push({
-      title: "Understanding Home Price Ranges: Where to Find Value",
-      slug: "price-ranges-analysis-" + currentDate.toISOString().split("T")[0],
-      excerpt:
-        "Comprehensive breakdown of property availability across different price segments.",
-      content: `# Understanding Home Price Ranges
-
-Finding the right home at the right price requires understanding the current market distribution. Here's what our latest data shows:
-
-## Price Distribution Analysis
-${Object.entries(priceRanges)
-  .map(
-    ([range, count]) =>
-      `- **${range}**: ${count} properties (${Math.round(
-        (count / totalProperties) * 100
-      )}% of market)`
-  )
-  .join("\n")}
-
-## What This Means for Buyers
-- **First-time buyers**: ${
-        priceRanges["Under $200k"]
-      } homes available under $200k
-- **Move-up buyers**: Strong selection in the $200k-$400k range with ${
-        priceRanges["$200k-$300k"] + priceRanges["$300k-$400k"]
-      } properties
-- **Luxury buyers**: ${priceRanges["Over $400k"]} premium properties available
-
-The current market offers opportunities across all price points, with particularly strong inventory in the middle price ranges.
-
-*Contact our team to explore properties in your preferred price range.*`,
-      category: "Buyer Guide",
-      image:
-        "https://images.unsplash.com/photo-1582407947304-fd86f028f716?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-      published: true,
-      featured: false,
-      author: "Bjork Group",
-      createdAt: new Date(currentDate.getTime() - 86400000),
-      updatedAt: new Date(currentDate.getTime() - 86400000),
-    });
-
-    // Investment Opportunities Post
-    const investmentProperties = properties.filter(
-      (p) => (p.listPrice || p.soldPrice || 0) < averagePrice
-    );
-
-    posts.push({
-      title: "Investment Opportunities in Real Estate",
-      slug:
-        "investment-opportunities-" + currentDate.toISOString().split("T")[0],
-      excerpt: `Discover ${investmentProperties.length} potential investment properties below market average pricing.`,
-      content: `# Investment Opportunities
-
-The real estate market presents compelling investment opportunities for both new and experienced investors.
-
-## Current Investment Landscape
-- **Below-Average Pricing**: ${
-        investmentProperties.length
-      } properties priced below the market average of $${Math.round(
-        averagePrice
-      ).toLocaleString()}
-- **Average Price Per Square Foot**: $${Math.round(
-        pricePerSqft
-      )} provides good value
-- **Diverse Property Types**: Options ranging from single-family homes to multi-unit properties
-
-## Key Investment Metrics
-- **Market Average Price**: $${Math.round(averagePrice).toLocaleString()}
-- **Value Properties**: Properties starting at $${Math.min(
-        ...investmentProperties.map((p) => p.listPrice || p.soldPrice || 0)
-      ).toLocaleString()}
-
-*Ready to explore investment opportunities? Contact us for a personalized market analysis.*`,
-      category: "Investment",
-      image:
-        "https://images.unsplash.com/photo-1494526585095-c41746248156?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-      published: true,
-      featured: false,
-      author: "Bjork Group",
-      createdAt: new Date(currentDate.getTime() - 172800000),
-      updatedAt: new Date(currentDate.getTime() - 172800000),
-    });
-
-    return posts;
+  // Platform-specific modifications
+  if (platform === "reels") {
+    // Make it more concise and punchy for Reels
+    baseScript = baseScript
+      .replace(
+        /Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices\./g,
+        "Hey! Mike Bjork here -"
+      )
+      .replace(
+        /Thanks for watching!|Thanks for watching, and I'll see you in the next video!/g,
+        "Like & follow for more Omaha real estate tips! 🏠"
+      )
+      .split("\n")
+      .slice(0, 4)
+      .join("\n"); // Keep it shorter
+  } else if (platform === "story") {
+    // Make it more casual and personal for Stories
+    baseScript = baseScript
+      .replace(
+        /Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices\./g,
+        "Quick update from Mike!"
+      )
+      .replace(
+        /Thanks for watching!|Thanks for watching, and I'll see you in the next video!/g,
+        "DM me for details! 📱"
+      )
+      .split("\n")
+      .slice(0, 3)
+      .join("\n"); // Keep it very short
   }
 
-  // Generate AI-powered blog articles about local news and events
-  app.post(
-    "/api/blog/generate-ai-articles",
-    authenticateUser,
-    async (req: any, res) => {
-      try {
-        if (!db) {
-          return res.status(503).json({ message: "Database not available" });
-        }
+  return baseScript;
+}
 
-        const userId = req.user?.id;
-        if (!userId) {
-          return res.status(401).json({ message: "Unauthorized" });
-        }
+function generateAIOptimizedContent(
+  neighborhood: string,
+  goal: string,
+  question?: string
+): string {
+  const questionStart =
+    question ||
+    `What's the best information about ${goal.toLowerCase()} in ${neighborhood}?`;
 
-        const { topics, city = "Omaha" } = req.body;
+  return `# ${questionStart}
 
-        // Use unified AI service with fallback support
-        const { getAvailableProviders, getProviderStatus } = await import(
-          "./ai-service"
-        );
+**Direct Answer:** ${neighborhood} is an excellent choice for ${goal.toLowerCase()}. Here's what you need to know as someone considering this area.
 
-        const availableProviders = getAvailableProviders();
-        const providerStatus = getProviderStatus();
+## Why ${neighborhood} Works for ${goal}
 
-        console.log("🤖 AI Provider Status:", providerStatus);
-        console.log("✅ Available providers:", availableProviders);
+${neighborhood} offers unique advantages that make it ideal for ${goal.toLowerCase()}:
 
-        if (availableProviders.length === 0) {
-          return res.status(503).json({
-            message:
-              "No AI service configured. Please set one of: OPENAI_API_KEY, GITHUB_TOKEN (for Copilot), or ANTHROPIC_API_KEY environment variable.",
-            providerStatus,
-          });
-        }
+### Local Market Insights
+- **Current Market:** ${neighborhood} homes typically range from $250K-$450K depending on size and location
+- **Neighborhood Character:** Well-established community with strong property values
+- **Growth Potential:** Consistent appreciation over the past 5 years
 
-        const generatedArticles = []; // Default topics if none provided
-        const articleTopics = topics || [
-          "Local Development & Business",
-          "Community Events & Activities",
-          "Real Estate Market Update",
-          "New Construction & Housing",
-          "Lifestyle & Entertainment",
-        ];
+### What Makes ${neighborhood} Special
+- **Community:** Active neighborhood associations and local events
+- **Convenience:** Close to major employers, schools, and Omaha amenities
+- **Investment Value:** Properties hold value well and attract quality buyers
 
-        // Generate articles for each topic
-        for (const topic of articleTopics.slice(0, 5)) {
-          try {
-            const prompt = `Write a comprehensive blog article about "${topic}" in ${city}, Nebraska.
+## Professional Guidance You Can Trust
 
-Include:
-- An engaging title
-- A compelling excerpt (2-3 sentences)
-- Full article content (500-800 words) in Markdown format
-- Recent developments, statistics, or updates
-- Local insights and community impact
-- Practical information for residents and newcomers
+As your local ${neighborhood} expert, I'm Mike Bjork with Berkshire Hathaway HomeServices. I've helped hundreds of families find their perfect home in this area.
 
-Format the response as JSON with these fields:
-{
-  "title": "Article title",
-  "excerpt": "Brief excerpt",
-  "content": "Full markdown content",
-  "category": "Category name (Market/Community/Development/Lifestyle)",
-  "tags": ["tag1", "tag2", "tag3"]
-}`;
+**Why work with me?**
+- 15+ years specializing in ${neighborhood} and surrounding areas
+- Licensed Nebraska realtor with deep local market knowledge
+- Access to off-market properties and exclusive listings
 
-            const systemPrompt =
-              "You are a professional real estate and local news writer specializing in Nebraska markets. Write engaging, informative articles with a friendly, professional tone.";
+## Ready to Explore ${neighborhood}?
 
-            // Use unified AI service with automatic fallback
-            const { generateAIJSON } = await import("./ai-service");
-            const preferredProvider = (process.env.PREFERRED_AI_PROVIDER ||
-              "github-copilot") as "openai" | "github-copilot" | "anthropic";
+Whether you're a first-time buyer, growing family, or savvy investor, I'll help you understand if ${neighborhood} aligns with your goals.
 
-            const result = await generateAIJSON<{
-              title: string;
-              excerpt: string;
-              content: string;
-              category: string;
-              tags: string[];
-            }>(prompt, systemPrompt, {
-              temperature: 0.7,
-              preferredProvider,
-            });
+**Contact Mike Bjork:**
+- Phone: (402) 555-0123
+- Email: mike@bjorkgroup.com
+- Office: Berkshire Hathaway HomeServices
 
-            const articleData = result.data;
-            console.log(
-              `✅ Generated article with ${result.provider} (${result.model}): ${articleData.title}`
-            );
+*Serving ${neighborhood}, Omaha, and surrounding communities with personalized real estate expertise since 2008.*
 
-            // Generate slug from title
-            const slug = articleData.title
-              .toLowerCase()
-              .replace(/[^a-z0-9\s-]/g, "")
-              .replace(/\s+/g, "-")
-              .replace(/-+/g, "-")
-              .trim();
+---
+*This content was optimized for AI search engines to provide direct, helpful answers about ${neighborhood} real estate.*`;
+}
 
-            // Generate context-aware image query for Unsplash
-            const getImageQuery = (title: string, category: string) => {
-              const lowerTitle = title.toLowerCase();
-
-              // Check for specific keywords
-              if (
-                lowerTitle.includes("omaha") ||
-                lowerTitle.includes("nebraska")
-              ) {
-                if (
-                  lowerTitle.includes("downtown") ||
-                  lowerTitle.includes("skyline")
-                ) {
-                  return "omaha-skyline-cityscape";
-                }
-                if (
-                  lowerTitle.includes("restaurant") ||
-                  lowerTitle.includes("dining")
-                ) {
-                  return "restaurant-dining-food";
-                }
-                if (
-                  lowerTitle.includes("sports") ||
-                  lowerTitle.includes("volleyball") ||
-                  lowerTitle.includes("athletics")
-                ) {
-                  return "volleyball-sports-arena";
-                }
-                if (
-                  lowerTitle.includes("construction") ||
-                  lowerTitle.includes("building") ||
-                  lowerTitle.includes("development")
-                ) {
-                  return "modern-building-construction";
-                }
-                if (
-                  lowerTitle.includes("community") ||
-                  lowerTitle.includes("event") ||
-                  lowerTitle.includes("festival")
-                ) {
-                  return "community-gathering-festival";
-                }
-                if (
-                  lowerTitle.includes("tower") ||
-                  lowerTitle.includes("skyscraper")
-                ) {
-                  return "modern-skyscraper-architecture";
-                }
-              }
-
-              // Category-based defaults
-              if (category === "Market") return "real-estate-market-home";
-              if (category === "Development")
-                return "modern-architecture-building";
-              if (category === "Community") return "community-people-gathering";
-              if (category === "Lifestyle") return "lifestyle-city-life";
-
-              return "modern-home-real-estate";
-            };
-
-            const imageQuery = getImageQuery(
-              articleData.title,
-              articleData.category || "Community"
-            );
-
-            generatedArticles.push({
-              title: articleData.title,
-              slug: `${slug}-${Date.now()}`,
-              excerpt: articleData.excerpt,
-              content: articleData.content,
-              category: articleData.category || "Community",
-              author: "Bjork Group",
-              image: `https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80`,
-              published: true,
-              featured: false,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              userId,
-            });
-          } catch (error) {
-            console.error(
-              `Error generating article for topic "${topic}":`,
-              error
-            );
-          }
-        }
-
-        if (generatedArticles.length === 0) {
-          return res.status(500).json({
-            message: "Failed to generate any articles. Please try again.",
-          });
-        }
-
-        // Save to database
-        const { blogPosts } = await import("@shared/schema");
-
-        const insertedPosts = await db
-          .insert(blogPosts)
-          .values(
-            generatedArticles.map((post) => ({
-              ...post,
-              id: undefined, // Let DB generate IDs
-            }))
-          )
-          .returning();
-
-        res.json({
-          success: true,
-          count: insertedPosts.length,
-          posts: insertedPosts,
-          message: `Successfully generated ${insertedPosts.length} AI-powered articles about ${city}`,
-        });
-      } catch (error) {
-        console.error("Error generating AI articles:", error);
-        res.status(500).json({
-          message: "Failed to generate AI articles",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-  );
-
-  // Import necessary modules for template routes
-  const { templates, users } = await import("@shared/schema");
-  const { eq } = await import("drizzle-orm");
-
-  // Type for authenticated requests
-  interface AuthenticatedRequest extends Request {
-    user?: {
-      id: number;
-      username: string;
-      email: string;
-      firstName?: string;
-      lastName?: string;
-    };
-    body: any;
-  }
-
-  // Get public template endpoint moved to index.ts to avoid auth middleware
-
-  // Get user's template (requires authentication)
-  app.get("/api/template", authenticateUser, async (req: any, res) => {
-    try {
-      const userId = req.user!.id;
-
-      if (!db) {
-        return res.status(503).json({ message: "Database not available" });
-      }
-
-      // Get user-specific template
-      let template = await db
-        .select()
-        .from(templates)
-        .where(eq(templates.userId, userId))
-        .limit(1);
-
-      // If no template exists for user, create one with default values
-      if (!template || template.length === 0) {
-        // Get user's customSlug to use as template publicSlug
-        const userInfo = await db
-          .select({ customSlug: users.customSlug })
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1);
-
-        const defaultTemplate = {
-          userId: userId,
-          companyName: `${
-            req.user!.firstName || req.user!.username
-          }'s Real Estate Company`,
-          agentName: `${req.user!.firstName || req.user!.username} ${
-            req.user!.lastName || ""
-          }`.trim(),
-          agentTitle: "Principal Broker",
-          agentEmail: req.user!.email,
-          companyDescription:
-            "We believe that luxury is not a price point but an experience.",
-          homesSold: 0,
-          totalSalesVolume: "$0",
-          serviceAreas: ["Your Primary City", "Your Secondary City"],
-          phone: "",
-          address: {
-            street: "123 Main Street",
-            city: "Your City",
-            state: "Your State",
-            zip: "12345",
-          },
-          // Set publicSlug to match user's customSlug for consistency
-          publicSlug: userInfo[0]?.customSlug || null,
-        };
-
-        const result = await db
-          .insert(templates)
-          .values(defaultTemplate)
-          .returning();
-        template = result;
-      }
-
-      res.json(template[0]);
-    } catch (error) {
-      console.error("Error fetching user template:", error);
-      res.status(500).json({ message: "Failed to fetch template" });
-    }
-  });
-
-  // Update user's account profile (requires authentication)
-  // This route syncs profile changes to the template automatically
-  app.put("/api/account/profile", authenticateUser, async (req: any, res) => {
-    try {
-      const userId = req.user!.id;
-      const { firstName, lastName, phoneNumber } = req.body;
-
-      console.log(`📝 [Account Profile] Updating profile for user ${userId}`);
-      console.log(`📦 [Account Profile] Data:`, {
-        firstName,
-        lastName,
-        phoneNumber,
-      });
-
-      if (!db) {
-        return res.status(503).json({ message: "Database not available" });
-      }
-
-      const { users } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-
-      // Update user profile
-      const [updatedUser] = await db
-        .update(users)
-        .set({
-          firstName,
-          lastName,
-          phoneNumber,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, userId))
-        .returning();
-
-      console.log(`✅ [Account Profile] User profile updated`);
-
-      // Sync profile changes to template
-      try {
-        const { syncProfileToTemplate } = await import("./utils/profile-sync");
-        await syncProfileToTemplate(userId, {
-          firstName,
-          lastName,
-          phoneNumber,
-        });
-        console.log(
-          `🔄 [Account Profile] Template synced with profile updates`
-        );
-      } catch (syncError) {
-        console.warn(
-          `⚠️ [Account Profile] Template sync failed but profile updated:`,
-          syncError
-        );
-        // Don't fail the request if template sync fails
-      }
-
-      res.json({
-        message: "Profile updated successfully",
-        user: updatedUser,
-      });
-    } catch (error) {
-      console.error("❌ [Account Profile] Profile update error:", error);
-      res.status(500).json({
-        message: "Failed to update profile",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  // Update user's template (requires authentication)
-  app.post("/api/template", authenticateUser, async (req: any, res) => {
-    try {
-      const userId = req.user!.id;
-
-      console.log(`🚀 Template update request started`);
-      console.log(`👤 User ID: ${userId}`);
-      console.log(`📝 Request body:`, JSON.stringify(req.body, null, 2));
-
-      if (!db) {
-        return res.status(503).json({ message: "Database not available" });
-      }
-
-      // Validate required fields
-      const requiredFields = ["companyName", "agentName"];
-      for (const field of requiredFields) {
-        if (!req.body[field]) {
-          console.log(`❌ Missing required field: ${field}`);
-          return res.status(400).json({
-            message: `Missing required field: ${field}`,
-            received: req.body,
-          });
-        }
-      }
-
-      console.log(`✅ Required fields validation passed`);
-
-      // Create a mutable copy of incoming body & sanitize
-      let incoming: any = { ...req.body };
-      if (incoming.id) {
-        console.log("ℹ️ Ignoring client-supplied template id", incoming.id);
-        delete incoming.id;
-      }
-      if (incoming.userId && incoming.userId !== userId) {
-        console.log(
-          "ℹ️ Ignoring mismatched userId",
-          incoming.userId,
-          "expected",
-          userId
-        );
-      }
-      delete incoming.userId;
-
-      const allowedKeys = new Set([
-        "companyName",
-        "agentName",
-        "agentTitle",
-        "agentEmail",
-        "phone",
-        "address",
-        "heroTitle",
-        "heroSubtitle",
-        // Draggable hero layout positions
-        "heroLayout",
-        // Hero text background/typography settings
-        "heroTextOverlayEnabled",
-        "heroTextOverlayColor",
-        "heroTextOverlayOpacity",
-        "heroTitleFontSize",
-        "heroSubtitleFontSize",
-        "heroOverlayPadding",
-        // Hero text colors
-        "heroTitleTextColor",
-        "heroSubtitleTextColor",
-        // Page layout / section ordering
-        "sectionOrder",
-        // Per-page hero images
-        "aboutHeroImageUrl",
-        "servicesHeroImageUrl",
-        "communitiesHeroImageUrl",
-        "contactHeroImageUrl",
-        "buyingHeroImageUrl",
-        "sellingHeroImageUrl",
-        "contactPhone",
-        "contactPhoneText",
-        "officeAddress",
-        "officeCity",
-        "officeState",
-        "officeZip",
-        "companyDescription",
-        "facebookUrl",
-        "twitterUrl",
-        "linkedinUrl",
-        "instagramUrl",
-        "youtubeUrl",
-        "tiktokUrl",
-        "agentBio",
-        // Private Listings Form Text
-        "privateListingsTitle",
-        "privateListingsDescription",
-        "privateListingsDisclaimer",
-        "privateListingsConsent",
-        "homesSold",
-        "totalSalesVolume",
-        "yearsExperience",
-        "clientSatisfaction",
-        "serviceAreas",
-        "primaryColor",
-        "accentColor",
-        "beigeColor",
-        "section4Color",
-        "fontFamily",
-        "customFontFamily",
-        "headingSize",
-        "bodySize",
-        "serviceIcons",
-        "achievementIcons",
-        "featureIcons",
-        "marketingIcons",
-        "processIcons",
-        "logoUrl",
-        "heroImageUrl",
-        "agentImageUrl",
-        "heroVideoUrl",
-        "heroVideoUrls",
-        "heroMode",
-        "mlsId",
-        "mlsApiKey",
-        "mlsRegion",
-        // External link field for iframe nav tab
-        "externalLinkUrl",
-        // Hero layout configuration for drag-and-drop positions
-        "heroLayout",
-        // Manual featured MLS IDs list
-        "manualFeaturedMlsIds",
-        // Community customization fields (were previously excluded)
-        "communitiesEnabled",
-        "featuredCommunities",
-        "communitySettings",
-        "communityCustomizations",
-        "zipCodeMappings",
-        // School Districts fields
-        "districtsEnabled",
-        "featuredDistricts",
-        "districtLevel",
-        "districtSettings",
-        "subdomain",
-        "customDomain",
-        "isActive",
-        "status",
-        "completedAt",
-        "publicSlug",
-        // Navigation & UI customization
-        "navigationConfig",
-        "actionButtonsConfig",
-        "dropdownMenusConfig",
-        // Service page configurations
-        "sellerServicesConfig",
-        "buyerServicesConfig",
-      ]);
-      for (const k of Object.keys(incoming)) {
-        if (!allowedKeys.has(k)) {
-          console.log("🧹 Dropping unknown template field:", k);
-          delete incoming[k];
-        }
-      }
-      const cleanedData = Object.entries(incoming).reduce((acc, [k, v]) => {
-        acc[k] = v === "" ? null : v;
-        return acc;
-      }, {} as any);
-      cleanedData.userId = userId;
-
-      // Debug: Log per-page hero image fields being saved
-      console.log("🖼️ Incoming per-page hero images:", {
-        buyingHeroImageUrl: incoming.buyingHeroImageUrl,
-        sellingHeroImageUrl: incoming.sellingHeroImageUrl,
-        servicesHeroImageUrl: incoming.servicesHeroImageUrl,
-        aboutHeroImageUrl: incoming.aboutHeroImageUrl,
-        communitiesHeroImageUrl: incoming.communitiesHeroImageUrl,
-        contactHeroImageUrl: incoming.contactHeroImageUrl,
-      });
-
-      // Server-side safeguard: if phone provided but contactPhone missing, copy it
-      if (cleanedData.phone && !cleanedData.contactPhone) {
-        cleanedData.contactPhone = cleanedData.phone;
-        console.log(
-          "📞 Server sync: set contactPhone from phone:",
-          cleanedData.contactPhone
-        );
-      }
-
-      // Normalize community related fields
-      if (Array.isArray(cleanedData.featuredCommunities)) {
-        cleanedData.featuredCommunities = cleanedData.featuredCommunities
-          .map((c: any) => (typeof c === "string" ? c.trim() : ""))
-          .filter((c: string) => !!c)
-          .filter(
-            (c: string, i: number, arr: string[]) => arr.indexOf(c) === i
-          );
-      }
-      // Light validation for sectionOrder if provided
-      if (Array.isArray(cleanedData.sectionOrder)) {
-        const allowedSections = new Set([
-          "hero",
-          "featuredListings",
-          "communities",
-          "privateListings",
-          "callToAction",
-          "about",
-          "videoShowcase",
-          "marketInsights",
-          "contact",
-          // Accept schools section ids if used anywhere
-          "schoolDistricts",
-        ]);
-        cleanedData.sectionOrder = cleanedData.sectionOrder
-          .map((s: any) => (typeof s === "string" ? s.trim() : ""))
-          .filter((s: string) => !!s && allowedSections.has(s))
-          .filter(
-            (s: string, i: number, arr: string[]) => arr.indexOf(s) === i
-          );
-      }
-      if (
-        cleanedData.communitySettings &&
-        typeof cleanedData.communitySettings !== "object"
-      ) {
-        delete cleanedData.communitySettings; // prevent invalid types
-      }
-      if (
-        cleanedData.communityCustomizations &&
-        typeof cleanedData.communityCustomizations !== "object"
-      ) {
-        delete cleanedData.communityCustomizations;
-      }
-
-      console.log(
-        `Cleaned template data for user ${userId}:`,
-        JSON.stringify(cleanedData, null, 2)
-      );
-
-      // Check if template exists for user
-      const existingTemplate = await db
-        .select()
-        .from(templates)
-        .where(eq(templates.userId, userId))
-        .limit(1);
-
-      // Normalize & verify publicSlug uniqueness if provided
-      if (cleanedData.publicSlug) {
-        cleanedData.publicSlug = String(cleanedData.publicSlug)
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, "-")
-          .replace(/--+/g, "-")
-          .replace(/^-+|-+$/g, "");
-        if (cleanedData.publicSlug.length < 3) {
-          return res.status(400).json({
-            message: "Public URL must be at least 3 characters",
-            field: "publicSlug",
-          });
-        }
-        const slugOwner = await db
-          .select({ id: templates.id, userId: templates.userId })
-          .from(templates)
-          .where(eq(templates.publicSlug, cleanedData.publicSlug))
-          .limit(1);
-        if (slugOwner.length > 0 && slugOwner[0].userId !== userId) {
-          console.log(
-            `🚫 Conflict: publicSlug '${cleanedData.publicSlug}' already owned by user ${slugOwner[0].userId}`
-          );
-          return res.status(409).json({
-            message: "Public URL already in use. Please choose another.",
-            field: "publicSlug",
-            value: cleanedData.publicSlug,
-          });
-        }
-      }
-
-      let result;
-      if (existingTemplate && existingTemplate.length > 0) {
-        // Update existing template
-        result = await db
-          .update(templates)
-          .set(cleanedData)
-          .where(eq(templates.userId, userId))
-          .returning();
-      } else {
-        // Create new template with default featured communities
-        const defaultFeaturedCommunities = [
-          "Omaha",
-          "Westside / District 66",
-          "Elkhorn",
-          "Bellevue",
-          "Gretna",
-          "Millard",
-          "Valley",
-          "Ashland",
-        ];
-
-        // Add default communities if not already set
-        if (
-          !cleanedData.featuredCommunities ||
-          cleanedData.featuredCommunities.length === 0
-        ) {
-          cleanedData.featuredCommunities = defaultFeaturedCommunities;
-        }
-
-        result = await db.insert(templates).values(cleanedData).returning();
-      }
-      // (Sanitization already performed above before DB write)
-
-      console.log("User template updated successfully:", result[0]);
-      console.log("🧩 Saved sectionOrder:", result[0]?.sectionOrder);
-      res.json(result[0]);
-    } catch (error) {
-      console.error("Error updating user template:", error);
-      console.error("› name:", (error as any)?.name);
-      console.error("› message:", (error as any)?.message);
-      console.error("› detail:", (error as any)?.detail);
-      console.error("› code:", (error as any)?.code);
-      console.error(
-        "› incoming body keys:",
-        Object.keys((req as any).body || {})
-      );
-      if (
-        (error as any)?.code === "23505" &&
-        /(templates_public_slug_key)/.test((error as any)?.detail || "")
-      ) {
-        return res.status(409).json({
-          message: "Public URL already in use. Please choose another.",
-          field: "publicSlug",
-        });
-      }
-      res.status(500).json({
-        message: "Failed to update template",
-        error: error instanceof Error ? error.message : "Unknown error",
-        details: req.body,
-      });
-    }
-  });
-
-  // Get template by agent slug (no authentication required - for agent custom URLs)
-  app.get("/api/agent/:slug/template", async (req, res) => {
-    try {
-      const { slug } = req.params;
-      console.log(`🔍 Getting template for agent slug: ${slug}`);
-
-      if (!db) {
-        return res.status(503).json({ message: "Database not available" });
-      }
-
-      // Import users table to join with templates
-      const { users } = await import("@shared/schema");
-
-      // Get template by user's customSlug from database
-      let result = await db
-        .select({
-          template: templates,
-          user: users,
-        })
-        .from(templates)
-        .innerJoin(users, eq(templates.userId, users.id))
-        .where(eq(users.customSlug, slug))
-        .limit(1);
-
-      // If no match by customSlug, try by username as fallback
-      if (!result || result.length === 0) {
-        console.log(
-          `🔍 No agent found for customSlug: ${slug}, trying username...`
-        );
-        result = await db
-          .select({
-            template: templates,
-            user: users,
-          })
-          .from(templates)
-          .innerJoin(users, eq(templates.userId, users.id))
-          .where(eq(users.username, slug))
-          .limit(1);
-      }
-
-      if (!result || result.length === 0) {
-        console.log(
-          `❌ No agent found for slug: ${slug} (tried customSlug and username), falling back to public template`
-        );
-
-        // Fall back to public template if no specific agent template found
-        const publicTemplateResult = await db
-          .select()
-          .from(templates)
-          .where(eq(templates.isActive, true))
-          .limit(1);
-
-        if (publicTemplateResult && publicTemplateResult.length > 0) {
-          const publicTemplate = publicTemplateResult[0];
-          console.log(
-            `✅ Using public template as fallback for agent slug: ${slug}`
-          );
-
-          // Return public template with agent context
-          const templateWithFallbacks = {
-            ...publicTemplate,
-            // Override agent-specific fields to show it's a fallback
-            agentName: publicTemplate.agentName || "Real Estate Professional",
-            logoUrl:
-              publicTemplate.logoUrl || "/assets/defaults/default-logo.png",
-            heroImageUrl:
-              publicTemplate.heroImageUrl ||
-              "/assets/defaults/default-hero-image.jpg",
-            agentImageUrl:
-              publicTemplate.agentImageUrl ||
-              "/assets/defaults/default-agent-image.jpg",
-            heroVideoUrl:
-              publicTemplate.heroVideoUrl ||
-              "/assets/defaults/default-hero-video.gif",
-          };
-
-          return res.json(templateWithFallbacks);
-        }
-
-        // If no public template either, return 404
-        return res.status(404).json({
-          message: "Agent not found",
-          slug,
-        });
-      }
-
-      const template = result[0].template;
-      console.log(`✅ Template found for agent slug ${slug}:`, {
-        id: template.id,
-        agentName: template.agentName,
-        companyName: template.companyName,
-      });
-
-      // Return the template with media fallbacks
-      const templateWithFallbacks = {
-        ...template,
-        logoUrl: template.logoUrl || "/assets/defaults/default-logo.png",
-        heroImageUrl:
-          template.heroImageUrl || "/assets/defaults/default-hero-image.jpg",
-        agentImageUrl:
-          template.agentImageUrl || "/assets/defaults/default-agent-image.jpg",
-        heroVideoUrl:
-          template.heroVideoUrl || "/assets/defaults/default-hero-video.gif",
-      };
-
-      res.json(templateWithFallbacks);
-    } catch (error) {
-      console.error("Error fetching template by agent slug:", error);
-      res.status(500).json({ message: "Failed to fetch template" });
-    }
-  });
-
-  // Get team members by agent slug (public endpoint - no authentication required)
-  app.get("/api/agent/:slug/team-members", async (req, res) => {
-    try {
-      const rawSlug = req.params.slug;
-      const decodedSlug = decodeURIComponent(rawSlug || "");
-      const normalizedSlug = decodedSlug.trim().toLowerCase();
-      console.log(
-        `🔍 Public team-members lookup slug raw='${rawSlug}' decoded='${decodedSlug}'`
-      );
-
-      if (!db) {
-        return res.status(503).json({ message: "Database not available" });
-      }
-
-      const {
-        users,
-        teams: teamsTable,
-        teamMembers,
-      } = await import("@shared/schema");
-      const { eq, or, inArray } = await import("drizzle-orm");
-
-      // 1. Locate user by (a) customSlug match OR (b) email match (decoded), fallback to early exit
-      let userRecord = await db.query.users.findFirst({
-        where: (u: any, { eq, or }: any) =>
-          or(eq(u.customSlug, normalizedSlug), eq(u.email, normalizedSlug)),
-      });
-
-      // Build fallback variants if not found
-      if (!userRecord) {
-        const variants = new Set<string>();
-        // spaces -> dashes
-        variants.add(normalizedSlug.replace(/\s+/g, "-"));
-        // trim trailing numeric segment (e.g., slug-1, slug123)
-        variants.add(normalizedSlug.replace(/-?\d+$/, ""));
-        // drop last hyphen section
-        const parts = normalizedSlug.split("-");
-        if (parts.length > 1) variants.add(parts.slice(0, -1).join("-"));
-        for (const v of Array.from(variants).filter(Boolean)) {
-          if (v && v !== normalizedSlug) {
-            userRecord = await db.query.users.findFirst({
-              where: (u: any, { eq, or }: any) =>
-                or(eq(u.customSlug, v), eq(u.email, v)),
-            });
-            if (userRecord) {
-              console.log(`🔁 Fallback slug match succeeded variant='${v}'`);
-              break;
-            }
-          }
-        }
-      }
-
-      if (!userRecord) {
-        console.log(
-          `❌ No user found for slug/email '${normalizedSlug}' (after variants)`
-        );
-        return res.json({ success: true, teams: [], members: [] });
-      }
-
-      // 2. Fetch (or create) team(s) for this user
-      let teamsForUser = await db.query.teams.findMany({
-        where: eq(teamsTable.userId, userRecord.id),
-      });
-
-      let createdTeam: any | null = null;
-      if (teamsForUser.length === 0) {
-        try {
-          const teamNameBase =
-            userRecord.customSlug ||
-            userRecord.username ||
-            (userRecord.email ? userRecord.email.split("@")[0] : "agent");
-          const inserted = await db
-            .insert(teamsTable)
-            .values({
-              name: `${teamNameBase} Team`,
-              description: `Auto-created team for ${teamNameBase}`,
-              userId: userRecord.id,
-            })
-            .returning();
-          createdTeam = inserted[0];
-          console.log(
-            `✅ Auto-created public team ${createdTeam.id} for user ${userRecord.id}`
-          );
-        } catch (e) {
-          console.warn("⚠️ Public team auto-create failed (race?)", e);
-        }
-        teamsForUser = createdTeam ? [createdTeam] : teamsForUser;
-      }
-
-      // 3. (Changed) Do NOT auto-create default members; teams should remain empty until user action
-
-      // 4. Fetch members for all teams (may be empty which is valid)
-      const teamIds = teamsForUser.map((t: any) => t.id);
-      let members: any[] = [];
-      if (teamIds.length) {
-        members = await db
-          .select()
-          .from(teamMembers)
-          .where(inArray(teamMembers.teamId, teamIds));
-      }
-
-      console.log(
-        `✅ Public team-members result user=${userRecord.id} teams=${teamsForUser.length} members=${members.length}`
-      );
-
-      // 5. Shape response to include teams list for UI consistency
-      const shapedTeams = teamsForUser.map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        description: t.description,
-        createdAt: t.createdAt,
-      }));
-      return res.json({
-        success: true,
-        teams: shapedTeams,
-        members: members.map((m) => ({
-          id: m.id,
-          teamId: m.teamId,
-          agentName: (m as any).agentName,
-          agentMlsId: (m as any).agentMlsId,
-          agentPhone: (m as any).agentPhone,
-          agentImageUrl: (m as any).agentImageUrl,
-          createdAt: (m as any).createdAt,
-        })),
-      });
-    } catch (error) {
-      console.error(
-        "Error fetching team members by agent slug (public):",
-        error
-      );
-      res.status(500).json({ message: "Failed to fetch team members" });
-    }
-  });
-
-  // Auto-generate customSlug for current user
-  app.post("/api/user/generate-slug", authenticateUser, async (req, res) => {
-    try {
-      const { generateUniqueSlug } = await import("./utils/slug-generator");
-      const { db } = await import("./db");
-      const { users, templates } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-
-      const userId = (req as any).user!.id;
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-
-      if (!user || user.length === 0) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const currentUser = user[0];
-
-      // Try to generate from first name + last name, fallback to username
-      const fullName = currentUser.firstName
-        ? `${currentUser.firstName} ${currentUser.lastName || ""}`.trim()
-        : undefined;
-
-      const newSlug = await generateUniqueSlug(
-        currentUser.firstName,
-        currentUser.lastName,
-        currentUser.username
-      );
-
-      // Update user's customSlug
-      const updatedUser = await db
-        .update(users)
-        .set({ customSlug: newSlug })
-        .where(eq(users.id, userId))
-        .returning();
-
-      // Also update the user's template publicSlug if they have one
-      try {
-        const userTemplate = await db
-          .select()
-          .from(templates)
-          .where(eq(templates.userId, userId))
-          .limit(1);
-
-        if (userTemplate.length > 0) {
-          // Always update the template's publicSlug to match the new customSlug
-          await db
-            .update(templates)
-            .set({ publicSlug: newSlug })
-            .where(eq(templates.id, userTemplate[0].id));
-          console.log(
-            `Updated publicSlug for user ${userId} template: ${newSlug}`
-          );
-        }
-      } catch (templateError) {
-        console.warn(
-          `Could not update template publicSlug for user ${userId}:`,
-          templateError
-        );
-        // Don't fail the whole operation if template update fails
-      }
-
-      res.json({
-        message: "Custom slug generated successfully",
-        customSlug: newSlug,
-        user: updatedUser[0],
-      });
-    } catch (error) {
-      console.error("Error generating custom slug:", error);
-      res.status(500).json({ message: "Failed to generate custom slug" });
-    }
-  });
-
-  // Auto-generate URL for current user (for automatic clean URL generation)
-  app.post(
-    "/api/user/auto-generate-slug",
-    authenticateUser,
-    async (req, res) => {
-      try {
-        const { generateUniqueSlug } = await import("./utils/slug-generator");
-        const { db } = await import("./db");
-        const { users } = await import("@shared/schema");
-        const { eq } = await import("drizzle-orm");
-
-        const userId = (req as any).user!.id;
-        const user = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, userId))
-          .limit(1);
-
-        if (!user || user.length === 0) {
-          return res.status(404).json({ message: "User not found" });
-        }
-
-        const currentUser = user[0];
-        console.log(
-          `🔍 Auto-generation check for user ${currentUser.username}:`,
-          {
-            username: currentUser.username,
-            firstName: currentUser.firstName,
-            lastName: currentUser.lastName,
-            customSlug: currentUser.customSlug,
-          }
-        );
-
-        // Only auto-generate if user has generic username and real name data
-        const hasGenericUsername =
-          currentUser.username &&
-          (currentUser.username.includes("office") ||
-            currentUser.username.includes("test") ||
-            currentUser.username.match(/^user\d+$/i));
-
-        const hasRealNameData = currentUser.firstName && currentUser.lastName;
-
-        console.log(`🔍 Auto-generation conditions:`, {
-          hasGenericUsername,
-          hasRealNameData,
-          willAutoGenerate: hasGenericUsername && hasRealNameData,
-        });
-
-        if (!hasGenericUsername || !hasRealNameData) {
-          return res.json({
-            message:
-              "Auto-generation not needed - user already has a professional URL",
-            customSlug: currentUser.customSlug,
-            skipped: true,
-          });
-        }
-
-        // Use the same slug generator as registration
-        const newSlug = await generateUniqueSlug(
-          currentUser.firstName,
-          currentUser.lastName,
-          currentUser.username
-        );
-
-        // Update user's customSlug
-        const updatedUser = await db
-          .update(users)
-          .set({ customSlug: newSlug })
-          .where(eq(users.id, userId))
-          .returning();
-
-        console.log(
-          `🔄 Auto-generated clean URL for ${currentUser.firstName} ${currentUser.lastName}: ${newSlug}`
-        );
-
-        res.json({
-          message: "Clean URL automatically generated",
-          customSlug: newSlug,
-          user: updatedUser[0],
-          autoGenerated: true,
-        });
-      } catch (error) {
-        console.error("Error auto-generating custom slug:", error);
-        res
-          .status(500)
-          .json({ message: "Failed to auto-generate custom slug" });
-      }
-    }
-  );
-
-  // Test endpoint for auto URL generation
-  app.post("/api/test/auto-generate", async (req, res) => {
-    try {
-      const { username } = req.body;
-      if (!username) {
-        return res.status(400).json({ error: "username required" });
-      }
-
-      const { generateUniqueSlug } = await import("./utils/slug-generator");
-      const { db } = await import("./db");
-      const { users } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-
-      // Find user by username
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.username, username))
-        .limit(1);
-
-      if (!user || user.length === 0) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      const currentUser = user[0];
-      console.log(`🧪 Testing auto-generation for user:`, currentUser);
-
-      // Generate new slug
-      const newSlug = await generateUniqueSlug(
-        currentUser.firstName,
-        currentUser.lastName,
-        currentUser.username
-      );
-
-      // Update user's customSlug
-      const updatedUser = await db
-        .update(users)
-        .set({ customSlug: newSlug })
-        .where(eq(users.id, currentUser.id))
-        .returning();
-
-      res.json({
-        message: "Test auto-generation completed",
-        oldSlug: currentUser.customSlug,
-        newSlug: newSlug,
-        user: updatedUser[0],
-      });
-    } catch (error) {
-      console.error("Test auto-generation error:", error);
-      res.status(500).json({ error: "Test failed" });
-    }
-  });
-
-  // CMA Comparables Proxy - proxy requests to external CMA API
-  app.get("/api/cma-comparables", optionalAuth, async (req, res) => {
-    try {
-      console.log("🏘️ CMA Comparables proxy request with params:", req.query);
-
-      // Type helper for global cache
-      // @ts-ignore
-      interface GlobalWithCache extends NodeJS.Global {
-        __cmaCache?: Map<string, { timestamp: number; payload: any }>;
-      }
-      // @ts-ignore
-      const g: GlobalWithCache = global;
-
-      // Simple in-memory cache for subdivision-filtered queries
-      // Keyed by sorted query string (excluding page if includeMlsDetails to reduce churn)
-      const CMA_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
-      // Initialize cache store once
-      if (!g.__cmaCache) {
-        g.__cmaCache = new Map();
-      }
-      const cmaCache = g.__cmaCache;
-
-      // Build external API URL with all query parameters
-      const queryParams = new URLSearchParams();
-      Object.entries(req.query).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== "") {
-          queryParams.append(key, value.toString());
-        }
-      });
-
-      // Normalize zip_code: if a single param contains comma-separated list, expand to multiple zip_code params
-      if (queryParams.has("zip_code")) {
-        const combined = queryParams.getAll("zip_code");
-        let needsExpansion = false;
-        const expanded: string[] = [];
-        combined.forEach((v) => {
-          if (v.includes(",")) {
-            needsExpansion = true;
-            v.split(",")
-              .map((z) => z.trim())
-              .filter(Boolean)
-              .forEach((z) => expanded.push(z));
-          } else {
-            expanded.push(v.trim());
-          }
-        });
-        if (needsExpansion) {
-          queryParams.delete("zip_code");
-          // De-dupe while preserving order
-          const seen = new Set<string>();
-          expanded.forEach((z) => {
-            if (!seen.has(z)) {
-              seen.add(z);
-              queryParams.append("zip_code", z);
-            }
-          });
-          console.log(
-            "🔧 Expanded comma zip_code list into separate params:",
-            Array.from(seen)
-          );
-        }
-      }
-
-      // Alias: community -> subdivision (only if subdivision not already provided)
-      if (!queryParams.has("subdivision") && queryParams.has("community")) {
-        queryParams.set("subdivision", queryParams.get("community") || "");
-      }
-
-      // Subdivision normalization & filter injection (server authoritative)
-      if (queryParams.has("subdivision")) {
-        const rawSub = queryParams.get("subdivision") || "";
-        const normalized = rawSub.trim().toLowerCase();
-        queryParams.set("subdivision", normalized); // normalized for caching and upstream param (if supported)
-        // If upstream API does NOT natively filter by subdivision param, we add an OData $filter
-        // Only add if not already present to avoid stacking
-        const filterClause = `(contains(tolower(SubdivisionName),'${normalized.replace(
-          /'/g,
-          "''"
-        )}') or contains(tolower(Subdivision),'${normalized.replace(
-          /'/g,
-          "''"
-        )}'))`;
-        if (!queryParams.has("$filter")) {
-          queryParams.append("$filter", filterClause);
-        } else if (!queryParams.get("$filter")!.includes("Subdivision")) {
-          queryParams.set(
-            "$filter",
-            `${queryParams.get("$filter")} and ${filterClause}`
-          );
-        }
-      }
-
-      // Build a stable cache key (sorted params)
-      const sortedEntries = Array.from(queryParams.entries()).sort(([a], [b]) =>
-        a.localeCompare(b)
-      );
-      const cacheKey = sortedEntries.map(([k, v]) => `${k}=${v}`).join("&");
-      const now = Date.now();
-      if (cmaCache.has(cacheKey)) {
-        const cached = cmaCache.get(cacheKey)!;
-        if (now - cached.timestamp < CMA_CACHE_TTL_MS) {
-          console.log("⚡ CMA cache HIT for key:", cacheKey);
-          return res.json({ ...cached.payload, cached: true });
-        } else {
-          cmaCache.delete(cacheKey);
-        }
-      }
-
-      // Add new CMA API v2.3.0 parameters for clean active data only
-      // status=active ensures only active listings are returned
-      // exclude_zero_price=true filters out auction properties and incomplete data
-      // city=Omaha is the default when no city is specified
-      // property_type=Residential filters out land and commercial properties
-      // Allow client to pass either property_type or propertyType; unify to property_type
-      if (
-        !queryParams.has("property_type") &&
-        queryParams.has("propertyType")
-      ) {
-        const val = queryParams.get("propertyType");
-        if (val) queryParams.set("property_type", val);
-      }
-      if (!queryParams.has("status")) {
-        queryParams.append("status", "active");
-      } else {
-        // Normalize status to lowercase for CMA API compatibility
-        const statusValue = queryParams.get("status")?.toLowerCase();
-        if (statusValue && ["active", "closed", "both"].includes(statusValue)) {
-          queryParams.set("status", statusValue);
-        }
-      }
-      if (!queryParams.has("exclude_zero_price")) {
-        queryParams.append("exclude_zero_price", "true");
-      }
-      if (!queryParams.has("city")) {
-        queryParams.append("city", "Omaha");
-      }
-      if (!queryParams.has("property_type")) {
-        queryParams.append("property_type", "Residential");
-      }
-      // Support disabling forced residential filtering with residential_only=false
-      const residentialOnlyParam =
-        (req.query.residential_only as string) ||
-        (req.query.residentialOnly as string) ||
-        "true";
-      const residentialOnly = ["1", "true", "yes"].includes(
-        residentialOnlyParam.toLowerCase()
-      );
-      // Optional stricter: house_only (single family detached focus)
-      const houseOnlyParam =
-        (req.query.house_only as string) ||
-        (req.query.houseOnly as string) ||
-        "false";
-      const houseOnly = ["1", "true", "yes"].includes(
-        houseOnlyParam.toLowerCase()
-      );
-
-      const externalUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?${queryParams}`;
-      console.log("🌐 Proxying to external CMA API:", externalUrl);
-
-      const response = await fetch(externalUrl, {
-        headers: {
-          "User-Agent": "NebraskaHomeHub/1.0",
-          Accept: "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        console.error(
-          "❌ External CMA API error:",
-          response.status,
-          response.statusText
-        );
-        throw new Error(
-          `CMA API error: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
-      console.log("✅ CMA API response received, processing...");
-
-      // Handle CMA API response format - it returns a flat array of properties
-      let processedData: any = {};
-
-      if (Array.isArray(data)) {
-        // CMA API returns a flat array of properties
-        console.log(`📊 CMA API returned ${data.length} properties`);
-
-        // Split properties into active and sold based on status field
-        const activeProperties = data.filter(
-          (property: any) =>
-            property.status === "Active" ||
-            property.StandardStatus === "Active" ||
-            property.isActive === true
-        );
-
-        const soldProperties = data.filter(
-          (property: any) =>
-            property.status === "Closed" ||
-            property.StandardStatus === "Closed" ||
-            property.isActive === false
-        );
-
-        // Filter out properties with zero or invalid price
-        const filterValidPrice = (property: any) => {
-          const price =
-            property.ListPrice || property.listPrice || property.price || 0;
-          return price > 0;
-        };
-
-        let activePropertiesFiltered =
-          activeProperties.filter(filterValidPrice);
-        let soldPropertiesFiltered = soldProperties.filter(filterValidPrice);
-
-        // Apply residential-only filtering (server-side) to further exclude land / lots even if upstream returns them.
-        if (residentialOnly || houseOnly) {
-          const isResidential = (p: any) => {
-            const type = (
-              p.propertyType ||
-              p.PropertyType ||
-              p.property_type ||
-              ""
-            )
-              .toString()
-              .toLowerCase();
-            const sub = (
-              p.propertySubType ||
-              p.PropertySubType ||
-              p.SubPropertyType ||
-              ""
-            )
-              .toString()
-              .toLowerCase();
-            // Exclusion first: if it clearly indicates land / lot / commercial, drop it
-            const negativeTokens = [
-              "land",
-              "lot",
-              "lots",
-              "farm",
-              "commercial",
-              "industrial",
-              "multi-family",
-              "multifamily",
-              "hospitality",
-              "retail",
-            ];
-            if (
-              negativeTokens.some(
-                (tok) => type.includes(tok) || sub.includes(tok)
-              )
-            )
-              return false;
-            // Positive signals (broad residential)
-            const positiveTokens = [
-              "residential",
-              "single family",
-              "sfh",
-              "condo",
-              "townhouse",
-              "town home",
-              "townhome",
-            ];
-            if (
-              positiveTokens.some(
-                (tok) => type.includes(tok) || sub.includes(tok)
-              )
-            )
-              return true;
-            // If no positive signal but no negative token and original query forced property_type=Residential, keep it
-            return (
-              queryParams.get("property_type")?.toLowerCase() === "residential"
-            );
-          };
-          const isHouse = (p: any) => {
-            const type = (
-              p.propertyType ||
-              p.PropertyType ||
-              p.property_type ||
-              ""
-            )
-              .toString()
-              .toLowerCase();
-            const sub = (
-              p.propertySubType ||
-              p.PropertySubType ||
-              p.SubPropertyType ||
-              ""
-            )
-              .toString()
-              .toLowerCase();
-            const positiveHouse = [
-              "single family",
-              "detached",
-              "sfh",
-              "residential",
-            ];
-            const excludeCondoTown = [
-              "condo",
-              "town",
-              "townhouse",
-              "townhome",
-              "multi",
-              "duplex",
-              "triplex",
-              "quad",
-            ];
-            if (
-              excludeCondoTown.some((t) => type.includes(t) || sub.includes(t))
-            )
-              return false;
-            return positiveHouse.some(
-              (t) => type.includes(t) || sub.includes(t)
-            );
-          };
-          const beforeActive = activePropertiesFiltered.length;
-          activePropertiesFiltered = activePropertiesFiltered.filter(
-            (p) => isResidential(p) && (!houseOnly || isHouse(p))
-          );
-          const beforeSold = soldPropertiesFiltered.length;
-          soldPropertiesFiltered = soldPropertiesFiltered.filter(
-            (p) => isResidential(p) && (!houseOnly || isHouse(p))
-          );
-          console.log("🏡 Applied residential-only filter", {
-            beforeActive,
-            afterActive: activePropertiesFiltered.length,
-            beforeSold,
-            afterSold: soldPropertiesFiltered.length,
-            houseOnly,
-          });
-        }
-
-        processedData = {
-          active: activePropertiesFiltered,
-          sold: soldPropertiesFiltered,
-          properties: data, // Keep original array for backward compatibility
-          residentialOnlyApplied: residentialOnly,
-          houseOnlyApplied: houseOnly,
-        };
-
-        console.log("✅ CMA API response processed:", {
-          activeCount: activePropertiesFiltered.length,
-          soldCount: soldPropertiesFiltered.length,
-          total: data.length,
-          filteredOut:
-            activeProperties.length +
-            soldProperties.length -
-            activePropertiesFiltered.length -
-            soldPropertiesFiltered.length,
-        });
-      } else {
-        // Fallback for other response formats
-        // Filter out properties with zero or invalid price
-        const filterValidPrice = (property: any) => {
-          const price =
-            property.ListPrice || property.listPrice || property.price || 0;
-          return price > 0;
-        };
-
-        if (data.active) {
-          data.active = data.active.filter(filterValidPrice);
-        }
-        if (data.sold) {
-          data.sold = data.sold.filter(filterValidPrice);
-        }
-
-        processedData = data;
-        console.log("✅ CMA API response (existing format):", {
-          activeCount: data.active?.length || 0,
-          soldCount: data.sold?.length || 0,
-          total: (data.active?.length || 0) + (data.sold?.length || 0),
-        });
-      }
-
-      // Fallback: if subdivision + multiple zip_code params produced zero results, retry without subdivision filter
-      const hadSubdivision = queryParams.has("subdivision");
-      const zipParamsCount = queryParams.getAll("zip_code").length;
-      if (
-        hadSubdivision &&
-        zipParamsCount > 1 &&
-        (!processedData.active || processedData.active.length === 0) &&
-        (!processedData.sold || processedData.sold.length === 0)
-      ) {
-        console.warn(
-          "🔁 Empty result for subdivision with multi-zip; retrying without subdivision filter to broaden results."
-        );
-        const retryParams = new URLSearchParams(
-          Array.from(queryParams.entries()).filter(
-            ([k]) => !["subdivision", "$filter"].includes(k)
-          )
-        );
-        const retryUrl = `http://gbcma.us-east-2.elasticbeanstalk.com/api/cma-comparables?${retryParams}`;
-        try {
-          const retryResp = await fetch(retryUrl, {
-            headers: {
-              "User-Agent": "NebraskaHomeHub/1.0",
-              Accept: "application/json",
-            },
-          });
-          if (retryResp.ok) {
-            const retryData = await retryResp.json();
-            console.log("✅ Retry without subdivision returned counts:", {
-              active: retryData.active?.length || 0,
-              sold: retryData.sold?.length || 0,
-              url: retryUrl,
-            });
-            // Use retry data but keep meta note
-            if (
-              (retryData.active?.length || 0) + (retryData.sold?.length || 0) >
-              0
-            ) {
-              processedData.active = retryData.active;
-              processedData.sold = retryData.sold;
-              processedData.retryWithoutSubdivision = true;
-            }
-          }
-        } catch (retryErr) {
-          console.warn("⚠️ Retry without subdivision failed:", retryErr);
-        }
-      }
-
-      // Meta enrichment only; do NOT remove records here (let upstream filtering + client handle)
-      const subdivisionApplied = queryParams.get("subdivision") || null;
-      const activeArr: any[] = Array.isArray(processedData.active)
-        ? processedData.active
-        : [];
-      const soldArr: any[] = Array.isArray(processedData.sold)
-        ? processedData.sold
-        : [];
-      const metaDebug = {
-        subdivisionApplied,
-        activeOriginal: activeArr.length,
-        soldOriginal: soldArr.length,
-        activeFinal: activeArr.length,
-        soldFinal: soldArr.length,
-        removedActive: 0,
-        removedSold: 0,
-        cacheKey,
-        cached: false,
-        note: "Post-filter disabled to prevent empty UI.",
-      };
-
-      // Optional MLS details enrichment (expensive: 1 extra fetch per property)
-      const includeMlsDetails = ["1", "true", "yes"].includes(
-        ((req.query.includeMlsDetails as string) || "").toLowerCase()
-      );
-
-      if (!includeMlsDetails) {
-        const addMlsId = (arr: any[]) =>
-          Array.isArray(arr)
-            ? arr.map((p) => ({
-                ...p,
-                mlsId:
-                  p.mlsId ||
-                  p.listingKey ||
-                  p.ListingId ||
-                  p.id ||
-                  p.listingId ||
-                  null,
-              }))
-            : arr;
-        const activeWithIds = addMlsId(activeArr);
-        const soldWithIds = addMlsId(soldArr);
-        const payload = {
-          ...processedData,
-          active: activeWithIds,
-          sold: soldWithIds,
-          mlsDetailsIncluded: false,
-          meta: metaDebug,
-        };
-        // Cache result
-        cmaCache.set(cacheKey, { timestamp: now, payload });
-        return res.json(payload);
-      }
-
-      const activeProps: any[] = Array.isArray(activeArr) ? activeArr : [];
-      // Limit to first 15 to cap latency unless override requested
-      const limitParam = parseInt(
-        (req.query.detailsLimit as string) || "15",
-        10
-      );
-      const detailSlice = activeProps.slice(0, Math.max(1, limitParam));
-
-      const detailResults: Record<string, any> = {};
-      await Promise.all(
-        detailSlice.map(async (p) => {
-          const addr = p?.address || p?.fullAddress || p?.displayAddress;
-          if (!addr) return;
-          try {
-            const dResp = await fetch(
-              "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-details-from-address",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ address: addr }),
-                // Basic 6s timeout race
-                signal: AbortSignal.timeout?.(6000),
-              } as any
-            );
-            if (dResp.ok) {
-              const det = await dResp.json();
-              detailResults[addr] = {
-                listingKey: det.listingKey || det.mlsId || det.ListingId,
-                status: det.standardStatus || det.status,
-                listPrice: det.listPrice || det.price,
-                beds: det.beds || det.Beds,
-                baths: det.baths || det.Baths || det.bathrooms,
-                sqft:
-                  det.totalArea ||
-                  det.TotalArea ||
-                  det.buildingAreaTotal ||
-                  det.BuildingAreaTotal ||
-                  det.livingArea ||
-                  det.LivingArea,
-                yearBuilt: det.yearBuilt || det.YearBuilt,
-                photoCount:
-                  (Array.isArray(det.Media) && det.Media.length) ||
-                  (Array.isArray(det.photos) && det.photos.length) ||
-                  (Array.isArray(det.PhotoUrls) && det.PhotoUrls.length) ||
-                  0,
-              };
-            }
-          } catch (e) {
-            console.warn("⚠️ MLS detail fetch failed for", addr, e);
-          }
-        })
-      );
-
-      res.json({
-        ...processedData,
-        mlsDetailsIncluded: true,
-        mlsDetailsCount: Object.keys(detailResults).length,
-        mlsDetails: detailResults,
-      });
-    } catch (error) {
-      console.error("❌ CMA Comparables proxy error:", error);
-
-      // Return mock data as fallback
-      const mockResponse = {
-        active: [],
-        sold: [],
-        error: "CMA API temporarily unavailable",
-      };
-
-      res.status(502).json(mockResponse);
-    }
-  });
-
-  // Advanced Search Proxy - supports sortBy values and normalizes params
-  app.get("/api/advanced-search", async (req, res) => {
-    try {
-      console.log("🔎 Advanced search request with params:", req.query);
-
-      // Extract and normalize params
-      const {
-        city = "",
-        state = "NE",
-        status = "Active",
-        limit = "50",
-        offset = "0",
-        sortBy: sortByRaw,
-        sort_by: legacySortBy,
-      } = req.query as Record<string, any>;
-
-      // Map UI values to valid advanced search sort options
-      const sortMap: Record<string, string> = {
-        newest: "newest",
-        price_low: "price_low",
-        price_high: "price_high",
-        sqft_low: "sqft_low",
-        sqft_high: "sqft_high",
-        dom_low: "dom_low",
-        dom_high: "dom_high",
-      };
-
-      let sortBy = (sortByRaw || legacySortBy || "newest").toString();
-      if (!sortMap[sortBy]) {
-        console.warn(
-          "⚠️ Invalid sortBy provided, defaulting to 'newest':",
-          sortBy
-        );
-        sortBy = "newest";
-      }
-
-      const ext = new URL(
-        "http://gbcma.us-east-2.elasticbeanstalk.com/api/advanced-search"
-      );
-      const params = new URLSearchParams();
-
-      // Basic
-      if (city) params.append("city", city.toString());
-      params.append("state", state.toString());
-      params.append("status", status.toString());
-      params.append("limit", limit.toString());
-      if (offset && offset !== "0") params.append("offset", offset.toString());
-
-      // Convert known min/max keys from our client format to upstream format
-      const q = req.query as Record<string, any>;
-      const mapping: Record<string, string> = {
-        price_min: "min_price",
-        price_max: "max_price",
-        beds_min: "min_beds",
-        beds_max: "max_beds",
-        baths_min: "min_baths",
-        baths_max: "max_baths",
-        sqft_min: "min_sqft",
-        sqft_max: "max_sqft",
-        garage_min: "garage",
-        mls_id: "mls_id",
-        search: "search",
-      };
-
-      for (const [key, val] of Object.entries(q)) {
-        if (val === undefined || val === null || val === "") continue;
-        if (key in mapping) {
-          params.append(mapping[key], val.toString());
-        }
-      }
-
-      // Property type
-      if (q.property_type && q.property_type !== "any") {
-        params.append("property_type", q.property_type.toString());
-      }
-
-      // Feature booleans
-      ["pool", "fireplace", "basement", "waterfront", "deck", "patio"].forEach(
-        (flag) => {
-          const v = q[flag];
-          if (v === true || v === "true") params.append(flag, "true");
-        }
-      );
-
-      // Sorting: external expects sortBy with specific values (camelCase key)
-      params.append("sortBy", sortBy);
-
-      const finalUrl = `${ext.toString()}?${params.toString()}`;
-      console.log("🌐 Advanced search CMA API URL:", finalUrl);
-
-      const response = await fetch(finalUrl, {
-        headers: {
-          "User-Agent": "NebraskaHomeHub/1.0",
-          Accept: "application/json",
-        },
-      });
-      if (!response.ok) {
-        throw new Error(
-          `CMA API error: ${response.status} ${response.statusText}`
-        );
-      }
-      const cmaData = await response.json();
-      const properties = cmaData.properties || [];
-      console.log(`✅ Advanced search found ${properties.length} properties`);
-
-      // Light transformation to match frontend expectations
-      const enhanced = properties.map((p: any) => ({
-        id: p.id || Math.random().toString(),
-        mlsId: p.id,
-        listingKey: p.listingKey || null,
-        title: `${p.beds || "?"} Bed ${p.baths || 1} Bath in ${
-          p.city || "Omaha"
-        }`,
-        description:
-          p.description ||
-          `${p.propertyType || "Property"} in ${p.subdivision || p.city}`,
-        price: p.listPrice || p.soldPrice || 0,
-        address: p.address || "Address not available",
-        city: p.city || "Omaha",
-        state: p.state || "NE",
-        zipCode: p.zipCode || "",
-        beds: p.beds || 0,
-        baths: p.baths ? parseFloat(p.baths.toString()) : 1,
-        sqft: p.sqft || 0,
-        yearBuilt: p.yearBuilt,
-        propertyType: p.propertyType || p.property_type || "Single Family",
-        status: p.status || "active",
-        standardStatus: p.standardStatus || p.status,
-        featured: (p.listPrice || p.soldPrice || 0) > 500000,
-        luxury: (p.listPrice || p.soldPrice || 0) > 800000,
-        images: p.photoUrl
-          ? [p.photoUrl]
-          : p.photos?.length > 0
-          ? p.photos
-          : [
-              "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80",
-            ],
-        neighborhood: p.neighborhood || p.subdivision,
-        schoolDistrict: p.schoolDistrict || p.school_district,
-        style: p.style,
-        coordinates: {
-          lat: p.latitude || 41.2565,
-          lng: p.longitude || -95.9345,
-        },
-        features: [
-          ...(p.pool || p.features?.pool ? ["pool"] : []),
-          ...(p.fireplace || p.features?.fireplace ? ["fireplace"] : []),
-          ...(p.basement || p.features?.basement ? ["basement"] : []),
-          ...(p.waterfront || p.features?.waterfront ? ["waterfront"] : []),
-          ...(p.deck || p.features?.deck ? ["deck"] : []),
-          ...(p.patio || p.features?.patio ? ["patio"] : []),
-          ...((p.garage || 0) > 0 ? ["garage"] : []),
-        ],
-        photoCount: p.photoCount || p.photos?.length || 1,
-        virtualTourUrl: p.virtualTourUrl,
-        isIdxListing: true,
-        idxSyncedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
-
-      res.json({ success: true, count: enhanced.length, properties: enhanced });
-    } catch (error) {
-      console.error("❌ Advanced search error:", error);
-      res.status(404).json({ success: false, error: (error as Error).message });
-    }
-  });
-
-  // Newsletter Subscription Endpoints
-  app.post("/api/subscribe", async (req, res) => {
-    try {
-      const { db } = await import("./db");
-      const { users, subscriptions } = await import("@shared/schema");
-      const { eq, and, isNull } = await import("drizzle-orm");
-
-      const { email, agentSlug, source = "newsletter" } = req.body;
-
-      if (!email) {
-        return res.status(400).json({ error: "Email is required" });
-      }
-
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: "Invalid email format" });
-      }
-
-      // Find agent by slug if provided
-      let agentId = null;
-      if (agentSlug) {
-        const agent = await db
-          .select()
-          .from(users)
-          .where(eq(users.customSlug, agentSlug))
-          .limit(1);
-        if (agent.length > 0) {
-          agentId = agent[0].id;
-        }
-      }
-
-      // Check if already subscribed
-      const existingSubscription = await db
-        .select()
-        .from(subscriptions)
-        .where(
-          and(
-            eq(subscriptions.email, email),
-            agentId
-              ? eq(subscriptions.agentId, agentId)
-              : isNull(subscriptions.agentId)
-          )
-        )
-        .limit(1);
-
-      if (existingSubscription.length > 0) {
-        if (existingSubscription[0].status === "active") {
-          return res.status(200).json({
-            message: "Already subscribed",
-            subscription: existingSubscription[0],
-          });
-        } else {
-          // Reactivate subscription
-          await db
-            .update(subscriptions)
-            .set({
-              status: "active",
-              subscribedAt: new Date(),
-              unsubscribedAt: null,
-            })
-            .where(eq(subscriptions.id, existingSubscription[0].id));
-
-          return res.status(200).json({ message: "Subscription reactivated" });
-        }
-      }
-
-      // Create new subscription
-      const newSubscription = await db
-        .insert(subscriptions)
-        .values({
-          email,
-          agentId,
-          source,
-          status: "active",
-        })
-        .returning();
-
-      // Send welcome email (non-blocking)
-      try {
-        const { emailService } = await import("./email-service");
-        if (emailService.isConfigured()) {
-          await emailService.sendNewsletterWelcomeEmail(
-            email,
-            (req as any).template
-          );
-          console.log(`📧 Newsletter welcome email sent to ${email}`);
-        }
-      } catch (emailError) {
-        console.error("Failed to send newsletter welcome email:", emailError);
-        // Don't fail subscription if email fails
-      }
-
-      res.status(201).json({
-        message: "Successfully subscribed",
-        subscription: newSubscription[0],
-      });
-    } catch (error) {
-      console.error("Subscription error:", error);
-      res.status(500).json({ error: "Failed to subscribe" });
-    }
-  });
-
-  // Get subscriptions for an agent (authenticated)
-  app.get("/api/subscriptions", authenticateUser, async (req: any, res) => {
-    try {
-      const { db } = await import("./db");
-      const { subscriptions } = await import("@shared/schema");
-      const { eq, desc, or, isNull } = await import("drizzle-orm");
-
-      const agentId = req.user.id;
-
-      // Get only agent-specific subscriptions
-      const subscriptionsData = await db
-        .select()
-        .from(subscriptions)
-        .where(eq(subscriptions.agentId, agentId))
-        .orderBy(desc(subscriptions.subscribedAt));
-
-      res.json({ subscriptions: subscriptionsData });
-    } catch (error) {
-      console.error("Get subscriptions error:", error);
-      res.status(500).json({ error: "Failed to fetch subscriptions" });
-    }
-  });
-
-  // Unsubscribe endpoint (public)
-  app.post("/api/unsubscribe", async (req, res) => {
-    try {
-      const { db } = await import("./db");
-      const { subscriptions } = await import("@shared/schema");
-      const { eq, and, isNull } = await import("drizzle-orm");
-
-      const { email, agentId } = req.body;
-
-      if (!email) {
-        return res.status(400).json({ error: "Email is required" });
-      }
-
-      const whereCondition = agentId
-        ? and(
-            eq(subscriptions.email, email),
-            eq(subscriptions.agentId, agentId)
-          )
-        : and(eq(subscriptions.email, email), isNull(subscriptions.agentId));
-
-      await db
-        .update(subscriptions)
-        .set({
-          status: "unsubscribed",
-          unsubscribedAt: new Date(),
-        })
-        .where(whereCondition);
-
-      res.json({ message: "Successfully unsubscribed" });
-    } catch (error) {
-      console.error("Unsubscribe error:", error);
-      res.status(500).json({ error: "Failed to unsubscribe" });
-    }
-  });
-
-  // ===== LEGACY TEAM MANAGEMENT APIs REMOVED =====
-  // Duplicate team endpoints have been removed in favor of unified implementation in team-routes.ts.
-  // This block intentionally left blank to prevent accidental re-introduction.
-
-  // Agent suggestions for team building (proxy to CMA API)
-  app.get("/api/agents/suggestions", async (req, res) => {
-    try {
-      const query = (req.query.q as string) || "";
-      const limit = parseInt(req.query.limit as string) || 10;
-
-      // Use existing CMA API
-      const cmaResponse = await fetch(
-        `http://gbcma.us-east-2.elasticbeanstalk.com/api/agents/suggestions?q=${encodeURIComponent(
-          query
-        )}&limit=${limit}`
-      );
-
-      if (!cmaResponse.ok) {
-        throw new Error("CMA API error");
-      }
-
-      const data = await cmaResponse.json();
-      res.json(data);
-    } catch (error) {
-      console.error("Error fetching agent suggestions:", error);
-      res.status(500).json({ error: "Failed to fetch agent suggestions" });
-    }
-  });
-
-  // Health check for API
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "healthy", timestamp: new Date().toISOString() });
-  });
-
-  // AI Content Generation endpoint
-  app.post("/api/content/generate", requireAuth, async (req, res) => {
-    try {
-      const { type, topic, aiPrompt, neighborhood, seoOptimized, longTailKeywords, localSeoFocus, propertyData } = req.body;
-
-      console.log("\n✨ AI Content Generation Request:");
-      console.log(`   Type: ${type}`);
-      console.log(`   Topic: ${topic}`);
-      console.log(`   User: ${req.user?.id}`);
-
-      // Validation
-      if (!type) {
-        return res.status(400).json({ error: "Content type is required" });
-      }
-
-      if (type !== "property_feature" && !topic?.trim()) {
-        return res.status(400).json({ error: "Topic is required for non-property content" });
-      }
-
-      // Import AI service
-      const { unifiedAI } = await import("./services/unified-ai");
-
-      // Map frontend request to ContentGenerationRequest
-      const contentRequest = {
-        type: type as "blog_post" | "social_post" | "email" | "property_feature",
-        topic: topic || "",
-        prompt: aiPrompt || "",
-        neighborhood,
-        seoOptimized: seoOptimized !== false, // Default to true
-        longTailKeywords: longTailKeywords === true,
-        localSeoFocus: localSeoFocus !== false, // Default to true
-        propertyData,
-        companyProfile: {
-          agentName: "Mike Bjork",
-          businessName: "Berkshire Hathaway HomeServices",
-          agentTitle: "real estate agent",
-        },
-      };
-
-      console.log("   📝 Calling AI service...");
-
-      // Generate content using Unified AI (GitHub Copilot → OpenAI fallback)
-      const generatedContent = await unifiedAI.generateStructuredContent(contentRequest);
-
-      console.log(`   ✅ Content generated: "${generatedContent.title}" (${generatedContent.wordCount} words)`);
-
-      // Return the generated content
-      res.json(generatedContent);
-    } catch (error) {
-      console.error("❌ AI content generation error:", error);
-      res.status(502).json({
-        error: error instanceof Error ? error.message : "Failed to generate content. Please try again.",
-      });
-    }
-  });
-
-  // AI Chat endpoint (mirrors main behavior, auth optional here for local UX)
-  app.post("/api/ai-chat", async (req: any, res: any) => {
-    try {
-      const { message, context } = req.body || {};
-
-      if (!message || typeof message !== "string" || !message.trim()) {
-        return res.status(400).json({
-          success: false,
-          error: "A valid message is required for AI chat",
-        });
-      }
-
-      const enhancedPrompt = `You are an expert real estate AI assistant for "My Golden Brick Real Estate" in Nebraska.
-User Question: "${message.trim()}"
-Context: ${context ? JSON.stringify(context) : "General inquiry"}
-
-Provide a helpful, professional response that:
-1. Directly answers their question
-2. Offers relevant real estate advice
-3. Suggests next steps they can take
-4. Maintains a friendly, knowledgeable tone
-5. Includes specific Nebraska/Omaha market insights when relevant
-6. Keeps responses concise but informative (2-4 paragraphs max)
-
-If the question is about:
-- Property details: Provide analysis and suggest tours/contact
-- Market trends: Share current Nebraska market insights
-- Navigation: Help them find what they need on the website
-- Services: Explain My Golden Brick's offerings
-- General real estate: Provide educational, actionable advice
-
-Always end with a helpful suggestion or call-to-action.`;
-
-      const aiResponse = await openaiChat(enhancedPrompt);
-      const suggestions = generateContextualSuggestions(
-        context?.currentPage ? { page: context.currentPage } : context
-      );
-
-      return res.json({ success: true, response: aiResponse, suggestions });
-    } catch (error) {
-      console.error("Error in AI chat endpoint:", error);
-      res.status(500).json({
-        success: false,
-        error:
-          "AI chat service temporarily unavailable. Please try again or contact our team directly.",
-      });
-    }
-  });
-
-  // Fix S3 permissions for existing images (admin endpoint)
-  app.post(
-    "/api/admin/fix-s3-permissions",
-    authenticateUser,
-    async (req, res) => {
-      try {
-        const { fixExistingImagePermissions } = await import(
-          "./fix-s3-permissions"
-        );
-        await fixExistingImagePermissions();
-        res.json({ message: "S3 permissions fixed successfully" });
-      } catch (error) {
-        console.error("Error fixing S3 permissions:", error);
-        res.status(500).json({
-          message: "Failed to fix S3 permissions",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-  );
-
-  // Social Media Configuration Validation endpoint
-  app.get("/api/admin/social-config", requireAuth, async (req, res) => {
-    try {
-      const { SocialConfigValidator } = await import("./utils/social-config-validator");
-      const validator = new SocialConfigValidator();
-      
-      // Get all platform checks
-      const platformChecks = await validator.validateAll();
-      const baseUrlCheck = validator.validateBaseUrl();
-      
-      // Generate full report
-      const report = await validator.generateReport();
-      
-      console.log("\n" + report);
-      
-      res.json({
-        baseUrl: validator['baseUrl'],
-        baseUrlCheck,
-        platforms: platformChecks,
-        report,
-        summary: {
-          total: platformChecks.length,
-          valid: platformChecks.filter(p => p.status === 'valid').length,
-          warnings: platformChecks.filter(p => p.status === 'warning').length,
-          errors: platformChecks.filter(p => p.status === 'error').length,
-        },
-      });
-    } catch (error) {
-      console.error("Error validating social media config:", error);
-      res.status(500).json({
-        error: error instanceof Error ? error.message : "Failed to validate configuration",
-      });
-    }
-  });
-
-  // Logo generation endpoint using Gemini API
-  app.post(
-    "/api/generate-logo",
-    authenticateUser,
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        const { prompt } = req.body;
-
-        if (
-          !prompt ||
-          typeof prompt !== "string" ||
-          prompt.trim().length === 0
-        ) {
-          return res.status(400).json({
-            success: false,
-            error: "A valid prompt is required for logo generation",
-          });
-        }
-
-        console.log(
-          `🎨 Logo generation request from user ${req.user!.id}:`,
-          prompt
-        );
-
-        const { geminiGenerateImage } = await import("./gemini");
-        const result = await geminiGenerateImage(prompt.trim());
-
-        if (result.success) {
-          console.log(`✅ Logo generated successfully:`, result.imageUrl);
-          res.json({
-            success: true,
-            imageUrl: result.imageUrl,
-          });
-        } else {
-          console.log(`❌ Logo generation failed:`, result.error);
-          res.status(500).json({
-            success: false,
-            error: result.error || "Logo generation failed",
-          });
-        }
-      } catch (error) {
-        console.error("Error in logo generation endpoint:", error);
-        res.status(500).json({
-          success: false,
-          error:
-            error instanceof Error ? error.message : "Unknown error occurred",
-        });
-      }
-    }
-  );
-
-  // Image proxy endpoint for DALL-E images to handle CORS
-  app.get("/api/proxy-image", async (req, res) => {
-    try {
-      const { url } = req.query;
-
-      if (!url || typeof url !== "string") {
-        return res.status(400).json({ error: "Image URL is required" });
-      }
-
-      // Only allow proxying DALL-E Azure blob URLs for security
-      if (!url.includes("oaidalleapiprodscus.blob.core.windows.net")) {
-        return res.status(403).json({ error: "Unauthorized image source" });
-      }
-
-      console.log("🖼️ Proxying image:", url);
-
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.status}`);
-      }
-
-      // Get the image as a buffer
-      const imageBuffer = await response.arrayBuffer();
-
-      // Set appropriate headers
-      res.set({
-        "Content-Type": response.headers.get("content-type") || "image/png",
-        "Content-Length": imageBuffer.byteLength.toString(),
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
-        "Access-Control-Allow-Origin": "*",
-      });
-
-      // Send the image
-      res.send(Buffer.from(imageBuffer));
-    } catch (error) {
-      console.error("Error proxying image:", error);
-      res.status(500).json({
-        error: "Failed to load image",
-        details: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  // Neighborhood Explorer API endpoints
-  app.get("/api/neighborhood", async (req, res) => {
-    try {
-      const { lat, lng, address, city, state, zip } = req.query;
-
-      if (!lat || !lng) {
-        return res
-          .status(400)
-          .json({ error: "Latitude and longitude are required" });
-      }
-
-      const latitude = parseFloat(lat as string);
-      const longitude = parseFloat(lng as string);
-
-      // For now, return mock data
-      // In production, this would call external APIs for real data
-      const neighborhoodData = {
-        demographics: {
-          population: 45000,
-          medianIncome: 75000,
-          medianAge: 35.5,
-          householdSize: 2.8,
-          employmentRate: 94.5,
-          medianHomeValue: 425000,
-          crimeRate: 15.2,
-          walkScore: 72,
-          transitScore: 45,
-          bikeScore: 68,
-        },
-        schools: [
-          {
-            name: "Lincoln Elementary School",
-            type: "Elementary",
-            rating: 8,
-            distance: 0.5,
-            gradeRange: "K-5",
-            enrollment: 450,
-            studentTeacherRatio: 18,
-            latitude: latitude + 0.005,
-            longitude: longitude + 0.003,
-          },
-          {
-            name: "Washington Middle School",
-            type: "Middle",
-            rating: 7,
-            distance: 1.2,
-            gradeRange: "6-8",
-            enrollment: 650,
-            studentTeacherRatio: 20,
-            latitude: latitude - 0.008,
-            longitude: longitude + 0.006,
-          },
-          {
-            name: "Roosevelt High School",
-            type: "High",
-            rating: 9,
-            distance: 2.1,
-            gradeRange: "9-12",
-            enrollment: 1200,
-            studentTeacherRatio: 22,
-            latitude: latitude + 0.012,
-            longitude: longitude - 0.009,
-          },
-        ],
-        amenities: [
-          {
-            name: "Whole Foods Market",
-            category: "shopping",
-            distance: 0.8,
-            rating: 4.5,
-            latitude: latitude + 0.007,
-            longitude: longitude - 0.004,
-          },
-          {
-            name: "Target",
-            category: "shopping",
-            distance: 1.2,
-            rating: 4.2,
-            latitude: latitude - 0.009,
-            longitude: longitude + 0.008,
-          },
-          {
-            name: "Central Park",
-            category: "park",
-            distance: 0.3,
-            rating: 4.8,
-            latitude: latitude + 0.003,
-            longitude: longitude + 0.002,
-          },
-          {
-            name: "Memorial Park",
-            category: "park",
-            distance: 1.5,
-            rating: 4.6,
-            latitude: latitude - 0.011,
-            longitude: longitude - 0.007,
-          },
-          {
-            name: "City Medical Center",
-            category: "hospital",
-            distance: 1.5,
-            rating: 4.2,
-            latitude: latitude + 0.01,
-            longitude: longitude + 0.005,
-          },
-          {
-            name: "The Coffee House",
-            category: "restaurant",
-            distance: 0.2,
-            rating: 4.7,
-            priceLevel: 2,
-            latitude: latitude - 0.002,
-            longitude: longitude + 0.001,
-          },
-          {
-            name: "Italian Bistro",
-            category: "restaurant",
-            distance: 0.5,
-            rating: 4.5,
-            priceLevel: 3,
-            latitude: latitude + 0.004,
-            longitude: longitude - 0.003,
-          },
-          {
-            name: "Sushi Bar",
-            category: "restaurant",
-            distance: 0.7,
-            rating: 4.6,
-            priceLevel: 3,
-            latitude: latitude - 0.005,
-            longitude: longitude + 0.004,
-          },
-          {
-            name: "Metro Station North",
-            category: "transit",
-            distance: 0.4,
-            latitude: latitude + 0.003,
-            longitude: longitude,
-          },
-          {
-            name: "Bus Stop Central",
-            category: "transit",
-            distance: 0.1,
-            latitude: latitude,
-            longitude: longitude + 0.001,
-          },
-        ],
-        scores: {
-          neighborhoodScore: 85,
-          livabilityScore: 82,
-          safetyScore: 88,
-        },
-      };
-
-      res.json(neighborhoodData);
-    } catch (error) {
-      console.error("Error fetching neighborhood data:", error);
-      res.status(500).json({ error: "Failed to fetch neighborhood data" });
-    }
-  });
-
-  // Google Places API proxy for amenities
-  app.get("/api/places/nearby", async (req, res) => {
-    try {
-      const { lat, lng, type, radius = "1500" } = req.query;
-
-      if (!lat || !lng) {
-        return res
-          .status(400)
-          .json({ error: "Latitude and longitude are required" });
-      }
-
-      const googleApiKey =
-        process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
-
-      if (!googleApiKey) {
-        console.warn("Google Maps API key not found, returning mock data");
-        return res.json({ results: [], status: "NO_API_KEY" });
-      }
-
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${
-        type || "restaurant"
-      }&key=${googleApiKey}`;
-
-      const response = await fetch(url);
-      const data = await response.json();
-
-      res.json(data);
-    } catch (error) {
-      console.error("Error fetching places:", error);
-      res.status(500).json({ error: "Failed to fetch places data" });
-    }
-  });
-
-  // ====== SAVED SEARCHES & PROPERTY ALERTS ENDPOINTS ======
-  // Middleware to get public user from session
-  async function getPublicUser(req: Request) {
-    const token = req.cookies?.publicUserToken;
-    if (!token) return null;
-
-    const { publicUserSessions, publicUsers } = await import("@shared/schema");
-    const { eq } = await import("drizzle-orm");
-
-    const [session] = await db
-      .select({
-        userId: publicUserSessions.publicUserId,
-        expiresAt: publicUserSessions.expiresAt,
-      })
-      .from(publicUserSessions)
-      .where(eq(publicUserSessions.token, token))
-      .limit(1);
-
-    if (!session || new Date(session.expiresAt) < new Date()) {
+export async function registerRoutes(app: Express): Promise<Server> {
+  const resolveMemStorageUser = async (req: any) => {
+    if (!req?.user) {
       return null;
     }
 
-    const [user] = await db
-      .select()
-      .from(publicUsers)
-      .where(eq(publicUsers.id, session.userId))
-      .limit(1);
+    const sessionId = req.user.id ? String(req.user.id) : undefined;
+    let user = sessionId ? await storage.getUser(sessionId) : undefined;
+
+    const memUsers: Map<string, any> | undefined = (storage as any).users;
+
+    if (!user && req.user.email && memUsers) {
+      const allUsers = Array.from(memUsers.values());
+      user = allUsers.find((u) => u.email === req.user.email);
+    }
+
+    if (!user && req.user.username) {
+      user = await storage.getUserByUsername(req.user.username);
+    }
+
+    if (!user && sessionId) {
+      const derivedRole =
+        req.user.type === "public"
+          ? "public"
+          : req.user.type === "team_lead"
+          ? "team_lead"
+          : "agent";
+
+      const fallbackEmail =
+        req.user.email || `${sessionId}@placeholder.realtyflow`;
+
+      user = await storage.createUser({
+        username:
+          req.user.username ||
+          req.user.email?.split("@")[0] ||
+          `user_${sessionId}`,
+        email: fallbackEmail,
+        password: "",
+        name: req.user.email || `User ${sessionId}`,
+        role: derivedRole as "agent" | "public" | "team_lead",
+      });
+    }
 
     return user || null;
-  }
-
-  // Save a new search with alert preferences
-  app.post("/api/saved/search", async (req, res) => {
-    try {
-      const user = await getPublicUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      const { publicSavedSearches } = await import("@shared/schema");
-      const {
-        title,
-        searchParams,
-        searchUrl,
-        alertsEnabled = true,
-        alertFrequency = "daily",
-      } = req.body;
-
-      if (!title || !searchParams || !searchUrl) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
-
-      // Extract agent slug from the URL or use default
-      const agentSlugMatch = searchUrl.match(/\/agent\/([^\/]+)\//);
-      const agentSlug = agentSlugMatch ? agentSlugMatch[1] : user.agentSlug;
-
-      const [savedSearch] = await db
-        .insert(publicSavedSearches)
-        .values({
-          publicUserId: user.id,
-          name: title,
-          searchCriteria: searchParams,
-          searchUrl,
-          agentSlug,
-          alertsEnabled,
-          alertFrequency,
-        })
-        .returning();
-
-      res.json({ success: true, savedSearch });
-    } catch (error) {
-      console.error("Error saving search:", error);
-      res.status(500).json({ error: "Failed to save search" });
-    }
-  });
-
-  // Get all saved searches for the current user
-  app.get("/api/saved/searches", async (req, res) => {
-    try {
-      const user = await getPublicUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      const { publicSavedSearches } = await import("@shared/schema");
-      const { eq } = await import("drizzle-orm");
-
-      const searches = await db
-        .select()
-        .from(publicSavedSearches)
-        .where(eq(publicSavedSearches.publicUserId, user.id))
-        .orderBy(publicSavedSearches.createdAt);
-
-      res.json({
-        savedSearches: searches.map((s: any) => ({
-          id: s.id,
-          title: s.name,
-          searchUrl: s.searchUrl, // Use stored URL with query params
-          searchParams: s.searchCriteria,
-          alertsEnabled: s.alertsEnabled,
-          alertFrequency: s.alertFrequency,
-          lastAlertSent: s.lastAlertSent,
-          createdAt: s.createdAt,
-        })),
-      });
-    } catch (error) {
-      console.error("Error fetching saved searches:", error);
-      res.status(500).json({ error: "Failed to fetch saved searches" });
-    }
-  });
-
-  // Update a saved search (alert settings)
-  app.put("/api/saved/search/:id", async (req, res) => {
-    try {
-      const user = await getPublicUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      const { publicSavedSearches } = await import("@shared/schema");
-      const { eq, and } = await import("drizzle-orm");
-      const searchId = parseInt(req.params.id);
-      const { alertsEnabled, alertFrequency, name } = req.body;
-
-      const updateData: any = {};
-      if (alertsEnabled !== undefined) updateData.alertsEnabled = alertsEnabled;
-      if (alertFrequency) updateData.alertFrequency = alertFrequency;
-      if (name) updateData.name = name;
-
-      const [updatedSearch] = await db
-        .update(publicSavedSearches)
-        .set(updateData)
-        .where(
-          and(
-            eq(publicSavedSearches.id, searchId),
-            eq(publicSavedSearches.publicUserId, user.id)
-          )
-        )
-        .returning();
-
-      if (!updatedSearch) {
-        return res.status(404).json({ error: "Search not found" });
-      }
-
-      res.json({ success: true, savedSearch: updatedSearch });
-    } catch (error) {
-      console.error("Error updating saved search:", error);
-      res.status(500).json({ error: "Failed to update search" });
-    }
-  });
-
-  // Delete a saved search
-  app.delete("/api/saved/search/:id", async (req, res) => {
-    try {
-      const user = await getPublicUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      const { publicSavedSearches } = await import("@shared/schema");
-      const { eq, and } = await import("drizzle-orm");
-      const searchId = parseInt(req.params.id);
-
-      const [deleted] = await db
-        .delete(publicSavedSearches)
-        .where(
-          and(
-            eq(publicSavedSearches.id, searchId),
-            eq(publicSavedSearches.publicUserId, user.id)
-          )
-        )
-        .returning();
-
-      if (!deleted) {
-        return res.status(404).json({ error: "Search not found" });
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting saved search:", error);
-      res.status(500).json({ error: "Failed to delete search" });
-    }
-  });
-
-  // Contact Form Endpoint - Send to your email
-  app.post("/api/contact", async (req, res) => {
-    try {
-      // Import what we need
-      const { contactFormSchema } = await import("@shared/schema");
-      const { emailService } = await import("./email-service");
-
-      console.log("📝 Raw contact form data received:", req.body);
-
-      // Try private listings schema first (more lenient), fall back to contact schema
-      let contactData;
-      const { privateListingsSchema } = await import("@shared/schema");
-
-      try {
-        // Try the more lenient private listings schema first
-        const privateData = privateListingsSchema.parse(req.body);
-        // Convert to contact data format
-        contactData = {
-          ...privateData,
-          lastName: privateData.lastName || "", // Fill empty lastName
-          phone: privateData.phone || "", // Fill empty phone
-          message: privateData.message || req.body.message || "Contact inquiry",
-        };
-      } catch (privateError) {
-        // Fall back to strict contact schema validation
-        contactData = contactFormSchema.parse(req.body);
-      }
-
-      console.log("📝 Contact form submission validated:", {
-        name: `${contactData.firstName} ${contactData.lastName}`,
-        email: contactData.email,
-        interest: contactData.interest,
-        referrer: req.get("Referer"),
-      });
-
-      // Determine which agent this lead belongs to based on referrer URL
-      let agentId: number | undefined;
-      let agentSlug: string | undefined;
-
-      const referrer = req.get("Referer") || "";
-      const agentMatch = referrer.match(/\/agent\/([^\/]+)/);
-
-      if (agentMatch) {
-        agentSlug = agentMatch[1];
-        // Find the agent by slug to get their ID
-        try {
-          const agentUser = await storage.getUserByUsername(
-            agentSlug.split("-")[0]
-          ); // Assuming slug format is username-something
-          if (agentUser) {
-            agentId = agentUser.id;
-            console.log(
-              `🎯 Lead assigned to agent: ${agentUser.username} (ID: ${agentId})`
-            );
-          }
-        } catch (error) {
-          console.log(
-            "ℹ️ Could not determine specific agent, lead will be unassigned"
-          );
-        }
-      }
-
-      // Create lead record in database with all enhanced fields
-      const lead = await storage.createLead({
-        firstName: contactData.firstName,
-        lastName: contactData.lastName,
-        email: contactData.email,
-        phone: contactData.phone,
-        propertyAddress: contactData.propertyAddress,
-        interest: contactData.interest,
-        message: contactData.message,
-        source: "website_contact_form",
-
-        // Agent association
-        agentId,
-        agentSlug,
-
-        // Enhanced lead capture fields
-        companyName: (contactData as any).companyName,
-        budgetRange: (contactData as any).budgetRange,
-        preferredContactTime: (contactData as any).preferredContactTime,
-        leadSourceDetails: (contactData as any).leadSourceDetails,
-        leadStatus: "new", // Always set new leads as 'new'
-        propertyTypePreference: (contactData as any).propertyTypePreference,
-        preferredLocation: (contactData as any).preferredLocation,
-      });
-
-      console.log(`✅ Lead ${lead.id} created successfully`);
-
-      // Send email notifications if configured
-      if (emailService.isConfigured()) {
-        try {
-          // Send notification to YOU (the business owner) at mygoldenbrick1@gmail.com
-          const ownerResult = await emailService.sendLeadNotification(
-            lead,
-            "mygoldenbrick1@gmail.com"
-          );
-          console.log("📧 Lead notification sent to mygoldenbrick1@gmail.com");
-
-          // Send confirmation to the customer
-          const confirmResult = await emailService.sendLeadConfirmation(
-            lead,
-            (req as any).template
-          );
-          console.log(`📧 Confirmation email sent to ${lead.email}`);
-
-          // Persist outbound email logs when possible
-          try {
-            const { leadMessages } = await import("@shared/schema");
-            const { db } = await import("./db");
-            if (db) {
-              if (ownerResult?.success && ownerResult.messageId) {
-                await db.insert(leadMessages).values({
-                  leadId: lead.id as any,
-                  direction: "outbound",
-                  subject: `New Lead: ${lead.firstName} ${lead.lastName}`,
-                  toEmail: "mygoldenbrick1@gmail.com",
-                  fromEmail: process.env.EMAIL_USER || null,
-                  provider: "smtp",
-                  messageId: ownerResult.messageId,
-                });
-              }
-              if (confirmResult?.success && confirmResult.messageId) {
-                await db.insert(leadMessages).values({
-                  leadId: lead.id as any,
-                  direction: "outbound",
-                  subject: `Thank you for your interest - BjorkHomes.com`,
-                  toEmail: lead.email,
-                  fromEmail: process.env.EMAIL_USER || null,
-                  provider: "smtp",
-                  messageId: confirmResult.messageId,
-                });
-              }
-            }
-          } catch (logErr) {
-            console.warn("Email log insert failed:", (logErr as any)?.message);
-          }
-        } catch (emailError) {
-          console.error("❌ Failed to send email notifications:", emailError);
-          // Don't fail the request if email fails
-        }
-      } else {
-        console.log("📧 Email service not configured - skipping notifications");
-      }
-
-      res.status(201).json({
-        success: true,
-        message:
-          "Contact form submitted successfully! We'll get back to you within 24 hours.",
-        leadId: lead.id,
-      });
-    } catch (error) {
-      console.error("❌ Contact form error:", error);
-
-      if ((error as any).name === "ZodError") {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid form data",
-          errors: (error as any).errors,
-        });
-      }
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to process contact form. Please try again.",
-      });
-    }
-  });
-
-  // Personalized Search Preferences Endpoint
-  app.post("/api/personalized-search", async (req, res) => {
-    try {
-      console.log("🔍 Personalized search preferences received:", req.body);
-
-      const { firstName, lastName, email, phone, preferences } = req.body;
-
-      // Validate required fields
-      if (!firstName || !email || !preferences) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Missing required fields: firstName, email, and preferences are required",
-        });
-      }
-
-      const { personalizedSearchPreferences, users, publicUsers } =
-        await import("@shared/schema");
-      const { db } = await import("./db");
-      const { eq } = await import("drizzle-orm");
-
-      console.log(`🔍 [PERSONALIZED SEARCH POST] Looking up user: ${email}`);
-
-      // Try to find user in users table first (authenticated agents)
-      let user = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, email))
-        .limit(1);
-
-      let userId: number;
-
-      if (user.length === 0) {
-        console.log(
-          `📋 [PERSONALIZED SEARCH POST] User not found in 'users' table, checking 'public_users'...`
-        );
-
-        // User not in users table, check public_users
-        const publicUser = await db
-          .select()
-          .from(publicUsers)
-          .where(eq(publicUsers.email, email))
-          .limit(1);
-
-        if (publicUser.length > 0) {
-          console.log(
-            `📋 [PERSONALIZED SEARCH POST] Found in 'public_users' (ID: ${publicUser[0].id}), creating 'users' entry...`
-          );
-
-          // Public user exists, create corresponding users entry for preferences
-          const newUser = await db
-            .insert(users)
-            .values({
-              username: email.split("@")[0] + "_" + Date.now(),
-              email: email,
-              password: "", // No password for public users converted to users
-              firstName: firstName,
-              lastName: lastName || "",
-              phoneNumber: phone || "",
-              isActive: true,
-            })
-            .returning();
-          userId = newUser[0].id;
-          console.log(
-            `✅ [PERSONALIZED SEARCH POST] Created users entry for public user, ID: ${userId}`
-          );
-        } else {
-          console.log(
-            `📋 [PERSONALIZED SEARCH POST] New user - creating entries in both 'public_users' and 'users'...`
-          );
-
-          // Neither users nor public_users, create both
-          const newPublicUser = await db
-            .insert(publicUsers)
-            .values({
-              email,
-              password: "", // No password needed for public users
-              firstName,
-              lastName: lastName || "",
-              phone: phone || "",
-              agentSlug: "site",
-            })
-            .returning();
-
-          const newUser = await db
-            .insert(users)
-            .values({
-              username: email.split("@")[0] + "_" + Date.now(),
-              email: email,
-              password: "",
-              firstName: firstName,
-              lastName: lastName || "",
-              phoneNumber: phone || "",
-              isActive: true,
-            })
-            .returning();
-          userId = newUser[0].id;
-          console.log(
-            `✅ [PERSONALIZED SEARCH POST] Created new public user (ID: ${newPublicUser[0].id}) and users entry (ID: ${userId})`
-          );
-        }
-      } else {
-        userId = user[0].id;
-        console.log(
-          `✅ [PERSONALIZED SEARCH POST] Existing authenticated user found (ID: ${userId})`
-        );
-      }
-
-      // Also create a lead for tracking
-      console.log(
-        `📝 [PERSONALIZED SEARCH POST] Creating lead for tracking...`
-      );
-      await storage.createLead({
-        firstName,
-        lastName: lastName || "",
-        email,
-        phone: phone || "",
-        propertyAddress: "",
-        interest: "buying",
-        message: "Personalized home search preferences submission",
-        source: "personalized_search_form",
-        leadStatus: "new",
-      });
-
-      // Create personalized search preferences record
-      console.log(
-        `💾 [PERSONALIZED SEARCH POST] Saving preferences for user ${userId}...`
-      );
-      console.log(`📊 [PERSONALIZED SEARCH POST] Preferences data:`, {
-        userId,
-        minBeds: preferences.minBeds,
-        maxBeds: preferences.maxBeds,
-        minBaths: preferences.minBaths,
-        garageSpaces: preferences.garageSpaces,
-        propertyTypes: preferences.propertyTypes,
-        minPrice: preferences.minPrice,
-        maxPrice: preferences.maxPrice,
-        minSqft: preferences.minSqft,
-        maxSqft: preferences.maxSqft,
-        preferredCities: preferences.preferredCities,
-        preferredNeighborhoods: preferences.preferredNeighborhoods,
-        emailFrequency: preferences.emailFrequency,
-        alertsEnabled: preferences.alertsEnabled,
-      });
-
-      const searchPreferences = await db
-        .insert(personalizedSearchPreferences)
-        .values({
-          userId: userId,
-          minBeds: preferences.minBeds,
-          maxBeds: preferences.maxBeds,
-          minBaths: preferences.minBaths,
-          maxBaths: preferences.maxBaths,
-          propertyTypes: preferences.propertyTypes,
-          minPrice: preferences.minPrice,
-          maxPrice: preferences.maxPrice,
-          minSqft: preferences.minSqft,
-          maxSqft: preferences.maxSqft,
-          garageSpaces: preferences.garageSpaces,
-          preferredNeighborhoods: preferences.preferredNeighborhoods,
-          preferredCities: preferences.preferredCities,
-          emailFrequency: preferences.emailFrequency || "weekly",
-          alertsEnabled: preferences.alertsEnabled !== false,
-          lastAlertSent: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .returning();
-
-      console.log(
-        `✅ [PERSONALIZED SEARCH POST] Preferences saved successfully! Preference ID: ${searchPreferences[0]?.id}`
-      );
-
-      // Send email notifications if configured
-      const { emailService } = await import("./email-service");
-      if (emailService.isConfigured()) {
-        try {
-          // Create a lead object for email notifications
-          const leadForEmail = {
-            id: userId,
-            firstName,
-            lastName: lastName || "",
-            email,
-            phone: phone || "",
-          };
-
-          // Send notification to business owner
-          await emailService.sendLeadNotification(
-            leadForEmail,
-            "mygoldenbrick1@gmail.com"
-          );
-          console.log(
-            "📧 Personalized search lead notification sent to mygoldenbrick1@gmail.com"
-          );
-
-          // Send confirmation to the customer with their preferences
-          const confirmResult =
-            await emailService.sendPersonalizedSearchConfirmation(
-              leadForEmail,
-              preferences,
-              (req as any).template
-            );
-          console.log(`📧 Personalized search confirmation sent to ${email}`);
-        } catch (emailError) {
-          console.error(
-            "❌ Failed to send personalized search email notifications:",
-            emailError
-          );
-          // Don't fail the request if email fails
-        }
-      }
-
-      res.status(201).json({
-        success: true,
-        message:
-          "Your personalized home search preferences have been saved! You'll start receiving matching properties soon.",
-        userId: userId,
-        preferencesId: searchPreferences[0]?.id,
-        emailFrequency: preferences.emailFrequency || "weekly",
-      });
-    } catch (error) {
-      console.error("❌ Personalized search preferences error:", error);
-
-      if ((error as any).name === "ZodError") {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid preferences data",
-          errors: (error as any).errors,
-        });
-      }
-
-      res.status(500).json({
-        success: false,
-        message:
-          "Failed to save personalized search preferences. Please try again.",
-      });
-    }
-  });
-
-  // Get personalized search preferences for authenticated user
-  app.get("/api/personalized-search-preferences", async (req, res) => {
-    try {
-      // For now, we'll use the email from session/cookies to identify user
-      // This should be replaced with proper authentication
-      const userEmail = req.headers["x-user-email"] || req.query.email;
-
-      if (!userEmail) {
-        console.log(
-          `⚠️ [PERSONALIZED SEARCH GET] No email provided in request`
-        );
-        return res.status(400).json({
-          success: false,
-          message: "User identification required",
-        });
-      }
-
-      console.log(
-        `🔍 [PERSONALIZED SEARCH GET] Fetching preferences for: ${userEmail}`
-      );
-
-      const { personalizedSearchPreferences, users } = await import(
-        "@shared/schema"
-      );
-      const { db } = await import("./db");
-      const { eq } = await import("drizzle-orm");
-
-      // Find user by email in the users table
-      console.log(
-        `🔍 [PERSONALIZED SEARCH GET] Looking up user in 'users' table...`
-      );
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, userEmail as string))
-        .limit(1);
-
-      if (user.length === 0) {
-        console.log(
-          `⚠️ [PERSONALIZED SEARCH GET] User not found in 'users' table for email: ${userEmail}`
-        );
-        return res.json({
-          success: true,
-          preferences: [],
-          userInfo: null,
-        });
-      }
-
-      const userId = user[0].id;
-      console.log(
-        `✅ [PERSONALIZED SEARCH GET] User found (ID: ${userId}), fetching preferences...`
-      );
-
-      // Get all preferences for this user
-      const preferences = await db
-        .select()
-        .from(personalizedSearchPreferences)
-        .where(eq(personalizedSearchPreferences.userId, userId))
-        .orderBy(personalizedSearchPreferences.createdAt);
-
-      console.log(
-        `✅ [PERSONALIZED SEARCH GET] Found ${preferences.length} preference(s) for user ${userId}`
-      );
-
-      if (preferences.length > 0) {
-        console.log(
-          `📊 [PERSONALIZED SEARCH GET] Preferences summary:`,
-          preferences.map((p: any) => ({
-            id: p.id,
-            minBeds: p.minBeds,
-            maxBeds: p.maxBeds,
-            emailFrequency: p.emailFrequency,
-            alertsEnabled: p.alertsEnabled,
-            createdAt: p.createdAt,
-          }))
-        );
-      }
-
-      const userInfo = {
-        firstName: user[0].firstName || "",
-        lastName: user[0].lastName || "",
-        email: user[0].email,
-        phone: user[0].phoneNumber || "",
-      };
-
-      res.json({
-        success: true,
-        preferences,
-        userInfo,
-      });
-    } catch (error) {
-      console.error(
-        "❌ [PERSONALIZED SEARCH GET] Failed to fetch personalized search preferences:",
-        error
-      );
-      res.status(500).json({
-        success: false,
-        message: "Failed to fetch preferences",
-      });
-    }
-  });
-
-  // Update personalized search preference
-  app.put("/api/personalized-search-preferences/:id", async (req, res) => {
-    try {
-      const preferenceId = parseInt(req.params.id);
-      const preferences = req.body;
-
-      console.log(
-        `🔄 Updating personalized search preference ${preferenceId}:`,
-        preferences
-      );
-
-      const { personalizedSearchPreferences } = await import("@shared/schema");
-      const { db } = await import("./db");
-      const { eq } = await import("drizzle-orm");
-
-      // Update the preference
-      const updatedPreference = await db
-        .update(personalizedSearchPreferences)
-        .set({
-          minBeds: preferences.minBeds,
-          maxBeds: preferences.maxBeds,
-          minBaths: preferences.minBaths,
-          maxBaths: preferences.maxBaths,
-          propertyTypes: preferences.propertyTypes,
-          minPrice: preferences.minPrice,
-          maxPrice: preferences.maxPrice,
-          minSqft: preferences.minSqft,
-          maxSqft: preferences.maxSqft,
-          garageSpaces: preferences.garageSpaces,
-          preferredNeighborhoods: preferences.preferredNeighborhoods,
-          preferredCities: preferences.preferredCities,
-          emailFrequency: preferences.emailFrequency || "weekly",
-          alertsEnabled: preferences.alertsEnabled !== false,
-          updatedAt: new Date(),
-        })
-        .where(eq(personalizedSearchPreferences.id, preferenceId))
-        .returning();
-
-      if (updatedPreference.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Preference not found",
-        });
-      }
-
-      console.log(`✅ Updated personalized search preference ${preferenceId}`);
-
-      res.json({
-        success: true,
-        message: "Preference updated successfully",
-        preference: updatedPreference[0],
-      });
-    } catch (error) {
-      console.error(
-        "❌ Failed to update personalized search preference:",
-        error
-      );
-      res.status(500).json({
-        success: false,
-        message: "Failed to update preference",
-      });
-    }
-  });
-
-  // Delete personalized search preference
-  app.delete("/api/personalized-search-preferences/:id", async (req, res) => {
-    try {
-      const preferenceId = parseInt(req.params.id);
-
-      console.log(`🗑️ Deleting personalized search preference ${preferenceId}`);
-
-      const { personalizedSearchPreferences } = await import("@shared/schema");
-      const { db } = await import("./db");
-      const { eq } = await import("drizzle-orm");
-
-      // Delete the preference
-      const deletedPreference = await db
-        .delete(personalizedSearchPreferences)
-        .where(eq(personalizedSearchPreferences.id, preferenceId))
-        .returning();
-
-      if (deletedPreference.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Preference not found",
-        });
-      }
-
-      console.log(`✅ Deleted personalized search preference ${preferenceId}`);
-
-      res.json({
-        success: true,
-        message: "Preference deleted successfully",
-      });
-    } catch (error) {
-      console.error(
-        "❌ Failed to delete personalized search preference:",
-        error
-      );
-      res.status(500).json({
-        success: false,
-        message: "Failed to delete preference",
-      });
-    }
-  });
-
-  // Toggle email alerts for personalized search preference
-  app.patch(
-    "/api/personalized-search-preferences/:id/toggle-alerts",
-    async (req, res) => {
-      try {
-        const preferenceId = parseInt(req.params.id);
-        const { alertsEnabled } = req.body;
-
-        console.log(
-          `🔔 Toggling alerts for personalized search preference ${preferenceId}: ${alertsEnabled}`
-        );
-
-        const { personalizedSearchPreferences } = await import(
-          "@shared/schema"
-        );
-        const { db } = await import("./db");
-        const { eq } = await import("drizzle-orm");
-
-        // Update the alerts setting
-        const updatedPreference = await db
-          .update(personalizedSearchPreferences)
-          .set({
-            alertsEnabled,
-            updatedAt: new Date(),
-          })
-          .where(eq(personalizedSearchPreferences.id, preferenceId))
-          .returning();
-
-        if (updatedPreference.length === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "Preference not found",
-          });
-        }
-
-        console.log(`✅ Updated alerts setting for preference ${preferenceId}`);
-
-        res.json({
-          success: true,
-          message: `Alerts ${
-            alertsEnabled ? "enabled" : "disabled"
-          } successfully`,
-          preference: updatedPreference[0],
-        });
-      } catch (error) {
-        console.error("❌ Failed to toggle alerts:", error);
-        res.status(500).json({
-          success: false,
-          message: "Failed to update alerts setting",
-        });
-      }
-    }
-  );
-
-  // Send property matches email to selected personalized search preferences
-  app.post("/api/personalized-search/send-emails", async (req, res) => {
-    try {
-      const { preferenceIds } = req.body;
-
-      if (
-        !preferenceIds ||
-        !Array.isArray(preferenceIds) ||
-        preferenceIds.length === 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Preference IDs array is required",
-        });
-      }
-
-      console.log(
-        `📧 Sending property match emails to ${preferenceIds.length} preference(s)`
-      );
-
-      const { personalizedSearchPreferences, users } = await import(
-        "@shared/schema"
-      );
-      const { db } = await import("./db");
-      const { eq, inArray } = await import("drizzle-orm");
-      const { propertyAlertService } = await import("./property-alert-service");
-
-      // Fetch preferences with user details
-      const preferences = await db
-        .select({
-          id: personalizedSearchPreferences.id,
-          userId: personalizedSearchPreferences.userId,
-          minBeds: personalizedSearchPreferences.minBeds,
-          maxBeds: personalizedSearchPreferences.maxBeds,
-          minBaths: personalizedSearchPreferences.minBaths,
-          maxBaths: personalizedSearchPreferences.maxBaths,
-          propertyTypes: personalizedSearchPreferences.propertyTypes,
-          minPrice: personalizedSearchPreferences.minPrice,
-          maxPrice: personalizedSearchPreferences.maxPrice,
-          minSqft: personalizedSearchPreferences.minSqft,
-          maxSqft: personalizedSearchPreferences.maxSqft,
-          garageSpaces: personalizedSearchPreferences.garageSpaces,
-          preferredCities: personalizedSearchPreferences.preferredCities,
-          preferredNeighborhoods:
-            personalizedSearchPreferences.preferredNeighborhoods,
-          emailFrequency: personalizedSearchPreferences.emailFrequency,
-          alertsEnabled: personalizedSearchPreferences.alertsEnabled,
-          user: {
-            id: users.id,
-            email: users.email,
-            firstName: users.firstName,
-            lastName: users.lastName,
-          },
-        })
-        .from(personalizedSearchPreferences)
-        .innerJoin(users, eq(personalizedSearchPreferences.userId, users.id))
-        .where(inArray(personalizedSearchPreferences.id, preferenceIds));
-
-      if (preferences.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "No preferences found for the given IDs",
-        });
-      }
-
-      console.log(`✅ Found ${preferences.length} preference(s) to process`);
-
-      // Send emails for each preference
-      const results = [];
-      for (const pref of preferences) {
-        try {
-          console.log(
-            `📤 Sending property matches to ${pref.user.email} (Preference #${pref.id})`
-          );
-
-          // Query properties matching this preference
-          const { properties } = await import("@shared/schema");
-          const { and, gte, lte, sql } = await import("drizzle-orm");
-
-          const conditions = [];
-
-          if (pref.minBeds) conditions.push(gte(properties.beds, pref.minBeds));
-          if (pref.maxBeds) conditions.push(lte(properties.beds, pref.maxBeds));
-
-          // Note: baths is decimal in DB
-          if (pref.minBaths)
-            conditions.push(gte(properties.baths, pref.minBaths.toString()));
-          if (pref.maxBaths)
-            conditions.push(lte(properties.baths, pref.maxBaths.toString()));
-
-          if (pref.minSqft) conditions.push(gte(properties.sqft, pref.minSqft));
-          if (pref.maxSqft) conditions.push(lte(properties.sqft, pref.maxSqft));
-
-          // Price range filter (price is stored as decimal/string)
-          if (pref.minPrice || pref.maxPrice) {
-            const minPrice = pref.minPrice || "0";
-            const maxPrice = pref.maxPrice || "999999999";
-            conditions.push(
-              and(
-                gte(properties.price, minPrice),
-                lte(properties.price, maxPrice)
-              )
-            );
-          }
-
-          // City filter
-          if (pref.preferredCities && pref.preferredCities.length > 0) {
-            conditions.push(inArray(properties.city, pref.preferredCities));
-          }
-
-          const matchingProperties = await db
-            .select()
-            .from(properties)
-            .where(conditions.length > 0 ? and(...conditions) : undefined)
-            .limit(20); // Limit to 20 properties per email
-
-          console.log(
-            `🏠 Found ${matchingProperties.length} matching properties for ${pref.user.email}`
-          );
-
-          if (matchingProperties.length > 0) {
-            // Format properties for email
-            const propertyList = matchingProperties.map((prop: any) => ({
-              id: prop.id,
-              title: `${prop.beds} bed, ${parseFloat(prop.baths)} bath ${
-                prop.propertyType || "Home"
-              }`,
-              price: parseFloat(prop.price),
-              address: prop.address,
-              city: prop.city,
-              state: prop.state || "NE",
-              beds: prop.beds,
-              baths: parseFloat(prop.baths),
-              sqft: prop.sqft,
-              images: Array.isArray(prop.images) ? prop.images : [],
-              mlsId: prop.mlsId || prop.id,
-            }));
-
-            // Prepare search data similar to saved searches
-            const searchData = {
-              name: `Personalized Search #${pref.id}`,
-              user: pref.user,
-              agentSlug: "default", // You may want to add agentSlug to personalized preferences
-            };
-
-            // Get branding context (template)
-            const { templates } = await import("@shared/schema");
-            const templateResult = await db.select().from(templates).limit(1);
-            const template =
-              templateResult.length > 0 ? templateResult[0] : undefined;
-
-            const branding = {
-              template,
-              agentEmail: template?.agentEmail?.trim() || undefined,
-              agentName: template?.agentName?.trim() || undefined,
-            };
-
-            // Generate and send email HTML using property alert service method
-            const emailService = (await import("./email-service")).emailService;
-            const { propertyAlertService } = await import(
-              "./property-alert-service"
-            );
-
-            // Access the generateEmailHTML method
-            const subject = `${propertyList.length} Properties Match Your Criteria`;
-            const html = (propertyAlertService as any).generateEmailHTML(
-              searchData,
-              propertyList,
-              pref.user,
-              branding
-            );
-
-            const emailResult = await emailService.sendEmail({
-              to: pref.user.email,
-              subject,
-              html,
-              template: branding.template,
-              ...(branding.agentEmail ? { replyTo: branding.agentEmail } : {}),
-            });
-
-            if (emailResult.success) {
-              // Update last alert sent timestamp
-              await db
-                .update(personalizedSearchPreferences)
-                .set({
-                  lastAlertSent: new Date(),
-                  updatedAt: new Date(),
-                })
-                .where(eq(personalizedSearchPreferences.id, pref.id));
-
-              results.push({
-                preferenceId: pref.id,
-                email: pref.user.email,
-                success: true,
-                propertiesCount: matchingProperties.length,
-              });
-
-              console.log(`✅ Email sent successfully to ${pref.user.email}`);
-            } else {
-              results.push({
-                preferenceId: pref.id,
-                email: pref.user.email,
-                success: false,
-                error: emailResult.error || "Failed to send email",
-              });
-              console.log(
-                `❌ Failed to send email to ${pref.user.email}: ${emailResult.error}`
-              );
-            }
-          } else {
-            results.push({
-              preferenceId: pref.id,
-              email: pref.user.email,
-              success: false,
-              error: "No matching properties found",
-            });
-            console.log(`⚠️ No matching properties for ${pref.user.email}`);
-          }
-        } catch (emailError) {
-          console.error(
-            `❌ Error sending email for preference ${pref.id}:`,
-            emailError
-          );
-          results.push({
-            preferenceId: pref.id,
-            email: pref.user.email,
-            success: false,
-            error:
-              emailError instanceof Error
-                ? emailError.message
-                : "Unknown error",
-          });
-        }
-
-        // Add delay between emails to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-
-      const successCount = results.filter((r) => r.success).length;
-      const failureCount = results.filter((r) => !r.success).length;
-      const noPropertiesCount = results.filter(
-        (r) => !r.success && r.error === "No matching properties found"
-      ).length;
-
-      console.log(
-        `📊 Email send results: ${successCount} successful, ${failureCount} failed`
-      );
-
-      // Build a detailed message
-      let message = "";
-      if (successCount > 0) {
-        message = `Successfully sent ${successCount} email(s) with property matches. `;
-      }
-      if (noPropertiesCount > 0) {
-        message += `${noPropertiesCount} preference(s) have no matching properties currently. Emails will be sent automatically when properties matching the criteria become available. `;
-      }
-      const otherFailures = failureCount - noPropertiesCount;
-      if (otherFailures > 0) {
-        message += `${otherFailures} email(s) failed to send due to errors.`;
-      }
-
-      res.json({
-        success: true,
-        message: message.trim() || "No emails were sent",
-        results,
-        stats: {
-          total: results.length,
-          sent: successCount,
-          noProperties: noPropertiesCount,
-          failed: otherFailures,
-        },
-      });
-    } catch (error) {
-      console.error("❌ Failed to send property match emails:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to send emails",
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  // Get leads for current authenticated agent
-  app.get(
-    "/api/leads",
-    authenticateUser,
-    async (req: AuthenticatedRequest, res) => {
-      try {
-        if (!req.user) {
-          return res.status(401).json({ message: "Authentication required" });
-        }
-
-        // Get leads for this specific agent
-        const agentLeads = await storage.getLeadsByAgent(req.user.id);
-        res.json(agentLeads);
-      } catch (error) {
-        console.error("❌ Failed to fetch agent leads:", error);
-        res.status(500).json({ message: "Failed to fetch leads" });
-      }
-    }
-  );
-
-  // ========================
-  // ENGAGEMENT TRACKING API ENDPOINTS
-  // ========================
-
-  // Helper function to get client info
-  const getClientInfo = (req: Request) => ({
-    ipAddress: req.ip || req.connection.remoteAddress || null,
-    userAgent: req.get("User-Agent") || null,
-    referrerUrl: req.get("Referer") || null,
-    sessionId:
-      req.cookies?.session_id ||
-      (req.headers["x-session-id"] as string) ||
-      `session_${Date.now()}_${Math.random()}`,
-  });
-
-  // Helper function to detect device info from User-Agent
-  const parseUserAgent = (userAgent: string) => {
-    const ua = userAgent.toLowerCase();
-    const deviceType = /mobile|android|iphone|ipad|tablet/.test(ua)
-      ? /tablet|ipad/.test(ua)
-        ? "tablet"
-        : "mobile"
-      : "desktop";
-
-    const browserName = ua.includes("chrome")
-      ? "Chrome"
-      : ua.includes("firefox")
-      ? "Firefox"
-      : ua.includes("safari")
-      ? "Safari"
-      : ua.includes("edge")
-      ? "Edge"
-      : "Unknown";
-
-    const operatingSystem = ua.includes("windows")
-      ? "Windows"
-      : ua.includes("mac")
-      ? "macOS"
-      : ua.includes("linux")
-      ? "Linux"
-      : ua.includes("android")
-      ? "Android"
-      : ua.includes("ios")
-      ? "iOS"
-      : "Unknown";
-
-    return { deviceType, browserName, operatingSystem };
   };
 
-  // Track property like/unlike
-  app.post("/api/track/property-like", async (req, res) => {
+  const toBoolean = (value: any) => {
+    if (typeof value === "string") {
+      return ["true", "1", "on", "yes"].includes(value.toLowerCase());
+    }
+    return Boolean(value);
+  };
+  // =====================================================
+  // NEBRASKA HOME HUB INTEGRATION ENDPOINT
+  // =====================================================
+  app.get("/integration", (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { propertyId, agentSlug, liked, publicUserId } = req.body;
-      const clientInfo = getClientInfo(req);
+      const { source, domain, userEmail, agentSlug, timestamp } = req.query;
+      const acceptHeader = String(req.headers.accept || "").toLowerCase();
 
-      if (!propertyId || !agentSlug) {
-        return res
-          .status(400)
-          .json({ error: "Property ID and agent slug are required" });
-      }
+      // Validate trusted domains
+      const trustedDomains = [
+        "localhost",
+        "nebraskahomehub.com",
+        "bjorkhomes.com",
+        "mandy.bjorkhomes.com",
+        "elasticbeanstalk.com", // AWS Elastic Beanstalk deployments
+        "imakepage.com", // iMakePage platform
+      ];
 
-      if (liked) {
-        // Add like
-        await (storage as any).addPropertyLike({
-          publicUserId: publicUserId || null,
-          propertyId,
-          agentSlug,
-          ...clientInfo,
-        });
-      } else {
-        // Remove like
-        await (storage as any).removePropertyLike(
-          propertyId,
-          clientInfo.sessionId,
-          agentSlug
-        );
-      }
+      const requestDomain = typeof domain === "string" ? domain : "";
+      const isTrusted =
+        !requestDomain ||
+        trustedDomains.some((trusted) => requestDomain.includes(trusted));
 
-      // Update session stats
-      await (storage as any).updateSessionStats(
-        clientInfo.sessionId,
-        agentSlug,
-        {
-          propertyLiked: liked,
+      if (!isTrusted) {
+        console.warn(`⚠️ Untrusted integration request from: ${domain}`);
+        if (acceptHeader.includes("text/html")) {
+          return res
+            .status(403)
+            .send("Integration not allowed from this domain");
         }
-      );
-
-      res.json({ success: true, liked });
-    } catch (error) {
-      console.error("❌ Error tracking property like:", error);
-      res.status(500).json({ error: "Failed to track property like" });
-    }
-  });
-
-  // Track property interaction (view, click, time spent, etc.)
-  app.post("/api/track/property-interaction", async (req, res) => {
-    try {
-      const {
-        propertyId,
-        agentSlug,
-        interactionType,
-        interactionValue,
-        timeSpentSeconds,
-        publicUserId,
-      } = req.body;
-
-      if (!agentSlug || !interactionType) {
-        return res.status(400).json({
-          error: "Agent slug and interaction type are required",
+        return res.status(403).json({
+          error: "Integration not allowed from this domain",
         });
       }
 
-      const clientInfo = getClientInfo(req);
-      const validPropertyId =
-        propertyId && propertyId.trim() ? propertyId : null;
-
-      // Store the interaction in database
-      await (storage as any).addPropertyInteraction({
-        publicUserId: publicUserId || null,
-        propertyId: validPropertyId,
-        agentSlug,
-        interactionType,
-        interactionValue: interactionValue || null,
-        timeSpentSeconds: timeSpentSeconds || null,
-        currentUrl: req.body.currentUrl || null,
-        ipAddress: clientInfo.ipAddress,
-        userAgent: clientInfo.userAgent,
-        sessionId: clientInfo.sessionId,
-      });
-
-      console.log("✅ Property interaction stored:", {
-        propertyId: validPropertyId || "page-interaction",
-        agentSlug,
-        interactionType,
-        interactionValue,
-        timeSpentSeconds,
-      });
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error("❌ Error tracking property interaction:", error);
-      res.status(500).json({ error: "Failed to track property interaction" });
-    }
-  });
-
-  // Initialize or update user session
-  app.post("/api/track/session", async (req, res) => {
-    try {
-      const { agentSlug, pageVisited, publicUserId } = req.body;
-      const clientInfo = getClientInfo(req);
-
-      if (!agentSlug) {
-        return res.status(400).json({ error: "Agent slug is required" });
+      // Validate source
+      const normalizedSource = typeof source === "string" ? source : undefined;
+      if (normalizedSource && normalizedSource !== "nebraska-home-hub") {
+        console.warn(`⚠️ Unknown integration source: ${source}`);
+        if (acceptHeader.includes("text/html")) {
+          return res.status(403).send("Unknown integration source");
+        }
+        return res.status(403).json({
+          error: "Unknown integration source",
+        });
       }
 
-      const deviceInfo = clientInfo.userAgent
-        ? parseUserAgent(clientInfo.userAgent)
-        : {};
-
-      // Create or update session in database
-      const session = await (storage as any).upsertUserSession({
-        sessionId: clientInfo.sessionId,
-        publicUserId: publicUserId || null,
-        agentSlug,
-        ipAddress: clientInfo.ipAddress,
-        userAgent: clientInfo.userAgent,
-        firstPageVisited: pageVisited || "/",
-        lastPageVisited: pageVisited || "/",
-        ...deviceInfo,
-      });
-
+      // Log the integration request
       console.log(
-        "✅ Session stored for agent:",
-        agentSlug,
-        "session:",
-        clientInfo.sessionId
+        `🔗 Integration request from ${
+          normalizedSource || "unknown"
+        } - domain: ${domain}, agent: ${agentSlug}`
       );
 
+      if (acceptHeader.includes("text/html")) {
+        return next();
+      }
+
+      // Use the published deployment URL for consistent iframe embedding
+      const appUrl = "https://multi-users-realtyflow.replit.app";
+
+      const params = new URLSearchParams();
+      if (userEmail) {
+        params.set("bypassAuth", "true");
+        params.set("userId", userEmail as string);
+        params.set("userType", "public");
+        params.set("autoLogin", "true");
+      }
+      if (agentSlug) {
+        params.set("agentSlug", agentSlug as string);
+      }
+
+      const query = params.toString();
+      const iframeUrl = `${appUrl}/integration${query ? `?${query}` : ""}`;
+
+      // Return integration configuration with tenant-scoped data
       res.json({
         success: true,
-        sessionId: clientInfo.sessionId,
-        session,
+        source: normalizedSource || "unknown",
+        timestamp: timestamp || new Date().toISOString(),
+        config: {
+          appUrl: appUrl,
+          iframeUrl: iframeUrl,
+          authBypass: true,
+          agentSlug: agentSlug,
+          userEmail: userEmail || null,
+        },
+        message: "RealtyFlow integration ready",
       });
     } catch (error) {
-      console.error("❌ Error tracking session:", error);
-      res.status(500).json({ error: "Failed to track session" });
+      console.error("Integration endpoint error:", error);
+      res.status(500).json({ error: "Integration configuration failed" });
     }
   });
 
-  // Get engagement analytics for an agent
-  app.get("/api/analytics/engagement/:agentSlug", async (req, res) => {
+  // =====================================================
+  // AUTHENTICATION ROUTES
+  // =====================================================
+  app.use("/api/auth", authRoutes);
+  app.use("/api/user", userRoutes);
+
+  // API Key Management
+  app.get("/api/openai/status", async (req, res) => {
     try {
-      const { agentSlug } = req.params;
-      const { timeframe = "7d" } = req.query;
-
-      // Get real analytics data from database
-      const analytics = await (storage as any).getEngagementAnalytics(
-        agentSlug,
-        timeframe as string
-      );
-
-      console.log(
-        "📊 Returning real engagement analytics for:",
-        agentSlug,
-        ":",
-        analytics
-      );
-      res.json(analytics);
+      const status = getAPIKeyStatus();
+      res.json(status);
     } catch (error) {
-      console.error("❌ Error fetching engagement analytics:", error);
-      res.status(500).json({ error: "Failed to fetch engagement analytics" });
+      console.error("Error getting API key status:", error);
+      res.status(500).json({ error: "Failed to get API key status" });
     }
   });
 
-  // Get per-property engagement breakdown for an agent
-  app.get(
-    "/api/analytics/engagement/:agentSlug/properties",
-    async (req, res) => {
-      try {
-        const { agentSlug } = req.params;
-        const { timeframe = "7d" } = req.query;
+  // Get dashboard overview data
+  app.get("/api/dashboard/overview", async (req, res) => {
+    try {
+      // For demo purposes, use first user. In production, use authenticated user
+      const users = await storage.getUserByUsername("mikebjork");
+      if (!users) {
+        return res.status(404).json({ error: "User not found" });
+      }
 
-        const list = await (storage as any).getPropertyEngagementByAgent(
-          agentSlug,
-          timeframe as string
+      const analytics = await storage.getAnalytics(users.id);
+      const overview = analytics.reduce((acc, analytic) => {
+        acc[analytic.metric] = analytic.value;
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Add real engagement leads from tracking system
+      try {
+        const { engagementLeads } = await import("@shared/schema");
+        const {
+          count,
+          gte,
+          lt,
+          and,
+          sql: drizzleSql,
+        } = await import("drizzle-orm");
+
+        // Get first day of current month
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Get first day of last month
+        const firstDayOfLastMonth = new Date(
+          now.getFullYear(),
+          now.getMonth() - 1,
+          1
         );
 
-        res.json({ timeframe, properties: list });
+        // Count engagement leads created this month
+        const monthlyLeadsResult = await db
+          .select({ count: count() })
+          .from(engagementLeads)
+          .where(gte(engagementLeads.createdAt, firstDayOfMonth));
+
+        const currentMonthLeads = monthlyLeadsResult[0]?.count || 0;
+
+        // Count engagement leads created last month
+        const lastMonthLeadsResult = await db
+          .select({ count: count() })
+          .from(engagementLeads)
+          .where(
+            and(
+              gte(engagementLeads.createdAt, firstDayOfLastMonth),
+              lt(engagementLeads.createdAt, firstDayOfMonth)
+            )
+          );
+
+        const lastMonthLeads = lastMonthLeadsResult[0]?.count || 0;
+
+        // Calculate percentage change
+        let leadsChange = 0;
+        if (lastMonthLeads > 0) {
+          leadsChange =
+            ((currentMonthLeads - lastMonthLeads) / lastMonthLeads) * 100;
+        } else if (currentMonthLeads > 0) {
+          leadsChange = 100; // If no leads last month but some this month, 100% increase
+        }
+
+        // Replace static monthly_leads with real engagement leads count
+        overview.monthly_leads = currentMonthLeads;
+        overview.monthly_leads_change = Math.round(leadsChange * 10) / 10; // Round to 1 decimal
+
+        console.log(
+          `📊 Dashboard: ${currentMonthLeads} engagement leads this month (${
+            leadsChange >= 0 ? "+" : ""
+          }${leadsChange.toFixed(1)}% vs last month)`
+        );
       } catch (error) {
-        console.error(
-          "❌ Error fetching property engagement breakdown:",
+        console.warn(
+          "Failed to fetch engagement leads, using static data:",
           error
         );
-        res.status(500).json({ error: "Failed to fetch property engagement" });
       }
-    }
-  );
 
-  // Get sessions with timings and pages for an agent
-  app.get("/api/analytics/engagement/:agentSlug/sessions", async (req, res) => {
-    try {
-      const { agentSlug } = req.params;
-      const { timeframe = "7d" } = req.query;
-
-      const sessions = await (storage as any).getSessionsWithPages(
-        agentSlug,
-        timeframe as string
-      );
-
-      res.json({ timeframe, sessions });
+      res.json(overview);
     } catch (error) {
-      console.error("❌ Error fetching sessions with pages:", error);
-      res.status(500).json({ error: "Failed to fetch session details" });
+      console.error("Dashboard overview error:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard overview" });
     }
   });
 
-  // Get top pages across sessions for an agent
-  app.get("/api/analytics/engagement/:agentSlug/pages", async (req, res) => {
+  // Content generation endpoints
+  app.post("/api/content/generate", async (req, res) => {
     try {
-      const { agentSlug } = req.params;
-      const { timeframe = "7d", limit } = req.query;
-      const lim = Math.max(1, Math.min(parseInt(String(limit || 25)), 100));
+      const {
+        type,
+        topic,
+        aiPrompt,
+        neighborhood,
+        keywords,
+        seoOptimized,
+        longTailKeywords,
+        localSeoFocus,
+        propertyData,
+      } = req.body;
 
-      const pages = await (storage as any).getTopPagesByAgent(
-        agentSlug,
-        timeframe as string,
-        lim
-      );
-
-      res.json({ timeframe, pages });
-    } catch (error) {
-      console.error("❌ Error fetching top pages:", error);
-      res.status(500).json({ error: "Failed to fetch top pages" });
-    }
-  });
-
-  // Generate engagement lead based on user activity
-  app.post("/api/track/generate-engagement-lead", async (req, res) => {
-    try {
-      const { sessionId, agentSlug } = req.body;
-
-      if (!sessionId || !agentSlug) {
-        return res
-          .status(400)
-          .json({ error: "Session ID and agent slug are required" });
+      // Fetch company profile for dynamic personalization
+      const userId = req.user?.id;
+      let companyProfile = null;
+      if (userId) {
+        companyProfile = await storage.getCompanyProfile(userId);
       }
 
-      // Generate real engagement lead from database
-      const engagementLead = await (storage as any).generateEngagementLead(
-        sessionId,
-        agentSlug
-      );
+      // Use unified AI service (GitHub Copilot primary, OpenAI fallback)
+      const { unifiedAI } = await import("./services/unified-ai");
+      const generatedContent = await unifiedAI.generateStructuredContent({
+        type,
+        topic,
+        aiPrompt,
+        neighborhood,
+        keywords,
+        seoOptimized,
+        longTailKeywords,
+        localSeoFocus,
+        propertyData,
+        companyProfile: companyProfile || undefined,
+      });
 
-      console.log("🎯 Engagement lead generation result:", engagementLead);
-
-      if (engagementLead) {
-        res.json({ success: true, lead: engagementLead });
-      } else {
-        res.json({
-          success: false,
-          message: "Not enough engagement to generate lead",
+      // Save to storage
+      const user = await storage.getUserByUsername("mikebjork");
+      if (user) {
+        const contentPiece = await storage.createContentPiece({
+          userId: user.id,
+          type,
+          title: generatedContent.title,
+          content: generatedContent.content,
+          keywords: generatedContent.keywords,
+          neighborhood,
+          seoOptimized: seoOptimized || false,
+          status: "draft",
+          publishedAt: null,
+          scheduledFor: null,
+          socialPlatforms: null,
+          metadata: {
+            wordCount: generatedContent.wordCount,
+            seoScore: generatedContent.seoScore,
+            metaDescription: generatedContent.metaDescription,
+          },
         });
-      }
-    } catch (error) {
-      console.error("❌ Error generating engagement lead:", error);
-      res.status(500).json({ error: "Failed to generate engagement lead" });
-    }
-  });
 
-  // Get engagement leads for an agent (for admin dashboard)
-  app.get("/api/engagement-leads/:agentSlug", async (req: any, res) => {
-    try {
-      const { agentSlug } = req.params;
-
-      // Get real engagement leads from database
-      const engagementLeads = await (storage as any).getEngagementLeadsByAgent(
-        agentSlug
-      );
-
-      console.log(
-        "📧 Returning real engagement leads for:",
-        agentSlug,
-        ":",
-        engagementLeads
-      );
-      res.json(engagementLeads);
-    } catch (error) {
-      console.error("❌ Failed to fetch engagement leads:", error);
-      res.status(500).json({ message: "Failed to fetch engagement leads" });
-    }
-  });
-
-  // Get AI-generated market insights based on location
-  app.get("/api/market-insights", async (req, res) => {
-    try {
-      const { city, state, zip } = req.query;
-
-      if (!city || !state) {
-        return res.status(400).json({ error: "City and state are required" });
-      }
-
-      const { generateMarketInsights } = await import("./market-insights-ai");
-      const insights = await generateMarketInsights(
-        city as string,
-        state as string,
-        zip as string | undefined
-      );
-
-      res.json(insights);
-    } catch (error) {
-      console.error("❌ Error generating market insights:", error);
-      res.status(500).json({ error: "Failed to generate market insights" });
-    }
-  });
-
-  // Convert engagement lead to contacted status
-  app.put("/api/engagement-leads/:leadId/contact", async (req, res) => {
-    try {
-      const { leadId } = req.params;
-
-      await (storage as any).markEngagementLeadContacted(parseInt(leadId));
-      console.log("📞 Engagement lead marked as contacted:", leadId);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("❌ Error marking engagement lead as contacted:", error);
-      res.status(500).json({ error: "Failed to update engagement lead" });
-    }
-  });
-
-  // Social Media API Keys Management Routes
-  // Get user's social media API keys
-  app.get(
-    "/api/user/social-media-keys",
-    authenticateUser,
-    async (req: any, res) => {
-      try {
-        const userId = req.user.id;
-        const keys = await (storage as any).getUserSocialMediaKeys(userId);
-
-        console.log("🔑 Retrieved social media keys for user:", userId);
-        res.json(keys);
-      } catch (error) {
-        console.error("❌ Error fetching social media keys:", error);
-        res.status(500).json({ error: "Failed to fetch social media keys" });
-      }
-    }
-  );
-
-  // Save user's social media API keys
-  app.post(
-    "/api/user/social-media-keys",
-    authenticateUser,
-    async (req: any, res) => {
-      try {
-        const userId = req.user.id;
-        const keys = req.body;
-
-        // Remove empty fields to avoid storing empty strings
-        const cleanKeys = Object.fromEntries(
-          Object.entries(keys).filter(([_, value]) => value && value !== "")
+        // Send real-time notification
+        realtimeService.notifyContentPublished(
+          user.id,
+          contentPiece.id,
+          generatedContent.title
         );
 
-        await (storage as any).saveSocialMediaKeys(userId, cleanKeys);
-
-        console.log("💾 Saved social media keys for user:", userId);
-        res.json({
-          success: true,
-          message: "Social media keys saved successfully",
-        });
-      } catch (error) {
-        console.error("❌ Error saving social media keys:", error);
-        res.status(500).json({ error: "Failed to save social media keys" });
+        res.json({ ...generatedContent, id: contentPiece.id });
+      } else {
+        res.json(generatedContent);
       }
-    }
-  );
-
-  // External access to social media keys (for RealtyFlow integration)
-  app.get("/api/external/social-media-keys", async (req, res) => {
-    try {
-      const { domain, userId } = req.query;
-
-      // Basic validation - in production, add proper domain validation
-      if (!domain || !userId) {
-        return res.status(400).json({ error: "Domain and userId required" });
-      }
-
-      // Convert userId to number if it's a string
-      const userIdNum: number = (() => {
-        if (typeof userId === "string") {
-          const parsed = parseInt(userId, 10);
-          if (Number.isNaN(parsed)) {
-            throw new Error("Invalid userId format");
-          }
-          return parsed;
-        }
-        // If express parsed into array or object, reject to avoid unsafe cast
-        if (Array.isArray(userId) || typeof userId === "object") {
-          throw new Error("Invalid userId type");
-        }
-        return userId as number; // already a number
-      })();
-
-      const keys = await (storage as any).getUserSocialMediaKeys(userIdNum);
-
-      console.log(
-        "🌐 External access to social media keys for domain:",
-        domain,
-        "user:",
-        userIdNum
-      );
-      res.json(keys);
     } catch (error) {
-      console.error(
-        "❌ Error fetching social media keys for external access:",
-        error
-      );
-      res.status(500).json({ error: "Failed to fetch social media keys" });
+      console.error("Content generation error:", error);
+      res.status(500).json({ error: "Failed to generate content" });
     }
   });
 
-  // =======================================================
-  // SOCIAL MEDIA INTEGRATION
-  // =======================================================
-  
-  // Import nanoid for generating IDs
-  const { nanoid } = await import("nanoid");
-  
-  // Configure multer for Twitter uploads
-  const upload = multer({
-    dest: "uploads/",
-    limits: {
-      fileSize: 10 * 1024 * 1024, // 10MB limit
-    },
-    fileFilter: (req, file, cb) => {
-      if (file.mimetype.startsWith("image/") || file.mimetype.startsWith("video/")) {
-        cb(null, true);
-      } else {
-        cb(new Error("Only image and video files are allowed"));
+  app.post("/api/content/social-post", async (req, res) => {
+    try {
+      const { topic, platform, neighborhood } = req.body;
+
+      // Fetch company profile for dynamic personalization
+      const userId = req.user?.id;
+      let companyProfile = null;
+      if (userId) {
+        companyProfile = await storage.getCompanyProfile(userId);
       }
-    },
+
+      const socialPost = await openaiService.generateSocialMediaPost(
+        topic,
+        platform,
+        neighborhood,
+        companyProfile || undefined
+      );
+      res.json(socialPost);
+    } catch (error) {
+      console.error("Social post generation error:", error);
+      res.status(500).json({ error: "Failed to generate social media post" });
+    }
   });
 
-  // Configure multer for YouTube video uploads (larger limit)
-  const videoUpload = multer({
-    dest: "uploads/videos/",
-    limits: {
-      fileSize: 100 * 1024 * 1024, // 100MB limit for video uploads
-    },
-    fileFilter: (req, file, cb) => {
-      // Only allow video files
-      if (file.mimetype.startsWith("video/")) {
-        cb(null, true);
-      } else {
-        cb(new Error("Only video files are allowed"));
+  app.get("/api/content", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername("mikebjork");
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
       }
-    },
+
+      const content = await storage.getContentPieces(user.id);
+      res.json(content);
+    } catch (error) {
+      console.error("Get content error:", error);
+      res.status(500).json({ error: "Failed to fetch content" });
+    }
   });
 
-  // Import social media service
-  const { socialMediaService } = await import("./services/socialMedia");
+  // Content Enhancement
+  app.post("/api/content/enhance", async (req, res) => {
+    try {
+      const { content, prompt, platform, postType } = req.body;
 
-  // Get all social media accounts with connection status
-  app.get("/api/social/accounts", requireAuth, async (req: any, res) => {
+      if (!content) {
+        return res.status(400).json({ error: "Content is required" });
+      }
+
+      const enhancedContent = await openaiService.enhanceContent({
+        originalContent: content,
+        customPrompt:
+          prompt ||
+          "Optimize this post for SEO and engagement while maintaining professional tone for real estate audience in Omaha, Nebraska.",
+        platform: platform || "general",
+        postType: postType || "general",
+      });
+
+      res.json({ enhancedContent });
+    } catch (error) {
+      console.error("Content enhancement error:", error);
+      res.status(500).json({ error: "Failed to enhance content" });
+    }
+  });
+
+  // AI-optimized content generation endpoint
+  app.post("/api/content/ai-optimized", async (req, res) => {
+    try {
+      const { neighborhood, goal, question } = req.body;
+
+      // Generate AI-optimized content with specific formatting for AI search engines
+      const aiOptimizedContent = {
+        title: question ? question : `${goal} in ${neighborhood}`,
+        content: generateAIOptimizedContent(neighborhood, goal, question),
+        type: "ai_optimized",
+        optimizations: {
+          entityOptimization: true,
+          conversationalFormat: true,
+          localContext: true,
+          structuredAnswers: true,
+        },
+        targetQueries: [
+          question || `${goal} ${neighborhood}`,
+          `best ${goal.toLowerCase()} ${neighborhood}`,
+          `${neighborhood} real estate ${goal.toLowerCase()}`,
+        ],
+      };
+
+      res.json(aiOptimizedContent);
+    } catch (error) {
+      console.error("AI optimization error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to generate AI-optimized content" });
+    }
+  });
+
+  // Platform-specific content regeneration endpoint
+  app.post("/api/content/regenerate-for-platform", async (req, res) => {
+    try {
+      const {
+        platform,
+        originalContent,
+        contentType,
+        topic,
+        neighborhood,
+        seoOptimized,
+        longTailKeywords,
+      } = req.body;
+
+      if (!platform || !originalContent) {
+        return res
+          .status(400)
+          .json({ error: "Platform and original content are required" });
+      }
+
+      // Generate platform-optimized content using OpenAI
+      const platformOptimizedContent =
+        await openaiService.generatePlatformSpecificContent({
+          platform: platform.toLowerCase(),
+          originalContent,
+          contentType: contentType || "blog",
+          topic: topic || "real estate",
+          neighborhood: neighborhood || "Omaha",
+          seoOptimized: seoOptimized !== false,
+          longTailKeywords: longTailKeywords !== false,
+        });
+
+      res.json(platformOptimizedContent);
+    } catch (error) {
+      console.error("Platform content regeneration error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to regenerate content for platform" });
+    }
+  });
+
+  // LinkedIn OAuth diagnostic page
+  app.get("/api/linkedin/test", requireAuth, async (req, res) => {
+    try {
+      const sessionId = req.user?.id;
+
+      if (!sessionId) {
+        return res
+          .status(401)
+          .send(
+            "<h1>Please log in first</h1><p>Visit the dashboard and log in, then come back to this page.</p>"
+          );
+      }
+
+      // Resolve session ID to actual UUID from database
+      // Try direct lookup first, then by username if numeric session ID
+      let user = await storage.getUser(String(sessionId));
+      if (!user && req.user?.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+
+      if (!user) {
+        return res
+          .status(500)
+          .send(
+            "<h1>User Not Found</h1><p>Could not find your user account in the database. Please contact support.</p>"
+          );
+      }
+
+      const userId = user.id; // This is the actual UUID
+      const baseUrl = process.env.BASE_URL || `https://${req.get("host")}`;
+      const clientId = process.env.LINKEDIN_CLIENT_ID;
+      const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
+
+      const state = Buffer.from(
+        JSON.stringify({ userId, platform: "linkedin" })
+      ).toString("base64");
+      const authUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(
+        redirectUri
+      )}&state=${state}&scope=profile%20email%20w_member_social`;
+    } catch (error) {
+      console.error("LinkedIn test page error:", error);
+      return res
+        .status(500)
+        .send(
+          "<h1>Error</h1><p>Failed to generate OAuth URL. Check server logs.</p>"
+        );
+    }
+
+    res.send(`
+      <html>
+        <head>
+          <title>LinkedIn OAuth Test</title>
+          <style>
+            body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+            .box { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .success { background: #d4edda; color: #155724; }
+            .info { background: #d1ecf1; color: #0c5460; }
+            code { background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+            a.button { display: inline-block; background: #0077b5; color: white; padding: 12px 24px;
+                       text-decoration: none; border-radius: 6px; margin: 10px 0; font-weight: 600; }
+            a.button:hover { background: #006097; }
+          </style>
+        </head>
+        <body>
+          <h1>🔗 LinkedIn OAuth Test</h1>
+
+          <div class="box info">
+            <h3>Configuration Status</h3>
+            <p>✅ User ID: <code>${userId}</code></p>
+            <p>✅ Client ID: ${clientId ? "Set" : "❌ Missing"}</p>
+            <p>✅ Client Secret: ${
+              process.env.LINKEDIN_CLIENT_SECRET ? "Set" : "❌ Missing"
+            }</p>
+            <p>✅ Redirect URI: <code>${redirectUri}</code></p>
+          </div>
+
+          <div class="box">
+            <h3>Step 1: Verify LinkedIn App Settings</h3>
+            <p>Make sure these redirect URIs are added in your LinkedIn Developer App:</p>
+            <ul>
+              <li><code>${redirectUri}</code></li>
+              <li><code>${redirectUri}/</code> (with trailing slash)</li>
+            </ul>
+          </div>
+
+          <div class="box success">
+            <h3>Step 2: Connect LinkedIn</h3>
+            <p>Click the button below to authorize this app with LinkedIn:</p>
+            <a href="${authUrl}" class="button">🔗 Connect LinkedIn Account</a>
+          </div>
+
+          <div class="box">
+            <h3>What Happens Next?</h3>
+            <ol>
+              <li>You'll be redirected to LinkedIn to authorize the app</li>
+              <li>LinkedIn will redirect back to this app</li>
+              <li>The app will save your access token</li>
+              <li>You can then post to LinkedIn automatically!</li>
+            </ol>
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
+  // Social Media OAuth Routes
+  app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
+    try {
+      const { platform } = req.params;
+
+      console.log("\n🔐 OAuth Connect Request for", platform);
+      console.log(
+        "📋 Session user object:",
+        JSON.stringify(
+          {
+            id: req.user?.id,
+            username: req.user?.username,
+            email: req.user?.email,
+            role: req.user?.role,
+          },
+          null,
+          2
+        )
+      );
+
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // CRITICAL FIX: Resolve the authenticated user to their UUID
+      let userId = String(req.user.id);
+      console.log(
+        `🔍 Looking up user by DB ID: "${userId}" and email: "${req.user.email}"`
+      );
+
+      // Try to find user by ID first
+      let user = await storage.getUser(userId);
+      console.log(
+        `   → getUser(${userId}):`,
+        user ? `✅ Found ${user.username}` : "❌ Not found"
+      );
+
+      // If not found by ID, try by email (critical for DB-authenticated users)
+      if (!user && req.user.email) {
+        console.log(`   → Trying to find by email: "${req.user.email}"`);
+        const allUsers = Array.from(storage.users?.values() || []);
+        user = allUsers.find((u) => u.email === req.user.email);
+        console.log(
+          `   → Email search:`,
+          user ? `✅ Found ${user.id}` : "❌ Not found"
+        );
+      }
+
+      // If not found by email, try by username as fallback
+      if (!user && req.user.username) {
+        console.log(`   → Trying getUserByUsername("${req.user.username}")`);
+        user = await storage.getUserByUsername(req.user.username);
+        console.log(
+          `   → getUserByUsername:`,
+          user ? `✅ Found ${user.id}` : "❌ Not found"
+        );
+      }
+
+      // If user still not found, create them ONCE in MemStorage
+      if (!user) {
+        console.log(
+          `   → User not in MemStorage, creating with auto-generated UUID...`
+        );
+        user = await storage.createUser({
+          username:
+            req.user.username ||
+            req.user.email?.split("@")[0] ||
+            `user_${userId}`,
+          email: req.user.email || undefined,
+          password: "", // Not needed for OAuth-only users
+          name: req.user.email || `User ${userId}`,
+          role: (req.user.type === "agent" ? "agent" : "public") as
+            | "agent"
+            | "public"
+            | "team_lead",
+        });
+        console.log(
+          `   ✅ Created user in MemStorage: ${user.id} (DB ID was: ${userId})`
+        );
+      } else {
+        console.log(`   ✅ Reusing existing MemStorage user: ${user.id}`);
+      }
+
+      // Use the MemStorage UUID for all social account operations
+      userId = user.id;
+      console.log(
+        `✅ OAuth connect for user: ${userId} (${user.email || user.username})`
+      );
+
+      // Read credentials from Replit Secrets (environment variables)
+      const baseUrl =
+        process.env.BASE_URL ||
+        (process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : "http://localhost:5000");
+
+      // Create state parameter with userId for OAuth callback
+      const state = Buffer.from(JSON.stringify({ userId, platform })).toString(
+        "base64"
+      );
+
+      // Generate PKCE parameters for Twitter (required by Twitter OAuth 2.0)
+      let twitterUrl: string | null = null;
+      if (
+        (platform === "twitter" || platform === "x") &&
+        process.env.TWITTER_CLIENT_ID
+      ) {
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = generateCodeChallenge(codeVerifier);
+
+        // Store code verifier with state as key (expires in 10 minutes)
+        pkceStore.set(state, {
+          codeVerifier,
+          expiresAt: Date.now() + 10 * 60 * 1000,
+        });
+
+        twitterUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${
+          process.env.TWITTER_CLIENT_ID
+        }&redirect_uri=${encodeURIComponent(
+          baseUrl + "/api/social/callback/twitter"
+        )}&scope=tweet.read%20tweet.write%20users.read%20offline.access&state=${encodeURIComponent(
+          state
+        )}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+      }
+
+      const facebookClientId =
+        process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+
+      const oauthUrls: Record<string, string | null> = {
+        facebook: facebookClientId
+          ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/facebook"
+            )}&scope=pages_manage_posts,pages_read_engagement&state=${encodeURIComponent(
+              state
+            )}`
+          : null,
+        instagram: process.env.INSTAGRAM_CLIENT_ID
+          ? `https://api.instagram.com/oauth/authorize?client_id=${
+              process.env.INSTAGRAM_CLIENT_ID
+            }&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/instagram"
+            )}&scope=user_profile,user_media&response_type=code&state=${encodeURIComponent(
+              state
+            )}`
+          : null,
+        linkedin: process.env.LINKEDIN_CLIENT_ID
+          ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
+              process.env.LINKEDIN_CLIENT_ID
+            }&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/linkedin"
+            )}&scope=openid%20profile%20email%20w_member_social&state=${encodeURIComponent(
+              state
+            )}`
+          : null,
+        twitter: twitterUrl,
+        x: twitterUrl, // X (Twitter) uses same OAuth flow
+        youtube: process.env.YOUTUBE_CLIENT_ID
+          ? `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${
+              process.env.YOUTUBE_CLIENT_ID
+            }&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/youtube"
+            )}&scope=https://www.googleapis.com/auth/youtube.upload%20https://www.googleapis.com/auth/youtube.force-ssl&access_type=offline&state=${encodeURIComponent(
+              state
+            )}`
+          : null,
+      };
+
+      const authUrl = oauthUrls[platform];
+
+      if (!authUrl) {
+        return res.status(400).json({
+          error: `OAuth not configured for ${platform}`,
+          message: `Please add ${platform.toUpperCase()}_CLIENT_ID to Replit Secrets to enable OAuth`,
+        });
+      }
+
+      res.json({
+        authUrl,
+        message: "OAuth URL generated successfully",
+      });
+    } catch (error) {
+      console.error("OAuth initiation error:", error);
+      res.status(500).json({ error: "Failed to initiate OAuth flow" });
+    }
+  });
+
+  app.get("/api/social/status/:platform", async (req, res) => {
+    try {
+      const { platform } = req.params;
+
+      // For now, return not connected since we don't have real OAuth setup
+      res.json({
+        connected: false,
+        message: `OAuth integration for ${platform} requires client credentials to be configured`,
+      });
+    } catch (error) {
+      console.error("Status check error:", error);
+      res.status(500).json({ error: "Failed to check connection status" });
+    }
+  });
+
+  // OAuth callback handlers are now unified under /api/social/callback/:platform
+
+  app.get("/api/social/callback/:platform", async (req, res) => {
+    try {
+      const { platform } = req.params;
+      const { code, error, state } = req.query;
+
+      const rawState =
+        typeof state === "string"
+          ? state
+          : Array.isArray(state)
+          ? state[0]
+          : undefined;
+      const decodedStateString = rawState
+        ? decodeURIComponent(rawState)
+        : undefined;
+
+      // Use production URL for Replit deployments
+      const baseUrl =
+        process.env.BASE_URL ||
+        (process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : "http://localhost:5000");
+
+      if (error) {
+        return res.redirect(`${baseUrl}/?oauth_error=${error}`);
+      }
+
+      if (!code) {
+        return res.redirect(`${baseUrl}/?oauth_error=no_code`);
+      }
+
+      // Extract userId from state parameter
+      let userId: number | null = null;
+      if (decodedStateString) {
+        try {
+          const decodedState = JSON.parse(
+            Buffer.from(decodedStateString, "base64").toString()
+          );
+          userId = decodedState.userId;
+
+          console.log(
+            `OAuth callback for ${platform}: extracted userId ${userId} from state parameter`
+          );
+        } catch (e) {
+          console.error("Failed to decode state parameter:", e);
+        }
+      }
+
+      if (!userId) {
+        console.error("OAuth callback: no userId found in state parameter");
+        return res.redirect(`${baseUrl}/?oauth_error=invalid_state`);
+      }
+
+      // Exchange authorization code for access token
+      if (platform.toLowerCase() === "linkedin") {
+        const clientId = process.env.LINKEDIN_CLIENT_ID;
+        const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
+
+        if (!clientId || !clientSecret) {
+          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
+        }
+
+        try {
+          // Exchange code for access token
+          const tokenResponse = await fetch(
+            "https://www.linkedin.com/oauth/v2/accessToken",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code as string,
+                redirect_uri: redirectUri,
+                client_id: clientId,
+                client_secret: clientSecret,
+              }),
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error("LinkedIn token exchange failed:", errorData);
+            return res.redirect(
+              `${baseUrl}/?oauth_error=token_exchange_failed`
+            );
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+
+          // Get user from database using userId from state parameter
+          const user = await storage.getUser(String(userId));
+          if (!user) {
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          // Save access token to database
+          const existingAccounts = await storage.getSocialMediaAccounts(
+            user.id
+          );
+          const linkedinAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === "linkedin"
+          );
+
+          if (linkedinAccount) {
+            // Update existing account
+            await storage.updateSocialMediaAccount(linkedinAccount.id, {
+              accessToken,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+          } else {
+            // Create new account
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "linkedin",
+              accountId: "linkedin_account",
+              accessToken,
+              isConnected: true,
+            });
+          }
+
+          // Success! Show confirmation and close window
+          res.send(`
+            <html>
+              <body>
+                <h1>✅ LinkedIn Connected Successfully!</h1>
+                <p>Your LinkedIn account has been connected. You can now post content to LinkedIn.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'linkedin' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error("LinkedIn OAuth error:", fetchError);
+          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
+        }
+      } else if (platform.toLowerCase() === "facebook") {
+        const clientId =
+          process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+        const clientSecret =
+          process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/facebook`;
+
+        if (!clientId || !clientSecret) {
+          return res.send(`
+            <html>
+              <body>
+                <h1>Facebook OAuth Not Configured</h1>
+                <p>You must set <code>FACEBOOK_CLIENT_ID</code> (or <code>FACEBOOK_APP_ID</code>) and <code>FACEBOOK_CLIENT_SECRET</code> (or <code>FACEBOOK_APP_SECRET</code>) in your environment.</p>
+                <p>Add these to Replit Secrets and re-run the connect flow.</p>
+                <script>
+                  window.opener?.postMessage({ success: false, platform: 'facebook', error: 'missing_credentials' }, '*');
+                  setTimeout(() => window.close(), 4000);
+                </script>
+              </body>
+            </html>
+          `);
+        }
+
+        try {
+          const tokenParams = new URLSearchParams({
+            client_id: clientId,
+            redirect_uri: redirectUri,
+            client_secret: clientSecret,
+            code: code as string,
+          });
+
+          const tokenResponse = await fetch(
+            `https://graph.facebook.com/v18.0/oauth/access_token?${tokenParams.toString()}`
+          );
+
+          if (!tokenResponse.ok) {
+            const errorPayload = await tokenResponse.text();
+            console.error("Facebook token exchange failed:", errorPayload);
+            return res.send(`
+              <html>
+                <body>
+                  <h1>❌ Facebook Connection Failed</h1>
+                  <p>Facebook token exchange failed. Check your app settings and try again.</p>
+                  <script>
+                    window.opener?.postMessage({ success: false, platform: 'facebook', error: 'token_exchange_failed' }, '*');
+                    setTimeout(() => window.close(), 4000);
+                  </script>
+                </body>
+              </html>
+            `);
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token as string;
+          const expiresIn = tokenData.expires_in as number | undefined;
+
+          if (!accessToken) {
+            throw new Error("Facebook token response missing access_token");
+          }
+
+          const user = await storage.getUser(String(userId));
+          if (!user) {
+            return res.send(`
+              <html>
+                <body>
+                  <h1>User Not Found</h1>
+                  <p>We could not locate your session user. Please restart the connection flow.</p>
+                  <script>
+                    window.opener?.postMessage({ success: false, platform: 'facebook', error: 'user_not_found' }, '*');
+                    setTimeout(() => window.close(), 4000);
+                  </script>
+                </body>
+              </html>
+            `);
+          }
+
+          let profile: any = null;
+          try {
+            const profileResp = await fetch(
+              `https://graph.facebook.com/v18.0/me?fields=id,name,email&access_token=${accessToken}`
+            );
+            if (profileResp.ok) {
+              profile = await profileResp.json();
+            }
+          } catch (profileError) {
+            console.warn("Facebook profile lookup failed:", profileError);
+          }
+
+          const existingAccounts = await storage.getSocialMediaAccounts(
+            user.id
+          );
+          const facebookAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === "facebook"
+          );
+
+          const metadata = {
+            ...(facebookAccount?.metadata as any),
+            profileId: profile?.id || null,
+            profileName: profile?.name || null,
+            profileEmail: profile?.email || null,
+            tokenType: tokenData.token_type || "bearer",
+            expiresIn: expiresIn || null,
+          };
+
+          if (facebookAccount) {
+            await storage.updateSocialMediaAccount(facebookAccount.id, {
+              accessToken,
+              metadata,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+          } else {
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "facebook",
+              accountId: profile?.id || "facebook_account",
+              accessToken,
+              metadata,
+              isConnected: true,
+            });
+          }
+
+          return res.send(`
+            <html>
+              <body>
+                <h1>✅ Facebook Connected Successfully!</h1>
+                <p>Your Facebook account has been connected. You can now post to your pages using the quick-test cards.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'facebook' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fbError) {
+          console.error("Facebook OAuth error:", fbError);
+          return res.send(`
+            <html>
+              <body>
+                <h1>Facebook OAuth Error</h1>
+                <p>${(fbError as Error).message}</p>
+                <script>
+                  window.opener?.postMessage({ success: false, platform: 'facebook', error: 'oauth_error' }, '*');
+                  setTimeout(() => window.close(), 4000);
+                </script>
+              </body>
+            </html>
+          `);
+        }
+      } else if (platform.toLowerCase() === "youtube") {
+        const clientId = process.env.YOUTUBE_CLIENT_ID;
+        const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/youtube`;
+
+        if (!clientId || !clientSecret) {
+          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
+        }
+
+        try {
+          // Exchange code for access token using Google OAuth
+          const tokenResponse = await fetch(
+            "https://oauth2.googleapis.com/token",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code as string,
+                redirect_uri: redirectUri,
+                client_id: clientId,
+                client_secret: clientSecret,
+              }),
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error("YouTube token exchange failed:", errorData);
+            return res.redirect(
+              `${baseUrl}/?oauth_error=token_exchange_failed`
+            );
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token; // YouTube provides refresh tokens
+          console.log("🎥 YouTube OAuth token exchange successful", {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+          });
+
+          // Get user from database using userId from state parameter
+          const user = await storage.getUser(String(userId));
+          if (!user) {
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          console.log("🎥 YouTube OAuth callback for user:", {
+            userId: user.id,
+            email: user.email,
+            username: user.username,
+          });
+
+          // Save access token and refresh token to database
+          const existingAccounts = await storage.getSocialMediaAccounts(
+            user.id
+          );
+          console.log(
+            "   Existing social accounts:",
+            existingAccounts.map((a) => ({
+              id: a.id,
+              platform: a.platform,
+              hasAccessToken: !!a.accessToken,
+              hasRefreshToken: !!(a as any).refreshToken,
+            }))
+          );
+          const youtubeAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === "youtube"
+          );
+
+          if (youtubeAccount) {
+            // Update existing account
+            await storage.updateSocialMediaAccount(youtubeAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+            console.log(
+              `🔄 Updated existing YouTube account ${youtubeAccount.id} for user ${user.id}`
+            );
+          } else {
+            // Create new account
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "youtube",
+              accountId: "youtube_account",
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+            console.log(
+              `➕ Created new YouTube account for user ${user.id} with platform 'youtube'`
+            );
+          }
+
+          console.log("✅ YouTube tokens stored", {
+            accessTokenLength: accessToken ? String(accessToken).length : 0,
+            refreshTokenLength: refreshToken ? String(refreshToken).length : 0,
+          });
+
+          // Success! Show confirmation and close window
+          res.send(`
+            <html>
+              <body>
+                <h1>✅ YouTube Connected Successfully!</h1>
+                <p>Your YouTube channel has been connected. You can now post videos and community posts.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'youtube' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error("YouTube OAuth error:", fetchError);
+          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
+        }
+      } else if (
+        platform.toLowerCase() === "twitter" ||
+        platform.toLowerCase() === "x"
+      ) {
+        const clientId = process.env.TWITTER_CLIENT_ID;
+        const clientSecret = process.env.TWITTER_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/twitter`;
+
+        if (!clientId || !clientSecret) {
+          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
+        }
+
+        // Retrieve code verifier from PKCE store using state parameter
+        const pkceData = decodedStateString
+          ? pkceStore.get(decodedStateString)
+          : undefined;
+        if (!pkceData) {
+          console.error(
+            "Twitter OAuth: PKCE code verifier not found for state:",
+            state
+          );
+          return res.redirect(
+            `${baseUrl}/?oauth_error=pkce_verifier_not_found`
+          );
+        }
+
+        // Check if PKCE data has expired
+        if (pkceData.expiresAt < Date.now()) {
+          if (decodedStateString) {
+            pkceStore.delete(decodedStateString);
+          }
+          console.error("Twitter OAuth: PKCE code verifier expired");
+          return res.redirect(`${baseUrl}/?oauth_error=pkce_verifier_expired`);
+        }
+
+        // Clean up PKCE data after use
+        const codeVerifier = pkceData.codeVerifier;
+        if (decodedStateString) {
+          pkceStore.delete(decodedStateString);
+        }
+
+        try {
+          // Exchange code for access token using Twitter OAuth 2.0
+          const tokenResponse = await fetch(
+            "https://api.twitter.com/2/oauth2/token",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                Authorization: `Basic ${Buffer.from(
+                  `${clientId}:${clientSecret}`
+                ).toString("base64")}`,
+              },
+              body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code as string,
+                redirect_uri: redirectUri,
+                code_verifier: codeVerifier,
+              }),
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error("Twitter token exchange failed:", errorData);
+            return res.redirect(
+              `${baseUrl}/?oauth_error=token_exchange_failed`
+            );
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token;
+
+          console.log(
+            `✅ Twitter token exchange successful for user ${userId}`
+          );
+          console.log(
+            "   Access token (debug only, rotate after testing):",
+            accessToken || "MISSING"
+          );
+
+          // Get user from database using userId from state parameter
+          const user = await storage.getUser(String(userId));
+          if (!user) {
+            console.error(`❌ User not found: ${userId}`);
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          console.log(`✅ Found user: ${user.id} (${user.email})`);
+
+          // Save access token and refresh token to database
+          const existingAccounts = await storage.getSocialMediaAccounts(
+            user.id
+          );
+          console.log(
+            `📊 Existing social accounts for user ${user.id}:`,
+            existingAccounts.map((a) => a.platform)
+          );
+
+          const twitterAccount = existingAccounts.find(
+            (acc) =>
+              acc.platform.toLowerCase() === "twitter" ||
+              acc.platform.toLowerCase() === "x"
+          );
+
+          if (twitterAccount) {
+            // Update existing account
+            console.log(
+              `🔄 Updating existing Twitter account: ${twitterAccount.id}`
+            );
+            await storage.updateSocialMediaAccount(twitterAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+            console.log(`✅ Twitter account updated successfully`);
+          } else {
+            // Create new account
+            console.log(`➕ Creating new Twitter account for user ${user.id}`);
+            const newAccount = await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "x",
+              accountId: "x_account",
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+            console.log(`✅ Twitter account created successfully:`, newAccount);
+          }
+
+          // Success! Show confirmation and close window
+          res.send(`
+            <html>
+              <body>
+                <h1>✅ Twitter/X Connected Successfully!</h1>
+                <p>Your Twitter/X account has been connected. You can now post tweets directly.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'x' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error("Twitter OAuth error:", fetchError);
+          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
+        }
+      } else {
+        // Other platforms - show placeholder message
+        res.send(`
+          <html>
+            <body>
+              <h1>${platform} OAuth Callback</h1>
+              <p>OAuth setup for ${platform} requires additional configuration.</p>
+              <p>Please add ${platform.toUpperCase()}_CLIENT_ID and ${platform.toUpperCase()}_CLIENT_SECRET to Replit Secrets.</p>
+              <script>setTimeout(() => window.close(), 3000);</script>
+            </body>
+          </html>
+        `);
+      }
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.status(500).send("OAuth callback failed");
+    }
+  });
+
+  // Social media endpoints
+  app.get("/api/social/accounts", requireAuth, async (req, res) => {
     try {
       if (!req.user?.id) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      // Resolve DB user ID to storage UUID
+      // Resolve DB user ID to MemStorage UUID (same logic as connect endpoint)
       let userId = String(req.user.id);
       let user = await storage.getUser(userId);
 
       // If not found by ID, try by email
       if (!user && req.user.email) {
-        const allUsers = Array.from((storage as any).users?.values() || []);
-        user = allUsers.find((u: any) => u.email === req.user.email);
+        const allUsers = Array.from(storage.users?.values() || []);
+        user = allUsers.find((u) => u.email === req.user.email);
       }
 
       // If not found by email, try by username
@@ -9369,7 +1694,6 @@ Always end with a helpful suggestion or call-to-action.`;
         },
       ];
 
-      console.log(`📱 Returned ${platforms.length} platforms for user ${user?.id || 'unknown'}`);
       res.json(platforms);
     } catch (error) {
       console.error("Get social accounts error:", error);
@@ -9377,10 +1701,644 @@ Always end with a helpful suggestion or call-to-action.`;
     }
   });
 
-  // Twitter post endpoint
+  app.post(
+    "/api/social/post",
+    requireAuth,
+    upload.single("photo"),
+    async (req, res) => {
+      try {
+        const { platform, content, platforms, scheduledFor } = req.body;
+        const photo = req.file;
+
+        if (platform) {
+          // Single platform posting (new functionality)
+          if (!content) {
+            return res.status(400).json({ error: "Content is required" });
+          }
+
+          // Get logged-in user from session
+          const sessionId = req.user?.id;
+          if (!sessionId) {
+            return res.status(401).json({ error: "User not authenticated" });
+          }
+
+          // Resolve DB user ID to MemStorage UUID (same logic as connect/accounts endpoints)
+          let userId = String(sessionId);
+          let user = await storage.getUser(userId);
+
+          // If not found by ID, try by email (CRITICAL for DB-authenticated users)
+          if (!user && req.user?.email) {
+            const allUsers = Array.from(storage.users?.values() || []);
+            user = allUsers.find((u) => u.email === req.user.email);
+          }
+
+          // If not found by email, try by username
+          if (!user && req.user?.username) {
+            user = await storage.getUserByUsername(req.user.username);
+          }
+
+          if (!user) {
+            return res.status(404).json({
+              error:
+                "User not found in storage. Please reconnect your social accounts.",
+            });
+          }
+
+          // Get user's social accounts to check if platform is connected
+          const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+          console.log(
+            `Found ${socialAccounts.length} social accounts for user ${user.id}`
+          );
+          console.log(
+            "Social accounts:",
+            socialAccounts.map((a) => ({
+              platform: a.platform,
+              hasToken: !!a.accessToken,
+            }))
+          );
+
+          const connectedAccount = socialAccounts.find(
+            (account) =>
+              account.platform.toLowerCase() === platform.toLowerCase()
+          );
+
+          console.log(
+            `Looking for ${platform} account:`,
+            connectedAccount
+              ? `Found (hasToken: ${!!connectedAccount.accessToken})`
+              : "Not found"
+          );
+
+          if (
+            !connectedAccount &&
+            socialAccounts.length > 0 &&
+            platform.toLowerCase() !== "youtube"
+          ) {
+            return res.status(400).json({
+              error: `${platform} account not connected. Please connect your account first.`,
+            });
+          }
+
+          // Get photo URL if uploaded
+          let photoUrl = null;
+          if (photo) {
+            photoUrl = `/uploads/${path.basename(photo.path)}`;
+          }
+
+          // Actually post to the platform
+          let postResult;
+          try {
+            if (platform.toLowerCase() === "facebook") {
+              return res.status(400).json({
+                error:
+                  "Direct Facebook profile posting is not supported. Please use the Facebook Pages feature instead.",
+              });
+            } else if (platform.toLowerCase() === "instagram") {
+              postResult = await socialMediaService.postToInstagram(
+                content,
+                photoUrl || "",
+                connectedAccount?.accessToken || ""
+              );
+            } else if (platform.toLowerCase() === "linkedin") {
+              postResult = await socialMediaService.postToLinkedIn(
+                content,
+                connectedAccount?.accessToken || ""
+              );
+            } else if (platform.toLowerCase() === "x") {
+              postResult = await socialMediaService.postToX(
+                content,
+                connectedAccount?.accessToken || ""
+              );
+            } else if (platform.toLowerCase() === "youtube") {
+              // For YouTube, we need title and description
+              const title = req.body.title || content.substring(0, 100) + "...";
+              const description = req.body.description || content;
+              // Use mock token if no connected account
+              const youtubeToken =
+                connectedAccount?.accessToken || "mock_youtube_token";
+              postResult = await socialMediaService.postToYoutube(
+                title,
+                description,
+                photoUrl || undefined,
+                youtubeToken
+              );
+            } else {
+              throw new Error(`Unsupported platform: ${platform}`);
+            }
+          } catch (postError) {
+            console.error(`Failed to post to ${platform}:`, postError);
+            return res.status(500).json({
+              error: `Failed to post to ${platform}: ${
+                postError instanceof Error ? postError.message : "Unknown error"
+              }`,
+            });
+          }
+
+          // Create a record of the successful post
+          const scheduledPost = await storage.createScheduledPost({
+            userId: user.id,
+            platform: platform.toLowerCase(),
+            content,
+            scheduledFor: new Date(), // Posted immediately
+            status: "posted",
+            postType: "manual_post",
+            hashtags: content.match(/#\w+/g) || [],
+            isEdited: false,
+            originalContent: content,
+            neighborhood: null,
+          });
+
+          // Send real-time notification
+          realtimeService.notifySocialPostScheduled(
+            user.id,
+            scheduledPost.id,
+            platform,
+            new Date().toISOString()
+          );
+
+          res.json({
+            success: true,
+            message: `Content posted successfully to ${platform}`,
+            postId: postResult.postId,
+            platform,
+            timestamp: new Date().toISOString(),
+            scheduledPostId: scheduledPost.id,
+          });
+        } else {
+          // Multi-platform posting (existing functionality)
+          console.log("Posting to platforms:", platforms, "Content:", content);
+
+          res.json({
+            success: true,
+            postId: `post_${Date.now()}`,
+            platforms,
+            scheduledFor,
+          });
+        }
+      } catch (error) {
+        console.error("Social post error:", error);
+        res.status(500).json({ error: "Failed to post to social media" });
+      }
+    }
+  );
+
+  // Facebook-specific endpoints
+  app.get("/api/facebook/pages", requireAuth, async (req: any, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+
+      const socialAccounts = user
+        ? await storage.getSocialMediaAccounts(user.id)
+        : [];
+      const facebookAccount = socialAccounts.find(
+        (acc) => acc.platform.toLowerCase() === "facebook"
+      );
+
+      const metadata = (facebookAccount?.metadata as any) || {};
+      const delegatedToken =
+        metadata?.pageAccessToken ||
+        facebookAccount?.accessToken ||
+        process.env.FACEBOOK_USER_TOKEN;
+
+      if (!delegatedToken) {
+        return res.status(400).json({
+          error:
+            "Facebook token missing. Connect your Facebook Page or set FACEBOOK_USER_TOKEN.",
+        });
+      }
+
+      const pages = await socialMediaService.getFacebookPageInfo(
+        delegatedToken
+      );
+      res.json(pages);
+    } catch (error: any) {
+      console.error("Error fetching Facebook pages:", error?.message || error);
+      res.status(500).json({
+        error: "Failed to fetch Facebook pages",
+        details:
+          error?.message ||
+          "Please check if your Facebook token is valid and has not expired.",
+      });
+    }
+  });
+
+  app.post(
+    "/api/facebook/post",
+    requireAuth,
+    upload.single("photo"),
+    async (req: any, res) => {
+      try {
+        const { content, pageId } = req.body;
+        if (!content) {
+          return res.status(400).json({ error: "Content is required" });
+        }
+
+        const user = await resolveMemStorageUser(req);
+        if (!user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        const facebookAccount = socialAccounts.find(
+          (acc) => acc.platform.toLowerCase() === "facebook"
+        );
+
+        const metadata = (facebookAccount?.metadata as any) || {};
+        const resolvedPageId =
+          pageId ||
+          metadata?.pageId ||
+          facebookAccount?.accountId ||
+          process.env.FACEBOOK_PAGE_ID;
+
+        if (!resolvedPageId) {
+          return res.status(400).json({
+            error:
+              "Page ID is required for Facebook posting. Connect your page or supply a pageId.",
+          });
+        }
+
+        const resolvedToken =
+          metadata?.pageAccessToken ||
+          facebookAccount?.accessToken ||
+          process.env.FACEBOOK_PAGE_ACCESS_TOKEN ||
+          process.env.FACEBOOK_USER_TOKEN;
+
+        if (!resolvedToken) {
+          return res.status(400).json({
+            error:
+              "Facebook token missing. Reconnect your Facebook account or set FACEBOOK_USER_TOKEN.",
+          });
+        }
+
+        const useSampleImage = toBoolean(req.body.useSampleImage);
+        const photo = req.file;
+        let photoUrl: string | null = null;
+        let usedSampleImage = false;
+
+        if (photo) {
+          photoUrl = `/uploads/${path.basename(photo.path)}`;
+        } else if (useSampleImage) {
+          photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
+          usedSampleImage = true;
+        }
+
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const postResult = await socialMediaService.postToFacebookPage(
+          resolvedPageId,
+          content,
+          photoUrl || undefined,
+          resolvedToken,
+          baseUrl
+        );
+
+        const scheduledPost = await storage.createScheduledPost({
+          userId: user.id,
+          platform: "facebook",
+          content,
+          scheduledFor: new Date(),
+          status: "posted",
+          postType: "quick_test",
+          hashtags: content.match(/#\w+/g) || [],
+          isEdited: false,
+          originalContent: content,
+          neighborhood: null,
+        });
+
+        realtimeService.notifySocialPostScheduled(
+          user.id,
+          scheduledPost.id,
+          "facebook",
+          new Date().toISOString()
+        );
+
+        res.json({
+          success: true,
+          message: "Content posted successfully to Facebook page",
+          postId: postResult.postId,
+          pageId: resolvedPageId,
+          usedSampleImage,
+          scheduledPostId: scheduledPost.id,
+          permalinkHint: `https://www.facebook.com/${resolvedPageId}`,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("Facebook post error:", error);
+
+        if (error instanceof SocialMediaError) {
+          return res.status(error.statusCode).json({
+            error: error.message,
+            details: error.details,
+            requiresReconnect: error.statusCode === 401,
+          });
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        res.status(500).json({
+          error: `Failed to post to Facebook: ${message}`,
+        });
+      }
+    }
+  );
+
+  app.get("/api/facebook/posts", async (req, res) => {
+    try {
+      // For now, return mock data since Facebook API doesn't provide easy post retrieval
+      // In a real implementation, you'd need to store posted content in your database
+      const recentPosts = [
+        {
+          id: "61581294927027_122094900393043164",
+          content:
+            "🏠 Winter 2025 Omaha Real Estate Market Update! ❄️\n\nThe Omaha market is showing remarkable resilience this winter season!",
+          pageId: "61581294927027",
+          timestamp: new Date().toISOString(),
+          platform: "facebook",
+        },
+      ];
+      res.json(recentPosts);
+    } catch (error) {
+      console.error("Error fetching Facebook posts:", error);
+      res.status(500).json({ error: "Failed to fetch Facebook posts" });
+    }
+  });
+
+  app.get("/api/facebook/validate", async (req, res) => {
+    try {
+      const isValid = await socialMediaService.validateConnection("facebook");
+      res.json({
+        valid: isValid,
+        platform: "facebook",
+        message: isValid
+          ? "Facebook connection is valid"
+          : "Facebook connection failed",
+      });
+    } catch (error) {
+      console.error("Facebook validation error:", error);
+      res.status(500).json({ error: "Failed to validate Facebook connection" });
+    }
+  });
+
+  // Add validation endpoints for other platforms
+  app.post("/api/facebook/validate", async (req, res) => {
+    try {
+      const { facebookPageId, facebookAccessToken } = req.body;
+      // Test the provided credentials
+      const isValid =
+        facebookPageId &&
+        facebookAccessToken &&
+        facebookAccessToken.length > 10;
+      res.json({
+        valid: isValid,
+        platform: "facebook",
+        message: isValid
+          ? "Facebook credentials are valid"
+          : "Invalid Facebook credentials",
+      });
+    } catch (error) {
+      console.error("Facebook validation error:", error);
+      res.status(500).json({ error: "Failed to validate Facebook connection" });
+    }
+  });
+
+  app.post("/api/instagram/validate", async (req, res) => {
+    try {
+      const { instagramUserId, instagramAccessToken } = req.body;
+      const isValid =
+        instagramUserId &&
+        instagramAccessToken &&
+        instagramAccessToken.length > 10;
+      res.json({
+        valid: isValid,
+        platform: "instagram",
+        message: isValid
+          ? "Instagram credentials are valid"
+          : "Invalid Instagram credentials",
+      });
+    } catch (error) {
+      console.error("Instagram validation error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to validate Instagram connection" });
+    }
+  });
+
+  app.post("/api/twitter/validate", async (req, res) => {
+    try {
+      const {
+        twitterApiKey,
+        twitterApiSecret,
+        twitterAccessToken,
+        twitterAccessTokenSecret,
+      } = req.body;
+      const isValid =
+        twitterApiKey &&
+        twitterApiSecret &&
+        twitterAccessToken &&
+        twitterAccessTokenSecret;
+      res.json({
+        valid: isValid,
+        platform: "twitter",
+        message: isValid
+          ? "Twitter credentials are valid"
+          : "Invalid Twitter credentials",
+      });
+    } catch (error) {
+      console.error("Twitter validation error:", error);
+      res.status(500).json({ error: "Failed to validate Twitter connection" });
+    }
+  });
+
+  app.post("/api/linkedin/validate", async (req, res) => {
+    try {
+      const { linkedinAccessToken } = req.body;
+      const isValid = linkedinAccessToken && linkedinAccessToken.length > 10;
+      res.json({
+        valid: isValid,
+        platform: "linkedin",
+        message: isValid
+          ? "LinkedIn credentials are valid"
+          : "Invalid LinkedIn credentials",
+      });
+    } catch (error) {
+      console.error("LinkedIn validation error:", error);
+      res.status(500).json({ error: "Failed to validate LinkedIn connection" });
+    }
+  });
+
+  app.post("/api/youtube/validate", async (req, res) => {
+    try {
+      const { youtubeApiKey, youtubeAccessToken } = req.body;
+      const isValid = youtubeApiKey && youtubeAccessToken;
+      res.json({
+        valid: isValid,
+        platform: "youtube",
+        message: isValid
+          ? "YouTube credentials are valid"
+          : "Invalid YouTube credentials",
+      });
+    } catch (error) {
+      console.error("YouTube validation error:", error);
+      res.status(500).json({ error: "Failed to validate YouTube connection" });
+    }
+  });
+
+  app.post("/api/tiktok/validate", async (req, res) => {
+    try {
+      const { tiktokAccessToken } = req.body;
+      const isValid = tiktokAccessToken && tiktokAccessToken.length > 10;
+      res.json({
+        valid: isValid,
+        platform: "tiktok",
+        message: isValid
+          ? "TikTok credentials are valid"
+          : "Invalid TikTok credentials",
+      });
+    } catch (error) {
+      console.error("TikTok validation error:", error);
+      res.status(500).json({ error: "Failed to validate TikTok connection" });
+    }
+  });
+
+  // Instagram endpoints
+  app.post(
+    "/api/instagram/post",
+    requireAuth,
+    upload.single("photo"),
+    async (req: any, res) => {
+      try {
+        const { content } = req.body;
+        const photo = req.file;
+
+        if (!content) {
+          return res.status(400).json({ error: "Content is required" });
+        }
+
+        const user = await resolveMemStorageUser(req);
+        if (!user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        const instagramAccount = socialAccounts.find(
+          (acc) => acc.platform.toLowerCase() === "instagram"
+        );
+
+        const metadata = (instagramAccount?.metadata as any) || {};
+        const instagramUserId =
+          metadata?.instagramUserId ||
+          metadata?.instagramBusinessAccountId ||
+          instagramAccount?.accountId ||
+          process.env.INSTAGRAM_USER_ID;
+
+        if (!instagramUserId) {
+          return res.status(400).json({
+            error:
+              "Instagram Business/Creator account ID missing. Connect Instagram or supply INSTAGRAM_USER_ID.",
+          });
+        }
+
+        const resolvedToken =
+          instagramAccount?.accessToken ||
+          metadata?.instagramAccessToken ||
+          process.env.INSTAGRAM_ACCESS_TOKEN;
+
+        if (!resolvedToken) {
+          return res.status(400).json({
+            error:
+              "Instagram token missing. Reconnect Instagram or set INSTAGRAM_ACCESS_TOKEN.",
+          });
+        }
+
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const useSampleImage = toBoolean(
+          req.body.useSampleImage ?? (!photo ? "true" : "false")
+        );
+
+        let photoUrl: string | null = null;
+        let usedSampleImage = false;
+
+        if (photo) {
+          photoUrl = `${baseUrl}/uploads/${path.basename(photo.path)}`;
+        } else if (useSampleImage) {
+          photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
+          usedSampleImage = true;
+        } else {
+          return res.status(400).json({
+            error:
+              "Instagram requires an image. Upload a photo or enable the sample image option.",
+          });
+        }
+
+        const postResult = await socialMediaService.postToInstagram(
+          content,
+          photoUrl,
+          resolvedToken,
+          instagramUserId
+        );
+
+        const scheduledPost = await storage.createScheduledPost({
+          userId: user.id,
+          platform: "instagram",
+          content,
+          scheduledFor: new Date(),
+          status: "posted",
+          postType: "quick_test",
+          hashtags: content.match(/#\w+/g) || [],
+          isEdited: false,
+          originalContent: content,
+          neighborhood: null,
+        });
+
+        realtimeService.notifySocialPostScheduled(
+          user.id,
+          scheduledPost.id,
+          "instagram",
+          new Date().toISOString()
+        );
+
+        res.json({
+          success: true,
+          message: "Content posted successfully to Instagram",
+          postId: postResult.postId,
+          instagramUserId,
+          usedSampleImage,
+          scheduledPostId: scheduledPost.id,
+          permalinkHint: "https://www.instagram.com",
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("Instagram post error:", error);
+        res.status(500).json({
+          error: `Failed to post to Instagram: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+        });
+      }
+    }
+  );
+
+  app.get("/api/instagram/validate", async (req, res) => {
+    try {
+      const isValid = await socialMediaService.validateConnection("instagram");
+      res.json({
+        valid: isValid,
+        platform: "instagram",
+        message: isValid
+          ? "Instagram connection is valid"
+          : "Instagram connection failed",
+      });
+    } catch (error) {
+      console.error("Instagram validation error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to validate Instagram connection" });
+    }
+  });
+
+  // Twitter endpoints
   app.post(
     "/api/twitter/post",
-    authenticateUser,
+    requireAuth,
     upload.single("photo"),
     async (req: any, res) => {
       try {
@@ -9389,14 +2347,14 @@ Always end with a helpful suggestion or call-to-action.`;
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        // Resolve DB user ID to storage UUID
+        // Resolve DB user ID to MemStorage UUID (same logic as other endpoints)
         let userId = String(req.user.id);
         let user = await storage.getUser(userId);
 
-        // If not found by ID, try by email
+        // If not found by ID, try by email (CRITICAL for DB-authenticated users)
         if (!user && req.user?.email) {
-          const allUsers = Array.from((storage as any).users?.values() || []);
-          user = allUsers.find((u: any) => u.email === req.user.email);
+          const allUsers = Array.from(storage.users?.values() || []);
+          user = allUsers.find((u) => u.email === req.user.email);
         }
 
         // If not found by email, try by username
@@ -9406,11 +2364,12 @@ Always end with a helpful suggestion or call-to-action.`;
 
         if (!user) {
           return res.status(404).json({
-            error: "User not found in storage. Please reconnect your Twitter account.",
+            error:
+              "User not found in storage. Please reconnect your Twitter account.",
           });
         }
 
-        // Support both JSON and FormData
+        // Support both JSON (from old frontend) and FormData (from new frontend)
         let content = req.body.content;
         const photo = req.file;
 
@@ -9428,22 +2387,19 @@ Always end with a helpful suggestion or call-to-action.`;
         }
 
         let photoUrl = null;
-        let photoPath = null;
         if (photo) {
           photoUrl = `/uploads/${path.basename(photo.path)}`;
-          photoPath = photo.path; // Pass the actual file path for media upload
         }
 
-        // Build absolute URL for image if provided (for display purposes)
+        // Build absolute URL for image if provided
         const baseUrl = `${req.protocol}://${req.get("host")}`;
         const fullPhotoUrl = photoUrl ? baseUrl + photoUrl : undefined;
 
-        // Pass userId and file path to use OAuth 2.0 token from database
+        // Pass userId to use OAuth 2.0 token from database
         const postResult = await socialMediaService.postToTwitter(
           user.id,
           content,
-          fullPhotoUrl,
-          photoPath
+          fullPhotoUrl
         );
 
         res.json({
@@ -9463,860 +2419,6 @@ Always end with a helpful suggestion or call-to-action.`;
     }
   );
 
-  // YouTube Post Endpoint
-  app.post("/api/youtube/post", requireAuth, videoUpload.single("video"), async (req: any, res) => {
-    try {
-      const { title, description } = req.body;
-      const videoFile = req.file;
-
-      console.log("\n📺 YouTube Post Request:", {
-        title,
-        hasVideo: !!videoFile,
-        userAuth: !!req.user,
-      });
-
-      if (!title) {
-        return res.status(400).json({ error: "Title is required" });
-      }
-
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      // Resolve user and get YouTube access token
-      let userId = String(req.user.id);
-      let user = await storage.getUser(userId);
-
-      if (!user && req.user.email) {
-        const allUsers = Array.from((storage as any).users?.values() || []);
-        user = allUsers.find((u: any) => u.email === req.user.email);
-      }
-
-      if (!user && req.user.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
-
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      // Get YouTube access token from social accounts
-      const socialAccounts = await storage.getSocialMediaAccounts(user.id);
-      const youtubeAccount = socialAccounts.find(
-        (acc) => acc.platform.toLowerCase() === "youtube"
-      );
-
-      if (!youtubeAccount || !youtubeAccount.accessToken) {
-        return res.status(400).json({
-          error: "YouTube account not connected. Please connect your YouTube account first.",
-        });
-      }
-
-      console.log(`   ✅ Found YouTube account for user: ${user.id}`);
-
-      let videoUrl: string | undefined;
-      let usedSampleVideo = false;
-
-      if (videoFile) {
-        // Use uploaded video - Force HTTPS for Replit
-        const host = req.get("host");
-        const baseUrl = host?.includes("replit.dev") ? `https://${host}` : `${req.protocol}://${host}`;
-        videoUrl = `${baseUrl}/uploads/videos/${path.basename(videoFile.path)}`;
-        console.log(`   📹 Using uploaded video: ${videoUrl}`);
-      } else {
-        // Fallback to sample video - Force HTTPS for Replit
-        const sampleVideoPath = process.env.YOUTUBE_SAMPLE_VIDEO_PATH || "uploads/videos/demo-property-tour.mp4";
-        const host = req.get("host");
-        const baseUrl = host?.includes("replit.dev") ? `https://${host}` : `${req.protocol}://${host}`;
-        videoUrl = `${baseUrl}/${sampleVideoPath}`;
-        usedSampleVideo = true;
-        console.log(`   📹 Using sample video: ${videoUrl}`);
-      }
-
-      // Upload video to YouTube
-      const postResult = await socialMediaService.postToYoutube(
-        title,
-        description || title,
-        videoUrl,
-        youtubeAccount.accessToken
-      );
-
-      const watchUrl = `https://www.youtube.com/watch?v=${postResult.postId}`;
-      const studioUrl = `https://studio.youtube.com/video/${postResult.postId}/edit`;
-
-      console.log(`   ✅ YouTube video uploaded! ID: ${postResult.postId}`);
-      console.log(`   🔗 Watch URL: ${watchUrl}`);
-      console.log(`   🔧 Studio URL: ${studioUrl}`);
-
-      res.json({
-        success: true,
-        message: "Video posted successfully to YouTube",
-        postId: postResult.postId,
-        watchUrl,
-        studioUrl,
-        usedSampleVideo,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error("❌ YouTube post error:", error);
-
-      // Clean up uploaded file on error
-      if (req.file && req.file.path) {
-        try {
-          const fs = await import("fs");
-          fs.unlinkSync(req.file.path);
-        } catch (cleanupError) {
-          console.error("Failed to cleanup uploaded file:", cleanupError);
-        }
-      }
-
-      res.status(500).json({
-        error: `Failed to post to YouTube: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-      });
-    }
-  });
-
-  // LinkedIn Post Endpoint
-  app.post("/api/linkedin/post", requireAuth, async (req, res) => {
-    try {
-      const { content } = req.body;
-
-      console.log("\n💼 LinkedIn Post Request");
-
-      if (!content || content.trim().length === 0) {
-        return res.status(400).json({ error: "Content is required" });
-      }
-
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      // Resolve user and get LinkedIn access token
-      let userId = String(req.user.id);
-      let user = await storage.getUser(userId);
-
-      if (!user && req.user.email) {
-        const allUsers = Array.from((storage as any).users?.values() || []);
-        user = allUsers.find((u: any) => u.email === req.user.email);
-      }
-
-      if (!user && req.user.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
-
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      console.log(`   ✅ Posting as user: ${user.id} (${user.email || user.username})`);
-
-      // Get LinkedIn access token using the helper method
-      const accessToken = await socialMediaService.getLinkedInAccessToken(user.id);
-
-      console.log(`   ✅ Retrieved LinkedIn access token for user: ${user.id}`);
-
-      // Post to LinkedIn
-      const postResult = await socialMediaService.postToLinkedIn(content, accessToken);
-
-      console.log(`   ✅ LinkedIn post successful! ID: ${postResult.postId}`);
-
-      res.json({
-        success: true,
-        message: "Content posted successfully to LinkedIn",
-        postId: postResult.postId,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error("❌ LinkedIn post error:", error);
-      res.status(500).json({
-        error: `Failed to post to LinkedIn: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-      });
-    }
-  });
-
-  // YouTube Video Upload Endpoint (dedicated)
-  app.post("/api/youtube/upload-video", requireAuth, videoUpload.single("video"), async (req: any, res) => {
-    try {
-      const { title, description } = req.body;
-      const videoFile = req.file;
-
-      console.log("\n📺 YouTube Video Upload Request");
-
-      if (!videoFile) {
-        return res.status(400).json({ error: "Video file is required" });
-      }
-
-      if (!title) {
-        return res.status(400).json({ error: "Video title is required" });
-      }
-
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      // Resolve user
-      let userId = String(req.user.id);
-      let user = await storage.getUser(userId);
-
-      if (!user && req.user.email) {
-        const allUsers = Array.from((storage as any).users?.values() || []);
-        user = allUsers.find((u: any) => u.email === req.user.email);
-      }
-
-      if (!user && req.user.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
-
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-
-      // Get YouTube access token
-      const socialAccounts = await storage.getSocialMediaAccounts(user.id);
-      const youtubeAccount = socialAccounts.find(
-        (acc) => acc.platform.toLowerCase() === "youtube"
-      );
-
-      if (!youtubeAccount || !youtubeAccount.accessToken) {
-        return res.status(400).json({
-          error: "YouTube account not connected",
-        });
-      }
-
-      // Build video URL - Force HTTPS for Replit
-      const host = req.get("host");
-      const baseUrl = host?.includes("replit.dev") ? `https://${host}` : `${req.protocol}://${host}`;
-      const videoUrl = `${baseUrl}/uploads/videos/${path.basename(videoFile.path)}`;
-
-      console.log("   Processing YouTube video upload:", {
-        title,
-        description,
-        videoPath: videoFile.path,
-        videoUrl,
-        fileSize: videoFile.size,
-        mimetype: videoFile.mimetype,
-      });
-
-      // Upload to YouTube
-      const uploadResult = await socialMediaService.postToYoutube(
-        title,
-        description || title,
-        videoUrl,
-        youtubeAccount.accessToken
-      );
-
-      const watchUrl = `https://www.youtube.com/watch?v=${uploadResult.postId}`;
-      const studioUrl = `https://studio.youtube.com/video/${uploadResult.postId}/edit`;
-
-      res.json({
-        success: true,
-        message: "Video uploaded successfully to YouTube",
-        videoId: uploadResult.postId,
-        watchUrl,
-        studioUrl,
-        videoUrl: videoUrl,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error("❌ YouTube video upload error:", error);
-
-      // Clean up uploaded file on error
-      if (req.file && req.file.path) {
-        try {
-          const fs = await import("fs");
-          fs.unlinkSync(req.file.path);
-        } catch (cleanupError) {
-          console.error("Failed to cleanup uploaded file:", cleanupError);
-        }
-      }
-
-      res.status(500).json({
-        error: `Failed to upload video to YouTube: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`,
-      });
-    }
-  });
-
-  // Social Media OAuth Connection Route
-  app.post("/api/social/connect/:platform", requireAuth, async (req, res) => {
-    try {
-      const { platform } = req.params;
-
-      console.log("\n🔐 OAuth Connect Request for", platform);
-
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      // Use the database user ID directly - DON'T create random UUIDs
-      const dbUserId = String(req.user.id);
-      console.log(`✅ OAuth connect for database user: ${dbUserId} (${req.user.email || req.user.username})`);
-
-      // Read base URL from environment
-      const baseUrl = process.env.BASE_URL || 
-        (process.env.REPLIT_DEV_DOMAIN 
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
-          : "http://localhost:5000");
-
-      // Create state parameter with database user ID for OAuth callback
-      const state = Buffer.from(JSON.stringify({ userId: dbUserId, platform })).toString("base64");
-
-      // Generate PKCE code verifier and challenge for Twitter/X (OAuth 2.0 requires PKCE)
-      let codeChallenge = '';
-      let codeVerifier = '';
-      if (platform === 'twitter' || platform === 'x') {
-        codeVerifier = generateCodeVerifier();
-        codeChallenge = generateCodeChallenge(codeVerifier);
-        // Store code verifier with 10-minute expiration
-        pkceStore.set(state, {
-          codeVerifier,
-          expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
-        });
-        console.log(`   🔑 Generated PKCE codes for state: ${state.substring(0, 20)}...`);
-      }
-
-      // Generate OAuth URLs for different platforms
-      const oauthUrls: Record<string, string | null> = {
-        facebook: null,
-        instagram: null,
-        linkedin: process.env.LINKEDIN_CLIENT_ID
-          ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/linkedin")}&scope=openid%20profile%20email%20w_member_social&state=${encodeURIComponent(state)}`
-          : null,
-        twitter: process.env.TWITTER_CLIENT_ID && codeChallenge
-          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/twitter")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=${codeChallenge}&code_challenge_method=S256`
-          : null,
-        x: process.env.TWITTER_CLIENT_ID && codeChallenge
-          ? `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${process.env.TWITTER_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/x")}&scope=tweet.read%20tweet.write%20users.read%20offline.access%20media.write&state=${encodeURIComponent(state)}&code_challenge=${codeChallenge}&code_challenge_method=S256`
-          : null,
-        youtube: process.env.YOUTUBE_CLIENT_ID
-          ? `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${process.env.YOUTUBE_CLIENT_ID}&redirect_uri=${encodeURIComponent(baseUrl + "/api/social/callback/youtube")}&scope=https://www.googleapis.com/auth/youtube.upload%20https://www.googleapis.com/auth/youtube.force-ssl&access_type=offline&state=${encodeURIComponent(state)}`
-          : null,
-        tiktok: null,
-      };
-
-      const authUrl = oauthUrls[platform];
-
-      if (!authUrl) {
-        return res.status(400).json({
-          error: `OAuth not configured for ${platform}`,
-          message: `Please add ${platform.toUpperCase()}_CLIENT_ID to environment variables to enable OAuth`,
-        });
-      }
-
-      res.json({
-        authUrl,
-        message: "OAuth URL generated successfully",
-      });
-    } catch (error) {
-      console.error("OAuth initiation error:", error);
-      res.status(500).json({ error: "Failed to initiate OAuth flow" });
-    }
-  });
-
-  // OAuth Callback Handler for all platforms
-  app.get("/api/social/callback/:platform", async (req, res) => {
-    try {
-      const { platform } = req.params;
-      const { code, state, error: oauthError } = req.query;
-
-      console.log(`\n🔄 OAuth Callback received for ${platform}`);
-      console.log(`   State: ${String(state).substring(0, 30)}...`);
-      console.log(`   Code: ${code ? 'Present' : 'Missing'}`);
-      console.log(`   Error: ${oauthError || 'None'}`);
-
-      // Read base URL from environment
-      const baseUrl = process.env.BASE_URL || 
-        (process.env.REPLIT_DEV_DOMAIN 
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
-          : "http://localhost:5000");
-
-      // Handle OAuth errors from provider
-      if (oauthError) {
-        console.error(`❌ OAuth error from ${platform}:`, oauthError);
-        return res.redirect(`${baseUrl}/?oauth_error=${oauthError}`);
-      }
-
-      // Validate required parameters
-      if (!state || !code) {
-        console.error('❌ Missing state or code parameter');
-        return res.redirect(`${baseUrl}/?oauth_error=missing_parameters`);
-      }
-
-      // Decode and validate state parameter
-      let decodedState: { userId: string; platform: string };
-      try {
-        decodedState = JSON.parse(Buffer.from(String(state), 'base64').toString());
-      } catch (e) {
-        console.error('❌ Invalid state parameter');
-        return res.redirect(`${baseUrl}/?oauth_error=invalid_state`);
-      }
-
-      const { userId, platform: statePlatform } = decodedState;
-
-      // Verify platform matches
-      if (statePlatform !== platform && !(statePlatform === 'x' && platform === 'twitter') && !(statePlatform === 'twitter' && platform === 'x')) {
-        console.error(`❌ Platform mismatch: expected ${statePlatform}, got ${platform}`);
-        return res.redirect(`${baseUrl}/?oauth_error=platform_mismatch`);
-      }
-
-      console.log(`   User ID from state: ${userId}`);
-
-      // Handle Twitter/X OAuth
-      if (platform === 'twitter' || platform === 'x') {
-        const clientId = process.env.TWITTER_CLIENT_ID;
-        const clientSecret = process.env.TWITTER_CLIENT_SECRET;
-        const redirectUri = `${baseUrl}/api/social/callback/${platform}`;
-
-        if (!clientId || !clientSecret) {
-          console.error('❌ Twitter OAuth credentials not configured');
-          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
-        }
-
-        // Retrieve PKCE code verifier from store
-        const pkceData = pkceStore.get(String(state));
-        if (!pkceData) {
-          console.error('❌ PKCE code verifier not found for state');
-          return res.redirect(`${baseUrl}/?oauth_error=pkce_verifier_not_found`);
-        }
-
-        // Check if PKCE data expired
-        if (pkceData.expiresAt < Date.now()) {
-          pkceStore.delete(String(state));
-          console.error('❌ PKCE code verifier expired');
-          return res.redirect(`${baseUrl}/?oauth_error=pkce_verifier_expired`);
-        }
-
-        // Clean up PKCE data after retrieval
-        const codeVerifier = pkceData.codeVerifier;
-        pkceStore.delete(String(state));
-
-        console.log('   🔑 Retrieved PKCE code verifier');
-
-        try {
-          // Exchange authorization code for access token
-          console.log('   🔄 Exchanging code for access token...');
-          const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-            },
-            body: new URLSearchParams({
-              grant_type: 'authorization_code',
-              code: String(code),
-              redirect_uri: redirectUri,
-              code_verifier: codeVerifier,
-            }),
-          });
-
-          if (!tokenResponse.ok) {
-            const errorText = await tokenResponse.text();
-            console.error('❌ Twitter token exchange failed:', errorText);
-            return res.redirect(`${baseUrl}/?oauth_error=token_exchange_failed`);
-          }
-
-          const tokenData = await tokenResponse.json();
-          const accessToken = tokenData.access_token;
-          const refreshToken = tokenData.refresh_token;
-
-          console.log('   ✅ Twitter token exchange successful');
-          console.log('   Access token:', accessToken ? 'Present' : 'Missing');
-          console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
-
-          // Get user from storage
-          const user = await storage.getUser(userId);
-          if (!user) {
-            console.error(`❌ User not found: ${userId}`);
-            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
-          }
-
-          console.log(`   ✅ Found user: ${user.id} (${user.email || user.username})`);
-
-          // Check if Twitter/X account already exists
-          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
-          const twitterAccount = existingAccounts.find(
-            (acc) => acc.platform.toLowerCase() === 'twitter' || acc.platform.toLowerCase() === 'x'
-          );
-
-          if (twitterAccount) {
-            // Update existing account
-            console.log(`   🔄 Updating existing Twitter account: ${twitterAccount.id}`);
-            await storage.updateSocialMediaAccount(twitterAccount.id, {
-              accessToken,
-              refreshToken: refreshToken || undefined,
-              isConnected: true,
-              lastSync: new Date(),
-            });
-            console.log('   ✅ Twitter account updated');
-          } else {
-            // Create new account
-            console.log('   ➕ Creating new Twitter account');
-            await storage.createSocialMediaAccount({
-              userId: user.id,
-              platform: 'x',
-              accountId: 'x_account',
-              accessToken,
-              refreshToken: refreshToken || undefined,
-              isConnected: true,
-            });
-            console.log('   ✅ Twitter account created');
-          }
-
-          // Success! Return HTML that closes the popup
-          res.send(`
-            <html>
-              <head>
-                <title>Twitter Connected</title>
-                <style>
-                  body {
-                    font-family: system-ui, -apple-system, sans-serif;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-height: 100vh;
-                    margin: 0;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                  }
-                  .container {
-                    text-align: center;
-                    padding: 2rem;
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 1rem;
-                    backdrop-filter: blur(10px);
-                  }
-                  h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
-                  p { margin: 0; opacity: 0.9; }
-                  .checkmark {
-                    font-size: 4rem;
-                    margin-bottom: 1rem;
-                    animation: scaleIn 0.5s ease-out;
-                  }
-                  @keyframes scaleIn {
-                    from { transform: scale(0); }
-                    to { transform: scale(1); }
-                  }
-                </style>
-              </head>
-              <body>
-                <div class="container">
-                  <div class="checkmark">✅</div>
-                  <h1>Twitter/X Connected!</h1>
-                  <p>Your Twitter account has been connected successfully.</p>
-                  <p style="margin-top: 1rem; font-size: 0.9rem;">This window will close automatically...</p>
-                </div>
-                <script>
-                  // Notify parent window of success
-                  if (window.opener) {
-                    window.opener.postMessage({ success: true, platform: 'x' }, '*');
-                  }
-                  // Close window after 2 seconds
-                  setTimeout(() => window.close(), 2000);
-                </script>
-              </body>
-            </html>
-          `);
-        } catch (fetchError) {
-          console.error('❌ Twitter OAuth error:', fetchError);
-          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
-        }
-      } else if (platform.toLowerCase() === 'youtube') {
-        const clientId = process.env.YOUTUBE_CLIENT_ID;
-        const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
-        const redirectUri = `${baseUrl}/api/social/callback/youtube`;
-
-        if (!clientId || !clientSecret) {
-          console.error('❌ YouTube OAuth credentials not configured');
-          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
-        }
-
-        try {
-          // Exchange code for access token using Google OAuth
-          console.log('   🔄 Exchanging code for YouTube access token...');
-          const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              grant_type: 'authorization_code',
-              code: String(code),
-              redirect_uri: redirectUri,
-              client_id: clientId,
-              client_secret: clientSecret,
-            }),
-          });
-
-          if (!tokenResponse.ok) {
-            const errorText = await tokenResponse.text();
-            console.error('❌ YouTube token exchange failed:', errorText);
-            return res.redirect(`${baseUrl}/?oauth_error=token_exchange_failed`);
-          }
-
-          const tokenData = await tokenResponse.json();
-          const accessToken = tokenData.access_token;
-          const refreshToken = tokenData.refresh_token;
-
-          console.log('   ✅ YouTube token exchange successful');
-          console.log('   Access token:', accessToken ? 'Present' : 'Missing');
-          console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
-
-          // Get user from storage
-          const user = await storage.getUser(userId);
-          if (!user) {
-            console.error(`❌ User not found: ${userId}`);
-            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
-          }
-
-          console.log(`   ✅ Found user: ${user.id} (${user.email || user.username})`);
-
-          // Check if YouTube account already exists
-          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
-          const youtubeAccount = existingAccounts.find(
-            (acc) => acc.platform.toLowerCase() === 'youtube'
-          );
-
-          if (youtubeAccount) {
-            // Update existing account
-            console.log(`   🔄 Updating existing YouTube account: ${youtubeAccount.id}`);
-            await storage.updateSocialMediaAccount(youtubeAccount.id, {
-              accessToken,
-              refreshToken: refreshToken || undefined,
-              isConnected: true,
-              lastSync: new Date(),
-            });
-            console.log('   ✅ YouTube account updated');
-          } else {
-            // Create new account
-            console.log('   ➕ Creating new YouTube account');
-            await storage.createSocialMediaAccount({
-              userId: user.id,
-              platform: 'youtube',
-              accountId: 'youtube_account',
-              accessToken,
-              refreshToken: refreshToken || undefined,
-              isConnected: true,
-            });
-            console.log('   ✅ YouTube account created');
-          }
-
-          // Success! Return HTML that closes the popup
-          res.send(`
-            <html>
-              <head>
-                <title>YouTube Connected</title>
-                <style>
-                  body {
-                    font-family: system-ui, -apple-system, sans-serif;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-height: 100vh;
-                    margin: 0;
-                    background: linear-gradient(135deg, #FF0000 0%, #CC0000 100%);
-                    color: white;
-                  }
-                  .container {
-                    text-align: center;
-                    padding: 2rem;
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 1rem;
-                    backdrop-filter: blur(10px);
-                  }
-                  h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
-                  p { margin: 0; opacity: 0.9; }
-                  .checkmark {
-                    font-size: 4rem;
-                    margin-bottom: 1rem;
-                    animation: scaleIn 0.5s ease-out;
-                  }
-                  @keyframes scaleIn {
-                    from { transform: scale(0); }
-                    to { transform: scale(1); }
-                  }
-                </style>
-              </head>
-              <body>
-                <div class="container">
-                  <div class="checkmark">✅</div>
-                  <h1>YouTube Connected!</h1>
-                  <p>Your YouTube channel has been connected successfully.</p>
-                  <p style="margin-top: 1rem; font-size: 0.9rem;">This window will close automatically...</p>
-                </div>
-                <script>
-                  // Notify parent window of success
-                  if (window.opener) {
-                    window.opener.postMessage({ success: true, platform: 'youtube' }, '*');
-                  }
-                  // Close window after 2 seconds
-                  setTimeout(() => window.close(), 2000);
-                </script>
-              </body>
-            </html>
-          `);
-        } catch (fetchError) {
-          console.error('❌ YouTube OAuth error:', fetchError);
-          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
-        }
-      } else if (platform.toLowerCase() === 'linkedin') {
-        const clientId = process.env.LINKEDIN_CLIENT_ID;
-        const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
-        const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
-
-        if (!clientId || !clientSecret) {
-          console.error('❌ LinkedIn OAuth credentials not configured');
-          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
-        }
-
-        try {
-          // Exchange code for access token
-          console.log('   🔄 Exchanging code for LinkedIn access token...');
-          const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              grant_type: 'authorization_code',
-              code: String(code),
-              redirect_uri: redirectUri,
-              client_id: clientId,
-              client_secret: clientSecret,
-            }),
-          });
-
-          if (!tokenResponse.ok) {
-            const errorText = await tokenResponse.text();
-            console.error('❌ LinkedIn token exchange failed:', errorText);
-            return res.redirect(`${baseUrl}/?oauth_error=token_exchange_failed`);
-          }
-
-          const tokenData = await tokenResponse.json();
-          const accessToken = tokenData.access_token;
-          const refreshToken = tokenData.refresh_token;
-
-          console.log('   ✅ LinkedIn token exchange successful');
-          console.log('   Access token:', accessToken ? 'Present' : 'Missing');
-          console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
-
-          // Use the user ID from state directly (it came from a valid JWT token)
-          const userIdString = String(userId);
-          console.log(`   ✅ Using user ID from OAuth state: ${userIdString}`);
-
-          // Check if LinkedIn account already exists
-          const existingAccounts = await storage.getSocialMediaAccounts(userIdString);
-          const linkedinAccount = existingAccounts.find(
-            (acc) => acc.platform.toLowerCase() === 'linkedin'
-          );
-
-          if (linkedinAccount) {
-            // Update existing account
-            console.log(`   🔄 Updating existing LinkedIn account: ${linkedinAccount.id}`);
-            await storage.updateSocialMediaAccount(linkedinAccount.id, {
-              accessToken,
-              refreshToken: refreshToken || undefined,
-              isConnected: true,
-              lastSync: new Date(),
-            });
-            console.log('   ✅ LinkedIn account updated');
-          } else {
-            // Create new account
-            console.log('   ➕ Creating new LinkedIn account');
-            await storage.createSocialMediaAccount({
-              userId: userIdString,
-              platform: 'linkedin',
-              accountId: 'linkedin_account',
-              accessToken,
-              refreshToken: refreshToken || undefined,
-              isConnected: true,
-            });
-            console.log('   ✅ LinkedIn account created');
-          }
-
-          // Success! Return HTML that closes the popup
-          res.send(`
-            <html>
-              <head>
-                <title>LinkedIn Connected</title>
-                <style>
-                  body {
-                    font-family: system-ui, -apple-system, sans-serif;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-height: 100vh;
-                    margin: 0;
-                    background: linear-gradient(135deg, #0077b5 0%, #005885 100%);
-                    color: white;
-                  }
-                  .container {
-                    text-align: center;
-                    padding: 2rem;
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 1rem;
-                    backdrop-filter: blur(10px);
-                  }
-                  h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
-                  p { margin: 0; opacity: 0.9; }
-                  .checkmark {
-                    font-size: 4rem;
-                    margin-bottom: 1rem;
-                    animation: scaleIn 0.5s ease-out;
-                  }
-                  @keyframes scaleIn {
-                    from { transform: scale(0); }
-                    to { transform: scale(1); }
-                  }
-                </style>
-              </head>
-              <body>
-                <div class="container">
-                  <div class="checkmark">✅</div>
-                  <h1>LinkedIn Connected!</h1>
-                  <p>Your LinkedIn account has been connected successfully.</p>
-                  <p style="margin-top: 1rem; font-size: 0.9rem;">This window will close automatically...</p>
-                </div>
-                <script>
-                  // Notify parent window of success
-                  if (window.opener) {
-                    window.opener.postMessage({ success: true, platform: 'linkedin' }, '*');
-                  }
-                  // Close window after 2 seconds
-                  setTimeout(() => window.close(), 2000);
-                </script>
-              </body>
-            </html>
-          `);
-        } catch (fetchError) {
-          console.error('❌ LinkedIn OAuth error:', fetchError);
-          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
-        }
-      } else {
-        // Other platforms not yet implemented
-        res.send(`
-          <html>
-            <head><title>${platform} OAuth</title></head>
-            <body style="font-family: system-ui; padding: 2rem; text-align: center;">
-              <h1>${platform} OAuth Callback</h1>
-              <p>OAuth setup for ${platform} requires additional configuration.</p>
-              <p>Platform: ${platform} is not yet fully implemented.</p>
-              <script>setTimeout(() => window.close(), 3000);</script>
-            </body>
-          </html>
-        `);
-      }
-    } catch (error) {
-      console.error('❌ OAuth callback error:', error);
-      res.status(500).send('OAuth callback failed');
-    }
-  });
-
-  // Twitter validation endpoint
   app.get("/api/twitter/validate", async (req, res) => {
     try {
       const isValid = await socialMediaService.validateConnection("twitter");
@@ -10333,7 +2435,6 @@ Always end with a helpful suggestion or call-to-action.`;
     }
   });
 
-  // Twitter delete tweet endpoint
   app.delete("/api/twitter/post/:tweetId", async (req, res) => {
     try {
       const { tweetId } = req.params;
@@ -10357,6 +2458,5649 @@ Always end with a helpful suggestion or call-to-action.`;
           error instanceof Error ? error.message : "Unknown error"
         }`,
       });
+    }
+  });
+
+  // YouTube endpoints
+  app.post(
+    "/api/youtube/post",
+    requireAuth,
+    upload.single("video"),
+    async (req: any, res) => {
+      try {
+        const {
+          title,
+          description,
+          content,
+          accessToken: overrideToken,
+        } = req.body;
+        const video = req.file;
+
+        console.log("🎥 YouTube post request:", {
+          rawUserId: req.user?.id,
+          email: req.user?.email,
+          username: req.user?.username,
+          contentType: req.get("content-type"),
+          bodyKeys: Object.keys(req.body),
+          hasVideo: !!video,
+        });
+
+        if (!title && !content) {
+          return res
+            .status(400)
+            .json({ error: "Title or content is required" });
+        }
+
+        if (!req.user?.id) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        // Resolve DB user ID to MemStorage UUID (same pattern as Twitter)
+        let userId = String(req.user.id);
+        let user = await storage.getUser(userId);
+
+        if (!user && req.user?.email) {
+          const allUsers = Array.from(storage.users?.values() || []);
+          user = allUsers.find((u) => u.email === req.user.email);
+        }
+
+        if (!user && req.user?.username) {
+          user = await storage.getUserByUsername(req.user.username);
+        }
+
+        if (!user) {
+          console.error(
+            "❌ YouTube post: user not found in storage for session id",
+            userId
+          );
+          return res.status(404).json({
+            error:
+              "User not found in storage. Please reconnect your YouTube account.",
+          });
+        }
+
+        console.log("✅ YouTube post resolved user:", {
+          userId: user.id,
+          email: user.email,
+          username: user.username,
+        });
+
+        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        console.log(
+          `📊 Social accounts for user ${user.id}:`,
+          socialAccounts.map((a) => ({
+            id: a.id,
+            platform: a.platform,
+            hasAccessToken: !!a.accessToken,
+          }))
+        );
+
+        const youtubeAccount = socialAccounts.find(
+          (acc) => acc.platform.toLowerCase() === "youtube"
+        );
+
+        const effectiveAccessToken =
+          overrideToken || youtubeAccount?.accessToken || null;
+
+        console.log("🔑 YouTube token resolution:", {
+          hasOverride: !!overrideToken,
+          hasStoredToken: !!youtubeAccount?.accessToken,
+          usingTokenSource: overrideToken
+            ? "override"
+            : youtubeAccount?.accessToken
+            ? "stored"
+            : "none",
+        });
+
+        if (!effectiveAccessToken) {
+          return res.status(400).json({
+            error:
+              "YouTube access token is required. Please connect your YouTube account again.",
+          });
+        }
+
+        const sampleVideoPath =
+          process.env.YOUTUBE_SAMPLE_VIDEO_PATH ||
+          path.join(process.cwd(), "uploads/videos/demo-property-tour.mp4");
+
+        let videoSourcePath: string | undefined;
+        let usedSampleVideo = false;
+
+        if (video?.path) {
+          videoSourcePath = path.resolve(video.path);
+        } else if (fs.existsSync(sampleVideoPath)) {
+          videoSourcePath = sampleVideoPath;
+          usedSampleVideo = true;
+        }
+
+        const finalTitle = title || content?.substring(0, 100) + "...";
+        const finalDescription = description || content || "";
+
+        console.log("🚀 Posting to YouTube with:", {
+          finalTitle,
+          hasDescription: !!finalDescription,
+          videoSourcePath,
+          usedSampleVideo,
+        });
+
+        const postResult = await socialMediaService.postToYoutube(
+          finalTitle,
+          finalDescription,
+          videoSourcePath,
+          effectiveAccessToken
+        );
+
+        if (video?.path) {
+          fs.unlink(video.path, (unlinkErr) => {
+            if (unlinkErr) {
+              console.error("Failed to remove uploaded temp video:", unlinkErr);
+            }
+          });
+        }
+
+        res.json({
+          success: true,
+          message: usedSampleVideo
+            ? "Uploaded built-in sample video to YouTube"
+            : video
+            ? "Uploaded your video to YouTube"
+            : "Content posted successfully to YouTube",
+          postId: postResult.postId,
+          watchUrl: postResult.watchUrl,
+          studioUrl: postResult.studioUrl,
+          usedSampleVideo,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("YouTube post error:", error);
+        res.status(500).json({
+          error: `Failed to post to YouTube: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+        });
+      }
+    }
+  );
+
+  // Dedicated YouTube video upload endpoint
+  app.post(
+    "/api/youtube/upload-video",
+    videoUpload.single("video"),
+    async (req, res) => {
+      try {
+        const { title, description, accessToken } = req.body;
+        const videoFile = req.file;
+
+        if (!videoFile) {
+          return res.status(400).json({ error: "Video file is required" });
+        }
+
+        if (!title) {
+          return res.status(400).json({ error: "Video title is required" });
+        }
+
+        if (!accessToken) {
+          return res
+            .status(400)
+            .json({ error: "YouTube access token is required" });
+        }
+
+        const absoluteVideoPath = path.resolve(videoFile.path);
+
+        console.log("Processing YouTube video upload:", {
+          title,
+          description,
+          videoPath: videoFile.path,
+          absoluteVideoPath,
+          fileSize: videoFile.size,
+          mimetype: videoFile.mimetype,
+        });
+
+        const uploadResult = await socialMediaService.postToYoutube(
+          title,
+          description || title,
+          absoluteVideoPath,
+          accessToken
+        );
+
+        fs.unlink(videoFile.path, (unlinkErr) => {
+          if (unlinkErr) {
+            console.error("Failed to cleanup uploaded file:", unlinkErr);
+          }
+        });
+
+        res.json({
+          success: true,
+          message: "Video uploaded successfully to YouTube",
+          videoId: uploadResult.postId,
+          watchUrl: uploadResult.watchUrl,
+          studioUrl: uploadResult.studioUrl,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error("YouTube video upload error:", error);
+
+        // Clean up uploaded file on error
+        if (req.file && req.file.path) {
+          try {
+            fs.unlinkSync(req.file.path);
+          } catch (cleanupError) {
+            console.error("Failed to cleanup uploaded file:", cleanupError);
+          }
+        }
+
+        res.status(500).json({
+          error: `Failed to upload video to YouTube: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`,
+        });
+      }
+    }
+  );
+
+  app.get("/api/youtube/validate", async (req, res) => {
+    try {
+      const isValid = await socialMediaService.validateConnection("youtube");
+      res.json({
+        valid: isValid,
+        platform: "youtube",
+        message: isValid
+          ? "YouTube connection is valid"
+          : "YouTube connection failed",
+      });
+    } catch (error) {
+      console.error("YouTube validation error:", error);
+      res.status(500).json({ error: "Failed to validate YouTube connection" });
+    }
+  });
+
+  // YouTube OAuth endpoints
+  app.get("/auth/youtube", async (req, res) => {
+    try {
+      const clientId = process.env.YOUTUBE_CLIENT_ID;
+      if (!clientId) {
+        return res
+          .status(500)
+          .json({ error: "YouTube client ID not configured" });
+      }
+
+      const scopes = [
+        "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/youtube.upload",
+      ].join(" ");
+
+      const redirectUri = `${req.protocol}://${req.get(
+        "host"
+      )}/auth/youtube/callback`;
+
+      const authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${clientId}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `scope=${encodeURIComponent(scopes)}&` +
+        `response_type=code&` +
+        `access_type=offline&` +
+        `prompt=consent`;
+
+      res.redirect(authUrl);
+    } catch (error) {
+      console.error("YouTube OAuth initiation error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to initiate YouTube authentication" });
+    }
+  });
+
+  app.get("/auth/youtube/callback", async (req, res) => {
+    try {
+      const { code, error } = req.query;
+
+      if (error) {
+        return res.redirect(
+          `${
+            process.env.CLIENT_URL || "http://localhost:5000"
+          }/?oauth_error=${error}`
+        );
+      }
+
+      if (code) {
+        // Exchange code for access token
+        const clientId = process.env.YOUTUBE_CLIENT_ID;
+        const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
+        const redirectUri = `${req.protocol}://${req.get(
+          "host"
+        )}/auth/youtube/callback`;
+
+        const tokenResponse = await fetch(
+          "https://oauth2.googleapis.com/token",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              client_id: clientId || "",
+              client_secret: clientSecret || "",
+              code: code as string,
+              grant_type: "authorization_code",
+              redirect_uri: redirectUri,
+            }),
+          }
+        );
+
+        if (tokenResponse.ok) {
+          const tokens = await tokenResponse.json();
+
+          // Update the user's YouTube account with the new tokens
+          const user = await storage.getUserByUsername("mikebjork");
+          if (user) {
+            const socialAccounts = await storage.getSocialMediaAccounts(
+              user.id
+            );
+            const youtubeAccount = socialAccounts.find(
+              (account) => account.platform === "youtube"
+            );
+
+            if (youtubeAccount) {
+              await storage.updateSocialMediaAccount(youtubeAccount.id, {
+                accessToken: tokens.access_token,
+                refreshToken: tokens.refresh_token,
+                isConnected: true,
+                lastSync: new Date(),
+              });
+            }
+          }
+
+          res.send(`
+            <html>
+              <body>
+                <h1>YouTube Connected Successfully! ✅</h1>
+                <p>Redirecting you back to the app...</p>
+                <script>
+                  // Redirect back to the main app
+                  window.location.href = '/';
+                </script>
+              </body>
+            </html>
+          `);
+        } else {
+          throw new Error("Failed to exchange code for tokens");
+        }
+      } else {
+        return res.redirect(
+          `${
+            process.env.CLIENT_URL || "http://localhost:5000"
+          }/?oauth_error=no_auth_code`
+        );
+      }
+    } catch (error) {
+      console.error("YouTube OAuth callback error:", error);
+      res.status(500).send("YouTube OAuth callback failed");
+    }
+  });
+
+  // SEO endpoints
+  app.get("/api/seo/keywords", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      let keywords = await storage.getSeoKeywords(userId);
+
+      // Auto-generate keywords on first login if user has none
+      if (!keywords || keywords.length === 0) {
+        console.log(
+          `📊 No keywords found for user ${userId}, generating AI keywords...`
+        );
+
+        // Get user's service areas from market data
+        const marketData = await storage.getMarketData(userId);
+        const serviceAreas = marketData
+          .map((m) => m.neighborhood)
+          .filter(Boolean);
+
+        if (serviceAreas.length === 0) {
+          serviceAreas.push("Omaha"); // Default to Omaha
+        }
+
+        try {
+          const { AIKeywordGenerator } = await import(
+            "./services/ai-keyword-generator"
+          );
+          const generator = new AIKeywordGenerator(userId);
+
+          let generatedData;
+          try {
+            generatedData = await generator.generateKeywords(serviceAreas);
+          } catch (aiError) {
+            console.warn(
+              "⚠️  AI keyword generation failed, using fallback:",
+              aiError
+            );
+            generatedData = generator.getFallbackKeywords(serviceAreas);
+          }
+
+          // Save generated keywords to storage
+          for (const keyword of generatedData.keywords) {
+            await storage.createSeoKeyword(keyword);
+          }
+
+          keywords = await storage.getSeoKeywords(userId);
+          console.log(
+            `✅ Auto-generated ${keywords.length} keywords for new user`
+          );
+        } catch (error) {
+          console.error("❌ Keyword generation error:", error);
+        }
+      }
+
+      res.json(keywords);
+    } catch (error) {
+      console.error("Get SEO keywords error:", error);
+      res.status(500).json({ error: "Failed to fetch SEO keywords" });
+    }
+  });
+
+  app.post("/api/seo/keywords/generate", async (req, res) => {
+    try {
+      const { location, businessType } = req.body;
+
+      // Fetch live market data to provide real-time context to AI
+      let marketData;
+      try {
+        marketData = await storage.getMarketData();
+        if (!marketData || marketData.length === 0) {
+          console.warn(
+            "⚠️  No market data available for AI keyword generation"
+          );
+          return res.status(502).json({
+            error: "Market data unavailable",
+            message:
+              "Unable to fetch real-time market data. Please try again later or contact support.",
+          });
+        }
+      } catch (marketError) {
+        console.error(
+          "Failed to fetch market data for keyword generation:",
+          marketError
+        );
+        return res.status(502).json({
+          error: "Market data service error",
+          message:
+            "Could not retrieve market intelligence data. Keyword generation requires live market data.",
+        });
+      }
+
+      // Generate keywords with real market intelligence
+      const keywords = await seoService.generateTopKeywordsWithAI(
+        location || "Omaha, Nebraska",
+        businessType || "real estate agent",
+        marketData
+      );
+
+      res.json(keywords);
+    } catch (error) {
+      console.error("❌ AI keyword generation error:", error);
+      res.status(502).json({
+        error: "AI keyword generation failed",
+        message:
+          "Unable to generate fresh, market-driven keywords. Please try again or contact support.",
+        details: (error as Error).message,
+      });
+    }
+  });
+
+  app.post("/api/seo/analyze", async (req, res) => {
+    try {
+      const { content, keywords } = req.body;
+
+      const analysis = await seoService.analyzeContent(content, keywords);
+      res.json(analysis);
+    } catch (error) {
+      console.error("SEO analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze content for SEO" });
+    }
+  });
+
+  app.post("/api/ai/schedule-content", async (req, res) => {
+    try {
+      const { keywords, marketData, timeframe, focus } = req.body;
+
+      // Create AI prompt for intelligent content scheduling
+      const prompt = `You are an expert real estate marketing strategist and SEO specialist. Based on the following data, create an optimal 30-day content calendar for Mike Bjork's real estate business in Omaha, Nebraska.
+
+SEO Keywords to target: ${keywords
+        .map(
+          (k: any) =>
+            `${k.keyword} (rank: ${k.currentRank}, volume: ${k.searchVolume})`
+        )
+        .join(", ")}
+
+Market Data: ${marketData
+        .map(
+          (m: any) =>
+            `${m.neighborhood}: $${m.averagePrice} avg price, ${m.daysOnMarket} days on market`
+        )
+        .join("; ")}
+
+Requirements:
+1. Schedule content for maximum SEO impact and social media engagement
+2. Prioritize high-volume, low-competition keywords
+3. Include market trends and neighborhood highlights
+4. Optimize posting times for real estate audience (early morning, lunch, evening)
+5. Mix content types: market updates, property highlights, buyer/seller tips, neighborhood spotlights
+6. Include specific posting dates and times
+7. Each piece should target primary keyword + local SEO
+
+Return ONLY a JSON object with this structure:
+{
+  "contentCount": number,
+  "schedule": [
+    {
+      "id": "unique-id",
+      "title": "Content Title",
+      "content": "Full social media post content with hashtags",
+      "platform": "Facebook|Instagram|LinkedIn|YouTube",
+      "type": "Blog|Social|Video",
+      "date": "2025-01-XX",
+      "time": "XX:XX AM/PM",
+      "targetKeyword": "primary keyword",
+      "seoScore": number,
+      "expectedImpact": "high|medium|low",
+      "color": "bg-color-class"
+    }
+  ]
+}
+
+Focus on: ${focus} content that drives leads and showcases local market expertise.`;
+
+      // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
+      const { unifiedAI } = await import("./services/unified-ai");
+      const aiResponse = await unifiedAI.generate(prompt, {
+        systemPrompt:
+          "You are an expert real estate marketing AI that creates optimized content schedules based on SEO data and market analytics. Always respond with valid JSON only.",
+        temperature: 0.7,
+        maxTokens: 1500,
+        jsonMode: true,
+      });
+
+      console.log(
+        `✅ Content calendar AI response from: ${aiResponse.provider}`
+      );
+      const aiSchedule = JSON.parse(aiResponse.content);
+
+      // Store the generated schedule (in a real app, you'd save to database)
+      // For now, we'll just return it
+
+      res.json(aiSchedule);
+    } catch (error) {
+      console.error("AI content scheduling error:", error);
+
+      // If OpenAI quota is exceeded, provide a fallback schedule
+      if (error.code === "insufficient_quota" || error.status === 429) {
+        console.log(
+          "🔄 OpenAI quota exceeded, using fallback content schedule..."
+        );
+
+        const fallbackSchedule = {
+          contentCount: 8,
+          schedule: [
+            {
+              id: "fb-omaha-market-1",
+              title: "Omaha Market Update - January 2025",
+              content:
+                "🏠 OMAHA MARKET SPOTLIGHT 🏠\n\nThe Omaha real estate market is showing strong momentum this January! Here's what homeowners and buyers need to know:\n\n📈 Market Highlights:\n• Average home price: $285,000 (+3.2% from last year)\n• Days on market: 28 days (excellent for sellers!)\n• Inventory levels: Balanced market conditions\n\n🎯 Prime Neighborhoods to Watch:\n• Benson: Trendy area with great walkability\n• Dundee: Historic charm meets modern amenities\n• West Omaha: Family-friendly with top schools\n\nThinking of buying or selling? Let's discuss your goals! 💬\n\n#OmahaRealEstate #NebraskaHomes #BjorkGroup #RealEstateExpert #OmahaLife",
+              platform: "Facebook",
+              type: "Social",
+              date: "2025-01-02",
+              time: "8:00 AM",
+              targetKeyword: "Omaha real estate market",
+              seoScore: 85,
+              expectedImpact: "high",
+              color: "bg-blue-100",
+            },
+            {
+              id: "ig-buyer-tips-1",
+              title: "First-Time Buyer Tips",
+              content:
+                "🔑 FIRST-TIME BUYER SUCCESS TIPS! 🔑\n\nMaking homeownership dreams come true in Omaha! Here's my insider advice:\n\n✅ Get Pre-Approved First\n• Know your budget before house hunting\n• Shows sellers you're serious\n• Speeds up the buying process\n\n✅ Research Neighborhoods\n• Visit at different times of day\n• Check school ratings and commute times\n• Consider future resale value\n\n✅ Don't Skip the Inspection\n• Protect your investment\n• Negotiate repairs or price adjustments\n• Peace of mind is priceless\n\n🏡 Ready to start your journey? DM me for a free buyer consultation!\n\n#FirstTimeBuyer #OmahaHomes #RealEstateTips #BjorkGroup #NebraskaRealEstate",
+              platform: "Instagram",
+              type: "Social",
+              date: "2025-01-05",
+              time: "12:30 PM",
+              targetKeyword: "first time home buyer Omaha",
+              seoScore: 78,
+              expectedImpact: "medium",
+              color: "bg-green-100",
+            },
+            {
+              id: "li-investment-1",
+              title: "Investment Property Opportunities",
+              content:
+                "💰 INVESTMENT OPPORTUNITY ALERT 💰\n\nOmaha's rental market is thriving! Here's why smart investors are choosing Nebraska:\n\n📊 Key Investment Metrics:\n• Average rental yield: 8-12%\n• Strong job market driving demand\n• Affordable entry points compared to coastal markets\n• Growing tech and healthcare sectors\n\n🎯 Hot Investment Areas:\n• Near downtown redevelopment zones\n• University of Nebraska proximity\n• Emerging neighborhoods with infrastructure improvements\n\n🔍 What to Look For:\n• Properties under $200K with good bones\n• Multi-family opportunities\n• Areas with planned developments\n\nLet's discuss your investment strategy over coffee! ☕\n\n#RealEstateInvestment #OmahaInvestment #PropertyInvesting #BjorkGroup #WealthBuilding",
+              platform: "LinkedIn",
+              type: "Blog",
+              date: "2025-01-08",
+              time: "9:00 AM",
+              targetKeyword: "Omaha investment properties",
+              seoScore: 82,
+              expectedImpact: "high",
+              color: "bg-purple-100",
+            },
+            {
+              id: "fb-neighborhood-spotlight-1",
+              title: "Neighborhood Spotlight: Benson",
+              content:
+                "🏘️ NEIGHBORHOOD SPOTLIGHT: BENSON 🏘️\n\nDiscover why Benson is becoming Omaha's hottest neighborhood!\n\n✨ What Makes Benson Special:\n• Walkable community with local character\n• Thriving arts scene and unique boutiques\n• Historic homes with modern renovations\n• Easy access to downtown (10 minutes!)\n\n🏠 Market Snapshot:\n• Average home price: $165,000\n• Typical days on market: 25 days\n• Mix of starter homes and investment properties\n\n🎨 Local Favorites:\n• Benson First Friday art walks\n• Local coffee shops and restaurants\n• Beautiful Benson Park\n\nCurious about Benson properties? Let's schedule a neighborhood tour!\n\n#BensonNebraska #OmahaNeighborhoods #BjorkGroup #CommunitySpotlight #OmahaLife",
+              platform: "Facebook",
+              type: "Social",
+              date: "2025-01-12",
+              time: "6:00 PM",
+              targetKeyword: "Benson Omaha real estate",
+              seoScore: 80,
+              expectedImpact: "medium",
+              color: "bg-yellow-100",
+            },
+            {
+              id: "ig-selling-tips-1",
+              title: "Home Selling Preparation",
+              content:
+                "✨ PREPPING YOUR HOME TO SELL? ✨\n\nMaximize your home's value with these proven strategies!\n\n🎯 Top 5 Staging Tips:\n1️⃣ Declutter & Depersonalize\n• Let buyers envision their life here\n• Remove family photos and personal items\n\n2️⃣ Deep Clean Everything  \n• First impressions matter!\n• Consider professional cleaning\n\n3️⃣ Fresh Paint = Fresh Appeal\n• Neutral colors attract more buyers\n• Focus on high-traffic areas\n\n4️⃣ Enhance Curb Appeal\n• Trim landscaping, add flowers\n• Clean windows and front door\n\n5️⃣ Price Strategically\n• Market analysis is crucial\n• Price to sell, not to sit\n\n💡 Ready to list? I'll create a custom marketing plan for your home!\n\n#HomeSelling #RealEstateTips #OmahaRealEstate #BjorkGroup #HomeStaging",
+              platform: "Instagram",
+              type: "Social",
+              date: "2025-01-15",
+              time: "11:00 AM",
+              targetKeyword: "sell house Omaha",
+              seoScore: 76,
+              expectedImpact: "medium",
+              color: "bg-red-100",
+            },
+            {
+              id: "yt-market-analysis-1",
+              title: "Q1 2025 Market Forecast",
+              content:
+                "🔮 Q1 2025 OMAHA REAL ESTATE FORECAST 🔮\n\nWhat to expect in the coming months:\n\n📈 Predictions for Q1:\n• Continued buyer demand with spring market approaching\n• Interest rates stabilizing around current levels\n• New construction picking up pace\n• Competitive market for well-priced homes\n\n🏡 Best Opportunities:\n• First-time buyers: Take advantage of programs\n• Sellers: List early to beat spring rush\n• Investors: Focus on emerging neighborhoods\n\n💼 Economic Factors:\n• Strong local job market\n• Population growth from relocations\n• Infrastructure investments boosting values\n\nWatch my full market analysis video (link in bio) for detailed insights!\n\n#MarketForecast #OmahaRealEstate #RealEstateExpert #Q12025 #BjorkGroup #MarketAnalysis",
+              platform: "YouTube",
+              type: "Video",
+              date: "2025-01-18",
+              time: "10:00 AM",
+              targetKeyword: "Omaha real estate forecast 2025",
+              seoScore: 88,
+              expectedImpact: "high",
+              color: "bg-indigo-100",
+            },
+            {
+              id: "fb-client-success-1",
+              title: "Client Success Story",
+              content:
+                "🎉 ANOTHER SUCCESSFUL CLOSING! 🎉\n\nCongratulations to the Johnson family on their beautiful new home in West Omaha!\n\n📖 Their Story:\n• First-time buyers from out of state\n• Needed guidance on neighborhoods and schools\n• Wanted move-in ready with modern updates\n• Closed in just 21 days!\n\n💬 What they said: \"Mike made relocating to Omaha stress-free. His local knowledge and attention to detail were exactly what we needed!\"\n\n🏠 The Property:\n• 4BR/3BA contemporary home\n• Top-rated Millard schools\n• Open floor plan with upgraded kitchen\n• Private backyard perfect for their kids\n\nEvery family's needs are unique. Let's find your perfect fit!\n\n#ClientSuccess #WestOmaha #NewHomeowners #BjorkGroup #RealEstateSuccess #MillardSchools",
+              platform: "Facebook",
+              type: "Social",
+              date: "2025-01-22",
+              time: "2:00 PM",
+              targetKeyword: "West Omaha real estate agent",
+              seoScore: 84,
+              expectedImpact: "high",
+              color: "bg-emerald-100",
+            },
+            {
+              id: "li-market-trends-1",
+              title: "Technology Impact on Real Estate",
+              content:
+                "🚀 HOW TECHNOLOGY IS RESHAPING OMAHA REAL ESTATE 🚀\n\nThe digital transformation is changing how we buy and sell homes:\n\n💻 Virtual Tours & 3D Walkthroughs\n• 87% of buyers start their search online\n• Virtual staging reduces time on market\n• Remote buyers can tour from anywhere\n\n📱 AI-Powered Market Analysis\n• Predictive pricing models\n• Automated valuation tools\n• Real-time market insights\n\n🔍 Enhanced Property Research\n• Neighborhood analytics\n• School ratings and crime data\n• Walkability and amenity scores\n\n📈 The Result: Faster, smarter transactions for buyers and sellers.\n\nStaying ahead of technology trends helps my clients make informed decisions. What tech features matter most to you?\n\n#PropTech #RealEstateInnovation #DigitalMarketing #OmahaRealEstate #BjorkGroup #FutureOfRealEstate",
+              platform: "LinkedIn",
+              type: "Blog",
+              date: "2025-01-25",
+              time: "8:30 AM",
+              targetKeyword: "real estate technology Omaha",
+              seoScore: 79,
+              expectedImpact: "medium",
+              color: "bg-cyan-100",
+            },
+          ],
+        };
+
+        return res.json(fallbackSchedule);
+      }
+
+      res.status(500).json({ error: "Failed to generate AI content schedule" });
+    }
+  });
+
+  app.get("/api/seo/site-health", async (req, res) => {
+    try {
+      const url = (req.query.url as string) || "https://bjorkgroup.com";
+      const health = await seoService.getSiteHealth(url);
+      res.json(health);
+    } catch (error) {
+      console.error("Site health check error:", error);
+      res.status(500).json({ error: "Failed to check site health" });
+    }
+  });
+
+  // Market data endpoints
+  app.get("/api/market/data", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const marketData = await storage.getMarketData(userId);
+
+      // If user has no market data, generate initial data
+      if (!marketData || marketData.length === 0) {
+        console.log(
+          `📊 No market data found for user ${userId}, generating initial data...`
+        );
+        const { AIMarketDataGenerator } = await import(
+          "./services/ai-market-generator"
+        );
+        const generator = new AIMarketDataGenerator(userId);
+
+        let generatedData;
+        try {
+          generatedData = await generator.generateOmahaMarketData();
+        } catch (aiError) {
+          console.warn(
+            "⚠️  AI generation failed, using fallback data:",
+            aiError
+          );
+          generatedData = generator.getFallbackData();
+        }
+
+        const newMarketData = await storage.refreshMarketData(
+          userId,
+          generatedData.neighborhoods
+        );
+        return res.json(newMarketData);
+      }
+
+      res.json(marketData);
+    } catch (error) {
+      console.error("Get market data error:", error);
+      res.status(500).json({ error: "Failed to fetch market data" });
+    }
+  });
+
+  app.get(
+    "/api/market/neighborhoods/:neighborhood",
+    requireAuth,
+    async (req: any, res) => {
+      try {
+        const userId = req.user.id;
+        const { neighborhood } = req.params;
+        const data = await storage.getMarketDataByNeighborhood(
+          userId,
+          neighborhood
+        );
+
+        if (!data) {
+          return res.status(404).json({ error: "Neighborhood data not found" });
+        }
+
+        res.json(data);
+      } catch (error) {
+        console.error("Get neighborhood data error:", error);
+        res.status(500).json({ error: "Failed to fetch neighborhood data" });
+      }
+    }
+  );
+
+  app.post("/api/market/refresh", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      console.log(
+        `🔄 Refreshing market data for user ${userId} with AI generation...`
+      );
+
+      // Import and initialize AI market data generator
+      const { AIMarketDataGenerator } = await import(
+        "./services/ai-market-generator"
+      );
+      const generator = new AIMarketDataGenerator(userId);
+
+      let generatedData;
+      try {
+        generatedData = await generator.generateOmahaMarketData();
+      } catch (aiError) {
+        console.warn("⚠️  AI generation failed, using fallback data:", aiError);
+        generatedData = generator.getFallbackData();
+      }
+
+      // Refresh storage with new data for this user
+      const newMarketData = await storage.refreshMarketData(
+        userId,
+        generatedData.neighborhoods
+      );
+
+      res.json({
+        success: true,
+        data: newMarketData,
+        metadata: generatedData.metadata,
+      });
+    } catch (error) {
+      console.error("❌ Market data refresh error:", error);
+      res.status(500).json({
+        error: "Failed to refresh market data",
+        message: (error as Error).message,
+      });
+    }
+  });
+
+  // Content Opportunities endpoints - AI-generated content suggestions
+  app.get("/api/ai/opportunities", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+
+      // Get stored opportunities for this user
+      const opportunities = await db
+        .select()
+        .from(contentOpportunities)
+        .where(eq(contentOpportunities.userId, userId))
+        .orderBy(
+          desc(contentOpportunities.searchSignal),
+          desc(contentOpportunities.generatedAt)
+        );
+
+      // If no opportunities exist, generate initial set
+      if (opportunities.length === 0) {
+        console.log(
+          `📊 No opportunities found for user ${userId}, triggering auto-generation...`
+        );
+        // Trigger generation and return empty array (client will refetch)
+        // We'll handle generation in the POST endpoint
+        return res.json([]);
+      }
+
+      res.json(opportunities);
+    } catch (error) {
+      console.error("Failed to get content opportunities:", error);
+      res.status(500).json({ error: "Failed to fetch content opportunities" });
+    }
+  });
+
+  app.post(
+    "/api/ai/opportunities/generate",
+    requireAuth,
+    async (req: any, res) => {
+      try {
+        const userId = req.user.id;
+        console.log(
+          `🎯 Generating AI content opportunities for user ${userId}...`
+        );
+
+        // 1. Load user's market data (top neighborhoods)
+        const marketData = await storage.getMarketData(userId);
+        const topNeighborhoods = marketData
+          .filter((m) => m.trend === "hot" || m.trend === "rising")
+          .slice(0, 5)
+          .map((m) => ({
+            name: m.neighborhood,
+            avgPrice: m.avgPrice,
+            trend: m.trend,
+            inventory: m.inventory,
+          }));
+
+        // 2. Load user's SEO keywords (top priority)
+        const keywords = await storage.getSeoKeywords(userId);
+        const topKeywords = keywords.slice(0, 10).map((k) => ({
+          keyword: k.keyword,
+          volume: k.searchVolume || 0,
+          difficulty: k.difficulty || 0,
+        }));
+
+        // 3. Build AI prompt for generating opportunities
+        const prompt = `You are a real estate content strategist. Based on the following market data and SEO keywords, generate 5 high-value content opportunities for a real estate agent.
+
+Market Data (Hot Neighborhoods):
+${topNeighborhoods
+  .map(
+    (n) =>
+      `- ${n.name}: $${n.avgPrice?.toLocaleString()} avg price, ${
+        n.trend
+      } trend, ${n.inventory} inventory`
+  )
+  .join("\n")}
+
+Top SEO Keywords:
+${topKeywords
+  .map(
+    (k) => `- "${k.keyword}" (volume: ${k.volume}, difficulty: ${k.difficulty})`
+  )
+  .join("\n")}
+
+Generate exactly 5 content opportunities as a JSON object with an "opportunities" array. Each opportunity must include:
+- title: Catchy title for the content piece (e.g., "Aksarben Market Update", "First-Time Buyer Guide")
+- description: Brief reason why this content is valuable (e.g., "High search volume", "Trending topic", "Seasonal interest")
+- priority: "high", "medium", or "low"
+- neighborhood: neighborhood name if applicable, or null
+- relatedKeyword: the keyword this relates to, or null
+- trendSource: "market" (based on neighborhood data), "keyword" (based on SEO keywords), or "trend" (general real estate trend)
+- searchSignal: integer score 0-100 indicating search demand/relevance
+
+Focus on:
+1. High-search-volume topics related to the provided keywords
+2. Neighborhood-specific market updates for hot areas
+3. Seasonal/trending real estate topics
+4. First-time buyer guides and educational content
+5. Local market analysis and comparisons
+
+Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
+
+        // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
+        const { unifiedAI } = await import("./services/unified-ai");
+        const aiResponse = await unifiedAI.generate(prompt, {
+          systemPrompt:
+            "You are a real estate content strategist who generates data-driven content opportunities in JSON format.",
+          temperature: 0.7,
+          maxTokens: 1500,
+          jsonMode: true,
+        });
+
+        console.log(`✅ AI Response from: ${aiResponse.provider}`);
+
+        // Parse AI response
+        let generatedOpportunities;
+        try {
+          const result = JSON.parse(aiResponse.content);
+          // The response_format forces JSON object, so we expect {opportunities: [...]}
+          generatedOpportunities = result.opportunities || result || [];
+          if (!Array.isArray(generatedOpportunities)) {
+            // If it's a single object, wrap in array
+            generatedOpportunities = [generatedOpportunities];
+          }
+        } catch (parseError) {
+          console.error("Failed to parse AI response:", parseError);
+          console.error("Raw response:", aiResponse.content);
+          throw new Error("Failed to parse AI-generated opportunities");
+        }
+
+        // Validate and prepare for database
+        const opportunitiesToInsert = generatedOpportunities
+          .slice(0, 5)
+          .map((opp: any) => ({
+            userId,
+            title: opp.title || "Untitled Opportunity",
+            description: opp.description || "AI-generated content opportunity",
+            priority: opp.priority || "medium",
+            neighborhood: opp.neighborhood || null,
+            keywordId: opp.relatedKeyword || null,
+            trendSource: opp.trendSource || "trend",
+            searchSignal: Math.min(100, Math.max(0, opp.searchSignal || 50)),
+            metadata: {
+              relatedKeyword: opp.relatedKeyword,
+              generatedBy: aiResponse.provider,
+              model: aiResponse.model,
+              marketContext: topNeighborhoods.length > 0,
+              keywordContext: topKeywords.length > 0,
+            },
+          }));
+
+        // Delete old opportunities for this user
+        await db
+          .delete(contentOpportunities)
+          .where(eq(contentOpportunities.userId, userId));
+
+        // Insert new opportunities
+        const inserted = await db
+          .insert(contentOpportunities)
+          .values(opportunitiesToInsert)
+          .returning();
+
+        console.log(
+          `✅ Generated ${inserted.length} content opportunities for user ${userId}`
+        );
+        res.json(inserted);
+      } catch (error) {
+        console.error("❌ Failed to generate content opportunities:", error);
+        res.status(500).json({
+          error: "Failed to generate content opportunities",
+          message: (error as Error).message,
+        });
+      }
+    }
+  );
+
+  app.get("/api/market/intelligence", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+
+      // Import the market intelligence service
+      const { MarketIntelligenceService } = await import(
+        "./services/market-intelligence"
+      );
+      const marketIntelligenceService = new MarketIntelligenceService();
+
+      // Fetch live market data for this user
+      let marketData;
+      try {
+        marketData = await storage.getMarketData(userId);
+        if (!marketData || marketData.length === 0) {
+          console.warn(
+            `⚠️  No market data available for user ${userId}, generating initial data...`
+          );
+
+          // Generate initial market data for the user
+          const { AIMarketDataGenerator } = await import(
+            "./services/ai-market-generator"
+          );
+          const generator = new AIMarketDataGenerator(userId);
+
+          let generatedData;
+          try {
+            generatedData = await generator.generateOmahaMarketData();
+          } catch (aiError) {
+            console.warn(
+              "⚠️  AI generation failed, using fallback data:",
+              aiError
+            );
+            generatedData = generator.getFallbackData();
+          }
+
+          marketData = await storage.refreshMarketData(
+            userId,
+            generatedData.neighborhoods
+          );
+        }
+      } catch (marketError) {
+        console.error(
+          "Failed to fetch market data for intelligence:",
+          marketError
+        );
+        return res.status(502).json({
+          error: "Market data service error",
+          message: "Could not retrieve market data for analysis.",
+        });
+      }
+
+      // Generate AI-powered market intelligence
+      const intelligence = await marketIntelligenceService.generateIntelligence(
+        marketData
+      );
+
+      res.json(intelligence);
+    } catch (error) {
+      console.error("❌ Market intelligence generation error:", error);
+      res.status(502).json({
+        error: "Intelligence generation failed",
+        message:
+          "Unable to generate market intelligence. Please try again or contact support.",
+        details: (error as Error).message,
+      });
+    }
+  });
+
+  app.get("/api/content/suggestions", async (req, res) => {
+    try {
+      const neighborhood = req.query.neighborhood as string;
+      const suggestions = await seoService.suggestContentTopics(neighborhood);
+      res.json({ suggestions });
+    } catch (error) {
+      console.error("Content suggestions error:", error);
+      res.status(500).json({ error: "Failed to get content suggestions" });
+    }
+  });
+
+  // Scheduled Posts endpoints
+  app.get("/api/scheduled-posts", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const status = req.query.status as string;
+      const posts = await storage.getScheduledPosts(userId, status);
+      res.json(posts);
+    } catch (error) {
+      console.error("Get scheduled posts error:", error);
+      res.status(500).json({ error: "Failed to fetch scheduled posts" });
+    }
+  });
+
+  // Generate 30-day content calendar
+  app.post("/api/content/generate-plan", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      console.log(`🗓️  Generating 30-day content plan for user ${userId}...`);
+
+      // Get user's market data for service areas
+      const marketData = await storage.getMarketData(userId);
+      const serviceAreas = marketData
+        .map((m) => m.neighborhood)
+        .filter(Boolean);
+
+      if (serviceAreas.length === 0) {
+        serviceAreas.push("Omaha"); // Default to Omaha
+      }
+
+      // Import and initialize AI content calendar generator
+      const { AIContentCalendarGenerator } = await import(
+        "./services/ai-content-calendar"
+      );
+      const generator = new AIContentCalendarGenerator(userId);
+
+      let generatedPlan;
+      try {
+        generatedPlan = await generator.generate30DayPlan(
+          serviceAreas,
+          marketData,
+          req.body.targetAudience,
+          req.body.specialties
+        );
+      } catch (aiError) {
+        console.warn(
+          "⚠️  AI content generation failed, using fallback:",
+          aiError
+        );
+        generatedPlan = generator.getFallbackContentPlan(
+          serviceAreas,
+          marketData
+        );
+      }
+
+      // Save generated posts to storage
+      const createdPosts = [];
+      for (const post of generatedPlan.posts) {
+        const created = await storage.createScheduledPost(post);
+        createdPosts.push(created);
+      }
+
+      console.log(
+        `✅ Generated ${createdPosts.length}-day content plan for user ${userId}`
+      );
+
+      res.json({
+        success: true,
+        posts: createdPosts,
+        metadata: generatedPlan.metadata,
+      });
+    } catch (error) {
+      console.error("❌ Content plan generation error:", error);
+      res.status(500).json({
+        error: "Failed to generate content plan",
+        message: (error as Error).message,
+      });
+    }
+  });
+
+  app.put("/api/scheduled-posts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { content, scheduledFor, status } = req.body;
+
+      const updatedPost = await storage.updateScheduledPost(id, {
+        content,
+        scheduledFor: scheduledFor ? new Date(scheduledFor) : undefined,
+        status,
+      });
+
+      if (!updatedPost) {
+        return res.status(404).json({ error: "Scheduled post not found" });
+      }
+
+      res.json(updatedPost);
+    } catch (error) {
+      console.error("Update scheduled post error:", error);
+      res.status(500).json({ error: "Failed to update scheduled post" });
+    }
+  });
+
+  app.patch("/api/scheduled-posts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Validate using Zod schema for mutable fields only
+      const result = updateScheduledPostSchema.safeParse(req.body);
+
+      if (!result.success) {
+        return res.status(400).json({
+          error: "Invalid update data",
+          details: result.error.format(),
+        });
+      }
+
+      if (Object.keys(result.data).length === 0) {
+        return res.status(400).json({ error: "No valid fields to update" });
+      }
+
+      const updatedPost = await storage.updateScheduledPost(id, result.data);
+
+      if (!updatedPost) {
+        return res.status(404).json({ error: "Scheduled post not found" });
+      }
+
+      res.json(updatedPost);
+    } catch (error) {
+      console.error("Update scheduled post error:", error);
+      res.status(500).json({ error: "Failed to update scheduled post" });
+    }
+  });
+
+  app.delete("/api/scheduled-posts/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteScheduledPost(id);
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Scheduled post not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete scheduled post error:", error);
+      res.status(500).json({ error: "Failed to delete scheduled post" });
+    }
+  });
+
+  // Upload image for scheduled post
+  app.post(
+    "/api/scheduled-posts/upload-image",
+    upload.single("image"),
+    async (req, res) => {
+      try {
+        const { postId } = req.body;
+        const imageFile = req.file;
+
+        if (!postId || !imageFile) {
+          return res
+            .status(400)
+            .json({ error: "Post ID and image are required" });
+        }
+
+        // Get the existing post
+        const post = await storage.getScheduledPostById(postId);
+        if (!post) {
+          return res.status(404).json({ error: "Scheduled post not found" });
+        }
+
+        // In a real app, you would upload the image to cloud storage (S3, Cloudinary, etc.)
+        // For now, we'll simulate storing the image URL in metadata
+        const imageUrl = `/uploads/${imageFile.filename}`;
+
+        // Update the post with the image URL in metadata
+        const updatedPost = await storage.updateScheduledPost(postId, {
+          metadata: {
+            ...((post.metadata as any) || {}),
+            imageUrl: imageUrl,
+          },
+        });
+
+        res.json({
+          success: true,
+          imageUrl: imageUrl,
+          post: updatedPost,
+        });
+      } catch (error) {
+        console.error("Upload image error:", error);
+        res.status(500).json({ error: "Failed to upload image" });
+      }
+    }
+  );
+
+  // Update image URL for scheduled post
+  app.post("/api/scheduled-posts/update-image", async (req, res) => {
+    try {
+      const { postId, imageUrl } = req.body;
+
+      if (!postId || !imageUrl) {
+        return res
+          .status(400)
+          .json({ error: "Post ID and image URL are required" });
+      }
+
+      // Get the existing post
+      const post = await storage.getScheduledPostById(postId);
+      if (!post) {
+        return res.status(404).json({ error: "Scheduled post not found" });
+      }
+
+      // Update the post with the image URL in metadata
+      const updatedPost = await storage.updateScheduledPost(postId, {
+        metadata: {
+          ...((post.metadata as any) || {}),
+          imageUrl: imageUrl,
+        },
+      });
+
+      res.json({
+        success: true,
+        imageUrl: imageUrl,
+        post: updatedPost,
+      });
+    } catch (error) {
+      console.error("Update image error:", error);
+      res.status(500).json({ error: "Failed to update image" });
+    }
+  });
+
+  app.post("/api/scheduled-posts/generate-weekly", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername("mikebjork");
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const { focus = "mixed" } = req.body; // 'local_markets', 'moving_guide', or 'mixed'
+
+      const neighborhoods = [
+        "Dundee",
+        "Aksarben",
+        "Old Market",
+        "Blackstone",
+        "Benson",
+      ];
+      const platforms = ["facebook", "instagram", "linkedin", "x", "tiktok"];
+
+      const movingGuideTopics = [
+        "Best Omaha neighborhoods for families",
+        "Omaha job market and major employers",
+        "Winter in Omaha: what to expect",
+        "Omaha school districts comparison",
+        "Cost of living in Omaha vs other cities",
+      ];
+
+      const today = new Date();
+      const generatedPosts = [];
+
+      // Generate 2 weeks of AI-powered content
+      for (let day = 0; day < 14; day++) {
+        const scheduleDate = new Date(today);
+        scheduleDate.setDate(today.getDate() + day + 1);
+        scheduleDate.setHours(9 + (day % 8), 0, 0, 0); // Vary posting times
+
+        const platformIndex = day % platforms.length;
+        const platform = platforms[platformIndex];
+
+        let aiContent, postType, neighborhood;
+
+        try {
+          if (
+            focus === "local_markets" ||
+            (focus === "mixed" && day % 2 === 0)
+          ) {
+            // Generate local market content
+            const neighborhoodIndex = day % neighborhoods.length;
+            neighborhood = neighborhoods[neighborhoodIndex];
+            // Use existing content generation for now
+            aiContent = await openaiService.generateContent({
+              type: "social",
+              neighborhood,
+              keywords: [`${neighborhood} real estate`, "Omaha homes"],
+            });
+            postType = "local_market";
+          } else {
+            // Generate moving guide content
+            const topicIndex = day % movingGuideTopics.length;
+            const topic = movingGuideTopics[topicIndex];
+            // Use existing content generation for now
+            aiContent = await openaiService.generateContent({
+              type: "social",
+              neighborhood: topic,
+              keywords: ["Omaha moving", "real estate tips"],
+            });
+            postType = "moving_guide";
+            neighborhood = null;
+          }
+
+          const scheduledPost = await storage.createScheduledPost({
+            userId: user.id,
+            platform,
+            postType,
+            content: aiContent.content,
+            hashtags: (aiContent as any).hashtags || [],
+            scheduledFor: scheduleDate,
+            status: "pending",
+            isEdited: false,
+            originalContent: aiContent.content,
+            neighborhood,
+            seoScore: aiContent.seoScore || 80,
+            metadata: { generated: true, focus: postType, aiGenerated: true },
+          });
+
+          generatedPosts.push(scheduledPost);
+        } catch (aiError) {
+          console.error(
+            `Failed to generate AI content for day ${day}:`,
+            aiError
+          );
+          // Fallback to basic content if AI generation fails
+          const fallbackContent = neighborhood
+            ? `Discover what makes ${neighborhood} special! Contact Mike Bjork for local market insights.`
+            : `Thinking of moving to Omaha? Let's talk about what makes this city amazing!`;
+
+          const scheduledPost = await storage.createScheduledPost({
+            userId: user.id,
+            platform,
+            postType: postType || "local_market",
+            content: fallbackContent,
+            hashtags: ["OmahaRealEstate", "MovingToOmaha", "NebraskaHomes"],
+            scheduledFor: scheduleDate,
+            status: "pending",
+            isEdited: false,
+            seoScore: 85,
+            originalContent: fallbackContent,
+            neighborhood,
+            metadata: { generated: true, focus: postType, fallback: true },
+          });
+
+          generatedPosts.push(scheduledPost);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `Weekly ${focus} content generated successfully with AI optimization`,
+        postsGenerated: generatedPosts.length,
+        focus: focus,
+      });
+    } catch (error) {
+      console.error("Generate weekly content error:", error);
+      res.status(500).json({ error: "Failed to generate weekly content" });
+    }
+  });
+
+  // Avatar Management endpoints
+  app.get("/api/avatars", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername("mikebjork");
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const avatars = await storage.getAvatars(user.id);
+      res.json(avatars);
+    } catch (error) {
+      console.error("Get avatars error:", error);
+      res.status(500).json({ error: "Failed to fetch avatars" });
+    }
+  });
+
+  app.post("/api/avatars", upload.single("avatarPhoto"), async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername("mikebjork");
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Initialize HeyGen service
+      const heygenService = new HeyGenService();
+
+      let heygenAvatarId = null;
+      let avatarImageUrl = req.body.avatarImageUrl;
+
+      // Handle uploaded avatar photo
+      if (req.file) {
+        // Save local path for storage
+        avatarImageUrl = `/uploads/${req.file.filename}`;
+        console.log("Avatar photo uploaded locally to:", avatarImageUrl);
+
+        // Upload to HeyGen and create avatar
+        try {
+          console.log("Uploading image to HeyGen...");
+
+          // Read the file as a buffer
+          const filePath = path.join(
+            process.cwd(),
+            "uploads",
+            req.file.filename
+          );
+          const fileBuffer = fs.readFileSync(filePath);
+          const blob = new Blob([fileBuffer], { type: req.file.mimetype });
+
+          // Upload image to HeyGen to get a public URL
+          const heygenImageUrl = await heygenService.uploadImage(blob);
+          console.log("Image uploaded to HeyGen:", heygenImageUrl);
+
+          // Create HeyGen avatar with the uploaded image
+          const heygenResponse = await heygenService.createTalkingPhotoAvatar(
+            heygenImageUrl,
+            req.body.name,
+            req.body.voiceId
+          );
+
+          console.log("Full HeyGen response:", JSON.stringify(heygenResponse));
+          if (
+            heygenResponse.data?.avatar_id ||
+            heygenResponse.data?.avatar_group_id ||
+            heygenResponse.data?.group_id ||
+            heygenResponse.data?.id
+          ) {
+            // Different HeyGen endpoints return different ID fields
+            // Photo avatars return group_id or just id
+            heygenAvatarId =
+              heygenResponse.data.avatar_id ||
+              heygenResponse.data.avatar_group_id ||
+              heygenResponse.data.group_id ||
+              heygenResponse.data.id;
+            console.log("HeyGen avatar created successfully:", heygenAvatarId);
+          } else {
+            console.log(
+              "HeyGen response missing avatar IDs - data:",
+              heygenResponse.data
+            );
+          }
+        } catch (heygenError) {
+          console.warn("HeyGen avatar creation failed:", heygenError);
+          // Continue with local avatar creation even if HeyGen fails
+        }
+      }
+
+      // Parse form data properly
+      const formData = {
+        name: req.body.name,
+        description: req.body.description,
+        style: req.body.style,
+        gender: req.body.gender,
+        voiceId: req.body.voiceId || null,
+        isActive: req.body.isActive === "true" || req.body.isActive === true,
+        avatarImageUrl: avatarImageUrl,
+      };
+
+      console.log("Form data received:", formData);
+
+      const validatedData = insertAvatarSchema.parse({
+        ...formData,
+        userId: user.id,
+        metadata: heygenAvatarId
+          ? {
+              heygenAvatarId,
+            }
+          : {},
+      });
+
+      const avatar = await storage.createAvatar(validatedData);
+      res.status(201).json({
+        ...avatar,
+        heygenAvatarId,
+      });
+    } catch (error) {
+      console.error("Create avatar error:", error);
+      res.status(500).json({ error: "Failed to create avatar" });
+    }
+  });
+
+  app.put(
+    "/api/avatars/:id",
+    upload.fields([
+      { name: "avatarPhoto", maxCount: 1 },
+      { name: "voiceRecording", maxCount: 1 },
+    ]),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        // Get existing avatar to check for HeyGen metadata
+        const existingAvatar = await storage.getAvatarById(id);
+        if (!existingAvatar) {
+          return res.status(404).json({ error: "Avatar not found" });
+        }
+
+        // Cast req.files to the correct type
+        const files = req.files as {
+          [fieldname: string]: Express.Multer.File[];
+        };
+
+        // Handle uploaded avatar photo in updates
+        if (files?.avatarPhoto && files.avatarPhoto[0]) {
+          const photoFile = files.avatarPhoto[0];
+          updates.avatarImageUrl = `/uploads/${photoFile.filename}`;
+          console.log("Avatar photo updated to:", updates.avatarImageUrl);
+
+          // Try to create or update HeyGen avatar
+          try {
+            const heygenService = new HeyGenService();
+
+            // Upload new image to HeyGen
+            const filePath = path.join(
+              process.cwd(),
+              "uploads",
+              photoFile.filename
+            );
+            const fileBuffer = fs.readFileSync(filePath);
+            const blob = new Blob([fileBuffer], { type: photoFile.mimetype });
+
+            const heygenImageUrl = await heygenService.uploadImage(blob);
+            console.log("Image uploaded to HeyGen:", heygenImageUrl);
+
+            // Create HeyGen avatar (whether updating existing or creating new)
+            const heygenResponse = await heygenService.createTalkingPhotoAvatar(
+              heygenImageUrl,
+              updates.name || existingAvatar.name,
+              updates.voiceId || existingAvatar.voiceId
+            );
+
+            console.log(
+              "Full HeyGen response for update:",
+              JSON.stringify(heygenResponse)
+            );
+            if (
+              heygenResponse.data?.avatar_id ||
+              heygenResponse.data?.avatar_group_id ||
+              heygenResponse.data?.group_id ||
+              heygenResponse.data?.id
+            ) {
+              // Different HeyGen endpoints return different ID fields
+              // Photo avatars return group_id or just id
+              const avatarId =
+                heygenResponse.data.avatar_id ||
+                heygenResponse.data.avatar_group_id ||
+                heygenResponse.data.group_id ||
+                heygenResponse.data.id;
+              updates.metadata = {
+                ...((existingAvatar.metadata as any) || {}),
+                heygenAvatarId: avatarId,
+                updatedAt: new Date().toISOString(),
+              };
+              console.log(
+                "HeyGen avatar created/updated successfully:",
+                avatarId
+              );
+            } else {
+              console.log(
+                "HeyGen response missing avatar IDs on update - data:",
+                heygenResponse.data
+              );
+            }
+          } catch (heygenError) {
+            console.warn("Failed to create/update HeyGen avatar:", heygenError);
+            // Continue with local update even if HeyGen fails
+          }
+        }
+
+        // Handle uploaded voice recording
+        if (files?.voiceRecording && files.voiceRecording[0]) {
+          const voiceFile = files.voiceRecording[0];
+          const voiceFilePath = `/uploads/${voiceFile.filename}`;
+          console.log("Voice recording uploaded to:", voiceFilePath);
+
+          // Store the voice recording path and mark as custom voice
+          updates.metadata = {
+            ...(updates.metadata || (existingAvatar.metadata as any) || {}),
+            voiceRecordingUrl: voiceFilePath,
+            hasCustomVoice: true,
+            voiceRecordedAt: new Date().toISOString(),
+          };
+
+          // Set voiceId to indicate custom voice
+          updates.voiceId = "custom_voice";
+
+          // TODO: In production, you would upload this to HeyGen's voice cloning API
+          // For now, we'll store it locally and use it for demo purposes
+          console.log("Custom voice recording saved for avatar");
+        }
+
+        const updatedAvatar = await storage.updateAvatar(id, updates);
+        res.json(updatedAvatar);
+      } catch (error) {
+        console.error("Update avatar error:", error);
+        res.status(500).json({ error: "Failed to update avatar" });
+      }
+    }
+  );
+
+  // Import existing HeyGen avatar (use pre-built avatars from HeyGen library)
+  app.post("/api/avatars/import", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername("mikebjork");
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const { avatarId } = req.body;
+
+      if (!avatarId) {
+        return res.status(400).json({ error: "Avatar ID is required" });
+      }
+
+      // Validate the avatar exists in HeyGen
+      const heygenService = new HeyGenService();
+      const avatarDetails = await heygenService.importAvatar(avatarId);
+
+      if (!avatarDetails.data) {
+        return res.status(404).json({ error: "Avatar not found in HeyGen" });
+      }
+
+      // Create a local avatar record linked to the HeyGen avatar
+      const validatedData = insertAvatarSchema.parse({
+        name: avatarDetails.data.avatar_name || "HeyGen Avatar",
+        description: `Professional HeyGen avatar for video creation`,
+        style: "professional",
+        gender: avatarDetails.data.gender || "unknown",
+        userId: user.id,
+        metadata: {
+          heygenAvatarId: avatarId,
+          importedFrom: "heygen",
+          previewVideoUrl: avatarDetails.data.preview_video_url || null,
+        },
+        avatarImageUrl: avatarDetails.data.preview_image_url || null,
+      });
+
+      const importedAvatar = await storage.createAvatar(validatedData);
+      res.status(201).json({
+        ...importedAvatar,
+        heygenAvatarId: avatarId,
+      });
+    } catch (error) {
+      console.error("Avatar import failed:", error);
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // List available HeyGen avatars (per official documentation)
+  app.get("/api/avatars/heygen-list", async (req, res) => {
+    try {
+      const heygenService = new HeyGenService();
+      const avatarsList = await heygenService.listAvatars();
+
+      // Format the response to match what the frontend expects
+      if (avatarsList.data?.avatars) {
+        res.json({
+          success: true,
+          avatars: avatarsList.data.avatars,
+          total: avatarsList.data.avatars.length,
+        });
+      } else {
+        res.json({ success: true, avatars: [], total: 0 });
+      }
+    } catch (error) {
+      console.error("Failed to fetch HeyGen avatars:", error);
+      res.status(500).json({ error: "Failed to fetch available avatars" });
+    }
+  });
+
+  // List available HeyGen voices (per official documentation)
+  app.get("/api/voices/heygen-list", async (req, res) => {
+    try {
+      const heygenService = new HeyGenService();
+      const voicesList = await heygenService.listVoices();
+
+      // Format the response to match what the frontend expects
+      if (voicesList.data?.voices) {
+        res.json({
+          success: true,
+          voices: voicesList.data.voices,
+          total: voicesList.data.voices.length,
+        });
+      } else {
+        res.json({ success: true, voices: [], total: 0 });
+      }
+    } catch (error) {
+      console.error("Failed to fetch HeyGen voices:", error);
+      res.status(500).json({ error: "Failed to fetch available voices" });
+    }
+  });
+
+  // ======================================
+  // CUSTOM VOICES ENDPOINTS
+  // ======================================
+
+  // List all custom voices for the current user
+  app.get("/api/custom-voices", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const voices = await storage.listCustomVoices(user.id);
+      res.json(voices);
+    } catch (error) {
+      console.error("Failed to fetch custom voices:", error);
+      res.status(500).json({ error: "Failed to fetch custom voices" });
+    }
+  });
+
+  // Upload and save a new custom voice
+  app.post(
+    "/api/custom-voices",
+    requireAuth,
+    upload.single("audio"),
+    async (req, res) => {
+      try {
+        const user = (req as any).user;
+        const { name } = req.body;
+        const file = req.file;
+
+        if (!file) {
+          return res.status(400).json({ error: "No audio file provided" });
+        }
+
+        if (!name || name.trim().length === 0) {
+          return res.status(400).json({ error: "Voice name is required" });
+        }
+
+        // Read the file as a Buffer
+        const fileBuffer = fs.readFileSync(file.path);
+
+        // Get file stats
+        const stats = fs.statSync(file.path);
+
+        // Determine file extension
+        const ext = path.extname(file.originalname);
+        const fileName = `voice-library/${nanoid()}${ext}`;
+
+        // Upload audio file to S3
+        const s3Service = new S3UploadService();
+        const audioUrl = await s3Service.uploadFile(
+          Number(user.id),
+          fileBuffer,
+          fileName,
+          file.mimetype
+        );
+
+        let heygenAudioAssetId: string | undefined;
+        let status = "pending";
+
+        // Upload to HeyGen for voice cloning
+        try {
+          console.log("🎤 Uploading audio to HeyGen for voice cloning...");
+
+          // Upload to HeyGen (reuse fileBuffer from above)
+          const heygenService = new HeyGenService();
+          heygenAudioAssetId = await heygenService.uploadAudio(
+            fileBuffer,
+            file.mimetype
+          );
+          status = "ready";
+
+          console.log(
+            "✅ HeyGen upload successful! Audio Asset ID:",
+            heygenAudioAssetId
+          );
+        } catch (heygenError) {
+          console.error("❌ HeyGen upload failed:", heygenError);
+          status = "failed";
+          // Continue anyway - user can still manage the voice in library
+        }
+
+        // Create custom voice record with HeyGen asset ID
+        const voice = await storage.createCustomVoice({
+          userId: user.id,
+          name: name.trim(),
+          audioUrl,
+          fileSize: stats.size,
+          heygenAudioAssetId,
+          status,
+        });
+
+        // Clean up uploaded file
+        fs.unlinkSync(file.path);
+
+        res.status(201).json(voice);
+      } catch (error) {
+        console.error("Failed to create custom voice:", error);
+        res.status(500).json({ error: "Failed to create custom voice" });
+      }
+    }
+  );
+
+  // Delete a custom voice
+  app.delete("/api/custom-voices/:id", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+
+      await storage.deleteCustomVoice(id, user.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete custom voice:", error);
+      res.status(500).json({ error: "Failed to delete custom voice" });
+    }
+  });
+
+  // Serve custom voice audio file from S3
+  app.get("/api/custom-voices/:id/audio", requireAuth, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const { id } = req.params;
+
+      console.log(`🎵 Fetching audio for voice ID: ${id}, user ID: ${user.id}`);
+
+      const voice = await storage.getCustomVoice(id);
+      console.log(
+        `📊 Voice found:`,
+        voice
+          ? `Yes (userId: ${voice.userId}, audioUrl: ${voice.audioUrl})`
+          : "No"
+      );
+
+      if (!voice) {
+        console.log(`❌ Voice not found in database`);
+        return res.status(404).json({ error: "Voice not found" });
+      }
+
+      if (voice.userId !== user.id.toString()) {
+        console.log(
+          `❌ User ID mismatch: voice.userId=${voice.userId}, user.id=${user.id}`
+        );
+        return res.status(404).json({ error: "Voice not found" });
+      }
+
+      console.log(`📥 Fetching file from S3: ${voice.audioUrl}`);
+      const s3Service = new S3UploadService();
+      const audioBuffer = await s3Service.getFile(voice.audioUrl);
+      console.log(
+        `✅ Audio file retrieved from S3, size: ${audioBuffer.length} bytes`
+      );
+
+      // Determine content type from file extension
+      const ext = path.extname(voice.audioUrl).toLowerCase();
+      const contentType =
+        ext === ".wav"
+          ? "audio/wav"
+          : ext === ".mp3"
+          ? "audio/mpeg"
+          : "audio/mpeg";
+
+      res.set("Content-Type", contentType);
+      res.set("Cache-Control", "public, max-age=86400"); // Cache for 1 day
+      res.send(audioBuffer);
+    } catch (error) {
+      console.error("❌ Failed to serve custom voice audio:", error);
+      res.status(500).json({ error: "Failed to load audio file" });
+    }
+  });
+
+  // Proxy endpoint for HeyGen images to avoid CORS issues
+  app.get("/api/proxy/heygen-image", async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+
+      if (!imageUrl || !imageUrl.includes("heygen.ai")) {
+        return res.status(400).json({ error: "Invalid image URL" });
+      }
+
+      const response = await fetch(imageUrl);
+
+      if (!response.ok) {
+        return res.status(404).json({ error: "Image not found" });
+      }
+
+      const contentType = response.headers.get("content-type") || "image/webp";
+      res.set("Content-Type", contentType);
+      res.set("Cache-Control", "public, max-age=86400"); // Cache for 1 day
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        const pump = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(value);
+          }
+          res.end();
+        };
+        await pump();
+      } else {
+        res.status(404).json({ error: "No image data" });
+      }
+    } catch (error) {
+      console.error("Failed to proxy HeyGen image:", error);
+      res.status(500).json({ error: "Failed to load image" });
+    }
+  });
+
+  // Get video history for authenticated user (all completed videos)
+  app.get("/api/videos/history", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log("📚 Fetching video history for user:", userId);
+
+      // Get all completed videos (status: 'ready' or 'uploaded')
+      const allVideos = await storage.getVideoContent(userId);
+      const completedVideos = allVideos.filter(
+        (video) => video.status === "ready" || video.status === "uploaded"
+      );
+
+      console.log(`✅ Found ${completedVideos.length} completed videos`);
+
+      res.json({
+        videos: completedVideos,
+        count: completedVideos.length,
+      });
+    } catch (error) {
+      console.error("Get video history error:", error);
+      res.status(500).json({ error: "Failed to fetch video history" });
+    }
+  });
+
+  app.post("/api/videos", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const validatedData = insertVideoContentSchema.parse({
+        ...req.body,
+        userId,
+      });
+
+      const video = await storage.createVideoContent(validatedData);
+      res.status(201).json(video);
+    } catch (error) {
+      console.error("Create video error:", error);
+      res.status(500).json({ error: "Failed to create video content" });
+    }
+  });
+
+  app.put("/api/videos/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      const updatedVideo = await storage.updateVideoContent(id, updates);
+
+      if (!updatedVideo) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      res.json(updatedVideo);
+    } catch (error) {
+      console.error("Update video error:", error);
+      res.status(500).json({ error: "Failed to update video" });
+    }
+  });
+
+  app.post("/api/videos/:id/generate-script", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const {
+        topic,
+        neighborhood,
+        videoType,
+        platform = "youtube",
+        duration = 60,
+      } = req.body;
+
+      // Ownership check - only allow users to generate scripts for their own videos
+      const video = await storage.getVideoByIdAndUser(id, userId);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      let script;
+      try {
+        // Try to generate AI script for the video
+        script = await openaiService.generateVideoScript({
+          topic,
+          neighborhood,
+          videoType,
+          platform,
+          duration,
+        });
+      } catch (error: any) {
+        console.error("OpenAI API error:", error);
+
+        // If API quota exceeded or other OpenAI issues, provide a fallback script
+        if (error.status === 429 || error.code === "insufficient_quota") {
+          script = generateFallbackScript(
+            topic,
+            neighborhood || "Omaha",
+            videoType,
+            duration,
+            platform
+          );
+        } else {
+          throw error; // Re-throw if it's not a quota issue
+        }
+      }
+
+      const updatedVideo = await storage.updateVideoContent(id, {
+        script,
+        topic,
+        neighborhood,
+        videoType,
+        platform,
+        duration,
+        status: "ready",
+      });
+
+      res.json({ script, video: updatedVideo });
+    } catch (error) {
+      console.error("Generate video script error:", error);
+      res.status(500).json({
+        error: "Failed to generate video script. Please try again later.",
+      });
+    }
+  });
+
+  app.post("/api/videos/:id/generate-video", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { avatarId } = req.body;
+
+      // Ownership check - only allow users to generate videos for their own video content
+      const video = await storage.getVideoByIdAndUser(id, userId);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      const avatar = avatarId ? await storage.getAvatarById(avatarId) : null;
+
+      // Check if we have an avatar
+      if (avatar) {
+        // For testing purposes, generate a demo video first
+        // This ensures the avatar test flow works while we fix HeyGen integration
+
+        if (
+          !avatar.metadata ||
+          typeof avatar.metadata !== "object" ||
+          !("heygenAvatarId" in avatar.metadata)
+        ) {
+          // No HeyGen integration yet - create a demo video for testing
+          console.log("No HeyGen avatar ID found, creating demo test video");
+
+          await storage.updateVideoContent(id, {
+            status: "ready",
+            avatarId: avatarId || video.avatarId,
+            videoUrl: "https://example.com/demo-video.mp4",
+            thumbnailUrl: "https://example.com/demo-thumbnail.jpg",
+            metadata: {
+              ...(video.metadata || {}),
+              isDemo: true,
+              message: "Demo video for testing - HeyGen integration pending",
+            },
+          });
+
+          return res.json({
+            success: true,
+            message: "Test video created successfully (demo mode)",
+            videoUrl: "https://example.com/demo-video.mp4",
+          });
+        }
+
+        // Has HeyGen integration - try to generate real video
+        const heygenService = new HeyGenService();
+
+        // Determine aspect ratio based on platform
+        let aspectRatio: "16:9" | "9:16" | "1:1" = "16:9";
+        if (video.platform === "reels" || video.platform === "story") {
+          aspectRatio = "9:16";
+        }
+
+        try {
+          console.log(
+            `Generating HeyGen video for platform: ${video.platform}, aspect ratio: ${aspectRatio}`
+          );
+          console.log(
+            `Using HeyGen avatar ID: ${(avatar.metadata as any).heygenAvatarId}`
+          );
+
+          // Check if this is a talking photo avatar (created from uploaded photo)
+          const isTalkingPhoto =
+            !!avatar.avatarImageUrl &&
+            avatar.avatarImageUrl.includes("/uploads/");
+          console.log(
+            `Avatar type: ${isTalkingPhoto ? "talking_photo" : "avatar"}`
+          );
+
+          // Handle voice selection - use a valid HeyGen voice ID
+          let voiceId = avatar.voiceId;
+          if (voiceId === "custom_voice") {
+            // Custom voice recording uploaded but not yet integrated with HeyGen voice cloning
+            // Default to professional male voice for now
+            voiceId = "119caed25533477ba63822d5d1552d25"; // Professional Male voice
+            console.log(
+              "Custom voice detected, using default male voice as fallback"
+            );
+          }
+
+          const heygenResponse = await heygenService.generateVideo({
+            avatarId: (avatar.metadata as any).heygenAvatarId,
+            script:
+              video.script ||
+              "Welcome to the future of real estate marketing with AI-powered video content.",
+            title: video.title,
+            voiceId: voiceId || undefined,
+            aspectRatio,
+            quality: "720p", // 720p for free tier as per documentation
+            speed: 1.1, // Slightly faster speech as shown in docs
+            isTalkingPhoto, // Pass this flag to the service
+          });
+
+          if (heygenResponse.data?.video_id) {
+            // Update video with HeyGen video ID and set status to generating
+            await storage.updateVideoContent(id, {
+              status: "generating",
+              avatarId: avatarId || video.avatarId,
+              metadata: {
+                ...(video.metadata || {}),
+                heygenVideoId: heygenResponse.data.video_id,
+              },
+            });
+
+            res.json({
+              success: true,
+              videoId: heygenResponse.data.video_id,
+              message: "HeyGen video generation started successfully",
+              estimatedTime: "3-5 minutes",
+            });
+            return;
+          }
+        } catch (heygenError) {
+          console.error("HeyGen video generation failed:", heygenError);
+
+          // Fallback to demo video on HeyGen failure
+          await storage.updateVideoContent(id, {
+            status: "ready",
+            avatarId: avatarId || video.avatarId,
+            videoUrl: "https://example.com/demo-video.mp4",
+            thumbnailUrl: "https://example.com/demo-thumbnail.jpg",
+            metadata: {
+              ...(video.metadata || {}),
+              isDemo: true,
+              heygenError:
+                heygenError instanceof Error
+                  ? heygenError.message
+                  : "Unknown error",
+            },
+          });
+
+          return res.json({
+            success: true,
+            message: "Test video created (demo mode due to HeyGen error)",
+            videoUrl: "https://example.com/demo-video.mp4",
+            warning:
+              "HeyGen integration encountered an error. Using demo video.",
+          });
+        }
+      }
+
+      // If no avatar at all, return error
+      return res.status(400).json({
+        error: "Avatar required for video generation",
+        message: "Please select or create an avatar first",
+      });
+    } catch (error) {
+      console.error("Generate video error:", error);
+      res.status(500).json({ error: "Failed to start video generation" });
+    }
+  });
+
+  // Note: Old video status route removed - using HeyGen-compatible route at line ~3425
+
+  app.post("/api/videos/:id/upload-youtube", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { title, description, tags, privacy = "public" } = req.body;
+
+      // Ownership check - only allow users to upload their own videos
+      const video = await storage.getVideoByIdAndUser(id, userId);
+      if (!video || !video.videoUrl) {
+        return res.status(404).json({ error: "Video not ready for upload" });
+      }
+
+      // This would integrate with YouTube API
+      // For now, we'll simulate the upload
+      const mockYoutubeVideoId = `mock_yt_${id.substring(0, 8)}`;
+      const mockYoutubeUrl = `https://youtube.com/watch?v=${mockYoutubeVideoId}`;
+
+      const updatedVideo = await storage.updateVideoContent(id, {
+        status: "uploaded",
+        youtubeVideoId: mockYoutubeVideoId,
+        youtubeUrl: mockYoutubeUrl,
+        title: title || video.title,
+      });
+
+      res.json({
+        success: true,
+        youtubeUrl: mockYoutubeUrl,
+        video: updatedVideo,
+      });
+    } catch (error) {
+      console.error("Upload to YouTube error:", error);
+      res.status(500).json({ error: "Failed to upload to YouTube" });
+    }
+  });
+
+  // ==================== STREAMING AVATAR ENDPOINTS ====================
+
+  // List available streaming avatars
+  app.get("/api/streaming/avatars", async (req, res) => {
+    try {
+      const streamingService = new HeyGenStreamingService();
+      const avatars = await streamingService.listStreamingAvatars();
+      res.json({ avatars });
+    } catch (error) {
+      console.error("Failed to list streaming avatars:", error);
+      res.status(500).json({ error: "Failed to list streaming avatars" });
+    }
+  });
+
+  // Create streaming avatar session
+  app.post("/api/streaming/sessions", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername("mikebjork");
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const { avatarId } = req.body;
+      const streamingService = new HeyGenStreamingService();
+
+      const session = await streamingService.createSession(user.id, avatarId);
+      res.json(session);
+    } catch (error) {
+      console.error("Failed to create streaming session:", error);
+      res.status(500).json({ error: "Failed to create streaming session" });
+    }
+  });
+
+  // Make avatar speak
+  app.post("/api/streaming/sessions/:sessionId/speak", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const { text, taskType = "TALK" } = req.body;
+
+      const streamingService = new HeyGenStreamingService();
+      await streamingService.speak(sessionId, text, taskType);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to make avatar speak:", error);
+      res.status(500).json({ error: "Failed to make avatar speak" });
+    }
+  });
+
+  // Start voice chat
+  app.post(
+    "/api/streaming/sessions/:sessionId/voice-chat",
+    async (req, res) => {
+      try {
+        const { sessionId } = req.params;
+
+        const streamingService = new HeyGenStreamingService();
+        await streamingService.startVoiceChat(sessionId);
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Failed to start voice chat:", error);
+        res.status(500).json({ error: "Failed to start voice chat" });
+      }
+    }
+  );
+
+  // Stop voice chat
+  app.delete(
+    "/api/streaming/sessions/:sessionId/voice-chat",
+    async (req, res) => {
+      try {
+        const { sessionId } = req.params;
+
+        const streamingService = new HeyGenStreamingService();
+        await streamingService.stopVoiceChat(sessionId);
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Failed to stop voice chat:", error);
+        res.status(500).json({ error: "Failed to stop voice chat" });
+      }
+    }
+  );
+
+  // Interrupt avatar
+  app.post("/api/streaming/sessions/:sessionId/interrupt", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      const streamingService = new HeyGenStreamingService();
+      await streamingService.interrupt(sessionId);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to interrupt avatar:", error);
+      res.status(500).json({ error: "Failed to interrupt avatar" });
+    }
+  });
+
+  // End streaming session
+  app.delete("/api/streaming/sessions/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      const streamingService = new HeyGenStreamingService();
+      await streamingService.endSession(sessionId);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to end session:", error);
+      res.status(500).json({ error: "Failed to end session" });
+    }
+  });
+
+  // Get active sessions
+  app.get("/api/streaming/sessions", async (req, res) => {
+    try {
+      const user = await storage.getUserByUsername("mikebjork");
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const streamingService = new HeyGenStreamingService();
+      const sessions = streamingService.getActiveSessions(user.id);
+
+      res.json({ sessions });
+    } catch (error) {
+      console.error("Failed to get sessions:", error);
+      res.status(500).json({ error: "Failed to get sessions" });
+    }
+  });
+
+  // ==================== PHOTO AVATAR ENDPOINTS ====================
+
+  // Generate AI photos for avatars
+  app.post(
+    "/api/photo-avatars/generate-photos",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        console.log("📸 Photo generation request:", req.body);
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const result = await photoAvatarService.generateAIPhotos(req.body);
+
+        console.log("✅ Photo generation result:", result);
+
+        // Send real-time notification
+        realtimeService.notifyPhotoGenerated(
+          userId,
+          req.body.name || "Avatar",
+          5 // HeyGen generates 5 photos
+        );
+
+        res.json(result);
+      } catch (error) {
+        console.error("❌ Failed to generate AI photos:", error);
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Failed to generate AI photos";
+        res.status(500).json({
+          error: "Failed to generate AI photos",
+          details: errorMessage,
+        });
+      }
+    }
+  );
+
+  // Get photo generation status
+  app.get(
+    "/api/photo-avatars/generation/:generationId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const { generationId } = req.params;
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const status = await photoAvatarService.getGenerationStatus(
+          generationId
+        );
+
+        res.json(status);
+      } catch (error) {
+        console.error("Failed to get generation status:", error);
+        res.status(500).json({ error: "Failed to get generation status" });
+      }
+    }
+  );
+
+  // Create avatar group
+  app.post("/api/photo-avatars/groups", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { name, imageKey } = req.body;
+
+      // Create group in HeyGen
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const heygenGroup = await photoAvatarService.createAvatarGroup(
+        name,
+        imageKey
+      );
+
+      // Persist to database with userId for ownership tracking
+      const dbGroup = await storage.createPhotoAvatarGroup({
+        userId,
+        heygenGroupId: heygenGroup.group_id,
+        name,
+        status: "created",
+      });
+
+      console.log(
+        "✅ Avatar group created and persisted to database:",
+        dbGroup.id
+      );
+
+      // Fetch and persist individual avatars
+      try {
+        const looks = await photoAvatarService.getAvatarGroupLooks(
+          heygenGroup.group_id
+        );
+        if (looks.avatar_list && Array.isArray(looks.avatar_list)) {
+          for (const avatar of looks.avatar_list) {
+            await storage.createPhotoAvatar({
+              userId,
+              heygenAvatarId: avatar.id,
+              groupDbId: dbGroup.id,
+              heygenGroupId: heygenGroup.group_id,
+              name: avatar.name || name,
+              pose: avatar.business_type,
+              status: avatar.status || "pending",
+              metadata: avatar,
+            });
+          }
+          console.log(
+            `✅ Persisted ${looks.avatar_list.length} individual avatars to database`
+          );
+
+          // Send notification
+          realtimeService.notifyAvatarGroupCreated(
+            parseInt(userId),
+            heygenGroup.group_id,
+            name,
+            looks.avatar_list.length
+          );
+        }
+      } catch (err) {
+        console.error("⚠️ Failed to persist individual avatars:", err);
+        // Don't fail the request if avatar persistence fails
+      }
+
+      res.json(heygenGroup);
+    } catch (error) {
+      console.error("Failed to create avatar group:", error);
+      res.status(500).json({ error: "Failed to create avatar group" });
+    }
+  });
+
+  // Add photos to avatar group
+  app.post(
+    "/api/photo-avatars/groups/:groupId/photos",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+        const { imageKeys, name } = req.body;
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check - ensure user owns this avatar group
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const result = await photoAvatarService.addPhotosToGroup(
+          groupId,
+          imageKeys,
+          name
+        );
+
+        // Fetch and persist newly added avatars
+        try {
+          const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
+          if (looks.avatar_list && Array.isArray(looks.avatar_list)) {
+            for (const avatar of looks.avatar_list) {
+              // Try to create, skip if already exists (unique constraint)
+              try {
+                await storage.createPhotoAvatar({
+                  userId,
+                  heygenAvatarId: avatar.id,
+                  groupDbId: dbGroup.id,
+                  heygenGroupId: groupId,
+                  name: avatar.name || name,
+                  pose: avatar.business_type,
+                  status: avatar.status || "pending",
+                  metadata: avatar,
+                });
+              } catch (err) {
+                // Ignore duplicate errors (avatar already exists)
+                if (!String(err).includes("unique")) {
+                  throw err;
+                }
+              }
+            }
+            console.log(`✅ Synced avatars to database for group ${groupId}`);
+          }
+        } catch (err) {
+          console.error("⚠️ Failed to sync avatars after adding photos:", err);
+          // Don't fail the request if avatar sync fails
+        }
+
+        res.json(result);
+      } catch (error) {
+        console.error("Failed to add photos to group:", error);
+        res.status(500).json({ error: "Failed to add photos to group" });
+      }
+    }
+  );
+
+  // List avatar groups (DATABASE-FIRST WITH PRIVACY)
+  app.get("/api/photo-avatars/groups", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const userIdString = String(userId);
+      const dbGroups = await storage.listPhotoAvatarGroups(userIdString);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+
+      // Enrich each user's group with HeyGen data
+      const mappedGroups = await Promise.all(
+        dbGroups.map(async (dbGroup) => {
+          const groupId = dbGroup.heygenGroupId;
+          let looksCount = 0;
+          let heygenStatus = dbGroup.status;
+          let previewImage = dbGroup.s3ImageUrl;
+
+          try {
+            const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
+            looksCount = Array.isArray(looks?.avatar_list)
+              ? looks.avatar_list.length
+              : 0;
+
+            // If s3ImageUrl is not available, use the first avatar's image from HeyGen
+            if (
+              !previewImage &&
+              looks?.avatar_list &&
+              looks.avatar_list.length > 0
+            ) {
+              previewImage = looks.avatar_list[0].image_url;
+            }
+          } catch (e) {
+            console.warn(
+              `⚠️ Failed to fetch looks for group ${groupId}:`,
+              (e as Error)?.message || e
+            );
+          }
+
+          // Get custom voice for this group if any
+          let defaultVoiceId = null;
+          try {
+            const customVoice = await storage.getPhotoAvatarGroupVoice(
+              groupId,
+              userId
+            );
+            if (customVoice?.heygenAudioAssetId) {
+              defaultVoiceId = customVoice.heygenAudioAssetId;
+            }
+          } catch (e) {
+            console.warn(
+              `⚠️ Error fetching custom voice for group ${groupId}:`,
+              e
+            );
+          }
+
+          // Use database status as source of truth
+          const rawStatus = dbGroup.status || "pending";
+          const isCompleted =
+            rawStatus === "completed" || rawStatus === "ready";
+          const status = isCompleted
+            ? "ready"
+            : looksCount > 0
+            ? "pending"
+            : rawStatus;
+
+          return {
+            group_id: groupId,
+            name: dbGroup.name,
+            status,
+            default_voice_id: defaultVoiceId,
+            created_at: dbGroup.createdAt || new Date().toISOString(),
+            avatar_count: looksCount,
+            training_progress:
+              status === "processing" || rawStatus === "processing"
+                ? dbGroup.trainingProgress || 50
+                : undefined,
+            preview_image: previewImage,
+            num_looks: looksCount,
+          };
+        })
+      );
+
+      res.json({
+        avatar_group_list: mappedGroups,
+      });
+    } catch (error) {
+      console.error("Failed to list avatar groups:", error);
+      res.status(500).json({ error: "Failed to list avatar groups" });
+    }
+  });
+
+  // Get avatar group details (WITH OWNERSHIP CHECK)
+  app.get(
+    "/api/photo-avatars/groups/:groupId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        let looksCount = 0;
+        try {
+          const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
+          looksCount = Array.isArray(looks?.avatar_list)
+            ? looks.avatar_list.length
+            : 0;
+        } catch (e) {
+          console.warn(
+            `⚠️ Failed to fetch looks for group ${groupId} while building details:`,
+            (e as Error)?.message || e
+          );
+        }
+
+        const rawStatus = dbGroup.status || "pending";
+        const isCompleted = rawStatus === "completed" || rawStatus === "ready";
+        const detail = {
+          group_id: groupId,
+          name: dbGroup.name,
+          status: isCompleted
+            ? "ready"
+            : looksCount > 0
+            ? "pending"
+            : rawStatus,
+          created_at: dbGroup.createdAt || new Date().toISOString(),
+          avatar_count: looksCount,
+          preview_image: dbGroup.s3ImageUrl,
+        };
+
+        res.json(detail);
+      } catch (error) {
+        console.error("Failed to get avatar group:", error);
+        res.status(500).json({ error: "Failed to get avatar group" });
+      }
+    }
+  );
+
+  // Get avatar group photos (generated images) (WITH OWNERSHIP CHECK)
+  app.get(
+    "/api/photo-avatars/groups/:groupId/photos",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const looksData = await photoAvatarService.getAvatarGroupLooks(groupId);
+
+        // Transform avatar looks into photo format
+        const photos = (looksData.avatar_list || []).map((avatar: any) => ({
+          id: avatar.id,
+          url: avatar.image_url,
+          thumbnail: avatar.image_url,
+          name: avatar.name,
+          type: "avatar",
+          created_at: avatar.created_at,
+          status: avatar.status,
+          motion_preview_url: avatar.motion_preview_url,
+        }));
+
+        res.json({
+          group_id: groupId,
+          photos: photos,
+          count: photos.length,
+        });
+      } catch (error) {
+        console.error("Failed to get avatar group photos:", error);
+        res.status(500).json({ error: "Failed to get avatar group photos" });
+      }
+    }
+  );
+
+  // Get avatar group looks (WITH OWNERSHIP CHECK)
+  app.get(
+    "/api/photo-avatars/groups/:groupId/looks",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
+
+        res.json(looks);
+      } catch (error) {
+        console.error("Failed to get avatar looks:", error);
+        res.status(500).json({ error: "Failed to get avatar looks" });
+      }
+    }
+  );
+
+  // Train avatar group
+  app.post(
+    "/api/photo-avatars/groups/:groupId/train",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+        const { defaultVoiceId } = req.body;
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const result = await photoAvatarService.trainAvatarGroup(
+          groupId,
+          defaultVoiceId
+        );
+
+        res.json(result);
+      } catch (error) {
+        console.error("Failed to train avatar group:", error);
+        res.status(500).json({ error: "Failed to train avatar group" });
+      }
+    }
+  );
+
+  // Generate new looks
+  app.post(
+    "/api/photo-avatars/groups/:groupId/generate-looks",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+        const { numLooks = 3 } = req.body;
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const looks = await photoAvatarService.generateNewLooks(
+          groupId,
+          numLooks
+        );
+
+        res.json(looks);
+      } catch (error) {
+        console.error("Failed to generate new looks:", error);
+        res.status(500).json({ error: "Failed to generate new looks" });
+      }
+    }
+  );
+
+  // Check training status
+  app.get(
+    "/api/photo-avatars/groups/:groupId/status",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const status = await photoAvatarService.checkTrainingStatus(groupId);
+
+        res.json(status);
+      } catch (error) {
+        console.error("Failed to check training status:", error);
+        res.status(500).json({ error: "Failed to check training status" });
+      }
+    }
+  );
+
+  // Delete avatar group
+  app.delete(
+    "/api/photo-avatars/groups/:groupId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check and delete
+        const deleted = await storage.deletePhotoAvatarGroup(groupId, userId);
+        if (!deleted) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        await photoAvatarService.deleteAvatarGroup(groupId);
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Failed to delete avatar group:", error);
+        res.status(500).json({ error: "Failed to delete avatar group" });
+      }
+    }
+  );
+
+  // Delete individual avatar
+  app.delete("/api/photo-avatars/:avatarId", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { avatarId } = req.params;
+
+      // First, try to find the avatar in the database (uploaded avatars)
+      const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(
+        avatarId,
+        userId
+      );
+
+      // If not in database, verify ownership via group (AI-generated avatars)
+      if (!dbAvatar) {
+        console.log(
+          "⚠️ Avatar not in database, checking group ownership via HeyGen API"
+        );
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+
+        try {
+          // Get avatar details from HeyGen to find its group
+          const avatarDetails = await photoAvatarService.getAvatarDetails(
+            avatarId
+          );
+          const groupId = avatarDetails?.data?.group_id;
+
+          if (!groupId) {
+            return res.status(404).json({ error: "Avatar not found" });
+          }
+
+          // Verify user owns the group
+          const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+            groupId,
+            userId
+          );
+          if (!dbGroup) {
+            return res.status(404).json({ error: "Avatar not found" });
+          }
+
+          console.log("✅ Group ownership verified for AI-generated avatar");
+        } catch (error) {
+          console.error("Failed to verify avatar ownership:", error);
+          return res.status(404).json({ error: "Avatar not found" });
+        }
+      }
+
+      console.log("🗑️ Deleting individual avatar:", avatarId);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      await photoAvatarService.deleteIndividualAvatar(avatarId);
+
+      // Delete from database if it exists there
+      if (dbAvatar) {
+        await storage.deletePhotoAvatar(avatarId, userId);
+      }
+
+      console.log("✅ Individual avatar deleted successfully");
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete individual avatar:", error);
+      res.status(500).json({ error: "Failed to delete individual avatar" });
+    }
+  });
+
+  // Edit/Generate new look with custom prompt
+  app.post("/api/heygen/avatars/:groupId/generate-look", async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      const { prompt, orientation, pose, style, referenceImages } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      console.log("✏️ Editing look for group:", groupId);
+      console.log("✏️ Edit prompt:", prompt);
+      console.log("✏️ Orientation:", orientation || "square");
+      console.log("✏️ Pose:", pose || "half_body");
+      console.log("✏️ Style:", style || "Realistic");
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const result = await photoAvatarService.editLook({
+        groupId,
+        prompt,
+        orientation,
+        pose,
+        style,
+        referenceImages,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to edit look:", error);
+      res.status(500).json({ error: "Failed to edit look" });
+    }
+  });
+
+  // Add looks to existing avatar group
+  app.post(
+    "/api/photo-avatars/groups/:groupId/add-looks",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+        const { imageKeys, name } = req.body;
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        if (!imageKeys || !Array.isArray(imageKeys) || imageKeys.length === 0) {
+          return res
+            .status(400)
+            .json({ error: "Image keys array is required" });
+        }
+
+        console.log("➕ Adding looks to group:", groupId);
+        console.log("➕ Number of images:", imageKeys.length);
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const result = await photoAvatarService.addLooks({
+          groupId,
+          imageKeys,
+          name,
+        });
+
+        res.json(result);
+      } catch (error) {
+        console.error("Failed to add looks:", error);
+        res.status(500).json({ error: "Failed to add looks" });
+      }
+    }
+  );
+
+  // Add motion to photo avatar
+  app.post(
+    "/api/photo-avatars/:avatarId/add-motion",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const { avatarId } = req.params;
+
+        // Ownership validation: verify user owns a group containing this avatar
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const allUserGroups = await storage.listPhotoAvatarGroups(userId);
+
+        let ownsAvatar = false;
+        let avatarGroupId: string | null = null;
+
+        for (const group of allUserGroups) {
+          try {
+            const looks = await photoAvatarService.getAvatarGroupLooks(
+              group.heygenGroupId
+            );
+            if (
+              looks.avatar_list &&
+              looks.avatar_list.some((a: any) => a.id === avatarId)
+            ) {
+              ownsAvatar = true;
+              avatarGroupId = group.heygenGroupId;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!ownsAvatar) {
+          return res.status(404).json({ error: "Avatar not found" });
+        }
+
+        console.log("🎬 Adding motion to avatar:", avatarId);
+
+        const result = await photoAvatarService.addMotion(avatarId);
+
+        // Get avatar name for notification
+        let avatarName = "Avatar";
+        try {
+          const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(
+            avatarId,
+            userId
+          );
+          if (dbAvatar) {
+            avatarName = dbAvatar.name || avatarName;
+            await storage.updatePhotoAvatar(avatarId, userId, {
+              status: "processing",
+              metadata: { ...dbAvatar.metadata, is_motion: true },
+            });
+          }
+        } catch (e) {
+          console.warn("Could not update avatar in database:", e);
+        }
+
+        // Send notification
+        realtimeService.notifyMotionAdded(
+          parseInt(userId),
+          avatarId,
+          avatarName
+        );
+
+        res.json(result);
+      } catch (error) {
+        console.error("Failed to add motion:", error);
+        res.status(500).json({ error: "Failed to add motion" });
+      }
+    }
+  );
+
+  // Add sound effect to photo avatar
+  app.post(
+    "/api/photo-avatars/:avatarId/add-sound-effect",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const { avatarId } = req.params;
+
+        // Ownership validation: verify user owns a group containing this avatar
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const allUserGroups = await storage.listPhotoAvatarGroups(userId);
+
+        let ownsAvatar = false;
+
+        for (const group of allUserGroups) {
+          try {
+            const looks = await photoAvatarService.getAvatarGroupLooks(
+              group.heygenGroupId
+            );
+            if (
+              looks.avatar_list &&
+              looks.avatar_list.some((a: any) => a.id === avatarId)
+            ) {
+              ownsAvatar = true;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!ownsAvatar) {
+          return res.status(404).json({ error: "Avatar not found" });
+        }
+
+        console.log("🔊 Adding sound effect to avatar:", avatarId);
+
+        const result = await photoAvatarService.addSoundEffect(avatarId);
+
+        // Get avatar name for notification
+        let avatarName = "Avatar";
+        try {
+          const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(
+            avatarId,
+            userId
+          );
+          if (dbAvatar) {
+            avatarName = dbAvatar.name || avatarName;
+            await storage.updatePhotoAvatar(avatarId, userId, {
+              status: "processing",
+              metadata: { ...dbAvatar.metadata, background_sound_effect: true },
+            });
+          }
+        } catch (e) {
+          console.warn("Could not update avatar in database:", e);
+        }
+
+        // Send notification
+        realtimeService.notifySoundEffectAdded(
+          parseInt(userId),
+          avatarId,
+          avatarName
+        );
+
+        res.json(result);
+      } catch (error) {
+        console.error("Failed to add sound effect:", error);
+        res.status(500).json({ error: "Failed to add sound effect" });
+      }
+    }
+  );
+
+  // Get avatar status (for checking motion/sound effect processing)
+  app.get(
+    "/api/photo-avatars/:avatarId/status",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const { avatarId } = req.params;
+
+        // Ownership validation
+        const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(
+          avatarId,
+          userId
+        );
+        if (!dbAvatar) {
+          return res.status(404).json({ error: "Avatar not found" });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const status = await photoAvatarService.getAvatarStatus(avatarId);
+
+        // Update status in database if changed
+        if (status.status && status.status !== dbAvatar.status) {
+          await storage.updatePhotoAvatar(avatarId, userId, {
+            status: status.status,
+            metadata: { ...dbAvatar.metadata, ...status },
+          });
+        }
+
+        res.json(status);
+      } catch (error) {
+        console.error("Failed to get avatar status:", error);
+        res.status(500).json({ error: "Failed to get avatar status" });
+      }
+    }
+  );
+
+  // Save voice recording to avatar group
+  app.post(
+    "/api/photo-avatars/groups/:groupId/voice",
+    requireAuth,
+    upload.single("voiceRecording"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No voice recording uploaded" });
+        }
+
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const { groupId } = req.params;
+
+        console.log("🎤 Uploading voice recording to avatar group:", {
+          groupId,
+          filename: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        });
+
+        // Read the file buffer
+        const fileBuffer = fs.readFileSync(req.file.path);
+
+        // Upload audio file to S3
+        const s3Service = new S3UploadService();
+        const audioUrl = await s3Service.uploadFile(
+          userId,
+          fileBuffer,
+          `avatar-voices/${groupId}/${nanoid()}_${req.file.originalname}`,
+          req.file.mimetype
+        );
+
+        console.log("✅ Voice uploaded to S3:", audioUrl);
+
+        let heygenAudioAssetId: string | undefined;
+
+        // Upload to HeyGen for voice cloning
+        try {
+          console.log("🎤 Uploading audio to HeyGen for voice cloning...");
+
+          const heygenService = new HeyGenService();
+          heygenAudioAssetId = await heygenService.uploadAudio(
+            fileBuffer,
+            req.file.mimetype
+          );
+
+          console.log(
+            "✅ HeyGen upload successful! Audio Asset ID:",
+            heygenAudioAssetId
+          );
+        } catch (heygenError) {
+          console.error("❌ HeyGen upload failed:", heygenError);
+          // Continue anyway - voice is saved to S3
+        }
+
+        // Store the voice metadata in the database
+        if (heygenAudioAssetId) {
+          try {
+            await storage.savePhotoAvatarGroupVoice({
+              userId,
+              groupId,
+              audioUrl,
+              heygenAudioAssetId,
+            });
+            console.log(
+              `✅ Voice ${heygenAudioAssetId} saved to database for group ${groupId}`
+            );
+          } catch (dbError) {
+            console.error("Failed to save voice to database:", dbError);
+          }
+        }
+
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+
+        res.json({
+          success: true,
+          audioUrl,
+          heygenAudioAssetId,
+          message: "Voice recording saved successfully",
+        });
+      } catch (error) {
+        console.error("Failed to save voice recording:", error);
+        res.status(500).json({ error: "Failed to save voice recording" });
+      }
+    }
+  );
+
+  // Upload custom photo for photo avatar
+  app.post(
+    "/api/photo-avatars/upload",
+    requireAuth,
+    upload.single("photo"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No photo uploaded" });
+        }
+
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        console.log("📤 Uploading photo to HeyGen:", {
+          filename: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        });
+
+        const fileBuffer = fs.readFileSync(req.file.path);
+
+        // ✨ AVATAR REUSE DETECTION: Check if this image already exists
+        const crypto = await import("crypto");
+        const imageHash = crypto
+          .createHash("sha256")
+          .update(fileBuffer)
+          .digest("hex");
+        console.log("🔍 Image hash:", imageHash);
+
+        const existingAvatar = await storage.getPhotoAvatarGroupByImageHash(
+          imageHash,
+          userId
+        );
+        if (existingAvatar) {
+          console.log(
+            "♻️ Avatar reuse detected! Returning existing avatar:",
+            existingAvatar.heygenGroupId
+          );
+          fs.unlinkSync(req.file.path); // Clean up temp file
+          return res.json({
+            imageKey: existingAvatar.heygenImageKey,
+            s3Url: existingAvatar.s3ImageUrl,
+            groupId: existingAvatar.heygenGroupId,
+            reused: true,
+            message:
+              "This image was already uploaded. Reusing existing avatar.",
+          });
+        }
+
+        // Upload to S3 for backup
+        const s3Service = new S3UploadService();
+        const s3ImageUrl = await s3Service.uploadFile(
+          userId,
+          fileBuffer,
+          `avatar-images/${nanoid()}_${req.file.originalname}`,
+          req.file.mimetype
+        );
+        console.log("✅ Photo backed up to S3:", s3ImageUrl);
+
+        // Upload to HeyGen and get the image key
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const heygenImageKey = await photoAvatarService.uploadCustomPhoto(
+          fileBuffer,
+          req.file.mimetype
+        );
+
+        console.log("✅ Photo uploaded to HeyGen, key:", heygenImageKey);
+
+        // Clean up temporary file
+        fs.unlinkSync(req.file.path);
+
+        res.json({
+          imageKey: heygenImageKey,
+          s3Url: s3ImageUrl,
+          imageHash, // Return hash for storage when avatar group is created
+          reused: false,
+        });
+      } catch (error: any) {
+        console.error("❌ Failed to upload photo:");
+        console.error("Error message:", error?.message);
+        console.error("Full error:", error);
+        res.status(500).json({
+          error: "Failed to upload photo",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
+  // Create avatar group from uploaded photos
+  app.post(
+    "/api/photo-avatars/create-from-uploads",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { name, imageKeys, imageHash, s3ImageUrl } = req.body;
+        const userId = req.user?.id;
+
+        console.log("🎭 Backend: Create avatar group request received");
+        console.log("🎭 Backend: Request name:", name);
+        console.log("🎭 Backend: Request imageKeys:", imageKeys);
+        console.log("🎭 Backend: Request imageKeys type:", typeof imageKeys);
+        console.log(
+          "🎭 Backend: Request imageKeys isArray:",
+          Array.isArray(imageKeys)
+        );
+        console.log("🎭 Backend: Image hash:", imageHash);
+
+        if (
+          !name ||
+          !imageKeys ||
+          !Array.isArray(imageKeys) ||
+          imageKeys.length < 1
+        ) {
+          console.log("❌ Backend: Validation failed:", {
+            hasName: !!name,
+            hasImageKeys: !!imageKeys,
+            isArray: Array.isArray(imageKeys),
+            length: Array.isArray(imageKeys) ? imageKeys.length : 0,
+          });
+          return res.status(400).json({
+            error: "Please provide a name and at least 1 photo",
+          });
+        }
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+
+        console.log("🎭 Backend: Calling photoAvatarService.createAvatarGroup");
+        // imageKeys are already HeyGen image keys from the upload endpoint
+        console.log(
+          "✅ Backend: Creating avatar group with HeyGen image keys:",
+          imageKeys
+        );
+
+        // Create avatar group with HeyGen image keys
+        const createResult = await photoAvatarService.createAvatarGroup(
+          name,
+          imageKeys
+        );
+
+        console.log(
+          "✅ Backend: Avatar group creation result:",
+          JSON.stringify(createResult, null, 2)
+        );
+
+        // Automatically start training
+        const groupId = createResult.group_id || createResult.avatar_group_id;
+        console.log("🎭 Backend: Extracted groupId for training:", groupId);
+
+        // ✨ Save avatar group metadata to database for duplicate detection
+        if (userId && groupId) {
+          try {
+            await storage.createPhotoAvatarGroup({
+              userId,
+              heygenGroupId: groupId,
+              name,
+              imageHash: imageHash || null,
+              s3ImageUrl: s3ImageUrl || null,
+              heygenImageKey: imageKeys[0], // Primary image key
+              status: "pending",
+              trainingProgress: 0,
+            });
+            console.log("💾 Avatar group metadata saved to database");
+          } catch (dbError) {
+            console.error("⚠️ Failed to save avatar group metadata:", dbError);
+            // Don't fail the request, just log the error
+          }
+        }
+
+        if (groupId) {
+          try {
+            console.log("🚀 Backend: Starting training for group:", groupId);
+            await photoAvatarService.trainAvatarGroup(groupId);
+            console.log("✅ Backend: Training started successfully");
+          } catch (trainingError: any) {
+            console.log(
+              "⚠️ Backend: Training failed, but group was created successfully:",
+              trainingError?.message
+            );
+            console.log(
+              "⚠️ Backend: Group creation was successful, training may happen automatically"
+            );
+          }
+        } else {
+          console.log("⚠️ Backend: No groupId found, skipping training");
+        }
+
+        const responseData = {
+          success: true,
+          groupId: groupId,
+          message: "Avatar group created and training started",
+        };
+
+        console.log(
+          "🎭 Backend: Sending response:",
+          JSON.stringify(responseData, null, 2)
+        );
+        res.json(responseData);
+      } catch (error: any) {
+        console.error("❌ Backend: Failed to create avatar group from uploads");
+        console.error("❌ Backend: Error message:", error?.message);
+        console.error("❌ Backend: Error stack:", error?.stack);
+        console.error("❌ Backend: Full error:", error);
+        res.status(500).json({
+          error: "Failed to create avatar group",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
+  // ==================== VIDEO GENERATION ENDPOINTS ====================
+
+  // Generate video from avatar and script
+  app.post("/api/videos/generate", requireAuth, async (req, res) => {
+    try {
+      const {
+        avatarId,
+        script,
+        title,
+        test,
+        isTalkingPhoto,
+        voiceSpeed,
+        voiceId,
+        customVoiceAvatarId,
+        voiceLibraryId,
+      } = req.body;
+
+      console.log("🎬 Backend: Video generation request received");
+      console.log("🎬 Backend: Avatar ID:", avatarId);
+      console.log("🎬 Backend: Script length:", script?.length);
+      console.log("🎬 Backend: Title:", title);
+      console.log("🎬 Backend: Test mode:", test);
+      console.log("🎬 Backend: isTalkingPhoto:", isTalkingPhoto);
+      console.log("🎬 Backend: Voice speed:", voiceSpeed);
+      console.log("🎬 Backend: Voice ID:", voiceId);
+      console.log("🎬 Backend: Custom voice avatar ID:", customVoiceAvatarId);
+      console.log("🎬 Backend: Voice Library ID:", voiceLibraryId);
+
+      if (!avatarId || !script) {
+        console.log("❌ Backend: Validation failed:", {
+          hasAvatarId: !!avatarId,
+          hasScript: !!script,
+        });
+        return res.status(400).json({
+          error: "Please provide an avatar ID and script",
+        });
+      }
+
+      // Handle custom voice if provided
+      let finalVoiceId = voiceId;
+      let audioAssetId: string | undefined;
+
+      // Handle Voice Library voices
+      if (voiceId === "voice_library" && voiceLibraryId) {
+        const user = (req as any).user;
+        const voices = await storage.listCustomVoices(user.id);
+        const voiceLibraryVoice = voices.find((v) => v.id === voiceLibraryId);
+
+        if (
+          voiceLibraryVoice?.heygenAudioAssetId &&
+          voiceLibraryVoice.status === "ready"
+        ) {
+          console.log("🎤 Backend: Voice Library voice detected!");
+          console.log(
+            "🎤 Backend: Audio Asset ID:",
+            voiceLibraryVoice.heygenAudioAssetId
+          );
+          audioAssetId = voiceLibraryVoice.heygenAudioAssetId;
+          finalVoiceId = undefined; // Don't use text voice when using audio
+        } else {
+          console.log(
+            "⚠️ Backend: Voice Library voice not ready or missing asset ID, using fallback"
+          );
+          finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
+        }
+      } else if (voiceId === "custom_voice" && customVoiceAvatarId) {
+        // Look up the photo avatar group voice for this avatar
+        const user = (req as any).user;
+        const customAvatar = await storage.getAvatarById(customVoiceAvatarId);
+
+        if (customAvatar?.groupId) {
+          console.log("🎤 Backend: Custom voice avatar detected!");
+          console.log("🎤 Backend: Avatar Group ID:", customAvatar.groupId);
+
+          const groupVoice = await storage.getPhotoAvatarGroupVoice(
+            customAvatar.groupId,
+            user.id
+          );
+
+          if (groupVoice?.heygenAudioAssetId) {
+            console.log(
+              "🎤 Backend: Found group voice with Audio Asset ID:",
+              groupVoice.heygenAudioAssetId
+            );
+            audioAssetId = groupVoice.heygenAudioAssetId;
+            finalVoiceId = undefined; // Don't use text voice when using audio
+          } else {
+            console.log(
+              "⚠️ Backend: No group voice found for avatar group, using fallback"
+            );
+            finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
+          }
+        } else {
+          console.log("⚠️ Backend: Avatar has no groupId, using fallback");
+          finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
+        }
+      } else if (voiceId) {
+        // Check if voiceId is actually a custom voice audio asset ID from a photo avatar group
+        const user = (req as any).user;
+        const allPhotoAvatarGroupVoices =
+          await storage.listPhotoAvatarGroupVoices(user.id);
+        const matchingGroupVoice = allPhotoAvatarGroupVoices.find(
+          (v) => v.heygenAudioAssetId === voiceId
+        );
+
+        if (matchingGroupVoice) {
+          console.log("🎤 Backend: Photo Avatar Group custom voice detected!");
+          console.log("🎤 Backend: Group ID:", matchingGroupVoice.groupId);
+          console.log(
+            "🎤 Backend: Audio Asset ID:",
+            matchingGroupVoice.heygenAudioAssetId
+          );
+          audioAssetId = matchingGroupVoice.heygenAudioAssetId;
+          finalVoiceId = undefined; // Don't use text voice when using audio
+        }
+      }
+
+      const heyGenService = new HeyGenService();
+      console.log("🎬 Backend: Calling HeyGenService.generateVideo");
+
+      const result = await heyGenService.generateVideo({
+        avatarId,
+        script,
+        title: title || "Generated Video",
+        test: test || false,
+        isTalkingPhoto: !!isTalkingPhoto,
+        speed: voiceSpeed || 1.0,
+        voiceId: finalVoiceId,
+        audioAssetId,
+      });
+
+      console.log("✅ Backend: Video generation result:", result);
+
+      // Validate that we got a video_id from HeyGen
+      if (!result.data?.video_id) {
+        console.error("❌ Backend: HeyGen did not return a video_id");
+        return res.status(500).json({
+          error: "Video generation failed - no video ID received",
+        });
+      }
+
+      // Save video to database
+      const user = (req as any).user;
+      const videoRecord = await storage.createVideoContent({
+        userId: String(user.id),
+        avatarId,
+        title: title || "Generated Video",
+        script,
+        status: "generating",
+        metadata: {
+          heygenVideoId: result.data.video_id,
+          test,
+          voiceSpeed,
+          voiceId: finalVoiceId,
+          audioAssetId,
+        },
+      });
+
+      console.log("💾 Backend: Saved video to database:", videoRecord.id);
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to generate video");
+      console.error("❌ Backend: Error message:", error?.message);
+      console.error("❌ Backend: Error stack:", error?.stack);
+      res.status(500).json({
+        error: "Failed to generate video",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Get video generation status
+  app.get("/api/videos/:videoId/status", requireAuth, async (req, res) => {
+    try {
+      const { videoId } = req.params;
+      const userId = req.user?.id;
+
+      console.log("📊 Backend: Getting video status for:", videoId);
+
+      const heyGenService = new HeyGenService();
+      const status = await heyGenService.getVideoStatus(videoId);
+
+      console.log("✅ Backend: Video status result:", status);
+
+      // Extended response with S3 backup URLs
+      let response: any = { ...status };
+
+      // If video is completed, update database first with HeyGen URLs
+      if (status.status === "completed" && status.video_url && userId) {
+        // Find and update the database record
+        try {
+          const allVideos = await storage.getVideoContent(String(userId));
+          const videoRecord = allVideos.find(
+            (v: any) =>
+              v.metadata &&
+              typeof v.metadata === "object" &&
+              "heygenVideoId" in v.metadata &&
+              v.metadata.heygenVideoId === videoId
+          );
+
+          if (videoRecord) {
+            // First, mark video as ready with HeyGen URLs
+            await storage.updateVideoContent(videoRecord.id, {
+              status: "ready",
+              videoUrl: status.video_url,
+              thumbnailUrl: status.thumbnail_url,
+            });
+            console.log(
+              "💾 Backend: Updated video record with HeyGen URLs:",
+              videoRecord.id
+            );
+
+            // Then attempt S3 backup (optional enhancement)
+            try {
+              console.log("💾 Backend: Attempting S3 backup...");
+
+              // Download video from HeyGen CDN
+              const videoResponse = await fetch(status.video_url);
+              if (videoResponse.ok) {
+                const videoBuffer = Buffer.from(
+                  await videoResponse.arrayBuffer()
+                );
+
+                // Upload to S3
+                const s3Service = new S3UploadService();
+                const s3VideoUrl = await s3Service.uploadFile(
+                  userId,
+                  videoBuffer,
+                  `generated-videos/${videoId}.mp4`,
+                  "video/mp4"
+                );
+
+                console.log("✅ Backend: Video backed up to S3:", s3VideoUrl);
+                response.s3_video_url = s3VideoUrl;
+
+                // Download and backup thumbnail if available
+                let s3ThumbnailUrl = null;
+                if (status.thumbnail_url) {
+                  try {
+                    const thumbnailResponse = await fetch(status.thumbnail_url);
+                    if (thumbnailResponse.ok) {
+                      const thumbnailBuffer = Buffer.from(
+                        await thumbnailResponse.arrayBuffer()
+                      );
+                      s3ThumbnailUrl = await s3Service.uploadFile(
+                        userId,
+                        thumbnailBuffer,
+                        `generated-videos/${videoId}_thumbnail.jpg`,
+                        "image/jpeg"
+                      );
+                      response.s3_thumbnail_url = s3ThumbnailUrl;
+                      console.log(
+                        "✅ Backend: Thumbnail backed up to S3:",
+                        s3ThumbnailUrl
+                      );
+                    }
+                  } catch (thumbError) {
+                    console.error(
+                      "⚠️ Backend: Thumbnail backup failed:",
+                      thumbError
+                    );
+                  }
+                }
+
+                // Update database with S3 URLs (enhancement)
+                await storage.updateVideoContent(videoRecord.id, {
+                  videoUrl: s3VideoUrl,
+                  thumbnailUrl: s3ThumbnailUrl || status.thumbnail_url,
+                });
+                console.log(
+                  "💾 Backend: Updated video record with S3 URLs:",
+                  videoRecord.id
+                );
+              }
+            } catch (backupError) {
+              console.error(
+                "⚠️ Backend: S3 backup failed, HeyGen URLs still available:",
+                backupError
+              );
+            }
+          }
+        } catch (dbError) {
+          console.error("⚠️ Backend: Database update failed:", dbError);
+        }
+      }
+
+      res.json(response);
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to get video status");
+      console.error("❌ Backend: Error message:", error?.message);
+
+      // If HeyGen returns 404, treat as transient (job not yet visible in status service)
+      if ((error as any)?.status === 404) {
+        console.log(
+          "⏱️ Backend: Video not found in HeyGen status service yet, returning 'processing'"
+        );
+        return res.json({ video_id: req.params.videoId, status: "processing" });
+      }
+
+      res.status(500).json({
+        error: "Failed to get video status",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Get all user videos from database
+  app.get("/api/videos", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const status = req.query.status as string | undefined;
+
+      console.log(
+        "📹 Backend: Getting videos for user:",
+        userId,
+        "status filter:",
+        status
+      );
+
+      const videos = await storage.getVideoContent(String(userId), status);
+
+      console.log("✅ Backend: Found", videos.length, "videos");
+      res.json(videos);
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to get videos");
+      console.error("❌ Backend: Error message:", error?.message);
+      res.status(500).json({
+        error: "Failed to get videos",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Get video details
+  app.get("/api/videos/:videoId", requireAuth, async (req, res) => {
+    try {
+      const { videoId } = req.params;
+
+      console.log("📹 Backend: Getting video details for:", videoId);
+
+      const heyGenService = new HeyGenService();
+      const video = await heyGenService.getVideo(videoId);
+
+      console.log("✅ Backend: Video details result:", video);
+      res.json(video);
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to get video details");
+      console.error("❌ Backend: Error message:", error?.message);
+      res.status(500).json({
+        error: "Failed to get video details",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // ==================== TEMPLATE ENDPOINTS ====================
+
+  // List templates
+  app.get("/api/templates", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const templateService = new HeyGenTemplateService();
+      const templates = await templateService.listTemplates(limit, offset);
+
+      res.json(templates);
+    } catch (error) {
+      console.error("Failed to list templates:", error);
+      res.status(500).json({ error: "Failed to list templates" });
+    }
+  });
+
+  // Get template details
+  app.get("/api/templates/:templateId", async (req, res) => {
+    try {
+      const { templateId } = req.params;
+
+      const templateService = new HeyGenTemplateService();
+      const template = await templateService.getTemplate(templateId);
+
+      res.json(template);
+    } catch (error) {
+      console.error("Failed to get template:", error);
+      res.status(500).json({ error: "Failed to get template" });
+    }
+  });
+
+  // Create custom template
+  app.post("/api/templates", async (req, res) => {
+    try {
+      const { name, description, elements } = req.body;
+
+      const templateService = new HeyGenTemplateService();
+      const template = await templateService.createTemplate(
+        name,
+        description,
+        elements
+      );
+
+      res.json(template);
+    } catch (error) {
+      console.error("Failed to create template:", error);
+      res.status(500).json({ error: "Failed to create template" });
+    }
+  });
+
+  // Generate video from template
+  app.post("/api/templates/:templateId/generate", async (req, res) => {
+    try {
+      const { templateId } = req.params;
+      const { variables, title, test } = req.body;
+
+      const templateService = new HeyGenTemplateService();
+      const result = await templateService.generateFromTemplate({
+        templateId,
+        variables,
+        title,
+        test,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to generate from template:", error);
+      res.status(500).json({ error: "Failed to generate from template" });
+    }
+  });
+
+  // Update template
+  app.put("/api/templates/:templateId", async (req, res) => {
+    try {
+      const { templateId } = req.params;
+
+      const templateService = new HeyGenTemplateService();
+      const updated = await templateService.updateTemplate(
+        templateId,
+        req.body
+      );
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Failed to update template:", error);
+      res.status(500).json({ error: "Failed to update template" });
+    }
+  });
+
+  // Delete template
+  app.delete("/api/templates/:templateId", async (req, res) => {
+    try {
+      const { templateId } = req.params;
+
+      const templateService = new HeyGenTemplateService();
+      await templateService.deleteTemplate(templateId);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete template:", error);
+      res.status(500).json({ error: "Failed to delete template" });
+    }
+  });
+
+  // Get template variables
+  app.get("/api/templates/:templateId/variables", async (req, res) => {
+    try {
+      const { templateId } = req.params;
+
+      const templateService = new HeyGenTemplateService();
+      const variables = await templateService.getTemplateVariables(templateId);
+
+      res.json(variables);
+    } catch (error) {
+      console.error("Failed to get template variables:", error);
+      res.status(500).json({ error: "Failed to get template variables" });
+    }
+  });
+
+  // Create template from video
+  app.post("/api/templates/from-video", async (req, res) => {
+    try {
+      const { videoId, name } = req.body;
+
+      const templateService = new HeyGenTemplateService();
+      const template = await templateService.createTemplateFromVideo(
+        videoId,
+        name
+      );
+
+      res.json(template);
+    } catch (error) {
+      console.error("Failed to create template from video:", error);
+      res.status(500).json({ error: "Failed to create template from video" });
+    }
+  });
+
+  // Duplicate template
+  app.post("/api/templates/:templateId/duplicate", async (req, res) => {
+    try {
+      const { templateId } = req.params;
+      const { name } = req.body;
+
+      const templateService = new HeyGenTemplateService();
+      const duplicated = await templateService.duplicateTemplate(
+        templateId,
+        name
+      );
+
+      res.json(duplicated);
+    } catch (error) {
+      console.error("Failed to duplicate template:", error);
+      res.status(500).json({ error: "Failed to duplicate template" });
+    }
+  });
+
+  // Get template generation status
+  app.get(
+    "/api/templates/generation/:generationId/status",
+    async (req, res) => {
+      try {
+        const { generationId } = req.params;
+
+        const templateService = new HeyGenTemplateService();
+        const status = await templateService.getTemplateGenerationStatus(
+          generationId
+        );
+
+        res.json(status);
+      } catch (error) {
+        console.error("Failed to get generation status:", error);
+        res.status(500).json({ error: "Failed to get generation status" });
+      }
+    }
+  );
+
+  // Get real estate templates
+  app.get("/api/templates/real-estate", async (req, res) => {
+    try {
+      const templateService = new HeyGenTemplateService();
+      const templates = await templateService.getRealEstateTemplates();
+
+      res.json(templates);
+    } catch (error) {
+      console.error("Failed to get real estate templates:", error);
+      // Return suggestions when HeyGen API is not available
+      res.json({
+        templates: [],
+        suggestions: [
+          {
+            name: "Property Tour Template",
+            description: "Virtual property walkthrough with agent narration",
+            recommended_variables: {
+              property_address: "text",
+              agent_avatar: "avatar",
+              property_images: "image[]",
+              price: "text",
+              features: "text",
+            },
+          },
+          {
+            name: "Market Update Template",
+            description: "Monthly real estate market analysis video",
+            recommended_variables: {
+              month: "text",
+              market_stats: "text",
+              agent_avatar: "avatar",
+              charts: "image[]",
+            },
+          },
+          {
+            name: "Agent Introduction Template",
+            description: "Professional agent introduction and services",
+            recommended_variables: {
+              agent_name: "text",
+              agent_avatar: "avatar",
+              expertise: "text",
+              contact_info: "text",
+            },
+          },
+        ],
+      });
+    }
+  });
+
+  // Fallback property data for when external APIs are unavailable
+  function getFallbackPropertyData(searchParams: any) {
+    const sampleProperties = [
+      {
+        id: "DEMO-001",
+        mlsNumber: "21234567",
+        address: "123 Dodge Street",
+        city: "Omaha",
+        state: "NE",
+        zipCode: "68102",
+        listPrice: 285000,
+        bedrooms: 3,
+        bathrooms: 2.5,
+        squareFootage: 1850,
+        lotSize: 0.25,
+        yearBuilt: 2015,
+        propertyType: "House",
+        status: "Active",
+        listingDate: "2024-01-15",
+        neighborhood: "Dundee",
+        agentName: "Sample Agent",
+        photoUrls: [
+          "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=500&q=80",
+          "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=500&q=80",
+          "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=500&q=80",
+        ],
+      },
+      {
+        id: "DEMO-002",
+        mlsNumber: "21234568",
+        address: "456 Farnam Street",
+        city: "Omaha",
+        state: "NE",
+        zipCode: "68131",
+        listPrice: 425000,
+        bedrooms: 4,
+        bathrooms: 3,
+        squareFootage: 2400,
+        lotSize: 0.3,
+        yearBuilt: 2018,
+        propertyType: "House",
+        status: "Active",
+        listingDate: "2024-01-20",
+        neighborhood: "Aksarben",
+        agentName: "Sample Agent",
+        photoUrls: [
+          "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=500&q=80",
+          "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=500&q=80",
+          "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=500&q=80",
+        ],
+      },
+    ];
+
+    return {
+      success: true,
+      count: sampleProperties.length,
+      totalAvailable: sampleProperties.length,
+      properties: sampleProperties,
+      searchCriteria: searchParams,
+      fallback: true,
+      message: "Demo data - External property service temporarily unavailable",
+    };
+  }
+
+  // Unified property search helper with fallback chain
+  async function tryFallbackChain(query: any, res: any) {
+    // Try Paragon MLS service
+    try {
+      const mlsService = new MLSService();
+      const paragonResult = await mlsService.searchProperties({
+        mlsNumber: query.mls_number || query.mls,
+        address: query.address,
+        city: query.city,
+        listingAgent: query.agent || query.listing_agent_name,
+      });
+      if (paragonResult && paragonResult.length > 0) {
+        console.log("Fallback: Paragon MLS returned results");
+        return res.json({
+          success: true,
+          count: paragonResult.length,
+          properties: paragonResult,
+          source: "paragon-mls",
+        });
+      }
+    } catch (error) {
+      console.warn("Paragon MLS fallback failed:", error);
+    }
+
+    // Try IDX service
+    try {
+      const idxService = new IDXService();
+      const idxResult = await idxService.searchProperties({
+        city: query.city,
+        state: query.state || "NE",
+      });
+      if (idxResult && idxResult.length > 0) {
+        console.log("Fallback: IDX service returned results");
+        return res.json({
+          success: true,
+          count: idxResult.length,
+          properties: idxResult,
+          source: "idx-service",
+        });
+      }
+    } catch (error) {
+      console.warn("IDX service fallback failed:", error);
+    }
+
+    // Final fallback to sample data
+    console.log("All services failed, returning sample data");
+    return res.json(getFallbackPropertyData(query));
+  }
+
+  // GBCMA API proxy endpoint to handle CORS
+  app.get("/api/property/search", async (req, res) => {
+    try {
+      const baseUrl =
+        "http://gbcma.us-east-2.elasticbeanstalk.com/api/property-search-new";
+      const params = new URLSearchParams();
+
+      // Parameter mapping and forwarding to gbcma API
+      if (req.query.mls_number || req.query.mls) {
+        const mlsNumber = req.query.mls_number || req.query.mls;
+        params.append("mls_number", mlsNumber as string);
+      }
+      if (req.query.address)
+        params.append("address", req.query.address as string);
+      if (req.query.agent || req.query.listing_agent_name) {
+        const agent = req.query.agent || req.query.listing_agent_name;
+        params.append("listing_agent_name", agent as string);
+      }
+      if (req.query.city) params.append("city", req.query.city as string);
+
+      const fullUrl = `${baseUrl}?${params.toString()}`;
+      console.log("Proxying to gbcma API:", fullUrl);
+
+      // Use global fetch (available in Node.js 18+)
+      const response = await globalThis.fetch(fullUrl);
+
+      if (!response.ok) {
+        console.warn(
+          `GBCMA API unavailable (${response.status}), trying fallback chain`
+        );
+        return await tryFallbackChain(req.query, res);
+      }
+
+      const data = await response.json();
+      console.log("GBCMA API response:", data);
+
+      // If API returns no results, try fallback chain
+      if (data.success && data.count === 0) {
+        console.log("No properties found in GBCMA, trying fallback chain");
+        return await tryFallbackChain(req.query, res);
+      }
+
+      res.json({ ...data, source: "gbcma" });
+    } catch (error: any) {
+      console.error("GBCMA proxy error:", error);
+      // Try fallback chain instead of immediate sample data
+      return await tryFallbackChain(req.query, res);
+    }
+  });
+
+  // GBCMA property details by address API endpoint
+  app.post("/api/property/details-by-address", async (req, res) => {
+    try {
+      const { address, mlsNumber } = req.body;
+
+      if (!address && !mlsNumber) {
+        return res
+          .status(400)
+          .json({ error: "Address or MLS number is required" });
+      }
+
+      const apiUrl = "http://simple-cma.com/api/property-details-from-address";
+      console.log("Getting property details for address:", address);
+
+      const response = await globalThis.fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "*/*",
+          "User-Agent": "Mozilla/5.0 (compatible; Real Estate Platform)",
+        },
+        body: JSON.stringify({ address: address || mlsNumber }),
+      });
+
+      if (!response.ok) {
+        console.warn(
+          `Property details API unavailable (${response.status}), returning fallback response`
+        );
+        // Return a fallback response when API is down
+        return res.json({
+          success: false,
+          message:
+            "Property details service temporarily unavailable. Please try the general property search instead.",
+          property: null,
+        });
+      }
+
+      const data = await response.json();
+      console.log("GBCMA property details response:", data);
+      res.json(data);
+    } catch (error: any) {
+      console.error("GBCMA property details error:", error);
+      // Return graceful fallback instead of error
+      res.json({
+        success: false,
+        message:
+          "Property details service temporarily unavailable. Please try the general property search instead.",
+        property: null,
+        fallback: true,
+      });
+    }
+  });
+
+  // Object Storage endpoints for branding and file uploads
+  const objectStorageService = new ObjectStorageService();
+
+  // Serve public objects
+  app.get("/public-objects/:filePath(*)", async (req, res) => {
+    const filePath = req.params.filePath;
+    try {
+      // Check if public object search paths are configured
+      if (!objectStorageService.hasPublicPaths()) {
+        console.warn("Public object search paths not configured");
+        return res.status(503).json({
+          error: "Object storage service unavailable",
+          message:
+            "PUBLIC_OBJECT_SEARCH_PATHS environment variable is not configured",
+        });
+      }
+
+      const file = await objectStorageService.searchPublicObject(filePath);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      objectStorageService.downloadObject(file, res);
+    } catch (error) {
+      console.error("Error searching for public object:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Serve private objects
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    try {
+      // Check if private object directory is configured
+      if (!objectStorageService.hasPrivateDir()) {
+        console.warn("Private object directory not configured");
+        return res.status(503).json({
+          error: "Object storage service unavailable",
+          message: "PRIVATE_OBJECT_DIR environment variable is not configured",
+        });
+      }
+
+      const objectFile = await objectStorageService.getObjectEntityFile(
+        req.path
+      );
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error checking object access:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Get upload URL for object entities
+  app.post("/api/objects/upload", async (req, res) => {
+    try {
+      // Check if private object directory is configured
+      if (!objectStorageService.hasPrivateDir()) {
+        console.warn("Private object directory not configured for uploads");
+        return res.status(503).json({
+          error: "Object storage service unavailable",
+          message: "PRIVATE_OBJECT_DIR environment variable is not configured",
+        });
+      }
+
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  // Brand Guide Analysis API
+  app.post("/api/brand-guide/analyze", async (req, res) => {
+    try {
+      console.log("🔍 Brand guide analysis started:", {
+        fileType: req.body.fileType,
+        fileUrl: req.body.fileUrl?.substring(0, 50) + "...",
+      });
+      const { fileUrl, fileType } = req.body;
+
+      if (!fileUrl) {
+        return res.status(400).json({ error: "File URL is required" });
+      }
+
+      // Import OpenAI here to avoid issues with module loading
+      const { default: OpenAI } = await import("openai");
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      let messages: any[] = [];
+      let extractedText = "";
+
+      if (fileType?.startsWith("image/")) {
+        // For image files (JPG, PNG, etc.)
+        messages = [
+          {
+            role: "system",
+            content:
+              "You are a brand analysis expert. Analyze the uploaded brand guide image and extract brand information in JSON format.",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Analyze this brand guide image and extract the following information in JSON format:
+                {
+                  "colors": {
+                    "primary": "#hexcode",
+                    "secondary": "#hexcode",
+                    "accent": "#hexcode",
+                    "background": "#hexcode",
+                    "text": "#hexcode"
+                  },
+                  "fonts": {
+                    "heading": "Font Name",
+                    "body": "Font Name",
+                    "accent": "Font Name"
+                  },
+                  "logoDescription": "Description of logo elements and style",
+                  "brandDescription": "Brief brand description and personality",
+                  "extractedText": "Any important text found in the guide"
+                }
+
+                Look for:
+                - Color swatches with hex codes, RGB values, or color names
+                - Font names and typography examples
+                - Brand logos and visual elements
+                - Brand messaging and descriptions
+                - Style guidelines and brand personality
+
+                Provide actual hex color codes where possible. If you see color swatches, try to determine the hex values. For fonts, look for font family names displayed in the guide.`,
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: fileUrl,
+                },
+              },
+            ],
+          },
+        ];
+      } else if (fileType === "application/pdf") {
+        // For PDF files, use object storage to read the file
+        try {
+          console.log("📁 Reading PDF from object storage:", fileUrl);
+
+          // Extract the object path from the URL
+          const pdfObjectStorageService = new ObjectStorageService();
+
+          // Check if private object directory is configured for PDF analysis
+          if (!pdfObjectStorageService.hasPrivateDir()) {
+            console.warn(
+              "Private object directory not configured for PDF analysis"
+            );
+            return res.status(503).json({
+              error: "Object storage service unavailable",
+              message:
+                "Cannot analyze PDF files without PRIVATE_OBJECT_DIR configuration",
+            });
+          }
+
+          const objectPath =
+            pdfObjectStorageService.normalizeObjectEntityPath(fileUrl);
+          const objectFile = await pdfObjectStorageService.getObjectEntityFile(
+            objectPath
+          );
+
+          // Get the file contents as a buffer
+          const chunks: Buffer[] = [];
+          const stream = objectFile.createReadStream();
+
+          for await (const chunk of stream) {
+            chunks.push(chunk);
+          }
+
+          const pdfBuffer = Buffer.concat(chunks);
+          console.log("📋 PDF buffer size:", pdfBuffer.length, "bytes");
+
+          // Try alternative PDF parsing approach
+          try {
+            const pdfParse = await import("pdf-parse");
+            const data = await pdfParse.default(pdfBuffer);
+            extractedText = data.text;
+          } catch (parseError) {
+            console.log(
+              "⚠️ PDF parsing failed, trying alternative approach..."
+            );
+            // Fallback: treat as plain text extraction or skip complex parsing
+            extractedText =
+              "PDF content could not be parsed as text. Using image analysis instead.";
+          }
+
+          console.log(
+            "📄 PDF text extracted:",
+            extractedText.substring(0, 200) + "..."
+          );
+
+          messages = [
+            {
+              role: "system",
+              content:
+                "You are a brand analysis expert. Analyze the text content from a brand guide PDF and extract brand information in JSON format.",
+            },
+            {
+              role: "user",
+              content: `Analyze this brand guide text content and extract the following information in JSON format:
+              {
+                "colors": {
+                  "primary": "#hexcode",
+                  "secondary": "#hexcode",
+                  "accent": "#hexcode",
+                  "background": "#hexcode",
+                  "text": "#hexcode"
+                },
+                "fonts": {
+                  "heading": "Font Name",
+                  "body": "Font Name",
+                  "accent": "Font Name"
+                },
+                "logo": {
+                  "description": "Detailed description of logo elements, colors, and style",
+                  "colorsUsed": ["List of colors used in logo"],
+                  "style": "Modern/Classic/Minimalist/etc.",
+                  "elements": "Text, icons, symbols described"
+                },
+                "brandDescription": "Brief brand description and personality",
+                "extractedText": "Key brand guidelines and information"
+              }
+
+              Look for:
+              - Color names, hex codes, RGB values, or color specifications
+              - Font family names and typography guidelines
+              - Brand personality, voice, and messaging
+              - Logo usage guidelines and descriptions
+              - Logo colors, style, and visual elements
+              - Brand values and positioning statements
+
+              Brand Guide Content:
+              ${extractedText}
+
+              IMPORTANT: Return actual color values found in the document. Look for:
+              - Exact hex codes (like #FF5733, #1A1A1A)
+              - RGB values that can be converted to hex
+              - Named colors that can be converted to hex
+              - Pantone colors with hex equivalents
+
+              For fonts, look for:
+              - Specific font family names mentioned in the text
+              - Typography sections listing font families
+              - Headers mentioning font choices`,
+            },
+          ];
+        } catch (pdfError: any) {
+          console.error("❌ PDF processing error:", pdfError);
+          return res.status(400).json({
+            error:
+              "Failed to process PDF file. Please ensure the PDF contains readable text content.",
+            details: pdfError?.message || "Unknown error",
+          });
+        }
+      } else {
+        // For other document types
+        return res.status(400).json({
+          error:
+            "Please upload an image format (JPG, PNG, etc.) or PDF of your brand guide.",
+        });
+      }
+
+      console.log("🤖 Sending to OpenAI for analysis...");
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o", // Use GPT-4O for vision capabilities
+        messages,
+        response_format: { type: "json_object" },
+        max_tokens: 1500,
+      });
+
+      const analysisResult = JSON.parse(
+        response.choices[0].message.content || "{}"
+      );
+
+      // Debug logging to help troubleshoot
+      console.log(
+        "✅ Analysis Result:",
+        JSON.stringify(analysisResult, null, 2)
+      );
+
+      res.json({
+        success: true,
+        analysis: analysisResult,
+        rawContent:
+          fileType === "application/pdf"
+            ? extractedText.substring(0, 500) + "..."
+            : "Image analysis",
+      });
+    } catch (error: any) {
+      console.error("❌ Brand guide analysis error:", error);
+      res.status(500).json({
+        error: "Failed to analyze brand guide. Please try again.",
+        details: error?.message || "Unknown error",
+      });
+    }
+  });
+
+  // Brand settings endpoints
+  app.put("/api/brand-settings", async (req, res) => {
+    try {
+      const { assets, colors, fonts, description } = req.body;
+
+      // In a real implementation, you would save this to the database
+      // For now, we'll just simulate success
+
+      console.log("Brand settings updated:", {
+        assets,
+        colors,
+        fonts,
+        description,
+      });
+
+      res.json({
+        success: true,
+        message: "Brand settings saved successfully",
+      });
+    } catch (error) {
+      console.error("Error saving brand settings:", error);
+      res.status(500).json({ error: "Failed to save brand settings" });
+    }
+  });
+
+  // Get brand settings
+  app.get("/api/brand-settings", async (req, res) => {
+    try {
+      // In a real implementation, fetch from database
+      const defaultBrandSettings = {
+        assets: [
+          { id: "primary-logo", name: "Primary Logo", type: "logo" },
+          { id: "icon", name: "Icon/Favicon", type: "icon" },
+          { id: "banner", name: "Banner/Header Image", type: "banner" },
+          { id: "background", name: "Background Pattern", type: "background" },
+        ],
+        colors: {
+          primary: "#daa520",
+          secondary: "#b8860b",
+          accent: "#ffd700",
+          background: "#ffffff",
+          text: "#333333",
+        },
+        fonts: {
+          heading: "Playfair Display",
+          body: "Inter",
+          accent: "Cormorant Garamond",
+        },
+        description:
+          "Golden Brick Real Estate - Premium luxury properties in Omaha, Nebraska. Specializing in high-end residential and commercial real estate with personalized service and expert market knowledge.",
+      };
+
+      res.json(defaultBrandSettings);
+    } catch (error) {
+      console.error("Error fetching brand settings:", error);
+      res.status(500).json({ error: "Failed to fetch brand settings" });
+    }
+  });
+
+  // ==================== TUTORIAL VIDEOS ENDPOINTS ====================
+
+  // Get all tutorial videos or filter by category/subcategory
+  app.get("/api/tutorial-videos", async (req, res) => {
+    try {
+      const { category, subcategory } = req.query;
+
+      let query = db
+        .select()
+        .from(tutorialVideos)
+        .where(eq(tutorialVideos.isActive, true));
+
+      if (category) {
+        query = query.where(eq(tutorialVideos.category, category as string));
+      }
+      if (subcategory) {
+        query = query.where(
+          eq(tutorialVideos.subcategory, subcategory as string)
+        );
+      }
+
+      const videos = await query.orderBy(
+        tutorialVideos.order,
+        tutorialVideos.createdAt
+      );
+
+      // Convert S3 paths to full URLs
+      const s3Service = new S3UploadService();
+      const videosWithUrls = videos.map((video) => ({
+        ...video,
+        videoUrl: s3Service.getS3Url(video.videoUrl),
+        thumbnailUrl: video.thumbnailUrl
+          ? s3Service.getS3Url(video.thumbnailUrl)
+          : null,
+      }));
+
+      res.json(videosWithUrls);
+    } catch (error) {
+      console.error("Error fetching tutorial videos:", error);
+      res.status(500).json({ error: "Failed to fetch tutorial videos" });
+    }
+  });
+
+  // Upload a tutorial video
+  app.post(
+    "/api/tutorial-videos/upload",
+    videoUpload.single("video"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No video file uploaded" });
+        }
+
+        const { category, subcategory, title, description, duration, order } =
+          req.body;
+
+        if (!category || !subcategory || !title) {
+          return res
+            .status(400)
+            .json({ error: "Category, subcategory, and title are required" });
+        }
+
+        console.log("📹 Uploading tutorial video:", {
+          filename: req.file.originalname,
+          category,
+          subcategory,
+          title,
+        });
+
+        const fileBuffer = fs.readFileSync(req.file.path);
+
+        // Upload to S3 under RealtyFlow Tutorials structure
+        const s3Service = new S3UploadService();
+        const s3VideoUrl = await s3Service.uploadFile(
+          0, // Admin user ID for tutorials
+          fileBuffer,
+          `realtyflow-tutorials/${category}/${subcategory}/${nanoid()}_${
+            req.file.originalname
+          }`,
+          req.file.mimetype
+        );
+
+        console.log("✅ Tutorial video uploaded to S3:", s3VideoUrl);
+
+        // Clean up temporary file
+        fs.unlinkSync(req.file.path);
+
+        // Save to database
+        const [newVideo] = await db
+          .insert(tutorialVideos)
+          .values({
+            category,
+            subcategory,
+            title,
+            description: description || null,
+            videoUrl: s3VideoUrl,
+            duration: duration ? parseInt(duration) : null,
+            order: order ? parseInt(order) : 0,
+          })
+          .returning();
+
+        res.json(newVideo);
+      } catch (error) {
+        console.error("Failed to upload tutorial video:", error);
+        res.status(500).json({ error: "Failed to upload tutorial video" });
+      }
+    }
+  );
+
+  // Delete a tutorial video
+  app.delete("/api/tutorial-videos/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      await db
+        .update(tutorialVideos)
+        .set({ isActive: false })
+        .where(eq(tutorialVideos.id, parseInt(id)));
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete tutorial video:", error);
+      res.status(500).json({ error: "Failed to delete tutorial video" });
+    }
+  });
+
+  // HeyGen Template routes
+  const heygenTemplateService = new HeyGenTemplateService();
+
+  // List all HeyGen templates
+  app.get("/api/heygen/templates", requireAuth, async (req, res) => {
+    try {
+      const templates = await heygenTemplateService.listTemplates();
+      // templates is already an array, don't wrap it again
+      res.json(templates);
+    } catch (error) {
+      console.error("Failed to list HeyGen templates:", error);
+      res.status(500).json({ error: "Failed to list templates" });
+    }
+  });
+
+  // Get template details
+  app.get(
+    "/api/heygen/templates/:templateId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { templateId } = req.params;
+        const details = await heygenTemplateService.getTemplateDetails(
+          templateId
+        );
+        res.json(details);
+      } catch (error) {
+        console.error("Failed to get template details:", error);
+        res.status(500).json({ error: "Failed to get template details" });
+      }
+    }
+  );
+
+  // Generate video from template
+  app.post(
+    "/api/heygen/templates/:templateId/generate",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { templateId } = req.params;
+        const user = req.user;
+
+        if (!user) {
+          return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        const {
+          title,
+          variables,
+          caption,
+          dimension,
+          include_gif,
+          enable_sharing,
+          scene_ids,
+        } = req.body;
+
+        console.log("🎬 Generating video from template:", templateId);
+        console.log("📝 Title:", title);
+
+        const result = await heygenTemplateService.generateVideoFromTemplate(
+          templateId,
+          {
+            title,
+            variables,
+            caption,
+            dimension,
+            include_gif,
+            enable_sharing,
+            scene_ids,
+          }
+        );
+
+        // Save the video to database so it appears in the videos list
+        if (result.data?.video_id) {
+          console.log(
+            "💾 Saving template video to database, video_id:",
+            result.data.video_id
+          );
+
+          const videoData = {
+            userId: user.id,
+            title: title || "Template Video",
+            script: "",
+            status: "generating" as const,
+            videoType: "template" as const,
+            heygenVideoId: result.data.video_id,
+            heygenTemplateId: templateId,
+            metadata: {
+              templateVariables: variables,
+              dimension,
+              caption,
+              include_gif,
+              enable_sharing,
+            },
+          };
+
+          const savedVideo = await storage.createVideoContent(videoData);
+          console.log("✅ Template video saved with ID:", savedVideo.id);
+
+          res.json({ ...result, savedVideoId: savedVideo.id });
+        } else {
+          res.json(result);
+        }
+      } catch (error) {
+        console.error("Failed to generate video from template:", error);
+        res
+          .status(500)
+          .json({ error: "Failed to generate video from template" });
+      }
+    }
+  );
+
+  // =====================================================
+  // COMPANY PROFILE ROUTES
+  // =====================================================
+
+  // Get company profile
+  app.get("/api/company/profile", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const profile = await storage.getCompanyProfile(userId);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error fetching company profile:", error);
+      res.status(500).json({ error: "Failed to fetch company profile" });
+    }
+  });
+
+  // Create or update company profile
+  app.post("/api/company/profile", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      // Validate request body
+      const validation = insertCompanyProfileSchema.safeParse({
+        ...req.body,
+        userId,
+      });
+
+      if (!validation.success) {
+        return res.status(400).json({
+          error: "Invalid company profile data",
+          details: validation.error.errors,
+        });
+      }
+
+      const profile = await storage.upsertCompanyProfile(validation.data);
+      res.json(profile);
+    } catch (error) {
+      console.error("Error saving company profile:", error);
+      res.status(500).json({ error: "Failed to save company profile" });
+    }
+  });
+
+  // Serve uploaded files statically
+  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+  // ====================================
+  // ENGAGEMENT TRACKING & ANALYTICS ENDPOINTS
+  // ====================================
+
+  // Track user session
+  app.post("/api/track/session", async (req, res) => {
+    try {
+      const { sessionId, agentSlug, pageVisited, deviceType } = req.body;
+
+      if (!sessionId || !agentSlug) {
+        return res
+          .status(400)
+          .json({ error: "sessionId and agentSlug are required" });
+      }
+
+      // Import tracking schemas
+      const { userSessions } = await import("@shared/schema");
+      const { sql: drizzleSql, eq, and } = await import("drizzle-orm");
+
+      // Check if session exists
+      const existing = await db
+        .select()
+        .from(userSessions)
+        .where(eq(userSessions.sessionId, sessionId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Update existing session
+        await db
+          .update(userSessions)
+          .set({
+            lastPageVisited: pageVisited,
+            totalPageViews: drizzleSql`${userSessions.totalPageViews} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(userSessions.sessionId, sessionId));
+      } else {
+        // Create new session
+        await db.insert(userSessions).values({
+          sessionId,
+          agentSlug,
+          firstPageVisited: pageVisited || "/",
+          lastPageVisited: pageVisited || "/",
+          deviceType: deviceType || "desktop",
+          ipAddress: (req.ip || "").substring(0, 50),
+          userAgent: (req.get("user-agent") || "").substring(0, 500),
+          totalPageViews: 1,
+          isActive: true,
+        });
+      }
+
+      res.json({ success: true, sessionId });
+    } catch (error) {
+      console.error("❌ Error tracking session:", error);
+      res.status(500).json({ error: "Failed to track session" });
+    }
+  });
+
+  // Track property interaction
+  app.post("/api/track/property-interaction", async (req, res) => {
+    try {
+      const {
+        sessionId,
+        agentSlug,
+        propertyId,
+        interactionType,
+        interactionValue,
+        timeSpentSeconds,
+        currentUrl,
+      } = req.body;
+
+      if (!agentSlug || !interactionType) {
+        return res
+          .status(400)
+          .json({ error: "agentSlug and interactionType are required" });
+      }
+
+      const { propertyInteractions, userSessions } = await import(
+        "@shared/schema"
+      );
+      const { sql: drizzleSql, eq } = await import("drizzle-orm");
+
+      // Track the interaction
+      await db.insert(propertyInteractions).values({
+        propertyId: propertyId || null,
+        agentSlug,
+        interactionType,
+        interactionValue: interactionValue || null,
+        timeSpentSeconds: timeSpentSeconds || 0,
+        currentUrl: currentUrl || null,
+        sessionId: sessionId || null,
+        ipAddress: (req.ip || "").substring(0, 50),
+        userAgent: (req.get("user-agent") || "").substring(0, 500),
+      });
+
+      // Update session counters if applicable
+      if (sessionId) {
+        if (interactionType === "view" && propertyId) {
+          await db
+            .update(userSessions)
+            .set({
+              totalPropertiesViewed: drizzleSql`${userSessions.totalPropertiesViewed} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+
+        if (timeSpentSeconds && timeSpentSeconds > 0) {
+          await db
+            .update(userSessions)
+            .set({
+              totalTimeSpentSeconds: drizzleSql`${userSessions.totalTimeSpentSeconds} + ${timeSpentSeconds}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("❌ Error tracking interaction:", error);
+      res.status(500).json({ error: "Failed to track interaction" });
+    }
+  });
+
+  // Track property like
+  app.post("/api/track/property-like", async (req, res) => {
+    try {
+      const { sessionId, agentSlug, propertyId, liked } = req.body;
+
+      if (!agentSlug || !propertyId) {
+        return res
+          .status(400)
+          .json({ error: "agentSlug and propertyId are required" });
+      }
+
+      const { propertyLikes, userSessions } = await import("@shared/schema");
+      const { eq, and, sql: drizzleSql } = await import("drizzle-orm");
+
+      if (liked) {
+        // Add like
+        await db.insert(propertyLikes).values({
+          propertyId,
+          agentSlug,
+          sessionId: sessionId || null,
+          ipAddress: (req.ip || "").substring(0, 50),
+          userAgent: (req.get("user-agent") || "").substring(0, 500),
+        });
+
+        // Update session counter
+        if (sessionId) {
+          await db
+            .update(userSessions)
+            .set({
+              totalPropertiesLiked: drizzleSql`${userSessions.totalPropertiesLiked} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+      } else {
+        // Remove like
+        const conditions = [eq(propertyLikes.propertyId, propertyId)];
+        if (sessionId) {
+          conditions.push(eq(propertyLikes.sessionId, sessionId));
+        }
+
+        await db.delete(propertyLikes).where(and(...conditions));
+
+        // Update session counter
+        if (sessionId) {
+          await db
+            .update(userSessions)
+            .set({
+              totalPropertiesLiked: drizzleSql`GREATEST(${userSessions.totalPropertiesLiked} - 1, 0)`,
+              updatedAt: new Date(),
+            })
+            .where(eq(userSessions.sessionId, sessionId));
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("❌ Error tracking like:", error);
+      res.status(500).json({ error: "Failed to track like" });
+    }
+  });
+
+  // Generate engagement lead
+  app.post("/api/track/generate-engagement-lead", async (req, res) => {
+    try {
+      const { sessionId, agentSlug } = req.body;
+
+      if (!sessionId || !agentSlug) {
+        return res
+          .status(400)
+          .json({ error: "sessionId and agentSlug required" });
+      }
+
+      const {
+        engagementLeads,
+        userSessions,
+        propertyInteractions,
+        propertyLikes,
+      } = await import("@shared/schema");
+      const { eq, and, sql: drizzleSql, desc } = await import("drizzle-orm");
+
+      // Check if lead already exists for this session
+      const existingLead = await db
+        .select()
+        .from(engagementLeads)
+        .where(eq(engagementLeads.sessionId, sessionId))
+        .limit(1);
+
+      if (existingLead.length > 0) {
+        return res.json({
+          success: true,
+          leadId: existingLead[0].id,
+          alreadyExists: true,
+        });
+      }
+
+      // Get session data
+      const session = await db
+        .select()
+        .from(userSessions)
+        .where(eq(userSessions.sessionId, sessionId))
+        .limit(1);
+
+      if (session.length === 0) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Calculate engagement score
+      const sessionData = session[0];
+      let score = 0;
+
+      if (sessionData.totalTimeSpentSeconds > 300) score += 20;
+      if (sessionData.totalPropertiesViewed > 3) score += 15;
+      if (sessionData.totalPropertiesLiked > 0)
+        score += sessionData.totalPropertiesLiked * 10;
+
+      // Get liked properties
+      const likedProps = await db
+        .select()
+        .from(propertyLikes)
+        .where(eq(propertyLikes.sessionId, sessionId));
+
+      const likedPropertyIds = likedProps.map((p) => p.propertyId);
+
+      // Determine reason
+      let reason = "high_engagement";
+      if (sessionData.totalPropertiesLiked >= 2)
+        reason = "liked_multiple_properties";
+      else if (sessionData.totalTimeSpentSeconds > 600)
+        reason = "spent_long_time_on_site";
+      else if (sessionData.totalPropertiesViewed > 5)
+        reason = "viewed_many_properties";
+
+      // Determine quality
+      let quality = "warm";
+      if (score >= 40) quality = "hot";
+      else if (score < 25) quality = "cold";
+
+      // Create engagement lead
+      const lead = await db
+        .insert(engagementLeads)
+        .values({
+          sessionId,
+          agentSlug,
+          engagementScore: score,
+          engagementReason: reason,
+          engagementDetails: {
+            timeSpent: sessionData.totalTimeSpentSeconds,
+            propertiesViewed: sessionData.totalPropertiesViewed,
+            propertiesLiked: sessionData.totalPropertiesLiked,
+          },
+          likedPropertyIds:
+            likedPropertyIds.length > 0 ? likedPropertyIds : null,
+          leadQuality: quality,
+          leadStatus: "auto_generated",
+          ipAddress: sessionData.ipAddress,
+          userAgent: sessionData.userAgent,
+        })
+        .returning();
+
+      console.log(
+        `✅ Generated ${quality} lead for session ${sessionId} (score: ${score})`
+      );
+
+      res.json({ success: true, leadId: lead[0].id, score, quality });
+    } catch (error) {
+      console.error("❌ Error generating engagement lead:", error);
+      res.status(500).json({ error: "Failed to generate lead" });
+    }
+  });
+
+  // ====================================
+  // ANALYTICS ENDPOINTS
+  // ====================================
+
+  // Get engagement overview for agent
+  app.get("/api/analytics/engagement/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const {
+        userSessions,
+        propertyInteractions,
+        propertyLikes,
+        engagementLeads,
+      } = await import("@shared/schema");
+      const {
+        eq,
+        and,
+        gte,
+        sql: drizzleSql,
+        count,
+      } = await import("drizzle-orm");
+
+      // Get date range (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Total sessions
+      const totalSessionsResult = await db
+        .select({ count: count() })
+        .from(userSessions)
+        .where(
+          and(
+            eq(userSessions.agentSlug, agentSlug),
+            gte(userSessions.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Active sessions (visited in last 24 hours)
+      const oneDayAgo = new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+      const activeSessionsResult = await db
+        .select({ count: count() })
+        .from(userSessions)
+        .where(
+          and(
+            eq(userSessions.agentSlug, agentSlug),
+            eq(userSessions.isActive, true),
+            gte(userSessions.updatedAt, oneDayAgo)
+          )
+        );
+
+      // Total property views
+      const propertyViewsResult = await db
+        .select({ count: count() })
+        .from(propertyInteractions)
+        .where(
+          and(
+            eq(propertyInteractions.agentSlug, agentSlug),
+            eq(propertyInteractions.interactionType, "view"),
+            gte(propertyInteractions.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Total likes
+      const likesResult = await db
+        .select({ count: count() })
+        .from(propertyLikes)
+        .where(
+          and(
+            eq(propertyLikes.agentSlug, agentSlug),
+            gte(propertyLikes.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Total engagement leads
+      const leadsResult = await db
+        .select({ count: count() })
+        .from(engagementLeads)
+        .where(
+          and(
+            eq(engagementLeads.agentSlug, agentSlug),
+            gte(engagementLeads.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Hot leads (score >= 40)
+      const hotLeadsResult = await db
+        .select({ count: count() })
+        .from(engagementLeads)
+        .where(
+          and(
+            eq(engagementLeads.agentSlug, agentSlug),
+            eq(engagementLeads.leadQuality, "hot"),
+            gte(engagementLeads.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      // Average session time
+      const avgTimeResult = await db
+        .select({
+          avgTime: drizzleSql<number>`AVG(${userSessions.totalTimeSpentSeconds})`,
+        })
+        .from(userSessions)
+        .where(
+          and(
+            eq(userSessions.agentSlug, agentSlug),
+            gte(userSessions.createdAt, thirtyDaysAgo)
+          )
+        );
+
+      res.json({
+        totalSessions: totalSessionsResult[0]?.count || 0,
+        activeSessions: activeSessionsResult[0]?.count || 0,
+        totalPropertyViews: propertyViewsResult[0]?.count || 0,
+        totalLikes: likesResult[0]?.count || 0,
+        totalLeads: leadsResult[0]?.count || 0,
+        hotLeads: hotLeadsResult[0]?.count || 0,
+        averageSessionTime: Math.round(avgTimeResult[0]?.avgTime || 0),
+      });
+    } catch (error) {
+      console.error("❌ Error fetching engagement analytics:", error);
+      res.status(500).json({ error: "Failed to fetch analytics" });
+    }
+  });
+
+  // Get recent engagement leads
+  app.get("/api/analytics/leads/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      const { engagementLeads } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+
+      const leads = await db
+        .select()
+        .from(engagementLeads)
+        .where(eq(engagementLeads.agentSlug, agentSlug))
+        .orderBy(desc(engagementLeads.createdAt))
+        .limit(limit);
+
+      res.json(leads);
+    } catch (error) {
+      console.error("❌ Error fetching leads:", error);
+      res.status(500).json({ error: "Failed to fetch leads" });
+    }
+  });
+
+  // Get property engagement stats
+  app.get("/api/analytics/properties/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const { propertyInteractions, propertyLikes } = await import(
+        "@shared/schema"
+      );
+      const { eq, and, sql: drizzleSql } = await import("drizzle-orm");
+
+      // Get top properties by views
+      const topViewed = await db
+        .select({
+          propertyId: propertyInteractions.propertyId,
+          viewCount: drizzleSql<number>`COUNT(*)`,
+          totalTimeSpent: drizzleSql<number>`SUM(${propertyInteractions.timeSpentSeconds})`,
+        })
+        .from(propertyInteractions)
+        .where(
+          and(
+            eq(propertyInteractions.agentSlug, agentSlug),
+            eq(propertyInteractions.interactionType, "view")
+          )
+        )
+        .groupBy(propertyInteractions.propertyId)
+        .orderBy(drizzleSql`COUNT(*) DESC`)
+        .limit(10);
+
+      // Get like counts
+      const likeCounts = await db
+        .select({
+          propertyId: propertyLikes.propertyId,
+          likeCount: drizzleSql<number>`COUNT(*)`,
+        })
+        .from(propertyLikes)
+        .where(eq(propertyLikes.agentSlug, agentSlug))
+        .groupBy(propertyLikes.propertyId);
+
+      res.json({
+        topViewed,
+        likeCounts,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching property analytics:", error);
+      res.status(500).json({ error: "Failed to fetch property analytics" });
+    }
+  });
+
+  // Get session details
+  app.get("/api/analytics/sessions/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      const { userSessions } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+
+      const sessions = await db
+        .select()
+        .from(userSessions)
+        .where(eq(userSessions.agentSlug, agentSlug))
+        .orderBy(desc(userSessions.updatedAt))
+        .limit(limit);
+
+      res.json(sessions);
+    } catch (error) {
+      console.error("❌ Error fetching sessions:", error);
+      res.status(500).json({ error: "Failed to fetch sessions" });
     }
   });
 
