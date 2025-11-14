@@ -493,13 +493,18 @@ export function SocialMediaManager() {
 
       // Handle other platform-specific posting
       if (data.platforms.includes("facebook")) {
+        // Check if a Facebook Page is selected
+        if (!selectedFacebookPage) {
+          throw new Error("Please select a Facebook Page before posting");
+        }
+        
         // Use Facebook Pages API for Facebook posting
         const facebookResponse = await apiRequest(
           "POST",
           "/api/facebook/post",
           {
             content: data.content,
-            pageId: "61581294927027", // Golden Brick page ID
+            pageId: selectedFacebookPage,
           }
         );
         return facebookResponse.json();
@@ -1338,6 +1343,34 @@ Mike Bjork | Berkshire Hathaway HomeServices
               ))}
             </div>
           </div>
+
+          {/* Facebook Page Selector */}
+          {selectedPlatforms.includes("facebook") && facebookPages.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="facebook-page-select" className="text-sm font-medium">
+                Facebook Page
+              </Label>
+              <select
+                id="facebook-page-select"
+                value={selectedFacebookPage}
+                onChange={(e) => setSelectedFacebookPage(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                data-testid="select-facebook-page"
+              >
+                <option value="">Select a Facebook Page to post to...</option>
+                {facebookPages.map((page: any) => (
+                  <option key={page.id} value={page.id}>
+                    {page.name}
+                  </option>
+                ))}
+              </select>
+              {!selectedFacebookPage && (
+                <p className="text-xs text-amber-600">
+                  ⚠️ Please select a Facebook Page before posting
+                </p>
+              )}
+            </div>
+          )}
 
           <Textarea
             placeholder={
