@@ -9487,6 +9487,66 @@ Always end with a helpful suggestion or call-to-action.`;
     }
   });
 
+  // LinkedIn Post Endpoint
+  app.post("/api/linkedin/post", requireAuth, async (req, res) => {
+    try {
+      const { content } = req.body;
+
+      console.log("\n💼 LinkedIn Post Request");
+
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({ error: "Content is required" });
+      }
+
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Resolve user and get LinkedIn access token
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+
+      if (!user && req.user.email) {
+        const allUsers = Array.from((storage as any).users?.values() || []);
+        user = allUsers.find((u: any) => u.email === req.user.email);
+      }
+
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      console.log(`   ✅ Posting as user: ${user.id} (${user.email || user.username})`);
+
+      // Get LinkedIn access token using the helper method
+      const accessToken = await socialMediaService.getLinkedInAccessToken(user.id);
+
+      console.log(`   ✅ Retrieved LinkedIn access token for user: ${user.id}`);
+
+      // Post to LinkedIn
+      const postResult = await socialMediaService.postToLinkedIn(content, accessToken);
+
+      console.log(`   ✅ LinkedIn post successful! ID: ${postResult.postId}`);
+
+      res.json({
+        success: true,
+        message: "Content posted successfully to LinkedIn",
+        postId: postResult.postId,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("❌ LinkedIn post error:", error);
+      res.status(500).json({
+        error: `Failed to post to LinkedIn: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+      });
+    }
+  });
+
   // YouTube Video Upload Endpoint (dedicated)
   app.post("/api/youtube/upload-video", requireAuth, videoUpload.single("video"), async (req: any, res) => {
     try {
