@@ -7176,6 +7176,62 @@ Format the response as JSON with these fields:
     res.json({ status: "healthy", timestamp: new Date().toISOString() });
   });
 
+  // AI Content Generation endpoint
+  app.post("/api/content/generate", requireAuth, async (req, res) => {
+    try {
+      const { type, topic, aiPrompt, neighborhood, seoOptimized, longTailKeywords, localSeoFocus, propertyData } = req.body;
+
+      console.log("\n✨ AI Content Generation Request:");
+      console.log(`   Type: ${type}`);
+      console.log(`   Topic: ${topic}`);
+      console.log(`   User: ${req.user?.id}`);
+
+      // Validation
+      if (!type) {
+        return res.status(400).json({ error: "Content type is required" });
+      }
+
+      if (type !== "property_feature" && !topic?.trim()) {
+        return res.status(400).json({ error: "Topic is required for non-property content" });
+      }
+
+      // Import AI service
+      const { unifiedAI } = await import("./services/unified-ai");
+
+      // Map frontend request to ContentGenerationRequest
+      const contentRequest = {
+        type: type as "blog_post" | "social_post" | "email" | "property_feature",
+        topic: topic || "",
+        prompt: aiPrompt || "",
+        neighborhood,
+        seoOptimized: seoOptimized !== false, // Default to true
+        longTailKeywords: longTailKeywords === true,
+        localSeoFocus: localSeoFocus !== false, // Default to true
+        propertyData,
+        companyProfile: {
+          agentName: "Mike Bjork",
+          businessName: "Berkshire Hathaway HomeServices",
+          agentTitle: "real estate agent",
+        },
+      };
+
+      console.log("   📝 Calling AI service...");
+
+      // Generate content using Unified AI (GitHub Copilot → OpenAI fallback)
+      const generatedContent = await unifiedAI.generateStructuredContent(contentRequest);
+
+      console.log(`   ✅ Content generated: "${generatedContent.title}" (${generatedContent.wordCount} words)`);
+
+      // Return the generated content
+      res.json(generatedContent);
+    } catch (error) {
+      console.error("❌ AI content generation error:", error);
+      res.status(502).json({
+        error: error instanceof Error ? error.message : "Failed to generate content. Please try again.",
+      });
+    }
+  });
+
   // AI Chat endpoint (mirrors main behavior, auth optional here for local UX)
   app.post("/api/ai-chat", async (req: any, res: any) => {
     try {
