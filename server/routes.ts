@@ -1994,6 +1994,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get Instagram Business Account linked to Facebook Page
+  app.get("/api/instagram/account/:pageId", requireAuth, async (req: any, res) => {
+    try {
+      const { pageId } = req.params;
+      const user = await resolveMemStorageUser(req);
+
+      const socialAccounts = user
+        ? await storage.getSocialMediaAccounts(user.id)
+        : [];
+      const facebookAccount = socialAccounts.find(
+        (acc) => acc.platform.toLowerCase() === "facebook"
+      );
+
+      const metadata = (facebookAccount?.metadata as any) || {};
+      const delegatedToken =
+        metadata?.pageAccessToken ||
+        facebookAccount?.accessToken ||
+        process.env.FACEBOOK_USER_TOKEN;
+
+      if (!delegatedToken) {
+        return res.status(400).json({
+          error: "Facebook token missing. Please reconnect your Facebook account.",
+        });
+      }
+
+      // Fetch Instagram Business Account linked to this Page
+      const response = await fetch(
+        `https://graph.facebook.com/v18.0/${pageId}?fields=instagram_business_account&access_token=${delegatedToken}`
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return res.status(400).json({
+          error: "Failed to fetch Instagram account",
+          details: errorData.error?.message || "Unknown error"
+        });
+      }
+
+      const data = await response.json();
+      
+      if (!data.instagram_business_account) {
+        return res.status(404).json({
+          error: "No Instagram Business Account linked",
+          message: "Please link an Instagram Business account to your Facebook Page first."
+        });
+      }
+
+      res.json({
+        instagramBusinessAccountId: data.instagram_business_account.id,
+        pageId: pageId
+      });
+    } catch (error: any) {
+      console.error("Error fetching Instagram account:", error?.message || error);
+      res.status(500).json({
+        error: "Failed to fetch Instagram account",
+        details: error?.message || "Unknown error"
+      });
+    }
+  });
+
   app.post(
     "/api/facebook/post",
     requireAuth,
