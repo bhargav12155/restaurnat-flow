@@ -10204,17 +10204,23 @@ Always end with a helpful suggestion or call-to-action.`;
           console.log('   Access token:', accessToken ? 'Present' : 'Missing');
           console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
 
-          // Get user from storage
-          const user = await storage.getUser(userId);
-          if (!user) {
-            console.error(`❌ User not found: ${userId}`);
+          // Get user from database (not MemStorage)
+          const { users } = await import("@shared/schema");
+          const typedUserId = Number.isNaN(Number(userId)) ? userId : Number(userId);
+          const dbUser = await db.query.users.findFirst({ 
+            where: eq(users.id, typedUserId) 
+          });
+          
+          if (!dbUser) {
+            console.error(`❌ User not found in database: ${userId}`);
             return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
           }
 
-          console.log(`   ✅ Found user: ${user.id} (${user.email || user.username})`);
+          const userIdString = String(dbUser.id);
+          console.log(`   ✅ Found database user: ${userIdString} (${dbUser.email || dbUser.username})`);
 
           // Check if LinkedIn account already exists
-          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          const existingAccounts = await storage.getSocialMediaAccounts(userIdString);
           const linkedinAccount = existingAccounts.find(
             (acc) => acc.platform.toLowerCase() === 'linkedin'
           );
@@ -10233,7 +10239,7 @@ Always end with a helpful suggestion or call-to-action.`;
             // Create new account
             console.log('   ➕ Creating new LinkedIn account');
             await storage.createSocialMediaAccount({
-              userId: user.id,
+              userId: userIdString,
               platform: 'linkedin',
               accountId: 'linkedin_account',
               accessToken,
