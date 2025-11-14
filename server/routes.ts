@@ -1326,6 +1326,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const existingAccounts = await storage.getSocialMediaAccounts(
             user.id
           );
+          console.log(`🔍 Facebook OAuth - Found ${existingAccounts.length} existing accounts for user ${user.id}`);
+          console.log(`   → Platforms: ${existingAccounts.map(a => `${a.platform}(${a.isConnected})`).join(', ')}`);
+          
           const facebookAccount = existingAccounts.find(
             (acc) => acc.platform.toLowerCase() === "facebook"
           );
@@ -1340,14 +1343,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
 
           if (facebookAccount) {
+            console.log(`🔄 Updating existing Facebook account ${facebookAccount.id} (was: ${facebookAccount.isConnected})`);
             await storage.updateSocialMediaAccount(facebookAccount.id, {
               accessToken,
               metadata,
               isConnected: true,
               lastSync: new Date(),
             });
+            console.log(`✅ Facebook account updated successfully`);
           } else {
-            await storage.createSocialMediaAccount({
+            console.log(`➕ Creating new Facebook account for user ${user.id}`);
+            const newAccount = await storage.createSocialMediaAccount({
               userId: user.id,
               platform: "facebook",
               accountId: profile?.id || "facebook_account",
@@ -1355,6 +1361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               metadata,
               isConnected: true,
             });
+            console.log(`✅ Facebook account created: ${newAccount.id}`);
           }
 
           return res.send(`
