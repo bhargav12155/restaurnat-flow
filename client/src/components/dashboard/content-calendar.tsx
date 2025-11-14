@@ -547,6 +547,7 @@ export function ContentCalendar() {
         platform: platformNames[platformKey] || post.platform.charAt(0).toUpperCase() + post.platform.slice(1),
         content: post.content,
         photoUrl: post.metadata?.imageUrl,
+        isAiGenerated: post.isAiGenerated || false,
       };
     });
 
@@ -572,6 +573,7 @@ export function ContentCalendar() {
             platform: platformNames[platformKey] || p.platform.charAt(0).toUpperCase() + p.platform.slice(1),
             content: p.content,
             photoUrl: p.metadata?.imageUrl,
+            isAiGenerated: p.isAiGenerated || false,
           };
         });
         
@@ -725,7 +727,8 @@ export function ContentCalendar() {
           time: item.time || '10:00 AM',
           color: item.color || "bg-primary",
           platform: item.platform || 'Facebook',
-          content: item.content || 'AI generated content'
+          content: item.content || 'AI generated content',
+          isAiGenerated: true,
         };
       });
       
@@ -884,7 +887,14 @@ export function ContentCalendar() {
                           onClick={() => handlePreview(content)}
                           title={`${content.title} - ${content.time}\n${content.content?.substring(0, 100)}`}
                         >
-                          <div className="font-semibold truncate text-[11px]">{content.title}</div>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="font-semibold truncate text-[11px] flex-1">{content.title}</div>
+                            {(content as any).isAiGenerated && (
+                              <div className="flex-shrink-0 scale-75 origin-right">
+                                <AiGeneratedBadge size="sm" />
+                              </div>
+                            )}
+                          </div>
                           <div className="text-[10px] opacity-80 truncate mt-0.5">{content.platform} • {content.time}</div>
                         </div>
                       ))}
@@ -903,7 +913,10 @@ export function ContentCalendar() {
                 <div key={content.id} className="flex items-center space-x-3" data-testid={`content-item-${content.id}`}>
                   <div className={`w-2 h-2 ${content.color} rounded-full`}></div>
                   <div className="flex-1">
-                    <p className="text-sm text-foreground">{content.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-foreground">{content.title}</p>
+                      {(content as any).isAiGenerated && <AiGeneratedBadge size="sm" />}
+                    </div>
                     <p className="text-xs text-muted-foreground">
                       {content.type} • {format(content.date, "MMM d")} {content.time}
                     </p>
@@ -932,6 +945,12 @@ export function ContentCalendar() {
           </DialogHeader>
           {previewContent && (
             <div>
+              {/* AI Generated Badge */}
+              {(previewContent as any).isAiGenerated && (
+                <div className="bg-muted/50 border-b px-3 py-2">
+                  <AiGeneratedBadge size="sm" />
+                </div>
+              )}
               {/* Facebook Preview */}
               {previewContent.platform === 'Facebook' && (
                 <div className="bg-white text-black">
