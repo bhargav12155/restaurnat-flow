@@ -10204,20 +10204,9 @@ Always end with a helpful suggestion or call-to-action.`;
           console.log('   Access token:', accessToken ? 'Present' : 'Missing');
           console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
 
-          // Get user from database (not MemStorage)
-          const { users } = await import("@shared/schema");
-          const typedUserId = Number.isNaN(Number(userId)) ? userId : Number(userId);
-          const dbUser = await db.query.users.findFirst({ 
-            where: eq(users.id, typedUserId) 
-          });
-          
-          if (!dbUser) {
-            console.error(`❌ User not found in database: ${userId}`);
-            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
-          }
-
-          const userIdString = String(dbUser.id);
-          console.log(`   ✅ Found database user: ${userIdString} (${dbUser.email || dbUser.username})`);
+          // Use the user ID from state directly (it came from a valid JWT token)
+          const userIdString = String(userId);
+          console.log(`   ✅ Using user ID from OAuth state: ${userIdString}`);
 
           // Check if LinkedIn account already exists
           const existingAccounts = await storage.getSocialMediaAccounts(userIdString);
