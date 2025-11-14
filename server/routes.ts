@@ -10042,6 +10042,144 @@ Always end with a helpful suggestion or call-to-action.`;
           console.error('❌ YouTube OAuth error:', fetchError);
           return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
         }
+      } else if (platform.toLowerCase() === 'linkedin') {
+        const clientId = process.env.LINKEDIN_CLIENT_ID;
+        const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/linkedin`;
+
+        if (!clientId || !clientSecret) {
+          console.error('❌ LinkedIn OAuth credentials not configured');
+          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
+        }
+
+        try {
+          // Exchange code for access token
+          console.log('   🔄 Exchanging code for LinkedIn access token...');
+          const tokenResponse = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              grant_type: 'authorization_code',
+              code: String(code),
+              redirect_uri: redirectUri,
+              client_id: clientId,
+              client_secret: clientSecret,
+            }),
+          });
+
+          if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            console.error('❌ LinkedIn token exchange failed:', errorText);
+            return res.redirect(`${baseUrl}/?oauth_error=token_exchange_failed`);
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token;
+
+          console.log('   ✅ LinkedIn token exchange successful');
+          console.log('   Access token:', accessToken ? 'Present' : 'Missing');
+          console.log('   Refresh token:', refreshToken ? 'Present' : 'Missing');
+
+          // Get user from storage
+          const user = await storage.getUser(userId);
+          if (!user) {
+            console.error(`❌ User not found: ${userId}`);
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          console.log(`   ✅ Found user: ${user.id} (${user.email || user.username})`);
+
+          // Check if LinkedIn account already exists
+          const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+          const linkedinAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === 'linkedin'
+          );
+
+          if (linkedinAccount) {
+            // Update existing account
+            console.log(`   🔄 Updating existing LinkedIn account: ${linkedinAccount.id}`);
+            await storage.updateSocialMediaAccount(linkedinAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+            console.log('   ✅ LinkedIn account updated');
+          } else {
+            // Create new account
+            console.log('   ➕ Creating new LinkedIn account');
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: 'linkedin',
+              accountId: 'linkedin_account',
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+            console.log('   ✅ LinkedIn account created');
+          }
+
+          // Success! Return HTML that closes the popup
+          res.send(`
+            <html>
+              <head>
+                <title>LinkedIn Connected</title>
+                <style>
+                  body {
+                    font-family: system-ui, -apple-system, sans-serif;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #0077b5 0%, #005885 100%);
+                    color: white;
+                  }
+                  .container {
+                    text-align: center;
+                    padding: 2rem;
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 1rem;
+                    backdrop-filter: blur(10px);
+                  }
+                  h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
+                  p { margin: 0; opacity: 0.9; }
+                  .checkmark {
+                    font-size: 4rem;
+                    margin-bottom: 1rem;
+                    animation: scaleIn 0.5s ease-out;
+                  }
+                  @keyframes scaleIn {
+                    from { transform: scale(0); }
+                    to { transform: scale(1); }
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="container">
+                  <div class="checkmark">✅</div>
+                  <h1>LinkedIn Connected!</h1>
+                  <p>Your LinkedIn account has been connected successfully.</p>
+                  <p style="margin-top: 1rem; font-size: 0.9rem;">This window will close automatically...</p>
+                </div>
+                <script>
+                  // Notify parent window of success
+                  if (window.opener) {
+                    window.opener.postMessage({ success: true, platform: 'linkedin' }, '*');
+                  }
+                  // Close window after 2 seconds
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error('❌ LinkedIn OAuth error:', fetchError);
+          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
+        }
       } else {
         // Other platforms not yet implemented
         res.send(`
