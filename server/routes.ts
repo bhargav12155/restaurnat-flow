@@ -9753,39 +9753,9 @@ Always end with a helpful suggestion or call-to-action.`;
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      // Resolve the authenticated user
-      let userId = String(req.user.id);
-      let user = await storage.getUser(userId);
-
-      // If not found by ID, try by email
-      if (!user && req.user.email) {
-        const allUsers = Array.from((storage as any).users?.values() || []);
-        user = allUsers.find((u: any) => u.email === req.user.email);
-      }
-
-      // If not found by email, try by username
-      if (!user && req.user.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
-
-      // If user still not found, create them in MemStorage
-      if (!user) {
-        console.log(`   → User not in MemStorage, creating with auto-generated UUID...`);
-        user = await storage.createUser({
-          username: req.user.username || req.user.email?.split("@")[0] || `user_${userId}`,
-          email: req.user.email || undefined,
-          password: "", // Not needed for OAuth-only users
-          name: req.user.email || `User ${userId}`,
-          role: ((req.user as any).type === "agent" ? "agent" : "public") as "agent" | "public" | "team_lead",
-        });
-        console.log(`   ✅ Created user in MemStorage: ${user.id} (DB ID was: ${userId})`);
-      } else {
-        console.log(`   ✅ Reusing existing MemStorage user: ${user.id}`);
-      }
-
-      // Use the MemStorage UUID for all social account operations
-      userId = user.id;
-      console.log(`✅ OAuth connect for user: ${userId} (${user.email || user.username})`);
+      // Use the database user ID directly - DON'T create random UUIDs
+      const dbUserId = String(req.user.id);
+      console.log(`✅ OAuth connect for database user: ${dbUserId} (${req.user.email || req.user.username})`);
 
       // Read base URL from environment
       const baseUrl = process.env.BASE_URL || 
@@ -9793,8 +9763,8 @@ Always end with a helpful suggestion or call-to-action.`;
           ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
           : "http://localhost:5000");
 
-      // Create state parameter with userId for OAuth callback
-      const state = Buffer.from(JSON.stringify({ userId, platform })).toString("base64");
+      // Create state parameter with database user ID for OAuth callback
+      const state = Buffer.from(JSON.stringify({ userId: dbUserId, platform })).toString("base64");
 
       // Generate PKCE code verifier and challenge for Twitter/X (OAuth 2.0 requires PKCE)
       let codeChallenge = '';
