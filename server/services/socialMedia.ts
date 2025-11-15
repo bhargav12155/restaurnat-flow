@@ -48,7 +48,8 @@ export class SocialMediaService {
     title: string,
     description: string,
     videoUrl?: string,
-    accessToken?: string
+    accessToken?: string,
+    options?: { photoUrls?: string[]; videoUrls?: string[] }
   ): Promise<{ postId: string; watchUrl?: string; studioUrl?: string }> {
     try {
       if (!accessToken) {
@@ -62,7 +63,8 @@ export class SocialMediaService {
 
       // For YouTube, we can create a Community post (text-only) or upload a video
       // Community posts require specific channel permissions
-      let resolvedVideoSource = videoUrl;
+      // Priority: options.videoUrls > videoUrl param
+      let resolvedVideoSource = options?.videoUrls?.[0] || videoUrl;
 
       if (!resolvedVideoSource) {
         const defaultSamplePath =
@@ -358,7 +360,8 @@ export class SocialMediaService {
     content: string,
     imageUrl?: string,
     accessToken?: string,
-    igUserId?: string
+    igUserId?: string,
+    options?: { photoUrls?: string[]; videoUrls?: string[] }
   ): Promise<{ postId: string }> {
     try {
       const token = accessToken || process.env.INSTAGRAM_ACCESS_TOKEN;
@@ -378,15 +381,26 @@ export class SocialMediaService {
         caption: content,
       };
 
-      // Add image URL if provided
-      if (imageUrl) {
+      // Priority: options.photoUrls/videoUrls > imageUrl param
+      const mediaUrl = options?.photoUrls?.[0] || options?.videoUrls?.[0] || imageUrl;
+
+      // Add media URL if provided
+      if (mediaUrl) {
         const baseUrl =
           process.env.REPLIT_DEPLOYMENT_URL ||
           process.env.CLIENT_URL ||
           "http://localhost:5000";
-        containerData.image_url = imageUrl.startsWith("http")
-          ? imageUrl
-          : `${baseUrl}${imageUrl}`;
+        const resolvedUrl = mediaUrl.startsWith("http")
+          ? mediaUrl
+          : `${baseUrl}${mediaUrl}`;
+        
+        // Instagram supports both image_url and video_url
+        if (options?.videoUrls?.[0]) {
+          containerData.video_url = resolvedUrl;
+          containerData.media_type = "VIDEO";
+        } else {
+          containerData.image_url = resolvedUrl;
+        }
       }
 
       const containerResponse = await fetch(
@@ -468,7 +482,8 @@ export class SocialMediaService {
 
   async postToLinkedIn(
     content: string,
-    accessToken: string
+    accessToken: string,
+    options?: { photoUrls?: string[]; videoUrls?: string[] }
   ): Promise<{ postId: string }> {
     try {
       console.log("Posting to LinkedIn:", content);
@@ -493,8 +508,16 @@ export class SocialMediaService {
       const authorUrn = `urn:li:person:${profileData.sub}`;
       console.log("LinkedIn author URN:", authorUrn);
 
+      // Determine media category based on provided URLs
+      let shareMediaCategory = "NONE";
+      if (options?.photoUrls?.length) {
+        shareMediaCategory = "IMAGE";
+      } else if (options?.videoUrls?.length) {
+        shareMediaCategory = "VIDEO";
+      }
+
       // Step 2: Create post on LinkedIn
-      const postData = {
+      const postData: any = {
         author: authorUrn,
         lifecycleState: "PUBLISHED",
         specificContent: {
@@ -502,13 +525,21 @@ export class SocialMediaService {
             shareCommentary: {
               text: content,
             },
-            shareMediaCategory: "NONE",
+            shareMediaCategory,
           },
         },
         visibility: {
           "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
         },
       };
+
+      // Note: LinkedIn media upload requires a separate multi-step process
+      // For now, we only support text-only posts
+      // TODO: Implement LinkedIn media upload flow (register upload -> upload media -> create post with media)
+      if (shareMediaCategory !== "NONE") {
+        console.warn("LinkedIn media upload not yet implemented, posting text-only");
+        postData.specificContent["com.linkedin.ugc.ShareContent"].shareMediaCategory = "NONE";
+      }
 
       const postResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
         method: "POST",
@@ -575,7 +606,8 @@ export class SocialMediaService {
   async postToTwitter(
     userId: string,
     content: string,
-    imageUrl?: string
+    imageUrl?: string,
+    options?: { photoUrls?: string[]; videoUrls?: string[] }
   ): Promise<{ postId: string }> {
     try {
       // Get user's OAuth 2.0 Bearer token from database
@@ -589,6 +621,15 @@ export class SocialMediaService {
       const tweetData: any = {
         text: content,
       };
+
+      // TODO: Implement media upload for Twitter
+      // Twitter media upload requires a separate multi-step process:
+      // 1. Upload media to https://upload.twitter.com/1.1/media/upload.json
+      // 2. Get media_id from response
+      // 3. Attach media_ids array to tweet creation
+      if (options?.photoUrls?.length || options?.videoUrls?.length || imageUrl) {
+        console.warn("Twitter media upload not yet implemented, posting text-only");
+      }
 
       // Make the API call with OAuth 2.0 Bearer token
       const response = await fetch(endpointURL, {
@@ -637,6 +678,16 @@ export class SocialMediaService {
     }
   }
 
+  /**
+   * Post to X (Twitter) platform
+   * Note: Use postToTwitter() which handles OAuth 2.0 token lookup from database
+   * This ensures proper token refresh, multi-account support, and storage guarantees
+   * 
+   * @param userId - User ID for token lookup
+   * @param content - Tweet content/text
+   * @param imageUrl - Legacy single image URL (optional)
+   * @param options - Media arrays for photos/videos (optional)
+   */
   async deleteTwitterPost(tweetId: string): Promise<{ success: boolean }> {
     try {
       const consumerKey = process.env.TWITTER_CONSUMER_KEY;

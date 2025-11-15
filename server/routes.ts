@@ -64,6 +64,93 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
+// Platform media capability matrix
+const PLATFORM_MEDIA_CAPABILITIES = {
+  instagram: { photos: 1, videos: 1, requiresMedia: true },
+  x: { photos: 1, videos: 1, requiresMedia: false },
+  twitter: { photos: 1, videos: 1, requiresMedia: false },
+  youtube: { photos: 0, videos: 1, requiresMedia: true },
+  linkedin: { photos: 1, videos: 1, requiresMedia: false },
+  facebook: { photos: 1, videos: 1, requiresMedia: false },
+  tiktok: { photos: 0, videos: 1, requiresMedia: true },
+} as const;
+
+type PlatformName = keyof typeof PLATFORM_MEDIA_CAPABILITIES;
+
+interface MediaResolutionResult {
+  photos: string[];
+  videos: string[];
+  mediaIds: string[];
+  assets: any[];
+}
+
+// Media resolution utility
+async function resolveMediaAssets(
+  mediaIds: string[],
+  userId: string,
+  platform: string
+): Promise<MediaResolutionResult> {
+  const result: MediaResolutionResult = {
+    photos: [],
+    videos: [],
+    mediaIds: [],
+    assets: [],
+  };
+
+  const platformKey = platform.toLowerCase() as PlatformName;
+  const capabilities = PLATFORM_MEDIA_CAPABILITIES[platformKey];
+  
+  if (!capabilities) {
+    throw new Error(`Unknown platform: ${platform}`);
+  }
+
+  // Fetch and validate assets - collect ALL first
+  for (const mediaId of mediaIds) {
+    const asset = await storage.getMediaAssetById(mediaId);
+    
+    if (!asset) {
+      throw new Error(`Media asset not found: ${mediaId}`);
+    }
+    
+    // Validate ownership
+    if (asset.userId !== userId) {
+      throw new Error(`Unauthorized access to media asset: ${mediaId}`);
+    }
+    
+    result.assets.push(asset);
+    result.mediaIds.push(mediaId);
+    
+    // Categorize by type - collect ALL (validation happens after)
+    if (asset.type === "photo") {
+      result.photos.push(asset.url);
+    } else if (asset.type === "video") {
+      result.videos.push(asset.url);
+    }
+  }
+  
+  // Validate platform requirements and limits
+  const totalMedia = result.photos.length + result.videos.length;
+  
+  if (capabilities.requiresMedia && totalMedia === 0) {
+    throw new Error(`${platform} requires at least one media attachment`);
+  }
+  
+  // Enforce platform limits - reject over-limit submissions
+  if (result.photos.length > capabilities.photos) {
+    throw new Error(
+      `${platform} supports maximum ${capabilities.photos} photo(s), but ${result.photos.length} were provided`
+    );
+  }
+  
+  if (result.videos.length > capabilities.videos) {
+    throw new Error(
+      `${platform} supports maximum ${capabilities.videos} video(s), but ${result.videos.length} were provided`
+    );
+  }
+  
+  return result;
+}
+
 // Configure multer for file uploads
 const upload = multer({
   dest: "uploads/",
@@ -1781,8 +1868,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     upload.single("photo"),
     async (req, res) => {
       try {
-        const { platform, content, platforms, scheduledFor } = req.body;
+        const { platform, content, platforms, scheduledFor, mediaIds } = req.body;
         const photo = req.file;
+        
+        // Parse mediaIds if provided as JSON string (multipart forms send strings)
+        let parsedMediaIds: string[] = [];
+        if (mediaIds) {
+          try {
+            parsedMediaIds = typeof mediaIds === "string" ? JSON.parse(mediaIds) : mediaIds;
+            if (!Array.isArray(parsedMediaIds)) {
+              return res.status(400).json({ error: "mediaIds must be an array" });
+            }
+          } catch (e) {
+            return res.status(400).json({ error: "Invalid mediaIds format" });
+          }
+        }
 
         if (platform) {
           // Single platform posting (new functionality)
@@ -1862,10 +1962,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
-          // Get photo URL if uploaded
-          let photoUrl = null;
-          if (photo) {
-            photoUrl = `/uploads/${path.basename(photo.path)}`;
+          // Resolve media attachments
+          let mediaResult: MediaResolutionResult | null = null;
+          let photoUrl: string | null = null;
+          let videoUrl: string | null = null;
+          
+          try {
+            // Priority 1: Media library assets (mediaIds)
+            if (parsedMediaIds.length > 0) {
+              mediaResult = await resolveMediaAssets(parsedMediaIds, user.id, platform);
+              photoUrl = mediaResult.photos[0] || null;
+              videoUrl = mediaResult.videos[0] || null;
+            }
+            // Priority 2: Uploaded file (legacy backward compatibility)
+            else if (photo) {
+              photoUrl = `/uploads/${path.basename(photo.path)}`;
+            }
+          } catch (mediaError) {
+            return res.status(400).json({ 
+              error: mediaError instanceof Error ? mediaError.message : "Media validation failed" 
+            });
           }
 
           // Actually post to the platform
@@ -1880,17 +1996,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
               postResult = await socialMediaService.postToInstagram(
                 content,
                 photoUrl || "",
-                connectedAccount?.accessToken || ""
+                connectedAccount?.accessToken || "",
+                undefined,
+                {
+                  photoUrls: mediaResult?.photos || [],
+                  videoUrls: mediaResult?.videos || []
+                }
               );
             } else if (platform.toLowerCase() === "linkedin") {
               postResult = await socialMediaService.postToLinkedIn(
                 content,
-                connectedAccount?.accessToken || ""
+                connectedAccount?.accessToken || "",
+                {
+                  photoUrls: mediaResult?.photos || [],
+                  videoUrls: mediaResult?.videos || []
+                }
               );
             } else if (platform.toLowerCase() === "x") {
-              postResult = await socialMediaService.postToX(
+              // Use postToTwitter which properly handles userId-based auth
+              postResult = await socialMediaService.postToTwitter(
+                user.id,
                 content,
-                connectedAccount?.accessToken || ""
+                photoUrl || undefined,
+                {
+                  photoUrls: mediaResult?.photos || [],
+                  videoUrls: mediaResult?.videos || []
+                }
               );
             } else if (platform.toLowerCase() === "youtube") {
               // For YouTube, we need title and description
@@ -1903,7 +2034,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 title,
                 description,
                 photoUrl || undefined,
-                youtubeToken
+                youtubeToken,
+                {
+                  photoUrls: mediaResult?.photos || [],
+                  videoUrls: mediaResult?.videos || []
+                }
               );
             } else {
               throw new Error(`Unsupported platform: ${platform}`);
@@ -1930,6 +2065,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             originalContent: content,
             neighborhood: null,
           });
+
+          // Persist media attachments if any
+          if (mediaResult && mediaResult.mediaIds.length > 0) {
+            await storage.createPostMedia(
+              mediaResult.mediaIds.map((mediaId, index) => ({
+                postId: scheduledPost.id,
+                mediaId,
+                orderIndex: index,
+              }))
+            );
+          }
 
           // Send real-time notification
           realtimeService.notifySocialPostScheduled(
