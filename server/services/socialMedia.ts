@@ -957,7 +957,8 @@ export class SocialMediaService {
     content: string,
     imageUrl?: string,
     accessToken?: string,
-    baseUrl?: string
+    baseUrl?: string,
+    options?: { photoUrls?: string[]; videoUrls?: string[] }
   ): Promise<{ postId: string }> {
     try {
       const token = accessToken || process.env.FACEBOOK_USER_TOKEN;
@@ -979,18 +980,28 @@ export class SocialMediaService {
         formData.append("message", content);
         formData.append("access_token", presetPageAccessToken);
 
-        if (imageUrl) {
+        // Handle media from library (options) or direct upload (imageUrl)
+        // Note: Facebook Graph API supports multi-photo, but current implementation uses first asset only
+        if (options?.photoUrls && options.photoUrls.length > 1) {
+          console.warn(`Facebook posting: ${options.photoUrls.length} photos selected, using first only. Multi-asset support coming soon.`);
+        }
+        if (options?.videoUrls && options.videoUrls.length > 0) {
+          console.warn(`Facebook posting: Videos not yet supported via media library. Use direct upload for now.`);
+        }
+        
+        const photoUrl = imageUrl || options?.photoUrls?.[0];
+        if (photoUrl) {
           const deploymentUrl =
             process.env.REPLIT_DEPLOYMENT_URL ||
             process.env.CLIENT_URL ||
             "http://localhost:5000";
-          const fullImageUrl = imageUrl.startsWith("http")
-            ? imageUrl
-            : `${baseUrl || deploymentUrl}${imageUrl}`;
+          const fullImageUrl = photoUrl.startsWith("http")
+            ? photoUrl
+            : `${baseUrl || deploymentUrl}${photoUrl}`;
           formData.append("url", fullImageUrl);
         }
 
-        const endpoint = imageUrl
+        const endpoint = photoUrl
           ? `https://graph.facebook.com/v18.0/${pageId}/photos`
           : `https://graph.facebook.com/v18.0/${pageId}/feed`;
 
@@ -1113,20 +1124,29 @@ export class SocialMediaService {
       formData.append("message", content);
       formData.append("access_token", pageAccessToken);
 
-      // Convert relative image URL to absolute if provided
-      if (imageUrl) {
+      // Handle media from library (options) or direct upload (imageUrl)
+      // Note: Facebook Graph API supports multi-photo, but current implementation uses first asset only
+      if (options?.photoUrls && options.photoUrls.length > 1) {
+        console.warn(`Facebook posting: ${options.photoUrls.length} photos selected, using first only. Multi-asset support coming soon.`);
+      }
+      if (options?.videoUrls && options.videoUrls.length > 0) {
+        console.warn(`Facebook posting: Videos not yet supported via media library. Use direct upload for now.`);
+      }
+      
+      const photoUrl = imageUrl || options?.photoUrls?.[0];
+      if (photoUrl) {
         const deploymentUrl =
           process.env.REPLIT_DEPLOYMENT_URL ||
           process.env.CLIENT_URL ||
           "http://localhost:5000";
-        const fullImageUrl = imageUrl.startsWith("http")
-          ? imageUrl
-          : `${baseUrl || deploymentUrl}${imageUrl}`;
+        const fullImageUrl = photoUrl.startsWith("http")
+          ? photoUrl
+          : `${baseUrl || deploymentUrl}${photoUrl}`;
         formData.append("url", fullImageUrl);
       }
 
       // Make the API call to post to the page
-      const endpoint = imageUrl
+      const endpoint = photoUrl
         ? `https://graph.facebook.com/v18.0/${pageId}/photos`
         : `https://graph.facebook.com/v18.0/${pageId}/feed`;
 
