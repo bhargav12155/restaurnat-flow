@@ -2715,6 +2715,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Support both JSON (from old frontend) and FormData (from new frontend)
         let content = req.body.content;
         const photo = req.file;
+        
+        // Parse mediaIds if present (sent as JSON string from FormData)
+        let mediaIds: string[] = [];
+        if (req.body.mediaIds) {
+          try {
+            mediaIds = typeof req.body.mediaIds === 'string' 
+              ? JSON.parse(req.body.mediaIds) 
+              : req.body.mediaIds;
+          } catch (e) {
+            console.error("Failed to parse mediaIds:", e);
+          }
+        }
 
         // Debug logging
         console.log("📝 Twitter post request:", {
@@ -2723,6 +2735,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           bodyKeys: Object.keys(req.body),
           content: content ? content.substring(0, 50) + "..." : "MISSING",
           hasPhoto: !!photo,
+          mediaIds: mediaIds.length,
         });
 
         if (!content) {
@@ -2737,12 +2750,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Build absolute URL for image if provided
         const baseUrl = `${req.protocol}://${req.get("host")}`;
         const fullPhotoUrl = photoUrl ? baseUrl + photoUrl : undefined;
+        
+        // Resolve media assets from library if mediaIds provided
+        let mediaOptions: { photoUrls?: string[], videoUrls?: string[] } | undefined;
+        if (mediaIds.length > 0) {
+          // Fetch all media assets for user
+          const allMedia = await storage.getMediaAssets(user.id);
+          
+          // Filter by requested IDs
+          const selectedMedia = allMedia.filter(m => mediaIds.includes(m.id));
+          
+          // Extract URLs by type
+          const photoUrls = selectedMedia
+            .filter(m => m.type === 'photo')
+            .map(m => m.url)
+            .filter((url): url is string => !!url);
+          
+          const videoUrls = selectedMedia
+            .filter(m => m.type === 'video')
+            .map(m => m.url)
+            .filter((url): url is string => !!url);
+          
+          if (photoUrls.length > 0 || videoUrls.length > 0) {
+            mediaOptions = {};
+            if (photoUrls.length > 0) mediaOptions.photoUrls = photoUrls;
+            if (videoUrls.length > 0) mediaOptions.videoUrls = videoUrls;
+          }
+        }
 
         // Pass userId to use OAuth 2.0 token from database
         const postResult = await socialMediaService.postToTwitter(
           user.id,
           content,
-          fullPhotoUrl
+          fullPhotoUrl,
+          mediaOptions
         );
 
         res.json({
