@@ -572,6 +572,9 @@ export function SocialMediaManager() {
       }
     },
     onSuccess: () => {
+      // Refresh accounts to ensure connection status is up-to-date
+      queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
+      
       toast({
         title: "Posted Successfully!",
         description: "Your content has been shared across selected platforms",
@@ -617,6 +620,9 @@ export function SocialMediaManager() {
       return response.json();
     },
     onSuccess: (data) => {
+      // Refresh accounts to ensure connection status is up-to-date
+      queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
+      
       toast({
         title: "Facebook Post Successful!",
         description:
