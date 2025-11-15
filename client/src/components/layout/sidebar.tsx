@@ -302,6 +302,9 @@ export function Sidebar({ activeView = "dashboard" }: SidebarProps) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-64 p-0">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation Menu</SheetTitle>
+          </SheetHeader>
           <div className="flex flex-col h-full bg-card">
             <SidebarContent
               activeView={activeView}

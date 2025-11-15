@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { messages, friendlyError } from "@/lib/messages";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -226,6 +227,13 @@ export function SocialMediaManager() {
 
     try {
       setConnectingPlatform(platform);
+      
+      // Show connecting message
+      const connectingMsg = messages.oauth.connecting(platform);
+      toast({
+        title: connectingMsg.title,
+        description: connectingMsg.description,
+      });
 
       // Get OAuth URL from backend
       const response = await fetch(`/api/social/connect/${platform}`, {
@@ -233,18 +241,14 @@ export function SocialMediaManager() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        const message =
-          errorData?.message ||
-          errorData?.error ||
-          `Failed to get OAuth URL for ${platform}`;
-        throw new Error(message);
+        const error = friendlyError({ status: response.status });
+        throw new Error(error.description);
       }
 
       const data = await response.json();
       const { authUrl } = data;
 
-      // Open OAuth popup window
+      // Try to open OAuth window
       const width = 600;
       const height = 700;
       const left = window.screenX + (window.outerWidth - width) / 2;
@@ -256,8 +260,9 @@ export function SocialMediaManager() {
         `width=${width},height=${height},left=${left},top=${top}`
       );
 
-      if (!popup) {
-        throw new Error("Popup blocked. Please allow popups for this site.");
+      // Handle popup blocking with friendly message
+      if (!popup || popup.closed) {
+        throw new Error("POPUP_BLOCKED");
       }
 
       // Listen for OAuth callback message
@@ -271,19 +276,20 @@ export function SocialMediaManager() {
           // Success! Refresh accounts list
           queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
 
+          const successMsg = messages.oauth.success(platform);
           toast({
-            title: "Connected Successfully!",
-            description: `Your ${platform} account has been connected.`,
+            title: successMsg.title,
+            description: successMsg.description,
           });
 
           cleanup();
         }
         // Handle errors
         else if (event.data.error) {
+          const errorMsg = messages.oauth.error(platform, event.data.error);
           toast({
-            title: "Connection Failed",
-            description:
-              event.data.error || `Failed to connect ${platform} account.`,
+            title: errorMsg.title,
+            description: errorMsg.description,
             variant: "destructive",
           });
 
@@ -305,20 +311,35 @@ export function SocialMediaManager() {
       // Also check if popup was closed without success
       checkClosedInterval = setInterval(() => {
         if (popup && popup.closed) {
+          const cancelledMsg = messages.oauth.cancelled(platform);
           toast({
-            title: "Connection Cancelled",
-            description: `${platform} connection was cancelled.`,
+            title: cancelledMsg.title,
+            description: cancelledMsg.description,
           });
           cleanup();
         }
       }, 500);
     } catch (error: any) {
       console.error("OAuth connection error:", error);
-      toast({
-        title: "Connection Failed",
-        description: error.message || `Failed to connect ${platform} account.`,
-        variant: "destructive",
-      });
+      
+      // Handle popup blocking specifically
+      if (error.message === "POPUP_BLOCKED") {
+        toast({
+          title: "Pop-ups are blocked",
+          description: `To connect your ${platform} account, please allow pop-ups for this site in your browser settings. On mobile, try using the browser's desktop mode.`,
+          variant: "destructive",
+        });
+      } else {
+        // Use friendlyError to provide context-aware messages (network, auth, etc.)
+        const friendlyMsg = friendlyError(error);
+        const errorMsg = messages.oauth.error(platform, friendlyMsg.description);
+        toast({
+          title: errorMsg.title,
+          description: errorMsg.description,
+          variant: "destructive",
+        });
+      }
+      
       setConnectingPlatform(null);
 
       if (checkClosedInterval) {
@@ -339,15 +360,17 @@ export function SocialMediaManager() {
     },
     onSuccess: (_, platform) => {
       queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
+      const successMsg = messages.oauth.disconnectSuccess(platform);
       toast({
-        title: "Disconnected Successfully",
-        description: `Your ${platform} account has been disconnected.`,
+        title: successMsg.title,
+        description: successMsg.description,
       });
     },
     onError: (error: Error, platform) => {
+      const errorMsg = messages.oauth.disconnectError(platform);
       toast({
-        title: "Disconnect Failed",
-        description: error.message || `Failed to disconnect ${platform} account.`,
+        title: errorMsg.title,
+        description: errorMsg.description,
         variant: "destructive",
       });
     },
@@ -380,9 +403,13 @@ export function SocialMediaManager() {
       const mlsPhoto = selectedProperty.photoUrls[0];
       setUploadedPhoto(mlsPhoto);
 
+      const photoMsg = {
+        title: "Photo added!",
+        description: `Your property photo from ${selectedProperty.address} is ready to post`
+      };
       toast({
-        title: "MLS Photo Added",
-        description: `Automatically added photo from ${selectedProperty.address}`,
+        title: photoMsg.title,
+        description: photoMsg.description
       });
     }
   }, [selectedProperty]);
