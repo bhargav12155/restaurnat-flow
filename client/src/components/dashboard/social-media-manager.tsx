@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PropertySelector } from "./property-selector";
+import { MediaLibrary } from "./media-library";
 
 interface SocialMediaAccount {
   id: string;
@@ -192,6 +193,7 @@ export function SocialMediaManager() {
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(
     null
   );
+  const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
   const [photoUploadMode, setPhotoUploadMode] = useState<
@@ -507,7 +509,7 @@ export function SocialMediaManager() {
   }, [accounts]);
 
   const postMutation = useMutation({
-    mutationFn: async (data: { content: string; platforms: string[] }) => {
+    mutationFn: async (data: { content: string; platforms: string[]; mediaIds?: string[] }) => {
       // Check if YouTube is selected and handle on-demand authentication
       if (data.platforms.includes("youtube")) {
         return await handleYouTubePost(
@@ -530,6 +532,7 @@ export function SocialMediaManager() {
           {
             content: data.content,
             pageId: selectedFacebookPage,
+            mediaIds: data.mediaIds || [],
           }
         );
         return facebookResponse.json();
@@ -540,6 +543,7 @@ export function SocialMediaManager() {
           "/api/instagram/post",
           {
             content: data.content,
+            mediaIds: data.mediaIds || [],
             // Instagram User ID will be read from environment variables
           }
         );
@@ -551,6 +555,11 @@ export function SocialMediaManager() {
         // Use Twitter API for Twitter posting - must use FormData for multer
         const formData = new FormData();
         formData.append("content", data.content);
+        
+        // Add mediaIds if present
+        if (data.mediaIds && data.mediaIds.length > 0) {
+          formData.append("mediaIds", JSON.stringify(data.mediaIds));
+        }
 
         const response = await fetch("/api/twitter/post", {
           method: "POST",
@@ -565,7 +574,10 @@ export function SocialMediaManager() {
         return response.json();
       } else {
         // For other platforms, use the general endpoint
-        const response = await apiRequest("POST", "/api/social/post", data);
+        const response = await apiRequest("POST", "/api/social/post", {
+          ...data,
+          mediaIds: data.mediaIds || [],
+        });
         return response.json();
       }
     },
@@ -578,6 +590,7 @@ export function SocialMediaManager() {
         description: "Your content has been shared across selected platforms",
       });
       setPostContent("");
+      setSelectedMediaIds([]);
     },
     onError: (error: any) => {
       toast({
@@ -1066,6 +1079,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
     postMutation.mutate({
       content,
       platforms: selectedPlatforms,
+      mediaIds: selectedMediaIds,
     });
   };
 
@@ -1390,6 +1404,23 @@ Mike Bjork | Berkshire Hathaway HomeServices
               )}
             </div>
           )}
+
+          {/* Media Library */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-muted-foreground">
+                Media Library {selectedMediaIds.length > 0 && `(${selectedMediaIds.length} selected)`}
+              </div>
+            </div>
+            <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto">
+              <MediaLibrary
+                onSelectMedia={setSelectedMediaIds}
+                selectedMediaIds={selectedMediaIds}
+                multiSelect={true}
+                typeFilter="all"
+              />
+            </div>
+          </div>
 
           <Textarea
             placeholder={
