@@ -140,6 +140,10 @@ export interface IStorage {
   createMediaAsset(asset: InsertMediaAsset): Promise<MediaAsset>;
   updateMediaAsset(id: string, updates: Partial<MediaAsset>): Promise<MediaAsset | undefined>;
   deleteMediaAsset(id: string): Promise<boolean>;
+
+  // Post Media (junction table for post attachments)
+  createPostMedia(postMedias: InsertPostMedia[]): Promise<PostMedia[]>;
+  getPostMedia(postId: string): Promise<PostMedia[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -155,6 +159,7 @@ export class MemStorage implements IStorage {
   private customVoices: Map<string, CustomVoice> = new Map();
   private photoAvatarGroupVoices: Map<string, PhotoAvatarGroupVoice> = new Map();
   private mediaAssets: Map<string, MediaAsset> = new Map();
+  private postMedia: Map<string, PostMedia> = new Map();
 
   constructor() {
     this.seedData();
@@ -1078,6 +1083,7 @@ export class MemStorage implements IStorage {
     const newAsset: MediaAsset = {
       id: randomUUID(),
       ...asset,
+      title: asset.title ?? null,
       metadata: asset.metadata ?? null,
       createdAt: new Date()
     };
@@ -1096,6 +1102,27 @@ export class MemStorage implements IStorage {
 
   async deleteMediaAsset(id: string): Promise<boolean> {
     return this.mediaAssets.delete(id);
+  }
+
+  async createPostMedia(postMedias: InsertPostMedia[]): Promise<PostMedia[]> {
+    const results: PostMedia[] = [];
+    for (const pm of postMedias) {
+      const newPostMedia: PostMedia = {
+        id: randomUUID(),
+        ...pm,
+        orderIndex: pm.orderIndex ?? null,
+        createdAt: new Date()
+      };
+      this.postMedia.set(newPostMedia.id, newPostMedia);
+      results.push(newPostMedia);
+    }
+    return results;
+  }
+
+  async getPostMedia(postId: string): Promise<PostMedia[]> {
+    return Array.from(this.postMedia.values()).filter(
+      (pm) => pm.postId === postId
+    ).sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   }
 }
 
