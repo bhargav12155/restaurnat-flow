@@ -21,7 +21,6 @@ import { VideoTemplates } from "@/components/dashboard/video-templates";
 import { YouTubeTestPosts } from "@/components/dashboard/youtube-test-posts";
 import { Sidebar } from "@/components/layout/sidebar";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
-import { SocialMediaSetup } from "@/components/setup/social-media-setup";
 import { Button } from "@/components/ui/button";
 import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
@@ -33,7 +32,6 @@ export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeView, setActiveView] = useState("dashboard");
   const [showSocialLinksPrompt, setShowSocialLinksPrompt] = useState(false);
-  const [showSocialMediaSetup, setShowSocialMediaSetup] = useState(false);
   const { user, isAuthenticated } = useAuth();
 
   // Connect to WebSocket for real-time updates
@@ -49,18 +47,7 @@ export default function Dashboard() {
     setTimeout(() => setIsGenerating(false), 2000);
   };
 
-  // Check if coming from NebraskaHomeHub
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const source = urlParams.get("source");
-    const domain = urlParams.get("domain");
-    const showSetup = urlParams.get("showSetup");
-
-    // Only show setup modal if explicitly requested via URL parameter
-    if (showSetup === "true" && (source === "nebraska-home-hub" || domain)) {
-      setShowSocialMediaSetup(true);
-    }
-  }, []);
+  // Removed legacy social media setup modal - now using OAuth-only flow
 
   // Handle hash navigation
   useEffect(() => {
@@ -221,20 +208,6 @@ export default function Dashboard() {
             if (!open) {
               localStorage.setItem("socialLinksPromptShown", "true");
             }
-          }}
-        />
-      )}
-
-      {/* Social Media Setup Modal (for NebraskaHomeHub users) */}
-      {showSocialMediaSetup && (
-        <SocialMediaSetup
-          isOpen={showSocialMediaSetup}
-          onClose={() => setShowSocialMediaSetup(false)}
-          onComplete={(config) => {
-            console.log("Social media setup completed:", config);
-            setShowSocialMediaSetup(false);
-            // Optionally redirect to social media manager
-            setActiveView("social");
           }}
         />
       )}

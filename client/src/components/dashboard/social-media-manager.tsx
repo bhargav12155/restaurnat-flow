@@ -1,5 +1,4 @@
 import { ObjectUploader } from "@/components/ObjectUploader";
-import { SocialMediaSetup } from "@/components/setup/social-media-setup";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -204,11 +203,10 @@ export function SocialMediaManager() {
   const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
   const [videoUploadUrl, setVideoUploadUrl] = useState<string | null>(null);
   const [showVideoUpload, setShowVideoUpload] = useState(false);
-  const [showSocialSetup, setShowSocialSetup] = useState(false);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null
   );
-  const { toast } = useToast();
+  const { toast} = useToast();
 
   // OAuth-enabled platforms (only platforms with full OAuth backend support)
   const oauthPlatforms = [
@@ -1139,18 +1137,6 @@ Mike Bjork | Berkshire Hathaway HomeServices
             <h3 className="text-sm font-medium text-foreground">
               Select Platforms
             </h3>
-            {accounts?.some((acc) => !acc.isConnected) && (
-              <Button
-                onClick={() => setShowSocialSetup(true)}
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                data-testid="button-configure-social"
-              >
-                <Settings className="mr-2 h-3 w-3" />
-                Configure API Keys
-              </Button>
-            )}
           </div>
           {accounts?.map((account) => {
             const platformInfo =
@@ -1865,22 +1851,6 @@ Mike Bjork | Berkshire Hathaway HomeServices
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Social Media Setup Modal */}
-      <SocialMediaSetup
-        isOpen={showSocialSetup}
-        onClose={() => setShowSocialSetup(false)}
-        onComplete={(config) => {
-          setShowSocialSetup(false);
-          toast({
-            title: "API Keys Configured!",
-            description:
-              "Your social media connections have been updated successfully.",
-          });
-          // Invalidate cache to refresh the accounts data
-          queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
-        }}
-      />
     </Card>
   );
 }
