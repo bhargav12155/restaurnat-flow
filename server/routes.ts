@@ -3,9 +3,11 @@ import {
   insertAvatarSchema,
   insertCompanyProfileSchema,
   insertVideoContentSchema,
+  insertMediaAssetSchema,
   tutorialVideos,
   updateScheduledPostSchema,
 } from "@shared/schema";
+import { z } from "zod";
 import crypto from "crypto";
 import { desc, eq } from "drizzle-orm";
 import type { Express, NextFunction, Request, Response } from "express";
@@ -4085,6 +4087,154 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     } catch (error) {
       console.error("Generate weekly content error:", error);
       res.status(500).json({ error: "Failed to generate weekly content" });
+    }
+  });
+
+  // Media Library endpoints
+  app.get("/api/media", requireAuth, async (req: any, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { type, source } = req.query;
+      
+      // Validate query parameters
+      const allowedTypes = ["video", "photo", "avatar"];
+      const allowedSources = ["upload", "heygen", "library"];
+      
+      if (type && !allowedTypes.includes(type as string)) {
+        return res.status(400).json({ error: "Invalid type. Must be one of: video, photo, avatar" });
+      }
+      
+      if (source && !allowedSources.includes(source as string)) {
+        return res.status(400).json({ error: "Invalid source. Must be one of: upload, heygen, library" });
+      }
+
+      const media = await storage.getMediaAssets(
+        user.id,
+        type as string | undefined,
+        source as string | undefined
+      );
+      res.json(media);
+    } catch (error) {
+      console.error("Get media error:", error);
+      res.status(500).json({ error: "Failed to fetch media" });
+    }
+  });
+
+  app.post("/api/media/upload", requireAuth, upload.single("file"), async (req: any, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      let { title, description, type, source, metadata, width, height, durationSeconds, thumbnailUrl, avatarId } = req.body;
+
+      // Normalize empty/whitespace strings to undefined (multipart forms send "" or "  " for empty fields)
+      const normalize = (val: any) => {
+        if (val === null || val === undefined) return undefined;
+        if (typeof val === "string") {
+          const trimmed = val.trim();
+          return trimmed === "" ? undefined : trimmed;
+        }
+        return val;
+      };
+      title = normalize(title);
+      description = normalize(description);
+      type = normalize(type);
+      source = normalize(source);
+      metadata = normalize(metadata);
+      width = normalize(width);
+      height = normalize(height);
+      durationSeconds = normalize(durationSeconds);
+      thumbnailUrl = normalize(thumbnailUrl);
+      avatarId = normalize(avatarId);
+
+      // Build media asset data (omit undefined fields for drizzle-zod validation)
+      const mediaData: any = {
+        userId: user.id,
+        type: type || (req.file.mimetype.startsWith("video/") ? "video" : "photo"),
+        source: source || "upload",
+        url: `/uploads/${req.file.filename}`,
+        title: title || req.file.originalname || "Untitled",
+        mimeType: req.file.mimetype,
+        fileSize: req.file.size,
+      };
+
+      // Validate required string fields are non-empty
+      if (!mediaData.title.trim()) {
+        return res.status(400).json({ error: "Title cannot be empty" });
+      }
+      if (!mediaData.type.trim()) {
+        return res.status(400).json({ error: "Type cannot be empty" });
+      }
+      if (!mediaData.source.trim()) {
+        return res.status(400).json({ error: "Source cannot be empty" });
+      }
+
+      // Only include optional fields if they have values
+      if (description) mediaData.description = description;
+      if (thumbnailUrl) mediaData.thumbnailUrl = thumbnailUrl;
+      if (avatarId) mediaData.avatarId = avatarId;
+
+      // Parse and validate numbers (reject NaN)
+      if (width !== undefined) {
+        const parsedWidth = parseInt(width);
+        if (Number.isNaN(parsedWidth)) {
+          return res.status(400).json({ error: "Invalid width value" });
+        }
+        mediaData.width = parsedWidth;
+      }
+      if (height !== undefined) {
+        const parsedHeight = parseInt(height);
+        if (Number.isNaN(parsedHeight)) {
+          return res.status(400).json({ error: "Invalid height value" });
+        }
+        mediaData.height = parsedHeight;
+      }
+      if (durationSeconds !== undefined) {
+        const parsedDuration = parseFloat(durationSeconds);
+        if (Number.isNaN(parsedDuration)) {
+          return res.status(400).json({ error: "Invalid duration value" });
+        }
+        mediaData.durationSeconds = parsedDuration;
+      }
+
+      // Parse metadata JSON (handle both string and object inputs)
+      if (metadata) {
+        if (typeof metadata === "object") {
+          // Already parsed (e.g., from XHR JSON request)
+          mediaData.metadata = metadata;
+        } else if (typeof metadata === "string") {
+          // Needs parsing (e.g., from multipart form)
+          try {
+            mediaData.metadata = JSON.parse(metadata);
+          } catch (e) {
+            return res.status(400).json({ error: "Invalid metadata JSON" });
+          }
+        } else {
+          return res.status(400).json({ error: "Metadata must be object or JSON string" });
+        }
+      }
+
+      // Validate against insert schema
+      const validated = insertMediaAssetSchema.parse(mediaData);
+      const mediaAsset = await storage.createMediaAsset(validated);
+
+      res.json(mediaAsset);
+    } catch (error) {
+      console.error("Upload media error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Validation failed", details: error.errors });
+      }
+      res.status(500).json({ error: "Failed to upload media" });
     }
   });
 

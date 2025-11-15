@@ -27,6 +27,10 @@ import {
   type InsertPhotoAvatar,
   type CompanyProfile,
   type InsertCompanyProfile,
+  type MediaAsset,
+  type InsertMediaAsset,
+  type PostMedia,
+  type InsertPostMedia,
   photoAvatarGroups,
   photoAvatarGroupVoices,
   photoAvatars,
@@ -129,6 +133,13 @@ export interface IStorage {
   // Company Profile
   getCompanyProfile(userId: string): Promise<CompanyProfile | null>;
   upsertCompanyProfile(profile: InsertCompanyProfile): Promise<CompanyProfile>;
+
+  // Media Assets
+  getMediaAssets(userId: string, type?: string, source?: string): Promise<MediaAsset[]>;
+  getMediaAssetById(id: string): Promise<MediaAsset | undefined>;
+  createMediaAsset(asset: InsertMediaAsset): Promise<MediaAsset>;
+  updateMediaAsset(id: string, updates: Partial<MediaAsset>): Promise<MediaAsset | undefined>;
+  deleteMediaAsset(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -143,6 +154,7 @@ export class MemStorage implements IStorage {
   private videoContent: Map<string, VideoContent> = new Map();
   private customVoices: Map<string, CustomVoice> = new Map();
   private photoAvatarGroupVoices: Map<string, PhotoAvatarGroupVoice> = new Map();
+  private mediaAssets: Map<string, MediaAsset> = new Map();
 
   constructor() {
     this.seedData();
@@ -1036,6 +1048,54 @@ export class MemStorage implements IStorage {
       })
       .returning();
     return result;
+  }
+
+  async getMediaAssets(userId: string, type?: string, source?: string): Promise<MediaAsset[]> {
+    let assets = Array.from(this.mediaAssets.values()).filter(
+      (asset) => asset.userId === userId
+    );
+    
+    if (type) {
+      assets = assets.filter((asset) => asset.type === type);
+    }
+    
+    if (source) {
+      assets = assets.filter((asset) => asset.source === source);
+    }
+    
+    return assets.sort((a, b) => {
+      const aTime = a.createdAt?.getTime() || 0;
+      const bTime = b.createdAt?.getTime() || 0;
+      return bTime - aTime;
+    });
+  }
+
+  async getMediaAssetById(id: string): Promise<MediaAsset | undefined> {
+    return this.mediaAssets.get(id);
+  }
+
+  async createMediaAsset(asset: InsertMediaAsset): Promise<MediaAsset> {
+    const newAsset: MediaAsset = {
+      id: randomUUID(),
+      ...asset,
+      metadata: asset.metadata ?? null,
+      createdAt: new Date()
+    };
+    this.mediaAssets.set(newAsset.id, newAsset);
+    return newAsset;
+  }
+
+  async updateMediaAsset(id: string, updates: Partial<MediaAsset>): Promise<MediaAsset | undefined> {
+    const asset = this.mediaAssets.get(id);
+    if (!asset) return undefined;
+    
+    const updated = { ...asset, ...updates };
+    this.mediaAssets.set(id, updated);
+    return updated;
+  }
+
+  async deleteMediaAsset(id: string): Promise<boolean> {
+    return this.mediaAssets.delete(id);
   }
 }
 
