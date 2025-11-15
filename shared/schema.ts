@@ -202,6 +202,43 @@ export const photoAvatars = pgTable(
 );
 
 // =====================================================
+// MEDIA ASSETS TABLE (Unified Media Library)
+// =====================================================
+export const mediaAssets = pgTable("media_assets", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(), // 'photo', 'video', 'avatar'
+  source: text("source").notNull(), // 'upload', 'heygen', 'library'
+  url: text("url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  durationSeconds: integer("duration_seconds"), // For videos
+  avatarId: varchar("avatar_id"), // Link to avatars table if type is 'avatar'
+  title: text("title"),
+  description: text("description"),
+  mimeType: text("mime_type"), // e.g., 'video/mp4', 'image/jpeg'
+  fileSize: integer("file_size"), // File size in bytes
+  width: integer("width"), // Image/video width in pixels
+  height: integer("height"), // Image/video height in pixels
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =====================================================
+// POST MEDIA JUNCTION TABLE (Many-to-many for post attachments)
+// =====================================================
+export const postMedia = pgTable("post_media", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull(), // References scheduledPosts or direct posts
+  mediaId: varchar("media_id").notNull(), // References mediaAssets
+  orderIndex: integer("order_index").default(0), // Display order
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =====================================================
 // 5. VIDEO CONTENT TABLE (YouTube & Video)
 // =====================================================
 export const videoContent = pgTable("video_content", {
@@ -470,6 +507,16 @@ export const insertAvatarSchema = createInsertSchema(avatars).omit({
   createdAt: true,
 });
 
+export const insertMediaAssetSchema = createInsertSchema(mediaAssets).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPostMediaSchema = createInsertSchema(postMedia).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertVideoContentSchema = createInsertSchema(videoContent).omit({
   id: true,
   createdAt: true,
@@ -529,7 +576,7 @@ export type InsertSocialMediaAccount = z.infer<
 >;
 
 export type SeoKeyword = typeof seoKeywords.$inferSelect;
-export type InsertSeoKeyword = z.infer<typeof insertSeoKeywordSchema>;
+export type InsertSeoKeyword = z.infer<typeof insertSEOKeywordSchema>;
 
 export type MarketData = typeof marketData.$inferSelect;
 export type InsertMarketData = z.infer<typeof insertMarketDataSchema>;
@@ -543,6 +590,10 @@ export type InsertScheduledPost = z.infer<typeof insertScheduledPostSchema>;
 export type Avatar = typeof avatars.$inferSelect;
 export type InsertAvatar = z.infer<typeof insertAvatarSchema>;
 
+export type MediaAsset = typeof mediaAssets.$inferSelect;
+export type InsertMediaAsset = z.infer<typeof insertMediaAssetSchema>;
+export type PostMedia = typeof postMedia.$inferSelect;
+export type InsertPostMedia = z.infer<typeof insertPostMediaSchema>;
 export type VideoContent = typeof videoContent.$inferSelect;
 export type InsertVideoContent = z.infer<typeof insertVideoContentSchema>;
 
@@ -629,7 +680,7 @@ export type InsertAIContent = z.infer<typeof insertAIContentSchema>;
 export type AIContent = typeof aiContent.$inferSelect;
 export type InsertSocialPost = z.infer<typeof insertSocialPostSchema>;
 export type SocialPost = typeof socialPosts.$inferSelect;
-export type InsertSEOKeyword = z.infer<typeof insertSeoKeywordSchema>;
+export type InsertSEOKeyword = z.infer<typeof insertSEOKeywordSchema>;
 export type SEOKeyword = typeof seoKeywords.$inferSelect;
 export type InsertUserActivity = z.infer<typeof insertUserActivitySchema>;
 export type UserActivity = typeof userActivity.$inferSelect;
