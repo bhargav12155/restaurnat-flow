@@ -64,14 +64,15 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
-// Platform media capability matrix
+// Platform media capability matrix - reflects actual MVP implementation support
+// NOTE: Some platforms support more via their APIs but service layer implementation is limited
 const PLATFORM_MEDIA_CAPABILITIES = {
-  instagram: { photos: 1, videos: 1, requiresMedia: true },
-  x: { photos: 1, videos: 1, requiresMedia: false },
-  twitter: { photos: 1, videos: 1, requiresMedia: false },
+  instagram: { photos: 1, videos: 1, requiresMedia: true }, // Service supports 1 photo OR 1 video
+  x: { photos: 4, videos: 1, requiresMedia: false }, // Twitter API supports up to 4 photos or 1 video
+  twitter: { photos: 4, videos: 1, requiresMedia: false }, // Twitter API supports up to 4 photos or 1 video
   youtube: { photos: 0, videos: 1, requiresMedia: true },
-  linkedin: { photos: 1, videos: 1, requiresMedia: false },
-  facebook: { photos: 1, videos: 1, requiresMedia: false },
+  linkedin: { photos: 1, videos: 0, requiresMedia: false }, // Service supports 1 photo only
+  facebook: { photos: 1, videos: 0, requiresMedia: false }, // Service supports 1 photo only (multi-photo/video = future)
   tiktok: { photos: 0, videos: 1, requiresMedia: true },
 } as const;
 
@@ -145,6 +146,13 @@ async function resolveMediaAssets(
   if (result.videos.length > capabilities.videos) {
     throw new Error(
       `${platform} supports maximum ${capabilities.videos} video(s), but ${result.videos.length} were provided`
+    );
+  }
+  
+  // Instagram requires exactly ONE asset (1 photo OR 1 video, not both)
+  if (platformKey === 'instagram' && result.photos.length > 0 && result.videos.length > 0) {
+    throw new Error(
+      'Instagram supports either 1 photo OR 1 video per post, not both. Please select only one asset.'
     );
   }
   
@@ -2347,13 +2355,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const baseUrl = `${req.protocol}://${req.get("host")}`;
-        // TODO: Pass mediaOptions to service once it supports structured media
         const postResult = await socialMediaService.postToFacebookPage(
           resolvedPageId,
           content,
           photoUrl || undefined,
           resolvedToken,
-          baseUrl
+          baseUrl,
+          mediaOptions
         );
 
         const scheduledPost = await storage.createScheduledPost({
@@ -2612,41 +2620,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.body.useSampleImage ?? (!photo ? "true" : "false")
         );
 
-        let photoUrl: string | null = null;
-        let usedSampleImage = false;
-
-        if (photo) {
-          photoUrl = `${baseUrl}/uploads/${path.basename(photo.path)}`;
-        } else if (useSampleImage) {
-          photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
-          usedSampleImage = true;
-        } else {
+        // Reject mixed media sources (upload + library)
+        if (photo && mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
           return res.status(400).json({
-            error:
-              "Instagram requires an image. Upload a photo or enable the sample image option.",
+            error: "Cannot use both direct photo upload and media library. Please choose one method.",
           });
         }
 
-        // Resolve media from library if mediaIds provided
+        // Normalize all media through validation
+        let photoUrl: string | null = null;
         let mediaOptions: { photoUrls?: string[], videoUrls?: string[] } | undefined;
+
+        // If media library IDs provided, use resolveMediaAssets for validation
         if (mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
-          const allMedia = await storage.getMediaAssets(user.id);
-          const selectedMedia = allMedia.filter(m => mediaIds.includes(m.id));
-          const photoUrls = selectedMedia.filter(m => m.type === 'photo').map(m => m.url).filter((url): url is string => !!url);
-          const videoUrls = selectedMedia.filter(m => m.type === 'video').map(m => m.url).filter((url): url is string => !!url);
-          if (photoUrls.length > 0 || videoUrls.length > 0) {
+          try {
+            const resolved = await resolveMediaAssets(mediaIds, user.id, 'instagram');
             mediaOptions = {};
-            if (photoUrls.length > 0) mediaOptions.photoUrls = photoUrls;
-            if (videoUrls.length > 0) mediaOptions.videoUrls = videoUrls;
+            if (resolved.photos.length > 0) mediaOptions.photoUrls = resolved.photos;
+            if (resolved.videos.length > 0) mediaOptions.videoUrls = resolved.videos;
+          } catch (error: any) {
+            return res.status(400).json({ error: error.message });
+          }
+        } else {
+          // Legacy direct upload or sample image path
+          if (photo) {
+            photoUrl = `${baseUrl}/uploads/${path.basename(photo.path)}`;
+          } else if (useSampleImage) {
+            photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
+          } else {
+            return res.status(400).json({
+              error:
+                "Instagram requires an image. Upload a photo or enable the sample image option.",
+            });
           }
         }
 
-        // TODO: Pass mediaOptions to service once it supports structured media
         const postResult = await socialMediaService.postToInstagram(
           content,
           photoUrl,
           resolvedToken,
-          instagramBusinessAccountId
+          instagramBusinessAccountId,
+          mediaOptions
         );
 
         const scheduledPost = await storage.createScheduledPost({
