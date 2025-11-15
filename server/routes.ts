@@ -2278,7 +2278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     upload.single("photo"),
     async (req: any, res) => {
       try {
-        const { content, pageId } = req.body;
+        const { content, pageId, mediaIds } = req.body;
         if (!content) {
           return res.status(400).json({ error: "Content is required" });
         }
@@ -2332,7 +2332,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           usedSampleImage = true;
         }
 
+        // Resolve media from library if mediaIds provided
+        let mediaOptions: { photoUrls?: string[], videoUrls?: string[] } | undefined;
+        if (mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
+          const allMedia = await storage.getMediaAssets(user.id);
+          const selectedMedia = allMedia.filter(m => mediaIds.includes(m.id));
+          const photoUrls = selectedMedia.filter(m => m.type === 'photo').map(m => m.url).filter((url): url is string => !!url);
+          const videoUrls = selectedMedia.filter(m => m.type === 'video').map(m => m.url).filter((url): url is string => !!url);
+          if (photoUrls.length > 0 || videoUrls.length > 0) {
+            mediaOptions = {};
+            if (photoUrls.length > 0) mediaOptions.photoUrls = photoUrls;
+            if (videoUrls.length > 0) mediaOptions.videoUrls = videoUrls;
+          }
+        }
+
         const baseUrl = `${req.protocol}://${req.get("host")}`;
+        // TODO: Pass mediaOptions to service once it supports structured media
         const postResult = await socialMediaService.postToFacebookPage(
           resolvedPageId,
           content,
@@ -2556,7 +2571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     upload.single("photo"),
     async (req: any, res) => {
       try {
-        const { content, instagramBusinessAccountId } = req.body;
+        const { content, instagramBusinessAccountId, mediaIds } = req.body;
         const photo = req.file;
 
         if (!content) {
@@ -2612,6 +2627,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
+        // Resolve media from library if mediaIds provided
+        let mediaOptions: { photoUrls?: string[], videoUrls?: string[] } | undefined;
+        if (mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
+          const allMedia = await storage.getMediaAssets(user.id);
+          const selectedMedia = allMedia.filter(m => mediaIds.includes(m.id));
+          const photoUrls = selectedMedia.filter(m => m.type === 'photo').map(m => m.url).filter((url): url is string => !!url);
+          const videoUrls = selectedMedia.filter(m => m.type === 'video').map(m => m.url).filter((url): url is string => !!url);
+          if (photoUrls.length > 0 || videoUrls.length > 0) {
+            mediaOptions = {};
+            if (photoUrls.length > 0) mediaOptions.photoUrls = photoUrls;
+            if (videoUrls.length > 0) mediaOptions.videoUrls = videoUrls;
+          }
+        }
+
+        // TODO: Pass mediaOptions to service once it supports structured media
         const postResult = await socialMediaService.postToInstagram(
           content,
           photoUrl,
