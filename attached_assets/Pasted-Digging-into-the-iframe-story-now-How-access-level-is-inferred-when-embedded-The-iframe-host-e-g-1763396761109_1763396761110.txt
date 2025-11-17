@@ -1,0 +1,13 @@
+Digging into the iframe story now.
+
+How access level is inferred when embedded
+
+The iframe host (e.g., NebraskaHomeHub) first calls GET /api/integration/nebraska-home-hub (see routes.ts, lines ~330-405). That handler validates the requesting domain, logs the source, and then builds a URL like https://multi-users-realtyflow.replit.app/integration?bypassAuth=true&userId=<email>&userType=public&autoLogin=true&agentSlug=<slug>&source=nebraska-home-hub. Those query params are what tell the client it’s coming from a trusted iframe and which identity to impersonate.
+When the iframe loads integration.tsx, the component’s useEffect watches those params. If it sees autoLogin=true, source=nebraska-home-hub, and a userEmail, it immediately calls universalLogin(userEmail) from useAuth. Even if auto-login fails, it still flips showSetup so the embedded experience falls back to a limited public view. This is where the “auto detect access level” UX happens for iframe visitors.
+The same logic exists on the regular login page (login.tsx). On mount it checks the exact same params and triggers universalLogin so iframe users don’t need to type anything.
+The heavy lifting lives in the backend universal login route (auth.ts, /api/auth/login). That endpoint examines the identifier it receives:
+If the identifier contains @, it treats it as an email, calls createOrLoginPublicUser, and tags the resulting JWT session with type: "public".
+Otherwise it assumes the identifier is an agent slug, synthesizes a temporary email (<slug>@client.temp), and again hits createOrLoginPublicUser, which links the visitor to the correct agent’s tenant.
+In both branches it sets the authToken cookie so the iframe session keeps the same privileges as the inferred user.
+The useAuth hook (useAuth.tsx) consumes that /api/auth/login response, updates its context with the user object (including type and agentSlug), and the rest of the dashboard conditionally renders features based on user.type. Because the iframe bootstrap calls universalLogin with the right identifier, the resulting user.type reflects the proper access level automatically.
+So, in short: the integration endpoint hands the iframe a set of query parameters, the integration/login pages auto-trigger universalLogin, and that backend route figures out whether the identifier corresponds to a public client vs. an agent by inspecting its format. The returned JWT (and the user.type placed in React context) is what the UI uses to gate features, which is why access level “just works” when the app is embedded.

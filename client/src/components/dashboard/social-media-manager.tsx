@@ -352,6 +352,12 @@ export function SocialMediaManager() {
     queryKey: ["/api/social/accounts"],
   });
 
+  // Debug: Log accounts when they change
+  useEffect(() => {
+    console.log("🔍 Social accounts data:", accounts);
+    console.log("🔍 Is loading:", isLoading);
+  }, [accounts, isLoading]);
+
   // Handle disconnect
   const disconnectMutation = useMutation({
     mutationFn: async (platform: string) => {
@@ -1162,9 +1168,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
               platformIcons[normalizedPlatform as keyof typeof platformIcons] ||
               { icon: Settings, color: "text-gray-600" }; // Fallback for unknown platforms
             
-            if (!platformIcons[normalizedPlatform as keyof typeof platformIcons]) {
-              console.warn(`Using fallback icon for unknown platform: ${account.platform} (normalized: ${normalizedPlatform})`);
-            }
+            const PlatformIcon = platformInfo.icon;
 
             return (
               <div
@@ -1184,7 +1188,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
                     className="h-5 w-5 bg-[#2d4450] text-[#304652]"
                     data-testid={`checkbox-${account.platform}`}
                   />
-                  <platformInfo.icon
+                  <PlatformIcon
                     className={`h-4 w-4 ${platformInfo.color}`}
                   />
                   <span className="text-sm font-medium capitalize">
