@@ -107,19 +107,17 @@ export default function Dashboard() {
         return <BrandSettings />;
       case "analytics":
         return (
-          <div className="p-6">
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-semibold mb-2">
-                  Analytics Dashboard
-                </h2>
-                <p className="text-muted-foreground">
-                  Monitor your API usage, system health, and performance metrics
-                </p>
-              </div>
-              <AISearchOptimizer />
-              <APIKeyManager />
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-semibold mb-2">
+                Analytics Dashboard
+              </h2>
+              <p className="text-sm sm:text-base text-muted-foreground">
+                Monitor your API usage, system health, and performance metrics
+              </p>
             </div>
+            <AISearchOptimizer />
+            <APIKeyManager />
           </div>
         );
       default: // "dashboard"
@@ -127,11 +125,11 @@ export default function Dashboard() {
           <>
             <OverviewCards />
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+              <div className="lg:col-span-2 w-full min-w-0">
                 <AIContentGenerator isGenerating={isGenerating} />
               </div>
-              <div className="space-y-6">
+              <div className="w-full min-w-0 space-y-4 sm:space-y-6">
                 <SocialMediaManager />
               </div>
             </div>
@@ -142,9 +140,13 @@ export default function Dashboard() {
 
             <ScheduledPostsManager />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <SEOOptimizer />
-              <ContentCalendar />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <div className="w-full min-w-0">
+                <SEOOptimizer />
+              </div>
+              <div className="w-full min-w-0">
+                <ContentCalendar />
+              </div>
             </div>
 
             <LocalMarketTools />
@@ -159,28 +161,31 @@ export default function Dashboard() {
 
       <main className="flex-1 overflow-auto">
         {/* Header */}
-        <header className="bg-card border-b border-border px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground">
-                AI SEO & Social Media Dashboard
+        <header className="bg-card border-b border-border px-3 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg sm:text-2xl font-semibold text-foreground truncate">
+                <span className="hidden sm:inline">AI SEO & Social Media Dashboard</span>
+                <span className="sm:hidden">Dashboard</span>
               </h1>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground hidden md:block">
                 Automated content generation for Omaha real estate market
               </p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              <div className="hidden lg:block text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
                 {VERSION_DISPLAY}
               </div>
               <Button
                 onClick={handleGenerateContent}
                 disabled={isGenerating}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
+                size="sm"
+                aria-label={isGenerating ? "Generating content..." : "Generate content"}
                 data-testid="button-generate-content"
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                {isGenerating ? "Generating..." : "Generate Content"}
+                <Sparkles className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{isGenerating ? "Generating..." : "Generate Content"}</span>
               </Button>
               <NotificationPanel
                 userId={user?.id?.toString()}
@@ -192,7 +197,7 @@ export default function Dashboard() {
         </header>
 
         {/* Dashboard Content */}
-        <div className="p-6 space-y-6">{renderActiveView()}</div>
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">{renderActiveView()}</div>
       </main>
 
       {/* Social Links Prompt Modal */}
