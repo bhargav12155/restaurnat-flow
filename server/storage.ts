@@ -1,53 +1,53 @@
 import {
-  type User,
-  type InsertUser,
-  type ContentPiece,
-  type InsertContentPiece,
-  type SocialMediaAccount,
-  type InsertSocialMediaAccount,
-  type SeoKeyword,
-  type InsertSeoKeyword,
-  type MarketData,
-  type InsertMarketData,
   type Analytics,
-  type InsertAnalytics,
-  type ScheduledPost,
-  type InsertScheduledPost,
   type Avatar,
-  type InsertAvatar,
-  type VideoContent,
-  type InsertVideoContent,
-  type CustomVoice,
-  type InsertCustomVoice,
-  type PhotoAvatarGroup,
-  type InsertPhotoAvatarGroup,
-  type PhotoAvatarGroupVoice,
-  type InsertPhotoAvatarGroupVoice,
-  type PhotoAvatar,
-  type InsertPhotoAvatar,
   type CompanyProfile,
+  companyProfiles,
+  type ContentPiece,
+  type CustomVoice,
+  customVoices,
+  type InsertAnalytics,
+  type InsertAvatar,
   type InsertCompanyProfile,
-  type MediaAsset,
+  type InsertContentPiece,
+  type InsertCustomVoice,
+  type InsertMarketData,
   type InsertMediaAsset,
-  type PostMedia,
+  type InsertPhotoAvatar,
+  type InsertPhotoAvatarGroup,
+  type InsertPhotoAvatarGroupVoice,
   type InsertPostMedia,
+  type InsertScheduledPost,
+  type InsertSeoKeyword,
+  type InsertSocialMediaAccount,
+  type InsertUser,
+  type InsertVideoContent,
+  type MarketData,
+  type MediaAsset,
+  type PhotoAvatar,
+  type PhotoAvatarGroup,
   photoAvatarGroups,
+  type PhotoAvatarGroupVoice,
   photoAvatarGroupVoices,
   photoAvatars,
-  customVoices,
-  companyProfiles,
-  videoContent as videoContentTable,
+  type PostMedia,
+  type ScheduledPost,
   scheduledPosts as scheduledPostsTable,
-  socialMediaAccounts,
+  type SeoKeyword,
+  type SocialMediaAccount,
+  type User,
+  type VideoContent,
+  videoContent as videoContentTable,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "./db";
-import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
   // Content
@@ -351,17 +351,40 @@ export class MemStorage implements IStorage {
   }
 
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    console.log(`👤 [STORAGE] getUser(${id})`);
+    const user = this.users.get(id);
+    console.log(`   → ${user ? `✅ Found: ${user.email}` : '❌ Not found'}`);
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
+    console.log(`👤 [STORAGE] getUserByUsername(${username})`);
+    const user = Array.from(this.users.values()).find(
       (user) => user.username === username,
     );
+    console.log(`   → ${user ? `✅ Found: ${user.id} (${user.email})` : '❌ Not found'}`);
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    console.log(`👤 [STORAGE] getUserByEmail(${email})`);
+    const allUsers = Array.from(this.users.values());
+    console.log(`   → Searching ${allUsers.length} users in memory`);
+    const user = allUsers.find((user) => user.email === email);
+    if (user) {
+      console.log(`   → ✅ Found user: ${user.id} (${user.email}, username: ${user.username})`);
+    } else {
+      console.log(`   → ❌ Not found. Available emails:`, allUsers.map(u => u.email));
+    }
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
+    console.log(`👤 [STORAGE] createUser - NEW USER CREATED!`);
+    console.log(`   → New ID: ${id}`);
+    console.log(`   → Email: ${insertUser.email}`);
+    console.log(`   → Username: ${insertUser.username}`);
     const user: User = {
       ...insertUser,
       id,
@@ -369,6 +392,7 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "agent",
     };
     this.users.set(id, user);
+    console.log(`   → ✅ User created and stored in memory`);
     return user;
   }
 
@@ -416,38 +440,51 @@ export class MemStorage implements IStorage {
   }
 
   async getSocialMediaAccounts(userId: string): Promise<SocialMediaAccount[]> {
-    console.log(`📊 [STORAGE] Getting social media accounts for user: ${userId}`);
-    try {
-      const accounts = await db
-        .select()
-        .from(socialMediaAccounts)
-        .where(eq(socialMediaAccounts.userId, userId));
-      console.log(`✅ [STORAGE] Found ${accounts.length} social media accounts for user ${userId}`);
-      return accounts;
-    } catch (error) {
-      console.error(`❌ [STORAGE] Error getting social media accounts:`, error);
-      throw error;
-    }
+    // Use database instead of memory
+    const { db } = await import("./db");
+    const { socialMediaAccounts: socialMediaAccountsTable } = await import(
+      "../shared/schema"
+    );
+    const accounts = await db.query.socialMediaAccounts.findMany({
+      where: (table, { eq }) => eq(table.userId, userId),
+    });
+    console.log(
+      `[STORAGE] Found ${accounts.length} social media accounts for user ${userId}`,
+    );
+    return accounts;
   }
 
   async getSocialMediaAccountById(
     id: string,
   ): Promise<SocialMediaAccount | undefined> {
-    const [account] = await db
-      .select()
-      .from(socialMediaAccounts)
-      .where(eq(socialMediaAccounts.id, id))
-      .limit(1);
+    // Use database instead of memory
+    const { db } = await import("./db");
+    const account = await db.query.socialMediaAccounts.findFirst({
+      where: (table, { eq }) => eq(table.id, id),
+    });
     return account;
   }
 
   async createSocialMediaAccount(
     insertAccount: InsertSocialMediaAccount,
   ): Promise<SocialMediaAccount> {
+    // Use database instead of memory
+    const { db } = await import("./db");
+    const { socialMediaAccounts: socialMediaAccountsTable } = await import(
+      "../shared/schema"
+    );
+
     const [account] = await db
-      .insert(socialMediaAccounts)
-      .values(insertAccount)
+      .insert(socialMediaAccountsTable)
+      .values({
+        ...insertAccount,
+        isConnected: insertAccount.isConnected ?? true,
+      })
       .returning();
+
+    console.log(
+      `[STORAGE] Created social media account for user ${insertAccount.userId}, platform ${insertAccount.platform}`,
+    );
     return account;
   }
 
@@ -455,11 +492,19 @@ export class MemStorage implements IStorage {
     id: string,
     updates: Partial<SocialMediaAccount>,
   ): Promise<SocialMediaAccount | undefined> {
+    // Use database instead of memory
+    const { db } = await import("./db");
+    const { socialMediaAccounts: socialMediaAccountsTable } = await import(
+      "../shared/schema"
+    );
+
     const [updated] = await db
-      .update(socialMediaAccounts)
+      .update(socialMediaAccountsTable)
       .set(updates)
-      .where(eq(socialMediaAccounts.id, id))
+      .where(eq(socialMediaAccountsTable.id, id))
       .returning();
+
+    console.log(`[STORAGE] Updated social media account ${id}`);
     return updated;
   }
 
@@ -467,33 +512,47 @@ export class MemStorage implements IStorage {
     userId: string,
     platform: string,
   ): Promise<SocialMediaAccount | undefined> {
-    // Find account by userId and platform
-    const [account] = await db
-      .select()
-      .from(socialMediaAccounts)
-      .where(
-        and(
-          eq(socialMediaAccounts.userId, userId),
-          eq(socialMediaAccounts.platform, platform.toLowerCase())
-        )
-      )
-      .limit(1);
+    // Use database instead of memory
+    const { db } = await import("./db");
+    const { socialMediaAccounts: socialMediaAccountsTable } = await import(
+      "../shared/schema"
+    );
 
-    if (!account) return undefined;
-    if (!account.isConnected) return account; // Already disconnected
+    // Find account by userId and platform
+    const account = await db.query.socialMediaAccounts.findFirst({
+      where: (table, { eq, and }) =>
+        and(eq(table.userId, userId), eq(table.platform, platform)),
+    });
+
+    if (!account) {
+      console.log(
+        `[STORAGE] No account found for user ${userId}, platform ${platform}`,
+      );
+      return undefined;
+    }
+
+    if (!account.isConnected) {
+      console.log(
+        `[STORAGE] Account already disconnected for user ${userId}, platform ${platform}`,
+      );
+      return account; // Already disconnected
+    }
 
     // Mark as disconnected and clear OAuth credentials
     const [updated] = await db
-      .update(socialMediaAccounts)
+      .update(socialMediaAccountsTable)
       .set({
         isConnected: false,
         accessToken: null,
         refreshToken: null,
         lastSync: null,
       })
-      .where(eq(socialMediaAccounts.id, account.id))
+      .where(eq(socialMediaAccountsTable.id, account.id))
       .returning();
-    
+
+    console.log(
+      `[STORAGE] Disconnected social media account for user ${userId}, platform ${platform}`,
+    );
     return updated;
   }
 

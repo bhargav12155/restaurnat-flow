@@ -1820,31 +1820,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Resolve DB user ID to MemStorage UUID (same logic as connect endpoint)
-      console.log(`🔍 [SOCIAL] Looking up user by session ID: "${req.user.id}"`);
       let userId = String(req.user.id);
       let user = await storage.getUser(userId);
-      console.log(`🔍 [SOCIAL] User lookup by ID result:`, user ? `Found ${user.id}` : 'Not found');
 
       // If not found by ID, try by email
       if (!user && req.user?.email) {
-        console.log(`🔍 [SOCIAL] Trying lookup by email: "${req.user.email}"`);
         user = await storage.getUserByEmail(req.user.email);
-        console.log(`🔍 [SOCIAL] User lookup by email result:`, user ? `Found ${user.id}` : 'Not found - user will be created');
       }
 
       // If not found by email, try by username
       if (!user && req.user.username) {
-        console.log(`🔍 [SOCIAL] Trying lookup by username: "${req.user.username}"`);
         user = await storage.getUserByUsername(req.user.username);
-        console.log(`🔍 [SOCIAL] User lookup by username result:`, user ? `Found ${user.id}` : 'Not found');
-      }
-
-      // If STILL not found, we have a problem - create the user to prevent orphaned accounts
-      if (!user) {
-        console.log(`⚠️  [SOCIAL] User not found in MemStorage! This will cause platform loss!`);
-        console.log(`⚠️  [SOCIAL] Session ID: ${req.user.id}, Email: ${req.user.email}`);
-        console.log(`⚠️  [SOCIAL] Creating new user to prevent data loss...`);
-        // This is where platforms get lost - we create a NEW UUID each time!
       }
 
       // Get social media accounts (empty if user not found)
