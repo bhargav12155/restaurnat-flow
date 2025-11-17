@@ -38,6 +38,7 @@ import {
   companyProfiles,
   videoContent as videoContentTable,
   scheduledPosts as scheduledPostsTable,
+  socialMediaAccounts,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
