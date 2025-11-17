@@ -447,7 +447,8 @@ export class MemStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
+    // 🔥 FIX: Use passed ID if provided, otherwise generate new UUID
+    const id = insertUser.id || randomUUID();
     const user: User = {
       ...insertUser,
       id,
@@ -455,6 +456,7 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "agent",
     };
     this.users.set(id, user);
+    console.log(`[STORAGE] createUser - Created user with ID: ${id} (email: ${insertUser.email})`);
     return user;
   }
 
