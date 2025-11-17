@@ -415,32 +415,31 @@ export class MemStorage implements IStorage {
   }
 
   async getSocialMediaAccounts(userId: string): Promise<SocialMediaAccount[]> {
-    return Array.from(this.socialMediaAccounts.values()).filter(
-      (account) => account.userId === userId,
-    );
+    const accounts = await db
+      .select()
+      .from(socialMediaAccounts)
+      .where(eq(socialMediaAccounts.userId, userId));
+    return accounts;
   }
 
   async getSocialMediaAccountById(
     id: string,
   ): Promise<SocialMediaAccount | undefined> {
-    return this.socialMediaAccounts.get(id);
+    const [account] = await db
+      .select()
+      .from(socialMediaAccounts)
+      .where(eq(socialMediaAccounts.id, id))
+      .limit(1);
+    return account;
   }
 
   async createSocialMediaAccount(
     insertAccount: InsertSocialMediaAccount,
   ): Promise<SocialMediaAccount> {
-    const id = randomUUID();
-    const account: SocialMediaAccount = {
-      ...insertAccount,
-      id,
-      createdAt: new Date(),
-      metadata: insertAccount.metadata || null,
-      accessToken: insertAccount.accessToken || null,
-      refreshToken: insertAccount.refreshToken || null,
-      isConnected: insertAccount.isConnected || false,
-      lastSync: insertAccount.lastSync || null,
-    };
-    this.socialMediaAccounts.set(id, account);
+    const [account] = await db
+      .insert(socialMediaAccounts)
+      .values(insertAccount)
+      .returning();
     return account;
   }
 
@@ -448,11 +447,11 @@ export class MemStorage implements IStorage {
     id: string,
     updates: Partial<SocialMediaAccount>,
   ): Promise<SocialMediaAccount | undefined> {
-    const account = this.socialMediaAccounts.get(id);
-    if (!account) return undefined;
-
-    const updated = { ...account, ...updates };
-    this.socialMediaAccounts.set(id, updated);
+    const [updated] = await db
+      .update(socialMediaAccounts)
+      .set(updates)
+      .where(eq(socialMediaAccounts.id, id))
+      .returning();
     return updated;
   }
 
@@ -461,25 +460,32 @@ export class MemStorage implements IStorage {
     platform: string,
   ): Promise<SocialMediaAccount | undefined> {
     // Find account by userId and platform
-    const account = Array.from(this.socialMediaAccounts.values()).find(
-      (acc) =>
-        acc.userId === userId &&
-        acc.platform.toLowerCase() === platform.toLowerCase(),
-    );
+    const [account] = await db
+      .select()
+      .from(socialMediaAccounts)
+      .where(
+        and(
+          eq(socialMediaAccounts.userId, userId),
+          eq(socialMediaAccounts.platform, platform.toLowerCase())
+        )
+      )
+      .limit(1);
 
     if (!account) return undefined;
     if (!account.isConnected) return account; // Already disconnected
 
     // Mark as disconnected and clear OAuth credentials
-    const updated = {
-      ...account,
-      isConnected: false,
-      accessToken: null,
-      refreshToken: null,
-      lastSync: null,
-    };
-
-    this.socialMediaAccounts.set(account.id, updated);
+    const [updated] = await db
+      .update(socialMediaAccounts)
+      .set({
+        isConnected: false,
+        accessToken: null,
+        refreshToken: null,
+        lastSync: null,
+      })
+      .where(eq(socialMediaAccounts.id, account.id))
+      .returning();
+    
     return updated;
   }
 
