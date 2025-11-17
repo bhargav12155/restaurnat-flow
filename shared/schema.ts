@@ -881,7 +881,7 @@ export const engagementLeads = pgTable("engagement_leads", {
   id: serial("id").primaryKey(),
   publicUserId: integer("public_user_id").references(() => publicUsers.id),
   sessionId: text("session_id").references(() => userSessions.sessionId),
-  agentId: integer("agent_id").references(() => users.id),
+  agentId: varchar("agent_id").references(() => users.id),
   agentSlug: text("agent_slug").notNull(),
   engagementScore: integer("engagement_score").default(0),
   engagementReason: text("engagement_reason").notNull(),
