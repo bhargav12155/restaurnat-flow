@@ -964,3 +964,20 @@ export type ContentOpportunity = typeof contentOpportunities.$inferSelect;
 export type InsertContentOpportunity = z.infer<
   typeof insertContentOpportunitySchema
 >;
+
+// =====================================================
+// PKCE CODE STORAGE (for OAuth 2.0 flows)
+// =====================================================
+export const pkceStore = pgTable("pkce_store", {
+  state: varchar("state").primaryKey(),
+  codeVerifier: text("code_verifier").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPKCESchema = createInsertSchema(pkceStore).omit({
+  createdAt: true,
+});
+
+export type PKCEStore = typeof pkceStore.$inferSelect;
+export type InsertPKCE = z.infer<typeof insertPKCESchema>;
