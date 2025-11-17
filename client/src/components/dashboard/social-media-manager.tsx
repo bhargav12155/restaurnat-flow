@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { messages, friendlyError } from "@/lib/messages";
+import { friendlyError, messages } from "@/lib/messages";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -41,8 +41,8 @@ import {
   Twitter as X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { PropertySelector } from "./property-selector";
 import { MediaLibrary } from "./media-library";
+import { PropertySelector } from "./property-selector";
 
 interface SocialMediaAccount {
   id: string;
@@ -191,7 +191,7 @@ export function SocialMediaManager() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [selectedPostType, setSelectedPostType] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(
-    null
+    null,
   );
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -206,9 +206,9 @@ export function SocialMediaManager() {
   const [videoUploadUrl, setVideoUploadUrl] = useState<string | null>(null);
   const [showVideoUpload, setShowVideoUpload] = useState(false);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
-    null
+    null,
   );
-  const { toast} = useToast();
+  const { toast } = useToast();
 
   // OAuth-enabled platforms (only platforms with full OAuth backend support)
   const oauthPlatforms = [
@@ -257,7 +257,7 @@ export function SocialMediaManager() {
       popup = window.open(
         authUrl,
         `${platform}_oauth`,
-        `width=${width},height=${height},left=${left},top=${top}`
+        `width=${width},height=${height},left=${left},top=${top}`,
       );
 
       // Handle popup blocking with friendly message
@@ -332,7 +332,10 @@ export function SocialMediaManager() {
       } else {
         // Use friendlyError to provide context-aware messages (network, auth, etc.)
         const friendlyMsg = friendlyError(error);
-        const errorMsg = messages.oauth.error(platform, friendlyMsg.description);
+        const errorMsg = messages.oauth.error(
+          platform,
+          friendlyMsg.description,
+        );
         toast({
           title: errorMsg.title,
           description: errorMsg.description,
@@ -348,7 +351,11 @@ export function SocialMediaManager() {
     }
   };
 
-  const { data: accounts, isLoading } = useQuery<SocialMediaAccount[]>({
+  const {
+    data: accounts,
+    isLoading,
+    error,
+  } = useQuery<SocialMediaAccount[]>({
     queryKey: ["/api/social/accounts"],
   });
 
@@ -356,12 +363,18 @@ export function SocialMediaManager() {
   useEffect(() => {
     console.log("🔍 Social accounts data:", accounts);
     console.log("🔍 Is loading:", isLoading);
-  }, [accounts, isLoading]);
+    console.log("🔍 Error:", error);
+    console.log("🔍 Document cookies:", document.cookie);
+  }, [accounts, isLoading, error]);
 
   // Handle disconnect
   const disconnectMutation = useMutation({
     mutationFn: async (platform: string) => {
-      const response = await apiRequest("POST", `/api/social/disconnect/${platform}`, {});
+      const response = await apiRequest(
+        "POST",
+        `/api/social/disconnect/${platform}`,
+        {},
+      );
       return response.json();
     },
     onSuccess: (_, platform) => {
@@ -411,11 +424,11 @@ export function SocialMediaManager() {
 
       const photoMsg = {
         title: "Photo added!",
-        description: `Your property photo from ${selectedProperty.address} is ready to post`
+        description: `Your property photo from ${selectedProperty.address} is ready to post`,
       };
       toast({
         title: photoMsg.title,
-        description: photoMsg.description
+        description: photoMsg.description,
       });
     }
   }, [selectedProperty]);
@@ -425,7 +438,7 @@ export function SocialMediaManager() {
     try {
       // Check if we have a stored YouTube access token
       const youtubeAccount = accounts?.find(
-        (account) => account.platform === "youtube"
+        (account) => account.platform === "youtube",
       );
 
       if (!youtubeAccount || !youtubeAccount.isConnected) {
@@ -463,7 +476,7 @@ export function SocialMediaManager() {
         formData.append("description", content);
         formData.append(
           "accessToken",
-          (youtubeAccount as any).accessToken || ""
+          (youtubeAccount as any).accessToken || "",
         );
 
         const response = await fetch("/api/youtube/upload-video", {
@@ -474,7 +487,7 @@ export function SocialMediaManager() {
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(
-            errorData.error || "Failed to upload video to YouTube"
+            errorData.error || "Failed to upload video to YouTube",
           );
         }
 
@@ -515,12 +528,16 @@ export function SocialMediaManager() {
   }, [accounts]);
 
   const postMutation = useMutation({
-    mutationFn: async (data: { content: string; platforms: string[]; mediaIds?: string[] }) => {
+    mutationFn: async (data: {
+      content: string;
+      platforms: string[];
+      mediaIds?: string[];
+    }) => {
       // Check if YouTube is selected and handle on-demand authentication
       if (data.platforms.includes("youtube")) {
         return await handleYouTubePost(
           data.content,
-          uploadedVideo || undefined
+          uploadedVideo || undefined,
         );
       }
 
@@ -539,7 +556,7 @@ export function SocialMediaManager() {
             content: data.content,
             pageId: selectedFacebookPage,
             mediaIds: data.mediaIds || [],
-          }
+          },
         );
         return facebookResponse.json();
       } else if (data.platforms.includes("instagram")) {
@@ -551,7 +568,7 @@ export function SocialMediaManager() {
             content: data.content,
             mediaIds: data.mediaIds || [],
             // Instagram User ID will be read from environment variables
-          }
+          },
         );
         return instagramResponse.json();
       } else if (
@@ -666,7 +683,7 @@ export function SocialMediaManager() {
       const response = await apiRequest(
         "POST",
         "/api/content/social-post",
-        data
+        data,
       );
       return response.json();
     },
@@ -675,7 +692,7 @@ export function SocialMediaManager() {
         data.content +
           (data.hashtags
             ? " " + data.hashtags.map((tag: string) => "#" + tag).join(" ")
-            : "")
+            : ""),
       );
       toast({
         title: "Content Optimized!",
@@ -695,7 +712,7 @@ export function SocialMediaManager() {
   const generatePropertyContent = (
     property: Property,
     postType: string,
-    platform: string
+    platform: string,
   ) => {
     const formatPrice = (price: number) => {
       return new Intl.NumberFormat("en-US", {
@@ -761,16 +778,16 @@ DM for details! 📩
         }`,
 
         x: `🏠 JUST LISTED!\n\n${property.address}\n${formatPrice(
-          property.listPrice
+          property.listPrice,
         )}\n${property.bedrooms}BD ${
           property.bathrooms
         }BA\n\n${property.description.substring(
           0,
-          100
+          100,
         )}...\n\nContact Mike Bjork for details!\n\n#JustListed #OmahaRealEstate`,
 
         youtube: `🏠 NEW LISTING: ${property.address} | ${formatPrice(
-          property.listPrice
+          property.listPrice,
         )}
 
 Welcome to this stunning ${property.bedrooms} bedroom, ${
@@ -792,7 +809,7 @@ ${
 }this property is perfectly positioned for ${
           property.city
         } living. Whether you're a first-time homebuyer or looking to upgrade, this home offers incredible value at ${formatPrice(
-          property.listPrice
+          property.listPrice,
         )}.
 
 Key Features:
@@ -939,7 +956,7 @@ DM me now! 📩
 #PriceImprovement #OmahaHomes #Opportunity`,
 
         x: `💰 PRICE IMPROVED!\n\n${property.address}\nNOW ${formatPrice(
-          property.listPrice
+          property.listPrice,
         )}!\n\n${property.bedrooms}BD ${property.bathrooms}BA\n\n${
           property.neighborhood
             ? `${property.neighborhood} opportunity!`
@@ -947,7 +964,7 @@ DM me now! 📩
         }\n\nMike Bjork | BHHS\n\n#PriceImprovement`,
 
         youtube: `💰 PRICE IMPROVEMENT! ${property.address} | Now ${formatPrice(
-          property.listPrice
+          property.listPrice,
         )}
 
 Exciting news! This beautiful ${property.bedrooms} bedroom, ${
@@ -1059,7 +1076,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
       content = generatePropertyContent(
         selectedProperty,
         selectedPostType,
-        primaryPlatform
+        primaryPlatform,
       );
     }
 
@@ -1095,7 +1112,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
     setSelectedPlatforms((prev) =>
       prev.includes(platform)
         ? prev.filter((p) => p !== platform)
-        : [...prev, platform]
+        : [...prev, platform],
     );
   };
 
@@ -1160,13 +1177,14 @@ Mike Bjork | Berkshire Hathaway HomeServices
           </div>
           {accounts?.map((account) => {
             // Normalize platform name (handle aliases like twitter->x, facebook_page->facebook)
-            const normalizedPlatform = account.platform.toLowerCase()
-              .replace('twitter', 'x')
-              .replace('facebook_page', 'facebook')
-              .replace('_', '');
-            const platformInfo =
-              platformIcons[normalizedPlatform as keyof typeof platformIcons] ||
-              { icon: Settings, color: "text-gray-600" }; // Fallback for unknown platforms
+            const normalizedPlatform = account.platform
+              .toLowerCase()
+              .replace("twitter", "x")
+              .replace("facebook_page", "facebook")
+              .replace("_", "");
+            const platformInfo = platformIcons[
+              normalizedPlatform as keyof typeof platformIcons
+            ] || { icon: Settings, color: "text-gray-600" }; // Fallback for unknown platforms
 
             const PlatformIcon = platformInfo.icon;
 
@@ -1181,16 +1199,14 @@ Mike Bjork | Berkshire Hathaway HomeServices
                     onCheckedChange={(checked) =>
                       handlePlatformToggle(
                         account.platform,
-                        account.isConnected
+                        account.isConnected,
                       )
                     }
                     disabled={!account.isConnected}
                     className="h-5 w-5 bg-[#2d4450] text-[#304652]"
                     data-testid={`checkbox-${account.platform}`}
                   />
-                  <PlatformIcon
-                    className={`h-4 w-4 ${platformInfo.color}`}
-                  />
+                  <PlatformIcon className={`h-4 w-4 ${platformInfo.color}`} />
                   <span className="text-sm font-medium capitalize">
                     {account.platform}
                   </span>
@@ -1204,7 +1220,11 @@ Mike Bjork | Berkshire Hathaway HomeServices
                     <>
                       <Plug className="h-5 w-5 text-green-600" />
                       <Button
-                        onClick={() => disconnectMutation.mutate(account.platform.toLowerCase())}
+                        onClick={() =>
+                          disconnectMutation.mutate(
+                            account.platform.toLowerCase(),
+                          )
+                        }
                         disabled={disconnectMutation.isPending}
                         size="sm"
                         variant="outline"
@@ -1228,7 +1248,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
                     <>
                       <PlugZap className="h-5 w-5 text-red-600" />
                       {oauthPlatforms.includes(
-                        account.platform.toLowerCase()
+                        account.platform.toLowerCase(),
                       ) && (
                         <Button
                           onClick={() =>
@@ -1368,7 +1388,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
                       const generatedContent = generatePropertyContent(
                         selectedProperty,
                         newType,
-                        primaryPlatform
+                        primaryPlatform,
                       );
                       setPostContent(generatedContent);
                     }
@@ -1391,38 +1411,44 @@ Mike Bjork | Berkshire Hathaway HomeServices
           </div>
 
           {/* Facebook Page Selector */}
-          {selectedPlatforms.includes("facebook") && facebookPages.length > 0 && (
-            <div className="space-y-2">
-              <Label htmlFor="facebook-page-select" className="text-sm font-medium">
-                Facebook Page
-              </Label>
-              <select
-                id="facebook-page-select"
-                value={selectedFacebookPage}
-                onChange={(e) => setSelectedFacebookPage(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                data-testid="select-facebook-page"
-              >
-                <option value="">Select a Facebook Page to post to...</option>
-                {facebookPages.map((page: any) => (
-                  <option key={page.id} value={page.id}>
-                    {page.name}
-                  </option>
-                ))}
-              </select>
-              {!selectedFacebookPage && (
-                <p className="text-xs text-amber-600">
-                  ⚠️ Please select a Facebook Page before posting
-                </p>
-              )}
-            </div>
-          )}
+          {selectedPlatforms.includes("facebook") &&
+            facebookPages.length > 0 && (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="facebook-page-select"
+                  className="text-sm font-medium"
+                >
+                  Facebook Page
+                </Label>
+                <select
+                  id="facebook-page-select"
+                  value={selectedFacebookPage}
+                  onChange={(e) => setSelectedFacebookPage(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  data-testid="select-facebook-page"
+                >
+                  <option value="">Select a Facebook Page to post to...</option>
+                  {facebookPages.map((page: any) => (
+                    <option key={page.id} value={page.id}>
+                      {page.name}
+                    </option>
+                  ))}
+                </select>
+                {!selectedFacebookPage && (
+                  <p className="text-xs text-amber-600">
+                    ⚠️ Please select a Facebook Page before posting
+                  </p>
+                )}
+              </div>
+            )}
 
           {/* Media Library */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="text-xs font-medium text-muted-foreground">
-                Media Library {selectedMediaIds.length > 0 && `(${selectedMediaIds.length} selected)`}
+                Media Library{" "}
+                {selectedMediaIds.length > 0 &&
+                  `(${selectedMediaIds.length} selected)`}
               </div>
             </div>
             <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto">
@@ -1676,7 +1702,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
                       const response = await apiRequest(
                         "POST",
                         "/api/objects/upload",
-                        {}
+                        {},
                       );
                       const data = await response.json();
                       return {
