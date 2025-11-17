@@ -44,11 +44,11 @@ router.post("/agent/register", async (req: Request, res: Response) => {
 
     const { user, token } = await createAgent(validatedData);
 
-    // Set HTTP-only cookie for token
+    // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
     res.cookie("authToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -100,11 +100,11 @@ router.post("/agent/login", async (req: Request, res: Response) => {
 
     const { user, token } = await loginAgent(username, password);
 
-    // Set HTTP-only cookie for token
+    // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
     res.cookie("authToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -164,11 +164,11 @@ router.post("/public/login", async (req: Request, res: Response) => {
       name
     );
 
-    // Set HTTP-only cookie for token
+    // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
     res.cookie("authToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days for public users
     });
 
@@ -283,11 +283,11 @@ router.post("/login", async (req: Request, res: Response) => {
       if (loginResult.user) {
         const token = loginResult.token!;
 
-        // Set HTTP-only cookie for token
+        // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
         res.cookie("authToken", token, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
+          secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
 
@@ -318,11 +318,11 @@ router.post("/login", async (req: Request, res: Response) => {
     if (loginResult.user) {
       const token = loginResult.token!;
 
-      // Set HTTP-only cookie for token
+      // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
       res.cookie("authToken", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
