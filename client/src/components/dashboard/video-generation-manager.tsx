@@ -90,14 +90,14 @@ export function VideoGenerationManager() {
   const { data: customAvatarsData } = useQuery<any[]>({
     queryKey: ["/api/avatars"],
   });
-  
+
   // Fetch photo avatar groups to check for custom voices
   const { data: photoAvatarGroupsData } = useQuery<{
     avatar_group_list?: any[];
   }>({
     queryKey: ["/api/photo-avatars/groups"],
   });
-  
+
   // Fetch custom voices from Voice Library
   const { data: voiceLibraryVoices = [] } = useQuery<Array<{
     id: string;
@@ -108,7 +108,7 @@ export function VideoGenerationManager() {
   }>>({
     queryKey: ["/api/custom-voices"],
   });
-  
+
   // Combine all custom voices for the voice selector
   const customVoices = [
     // Regular avatars with custom voices
@@ -279,11 +279,11 @@ export function VideoGenerationManager() {
     const customVoice = isCustomVoice 
       ? customVoices.find((v: any) => v.id === selectedVoiceId)
       : null;
-    
+
     // Determine the voice ID to use
     let finalVoiceId = selectedVoiceId;
     let voiceLibraryId: string | undefined;
-    
+
     if (customVoice) {
       if (customVoice.type === 'voice_library') {
         // Voice Library voice - use special marker and pass library ID
@@ -520,7 +520,7 @@ export function VideoGenerationManager() {
                   <div className="border-t my-1" />
                 </>
               )}
-              
+
               {/* Professional Voices Section */}
               <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">
                 🎭 Professional Voices
@@ -821,7 +821,7 @@ export function VideoGenerationManager() {
                       <Video className="w-12 h-12 text-gray-600" />
                     </div>
                   )}
-                  
+
                   {/* Play Overlay */}
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <div className="bg-[#D4AF37] rounded-full p-3">
