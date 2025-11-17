@@ -1,0 +1,388 @@
+
+
+AI
+
+
+
+multi-users-realtyflow
+
+
+
+Access
+
+Republish
+
+
+Files
+
+
+
+Commands
+Search
+Packager files
+Config files
+
+
+
+/
+
+
+
+Theme
+
+
+Overview
+
+Logs
+
+Analytics
+
+Resources
+
+Domains
+
+Manage
+Search
+
+
+Errors only
+
+Date
+Time
+Deployment
+Source
+Log
+2025-11-17 16:47:41.58
+3f2547a0
+User
+🧹 Cleaned markdown wrapper from JSON response
+2025-11-17 16:52:36.02
+3f2547a0
+User
+🔐 [AUTH] Token decoded: {
+2025-11-17 16:52:36.02
+3f2547a0
+User
+id: 7,
+2025-11-17 16:52:36.02
+3f2547a0
+User
+email: 'bhargav@client.temp',
+2025-11-17 16:52:36.02
+3f2547a0
+User
+🔐 [AUTH] Public user authenticated: 7
+2025-11-17 16:52:36.03
+3f2547a0
+User
+🔐 [AUTH] Token decoded: {
+2025-11-17 16:52:36.03
+3f2547a0
+User
+email: 'bhargav@client.temp',
+2025-11-17 16:52:36.03
+3f2547a0
+User
+🔐 [AUTH] Public user authenticated: 7
+2025-11-17 16:52:36.03
+3f2547a0
+User
+id: 7,
+2025-11-17 16:52:36.03
+3f2547a0
+User
+}
+2025-11-17 16:52:36.03
+3f2547a0
+User
+username: undefined
+2025-11-17 16:52:36.03
+3f2547a0
+User
+type: 'public',
+2025-11-17 16:52:36.03
+3f2547a0
+User
+🔐 [AUTH] Token decoded: {
+2025-11-17 16:52:36.03
+3f2547a0
+User
+id: 7,
+2025-11-17 16:52:36.03
+3f2547a0
+User
+email: 'bhargav@client.temp',
+2025-11-17 16:52:36.03
+3f2547a0
+User
+username: undefined
+2025-11-17 16:52:36.03
+3f2547a0
+User
+}
+2025-11-17 16:52:36.03
+3f2547a0
+User
+type: 'public',
+2025-11-17 16:52:36.03
+3f2547a0
+User
+🔐 [AUTH] Public user authenticated: 7
+2025-11-17 16:52:36.03
+3f2547a0
+User
+id: 7,
+2025-11-17 16:52:36.03
+3f2547a0
+User
+}
+2025-11-17 16:52:36.03
+3f2547a0
+User
+type: 'public',
+2025-11-17 16:52:36.03
+3f2547a0
+User
+🔐 [AUTH] Public user authenticated: 7
+2025-11-17 16:52:36.03
+3f2547a0
+User
+email: 'bhargav@client.temp',
+2025-11-17 16:52:36.03
+3f2547a0
+User
+10:52:36 PM [express] GET /api/seo/keywords 200 in 1ms :: [{"userId":7,"keyword":"Omaha homes for sal…
+2025-11-17 16:52:36.03
+3f2547a0
+User
+email: 'bhargav@client.temp',
+2025-11-17 16:52:36.03
+3f2547a0
+User
+🔐 [AUTH] Token decoded: {
+2025-11-17 16:52:36.03
+3f2547a0
+User
+}
+2025-11-17 16:52:36.04
+3f2547a0
+User
+🔐 [AUTH] Token decoded: {
+2025-11-17 16:52:36.04
+3f2547a0
+User
+id: 7,
+2025-11-17 16:52:36.04
+3f2547a0
+User
+email: 'bhargav@client.temp',
+2025-11-17 16:52:36.04
+3f2547a0
+User
+🔐 [AUTH] Public user authenticated: 7
+2025-11-17 16:52:36.04
+3f2547a0
+User
+email: 'bhargav@client.temp',
+2025-11-17 16:52:36.11
+3f2547a0
+User
+✅ WebSocket client authenticated: userId=7
+2025-11-17 16:52:36.11
+3f2547a0
+User
+🔌 WebSocket client connection attempt
+2025-11-17 16:52:36.15
+3f2547a0
+User
+length: 115,
+2025-11-17 16:52:36.15
+3f2547a0
+User
+at async NeonPreparedQuery.execute (file:///home/runner/workspace/node_modules/drizzle-orm/neon-serverless/session.js:76:20)
+2025-11-17 16:52:36.15
+3f2547a0
+User
+position: '22',
+2025-11-17 16:52:36.78
+3f2547a0
+User
+10:52:36 PM [express] GET /api/media/ 200 in 2ms
+2025-11-17 16:53:30.76
+3f2547a0
+User
+🔌 WebSocket client disconnected
+2025-11-17 16:53:34.87
+3f2547a0
+User
+🔌 WebSocket client connection attempt
+2025-11-17 16:53:34.87
+3f2547a0
+User
+✅ WebSocket client authenticated: userId=12
+
+Collapse
+
+Wrap
+
+Colors
+
+Live
+
+
+
+Enable "Accessible Terminal" in Workspace Settings to use a screen reader with the shell.
+Selection deleted
+        .select({
+          propertyId: propertyInteractions.propertyId,
+          viewCount: drizzleSql<number>`COUNT(*)`,
+          totalTimeSpent: drizzleSql<number>`SUM(${propertyInteractions.timeSpentSeconds})`,
+        })
+        .from(propertyInteractions)
+        .where(
+          and(
+            eq(propertyInteractions.agentSlug, agentSlug),
+            eq(propertyInteractions.interactionType, "view")
+          )
+        )
+        .groupBy(propertyInteractions.propertyId)
+        .orderBy(drizzleSql`COUNT(*) DESC`)
+        .limit(10);
+
+      // Get like counts
+      const likeCounts = await db
+        .select({
+          propertyId: propertyLikes.propertyId,
+          likeCount: drizzleSql<number>`COUNT(*)`,
+        })
+        .from(propertyLikes)
+        .where(eq(propertyLikes.agentSlug, agentSlug))
+        .groupBy(propertyLikes.propertyId);
+
+      res.json({
+        topViewed,
+        likeCounts,
+      });
+    } catch (error) {
+      console.error("❌ Error fetching property analytics:", error);
+      res.status(500).json({ error: "Failed to fetch property analytics" });
+    }
+  });
+
+  // Get session details
+  app.get("/api/analytics/sessions/:agentSlug", async (req, res) => {
+    try {
+      const { agentSlug } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      const { userSessions } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+
+      const sessions = await db
+        .select()
+        .from(userSessions)
+        .where(eq(userSessions.agentSlug, agentSlug))
+        .orderBy(desc(userSessions.updatedAt))
+        .limit(limit);
+
+      res.json(sessions);
+    } catch (error) {
+      console.error("❌ Error fetching sessions:", error);
+      res.status(500).json({ error: "Failed to fetch sessions" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
+
+Selection deleted
+    return assets.sort((a, b) => {
+      const aTime = a.createdAt?.getTime() || 0;
+      const bTime = b.createdAt?.getTime() || 0;
+      return bTime - aTime;
+    });
+  }
+
+  async getMediaAssetById(id: string): Promise<MediaAsset | undefined> {
+    return this.mediaAssets.get(id);
+  }
+
+  async createMediaAsset(asset: InsertMediaAsset): Promise<MediaAsset> {
+    const newAsset: MediaAsset = {
+      id: randomUUID(),
+      ...asset,
+      title: asset.title ?? null,
+      description: asset.description ?? null,
+      metadata: asset.metadata ?? null,
+      createdAt: new Date(),
+    };
+    this.mediaAssets.set(newAsset.id, newAsset);
+    return newAsset;
+  }
+
+  async updateMediaAsset(
+    id: string,
+    updates: Partial<MediaAsset>
+  ): Promise<MediaAsset | undefined> {
+    const asset = this.mediaAssets.get(id);
+    if (!asset) return undefined;
+
+    const updated = { ...asset, ...updates };
+    this.mediaAssets.set(id, updated);
+    return updated;
+  }
+
+  async deleteMediaAsset(id: string): Promise<boolean> {
+    return this.mediaAssets.delete(id);
+  }
+
+  async createPostMedia(postMedias: InsertPostMedia[]): Promise<PostMedia[]> {
+    const results: PostMedia[] = [];
+    for (const pm of postMedias) {
+      const newPostMedia: PostMedia = {
+        id: randomUUID(),
+        ...pm,
+        orderIndex: pm.orderIndex ?? null,
+        createdAt: new Date(),
+      };
+      this.postMedia.set(newPostMedia.id, newPostMedia);
+      results.push(newPostMedia);
+    }
+    return results;
+  }
+
+  async getPostMedia(postId: string): Promise<PostMedia[]> {
+    return Array.from(this.postMedia.values())
+      .filter((pm) => pm.postId === postId)
+      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+  }
+}
+
+export const storage = new MemStorage();
+
+
+All Databases
+
+Production Database
+
+Refresh
+Tables
+ai_content
+0 rows
+file_uploads
+0 rows
+properties
+0 rows
+public_users
+13 rows
+seo_keywords
+0 rows
+sessions
+0 rows
+social_posts
+0 rows
+user_activity
+0 rows
+users
+0 rows
