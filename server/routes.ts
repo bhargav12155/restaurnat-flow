@@ -1013,13 +1013,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Detect base URL from the actual request (works in prod, dev, local, and iframes)
-      const protocol = req.protocol || 'https';
       const host = req.get('host') || 'localhost:5000';
+      const isLocal = host.includes('localhost');
+      
+      // Force HTTPS for Replit domains (behind reverse proxy), HTTP only for localhost
+      const protocol = isLocal ? 'http' : 'https';
       const baseUrl = `${protocol}://${host}`;
       
       const isProduction = host.includes('multi-users-realtyflow.replit.app');
       const isDev = host.includes('janeway.replit.dev');
-      const isLocal = host.includes('localhost');
       
       console.log(`🌐 OAuth base URL: ${baseUrl} (prod: ${isProduction}, dev: ${isDev}, local: ${isLocal})`);
 
@@ -1211,13 +1213,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : undefined;
 
       // Detect base URL from the actual request (works in prod, dev, local, and iframes)
-      const protocol = req.protocol || 'https';
       const host = req.get('host') || 'localhost:5000';
+      const isLocal = host.includes('localhost');
+      
+      // Force HTTPS for Replit domains (behind reverse proxy), HTTP only for localhost
+      const protocol = isLocal ? 'http' : 'https';
       const baseUrl = `${protocol}://${host}`;
       
       const isProduction = host.includes('multi-users-realtyflow.replit.app');
       const isDev = host.includes('janeway.replit.dev');
-      const isLocal = host.includes('localhost');
       
       console.log(`🌐 OAuth callback base URL: ${baseUrl} (prod: ${isProduction}, dev: ${isDev}, local: ${isLocal})`);
 
