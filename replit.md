@@ -24,6 +24,13 @@ The server runs on Express.js with TypeScript in ESM mode. Authentication is han
 - **Cookie Settings**: Applied across all 5 auth endpoints (agent register/login, public login, universal login paths)
 - **CORS Configuration**: Credentials enabled for NebraskaHomeHub domains to support cross-origin requests
 
+**iMakePage Integration**: Secure auto-login when embedded in iMakePage using standard cross-origin communication:
+- **PostMessage API**: Primary method for secure parent-iframe communication with origin validation
+- **URL Parameters**: Alternative method using `?autoLogin=true&userEmail=X&source=imakepage`
+- **Origin Whitelist**: Only accepts messages from https://www.imakepage.com and https://imakepage.com
+- **Automatic Fallback**: Gracefully falls back to manual login if integration unavailable
+- **No Backend Proxy**: All communication happens client-side to prevent cookie leakage
+
 **Social Media OAuth System**: Implements secure OAuth 2.0 flows for third-party platform integrations:
 - **PKCE Implementation**: Uses SHA-256 code challenge/verifier pairs with 10-minute expiration for enhanced security
 - **State Management**: Temporary in-memory storage for PKCE codes with automatic cleanup
