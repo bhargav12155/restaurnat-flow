@@ -1012,16 +1012,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `✅ OAuth connect for user: ${userId} (${user.email || user.username})`
       );
 
-      // Read credentials from Replit Secrets (environment variables)
-      // Priority: Published URL > Dev URL > BASE_URL > Localhost
-      const baseUrl =
-        (process.env.REPLIT_DEPLOYMENT_URL
-          ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
-          : process.env.REPLIT_DEV_DOMAIN
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : process.env.BASE_URL || "http://localhost:5000");
+      // Detect base URL from the actual request (works in prod, dev, local, and iframes)
+      const protocol = req.protocol || 'https';
+      const host = req.get('host') || 'localhost:5000';
+      const baseUrl = `${protocol}://${host}`;
       
-      console.log(`🌐 OAuth base URL: ${baseUrl} (production: ${!!process.env.REPLIT_DEPLOYMENT_URL})`);
+      const isProduction = host.includes('multi-users-realtyflow.replit.app');
+      const isDev = host.includes('janeway.replit.dev');
+      const isLocal = host.includes('localhost');
+      
+      console.log(`🌐 OAuth base URL: ${baseUrl} (prod: ${isProduction}, dev: ${isDev}, local: ${isLocal})`);
 
       // Create state parameter with userId for OAuth callback
       const state = Buffer.from(JSON.stringify({ userId, platform })).toString(
@@ -1210,16 +1210,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? decodeURIComponent(rawState)
         : undefined;
 
-      // Use production URL for Replit deployments
-      // Priority: Published URL > Dev URL > BASE_URL > Localhost
-      const baseUrl =
-        (process.env.REPLIT_DEPLOYMENT_URL
-          ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
-          : process.env.REPLIT_DEV_DOMAIN
-          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : process.env.BASE_URL || "http://localhost:5000");
+      // Detect base URL from the actual request (works in prod, dev, local, and iframes)
+      const protocol = req.protocol || 'https';
+      const host = req.get('host') || 'localhost:5000';
+      const baseUrl = `${protocol}://${host}`;
       
-      console.log(`🌐 OAuth callback base URL: ${baseUrl} (production: ${!!process.env.REPLIT_DEPLOYMENT_URL})`);
+      const isProduction = host.includes('multi-users-realtyflow.replit.app');
+      const isDev = host.includes('janeway.replit.dev');
+      const isLocal = host.includes('localhost');
+      
+      console.log(`🌐 OAuth callback base URL: ${baseUrl} (prod: ${isProduction}, dev: ${isDev}, local: ${isLocal})`);
 
       if (error) {
         return res.redirect(`${baseUrl}/?oauth_error=${error}`);
