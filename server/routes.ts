@@ -7,7 +7,7 @@ import {
   updateScheduledPostSchema,
 } from "@shared/schema";
 import crypto from "crypto";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import type { Express, NextFunction, Request, Response } from "express";
 import express from "express";
 import fs from "fs";
@@ -33,12 +33,6 @@ import { SocialMediaError, socialMediaService } from "./services/socialMedia";
 import { storage } from "./storage";
 import { realtimeService } from "./websocket";
 
-// In-memory store for PKCE code verifiers (in production, use Redis or session storage)
-const pkceStore = new Map<
-  string,
-  { codeVerifier: string; expiresAt: number }
->();
-
 const DEFAULT_SOCIAL_SAMPLE_IMAGE =
   process.env.SOCIAL_TEST_IMAGE_URL ||
   "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1080&q=80";
@@ -52,13 +46,44 @@ function generateCodeChallenge(verifier: string): string {
   return crypto.createHash("sha256").update(verifier).digest("base64url");
 }
 
+// Database-backed PKCE storage functions
+async function storePKCE(state: string, codeVerifier: string, expiresInMs: number = 600000) {
+  const expiresAt = new Date(Date.now() + expiresInMs);
+  await db.insert(schema.pkceStore).values({
+    state,
+    codeVerifier,
+    expiresAt,
+  }).onConflictDoUpdate({
+    target: schema.pkceStore.state,
+    set: { codeVerifier, expiresAt }
+  });
+}
+
+async function retrievePKCE(state: string): Promise<{ codeVerifier: string; expiresAt: Date } | null> {
+  const result = await db
+    .select()
+    .from(schema.pkceStore)
+    .where(eq(schema.pkceStore.state, state))
+    .limit(1);
+  
+  if (result.length === 0) return null;
+  
+  // Delete after retrieval (one-time use)
+  await db.delete(schema.pkceStore).where(eq(schema.pkceStore.state, state));
+  
+  return {
+    codeVerifier: result[0].codeVerifier,
+    expiresAt: result[0].expiresAt,
+  };
+}
+
 // Clean up expired PKCE entries every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of pkceStore.entries()) {
-    if (value.expiresAt < now) {
-      pkceStore.delete(key);
-    }
+setInterval(async () => {
+  const now = new Date();
+  try {
+    await db.delete(schema.pkceStore).where(sql`${schema.pkceStore.expiresAt} < ${now}`);
+  } catch (error) {
+    console.error("Error cleaning up expired PKCE entries:", error);
   }
 }, 10 * 60 * 1000);
 
@@ -935,11 +960,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const codeVerifier = generateCodeVerifier();
         const codeChallenge = generateCodeChallenge(codeVerifier);
 
-        // Store code verifier with state as key (expires in 10 minutes)
-        pkceStore.set(state, {
-          codeVerifier,
-          expiresAt: Date.now() + 10 * 60 * 1000,
-        });
+        // Store code verifier in database with state as key (expires in 10 minutes)
+        await storePKCE(state, codeVerifier, 10 * 60 * 1000);
 
         twitterUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${
           process.env.TWITTER_CLIENT_ID
@@ -1540,10 +1562,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
         }
 
-        // Retrieve code verifier from PKCE store using state parameter
+        // Retrieve code verifier from database using state parameter
         const pkceData = decodedStateString
-          ? pkceStore.get(decodedStateString)
-          : undefined;
+          ? await retrievePKCE(decodedStateString)
+          : null;
         if (!pkceData) {
           console.error(
             "Twitter OAuth: PKCE code verifier not found for state:",
@@ -1555,19 +1577,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Check if PKCE data has expired
-        if (pkceData.expiresAt < Date.now()) {
-          if (decodedStateString) {
-            pkceStore.delete(decodedStateString);
-          }
+        if (pkceData.expiresAt.getTime() < Date.now()) {
           console.error("Twitter OAuth: PKCE code verifier expired");
           return res.redirect(`${baseUrl}/?oauth_error=pkce_verifier_expired`);
         }
 
-        // Clean up PKCE data after use
+        // Code verifier retrieved and automatically cleaned up
         const codeVerifier = pkceData.codeVerifier;
-        if (decodedStateString) {
-          pkceStore.delete(decodedStateString);
-        }
 
         try {
           // Exchange code for access token using Twitter OAuth 2.0
