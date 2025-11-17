@@ -1792,29 +1792,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Social media endpoints
   app.get("/api/social/accounts", requireAuth, async (req, res) => {
     try {
+      console.log(`\n🔍 [API] /api/social/accounts - Request from user:`, req.user?.id);
+      
       if (!req.user?.id) {
+        console.log(`❌ [API] Unauthorized - no user ID`);
         return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Resolve DB user ID to MemStorage UUID (same logic as connect endpoint)
       let userId = String(req.user.id);
+      console.log(`🔍 [API] Looking up user by ID: ${userId}`);
       let user = await storage.getUser(userId);
 
       // If not found by ID, try by email
       if (!user && req.user.email) {
+        console.log(`🔍 [API] User not found by ID, trying email: ${req.user.email}`);
         const allUsers = Array.from(storage.users?.values() || []);
         user = allUsers.find((u) => u.email === req.user.email);
       }
 
       // If not found by email, try by username
       if (!user && req.user.username) {
+        console.log(`🔍 [API] User not found by email, trying username: ${req.user.username}`);
         user = await storage.getUserByUsername(req.user.username);
+      }
+
+      if (user) {
+        console.log(`✅ [API] Found user: ${user.id} (${user.email})`);
+      } else {
+        console.log(`⚠️ [API] User not found in storage`);
       }
 
       // Get social media accounts (empty if user not found)
       const socialAccounts = user
         ? await storage.getSocialMediaAccounts(user.id)
         : [];
+      
+      console.log(`📊 [API] Retrieved ${socialAccounts.length} social media accounts`);
 
       // Map accounts to include connection status
       const connectedPlatforms = new Set(

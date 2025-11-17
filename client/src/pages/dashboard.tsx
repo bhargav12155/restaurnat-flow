@@ -27,6 +27,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
+import { VERSION_DISPLAY } from "@/lib/version";
 
 export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -177,6 +178,9 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center space-x-4">
+              <div className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
+                {VERSION_DISPLAY}
+              </div>
               <Button
                 onClick={handleGenerateContent}
                 disabled={isGenerating}
