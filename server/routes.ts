@@ -388,6 +388,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.user.email || `${sessionId}@placeholder.realtyflow`;
 
       user = await storage.createUser({
+        id: sessionId, // 🔥 FIX: Use session ID (database ID) instead of generating new UUID!
         username:
           req.user.username ||
           req.user.email?.split("@")[0] ||
@@ -985,11 +986,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // If user still not found, create them ONCE in MemStorage
+      // CRITICAL FIX: Use the database user ID to prevent UUID mismatch!
       if (!user) {
         console.log(
-          `   → User not in MemStorage, creating with auto-generated UUID...`
+          `   → User not in MemStorage, creating with database ID: ${userId}...`
         );
         user = await storage.createUser({
+          id: userId, // 🔥 FIX: Use database ID instead of generating new UUID!
           username:
             req.user.username ||
             req.user.email?.split("@")[0] ||
@@ -1003,7 +1006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             | "team_lead",
         });
         console.log(
-          `   ✅ Created user in MemStorage: ${user.id} (DB ID was: ${userId})`
+          `   ✅ Created user in MemStorage with matching DB ID: ${user.id}`
         );
       } else {
         console.log(`   ✅ Reusing existing MemStorage user: ${user.id}`);
