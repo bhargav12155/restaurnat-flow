@@ -1744,28 +1744,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Return all platforms with their connection status
+      // Order: Working platforms first (Facebook, X, YouTube, LinkedIn), then non-working (Instagram, TikTok)
       const platforms = [
         {
           id: nanoid(),
           platform: "facebook",
           isConnected: connectedPlatforms.has("facebook"),
           lastSync: connectedPlatforms.has("facebook")
-            ? new Date().toISOString()
-            : null,
-        },
-        {
-          id: nanoid(),
-          platform: "instagram",
-          isConnected: connectedPlatforms.has("instagram"),
-          lastSync: connectedPlatforms.has("instagram")
-            ? new Date().toISOString()
-            : null,
-        },
-        {
-          id: nanoid(),
-          platform: "linkedin",
-          isConnected: connectedPlatforms.has("linkedin"),
-          lastSync: connectedPlatforms.has("linkedin")
             ? new Date().toISOString()
             : null,
         },
@@ -1781,17 +1766,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         {
           id: nanoid(),
-          platform: "tiktok",
-          isConnected: connectedPlatforms.has("tiktok"),
-          lastSync: connectedPlatforms.has("tiktok")
+          platform: "youtube",
+          isConnected: connectedPlatforms.has("youtube"),
+          lastSync: connectedPlatforms.has("youtube")
             ? new Date().toISOString()
             : null,
         },
         {
           id: nanoid(),
-          platform: "youtube",
-          isConnected: connectedPlatforms.has("youtube"),
-          lastSync: connectedPlatforms.has("youtube")
+          platform: "linkedin",
+          isConnected: connectedPlatforms.has("linkedin"),
+          lastSync: connectedPlatforms.has("linkedin")
+            ? new Date().toISOString()
+            : null,
+        },
+        {
+          id: nanoid(),
+          platform: "instagram",
+          isConnected: connectedPlatforms.has("instagram"),
+          lastSync: connectedPlatforms.has("instagram")
+            ? new Date().toISOString()
+            : null,
+        },
+        {
+          id: nanoid(),
+          platform: "tiktok",
+          isConnected: connectedPlatforms.has("tiktok"),
+          lastSync: connectedPlatforms.has("tiktok")
             ? new Date().toISOString()
             : null,
         },
