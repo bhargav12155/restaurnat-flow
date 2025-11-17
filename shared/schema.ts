@@ -822,7 +822,7 @@ export type PlatformScore = z.infer<typeof platformScoreSchema>;
 // User Sessions - Track anonymous user browsing sessions
 export const userSessions = pgTable("user_sessions", {
   id: serial("id").primaryKey(),
-  sessionId: text("session_id").notNull().unique(),
+  sessionId: text("session_id").notNull(),
   publicUserId: integer("public_user_id").references(() => publicUsers.id),
   agentSlug: text("agent_slug").notNull(),
   ipAddress: text("ip_address"),
@@ -843,7 +843,9 @@ export const userSessions = pgTable("user_sessions", {
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  sessionIdKey: unique("user_sessions_session_id_key").on(table.sessionId),
+}));
 
 // Property Interactions - Track individual user interactions
 export const propertyInteractions = pgTable("property_interactions", {
