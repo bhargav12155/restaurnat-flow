@@ -1153,9 +1153,18 @@ Mike Bjork | Berkshire Hathaway HomeServices
             </h3>
           </div>
           {accounts?.map((account) => {
+            // Normalize platform name (handle aliases like twitter->x, facebook_page->facebook)
+            const normalizedPlatform = account.platform.toLowerCase()
+              .replace('twitter', 'x')
+              .replace('facebook_page', 'facebook')
+              .replace('_', '');
             const platformInfo =
-              platformIcons[account.platform as keyof typeof platformIcons];
-            if (!platformInfo) return null;
+              platformIcons[normalizedPlatform as keyof typeof platformIcons] ||
+              { icon: Settings, color: "text-gray-600" }; // Fallback for unknown platforms
+            
+            if (!platformIcons[normalizedPlatform as keyof typeof platformIcons]) {
+              console.warn(`Using fallback icon for unknown platform: ${account.platform} (normalized: ${normalizedPlatform})`);
+            }
 
             return (
               <div
