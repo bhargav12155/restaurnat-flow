@@ -58,13 +58,17 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
       }
 
       // Check if message contains iMakePage user data
-      if (event.data && event.data.source === "imakepage" && event.data.userData) {
+      if (
+        event.data &&
+        event.data.source === "imakepage" &&
+        event.data.userData
+      ) {
         console.log("Received iMakePage user data via postMessage");
         setIsAutoLogging(true);
 
         try {
           const { userData } = event.data;
-          
+
           // Extract identifier from iMakePage user data
           const identifier =
             userData.email ||
@@ -80,14 +84,18 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
               setSuccess("Welcome from iMakePage!");
               setTimeout(() => handleLoginSuccess(), 1000);
             } else {
-              setLocalError("Auto-login failed. Please enter your identifier manually.");
+              setLocalError(
+                "Auto-login failed. Please enter your identifier manually.",
+              );
             }
           } else {
             setLocalError("Unable to extract user information from iMakePage.");
           }
         } catch (error) {
           console.error("iMakePage postMessage login error:", error);
-          setLocalError("Auto-login failed. Please enter your identifier manually.");
+          setLocalError(
+            "Auto-login failed. Please enter your identifier manually.",
+          );
         } finally {
           setIsAutoLogging(false);
         }
@@ -102,7 +110,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
       console.log("In iframe - requesting user data from parent window");
       window.parent.postMessage(
         { source: "realtyflow", action: "requestUserData" },
-        "*" // Will be validated by the parent
+        "*", // Will be validated by the parent
       );
     }
 
@@ -122,7 +130,10 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
 
       // Priority 1: iMakePage URL parameters
       if (autoLogin === "true" && userEmail && source === "imakepage") {
-        console.log("Auto-login detected from iMakePage URL params for:", userEmail);
+        console.log(
+          "Auto-login detected from iMakePage URL params for:",
+          userEmail,
+        );
         setIsAutoLogging(true);
         setUserIdentifier(userEmail);
 
@@ -135,13 +146,13 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
           } else {
             setLocalError(
               loginResult.message ||
-                "Auto-login failed. Please enter your identifier manually."
+                "Auto-login failed. Please enter your identifier manually.",
             );
           }
         } catch (error) {
           console.error("Auto-login error:", error);
           setLocalError(
-            "Auto-login failed. Please enter your identifier manually."
+            "Auto-login failed. Please enter your identifier manually.",
           );
         } finally {
           setIsAutoLogging(false);
@@ -164,13 +175,13 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
           } else {
             setLocalError(
               loginResult.message ||
-                "Auto-login failed. Please enter your identifier manually."
+                "Auto-login failed. Please enter your identifier manually.",
             );
           }
         } catch (error) {
           console.error("Auto-login error:", error);
           setLocalError(
-            "Auto-login failed. Please enter your identifier manually."
+            "Auto-login failed. Please enter your identifier manually.",
           );
         } finally {
           setIsAutoLogging(false);
@@ -203,7 +214,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     } else {
       setLocalError(
         loginResult.message ||
-          "Authentication failed. Please check your identifier."
+          "Authentication failed. Please check your identifier.",
       );
     }
   };

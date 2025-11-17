@@ -58,7 +58,7 @@ export function MediaLibrary({
   const { toast } = useToast();
   const [filter, setFilter] = useState<"all" | "photo" | "video">(typeFilter);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  
+
   // Sync internal state with prop to ensure controlled behavior
   const selectedIds = selectedMediaIds;
 
@@ -72,19 +72,22 @@ export function MediaLibrary({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("type", file.type.startsWith("video/") ? "video" : "photo");
+      formData.append(
+        "type",
+        file.type.startsWith("video/") ? "video" : "photo",
+      );
       formData.append("source", "upload");
-      
+
       const response = await fetch("/api/media/upload", {
         method: "POST",
         body: formData,
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Upload failed");
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
@@ -119,7 +122,7 @@ export function MediaLibrary({
 
   const toggleSelection = (mediaId: string) => {
     let newSelection: string[];
-    
+
     if (multiSelect) {
       newSelection = selectedIds.includes(mediaId)
         ? selectedIds.filter((id) => id !== mediaId)
@@ -127,7 +130,7 @@ export function MediaLibrary({
     } else {
       newSelection = selectedIds.includes(mediaId) ? [] : [mediaId];
     }
-    
+
     // Notify parent of selection change - parent manages state
     onSelectMedia?.(newSelection);
   };
@@ -143,14 +146,23 @@ export function MediaLibrary({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Label>Filter:</Label>
-          <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+          <Select
+            value={filter}
+            onValueChange={(v) => setFilter(v as typeof filter)}
+          >
             <SelectTrigger className="w-32" data-testid="select-media-filter">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all" data-testid="filter-all">All Media</SelectItem>
-              <SelectItem value="photo" data-testid="filter-photo">Photos</SelectItem>
-              <SelectItem value="video" data-testid="filter-video">Videos</SelectItem>
+              <SelectItem value="all" data-testid="filter-all">
+                All Media
+              </SelectItem>
+              <SelectItem value="photo" data-testid="filter-photo">
+                Photos
+              </SelectItem>
+              <SelectItem value="video" data-testid="filter-video">
+                Videos
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -186,8 +198,12 @@ export function MediaLibrary({
       {/* Selection summary */}
       {selectedIds.length > 0 && (
         <div className="flex items-center justify-between bg-primary/10 p-3 rounded-lg">
-          <span className="text-sm font-medium" data-testid="text-selection-count">
-            {selectedIds.length} {selectedIds.length === 1 ? "item" : "items"} selected
+          <span
+            className="text-sm font-medium"
+            data-testid="text-selection-count"
+          >
+            {selectedIds.length} {selectedIds.length === 1 ? "item" : "items"}{" "}
+            selected
           </span>
           <Button
             variant="ghost"
@@ -250,14 +266,14 @@ export function MediaLibrary({
                       <FileVideo className="h-12 w-12 text-muted-foreground" />
                     </div>
                   )}
-                  
+
                   {/* Selection indicator */}
                   {selectedIds.includes(asset.id) && (
                     <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-1">
                       <Check className="h-4 w-4" />
                     </div>
                   )}
-                  
+
                   {/* Type badge */}
                   <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
                     {asset.type === "photo" ? (
@@ -271,7 +287,10 @@ export function MediaLibrary({
 
                 {/* Media info */}
                 <div className="p-3 space-y-1">
-                  <div className="text-sm font-medium truncate" data-testid={`text-title-${asset.id}`}>
+                  <div
+                    className="text-sm font-medium truncate"
+                    data-testid={`text-title-${asset.id}`}
+                  >
                     {asset.title || "Untitled"}
                   </div>
                   <div className="text-xs text-muted-foreground capitalize">
