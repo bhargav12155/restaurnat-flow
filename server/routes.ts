@@ -8682,6 +8682,14 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // =====================================================
+  // IMAKEPAGE INTEGRATION
+  // =====================================================
+  
+  // NOTE: iMakePage integration uses postMessage API for secure cross-origin communication
+  // The parent iMakePage window sends user data to the iframe via window.postMessage
+  // No backend proxy needed - all communication happens client-side securely
+
   const httpServer = createServer(app);
   return httpServer;
 }
