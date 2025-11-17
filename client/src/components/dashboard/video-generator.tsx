@@ -44,8 +44,6 @@ import {
   Eye,
   Share2,
 } from "lucide-react";
-import { SiFacebook, SiYoutube, SiLinkedin } from "react-icons/si";
-import { FaSquareXTwitter } from "react-icons/fa6";
 
 interface Avatar {
   id: string;
@@ -123,19 +121,11 @@ export function VideoGenerator() {
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
   const [uploadVideoTitle, setUploadVideoTitle] = useState("");
   const [uploadVideoDescription, setUploadVideoDescription] = useState("");
-  const [completedVideo, setCompletedVideo] = useState<VideoContent | null>(
-    null,
-  );
-  const [showPostDialog, setShowPostDialog] = useState(false);
-  const [postMessage, setPostMessage] = useState("");
-  const [selectedPostPlatforms, setSelectedPostPlatforms] = useState<string[]>(
-    [],
-  );
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const previousStatusesRef = useRef<Record<string, string>>({});
-  const shownDialogForVideoRef = useRef<Set<string>>(new Set());
+  const shownToastForVideoRef = useRef<Set<string>>(new Set());
 
   const { data: avatars } = useQuery<Avatar[]>({
     queryKey: ["/api/avatars"],
@@ -164,23 +154,17 @@ export function VideoGenerator() {
     videos.forEach((video) => {
       const previousStatus = previousStatusesRef.current[video.id];
       const currentStatus = video.status;
-      const alreadyShownDialog = shownDialogForVideoRef.current.has(video.id);
+      const alreadyShownToast = shownToastForVideoRef.current.has(video.id);
 
       // Detect when a video is ready (either just transitioned OR initially ready)
       const isReady = currentStatus === "ready";
       const justTransitioned = previousStatus && previousStatus !== "ready";
-      const shouldShowDialog =
-        isReady && !alreadyShownDialog && (!previousStatus || justTransitioned);
+      const shouldShowToast =
+        isReady && !alreadyShownToast && (!previousStatus || justTransitioned);
 
-      if (shouldShowDialog) {
-        // Video is ready - show the post dialog!
-        setCompletedVideo(video);
-        setPostMessage(`Check out my new video about ${video.topic}!`);
-        setShowPostDialog(true);
-        // DON'T reset platform selection - preserve for retry capability
-
-        // Mark that we've shown the dialog for this video
-        shownDialogForVideoRef.current.add(video.id);
+      if (shouldShowToast) {
+        // Video is ready - show toast notification
+        shownToastForVideoRef.current.add(video.id);
 
         toast({
           title: "🎉 Video Ready!",
@@ -192,20 +176,6 @@ export function VideoGenerator() {
       previousStatusesRef.current[video.id] = currentStatus;
     });
   }, [videos, toast]);
-
-  // Sync completedVideo with latest data from polling (to pick up videoUrl when it becomes available)
-  useEffect(() => {
-    if (!completedVideo || !videos) return;
-
-    const latestVideoData = videos.find((v) => v.id === completedVideo.id);
-    if (
-      latestVideoData &&
-      latestVideoData.videoUrl !== completedVideo.videoUrl
-    ) {
-      // videoUrl has been updated - refresh completedVideo
-      setCompletedVideo(latestVideoData);
-    }
-  }, [videos, completedVideo]);
 
   const createVideoMutation = useMutation({
     mutationFn: async (videoData: any) => {
@@ -330,89 +300,6 @@ export function VideoGenerator() {
       toast({
         title: "Upload Failed",
         description: error.message || "Failed to upload to YouTube",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const postVideoToSocialMutation = useMutation({
-    mutationFn: async ({
-      videoUrl,
-      message,
-      platforms,
-    }: {
-      videoUrl: string;
-      message: string;
-      platforms: string[];
-    }) => {
-      // Post to each selected platform
-      const results = await Promise.allSettled(
-        platforms.map(async (platform) => {
-          if (platform === "youtube") {
-            // Use YouTube-specific endpoint
-            return apiRequest("POST", "/api/youtube/post-video", {
-              videoUrl,
-              title: message.substring(0, 100),
-              description: message,
-            }).then((res) => res.json());
-          } else if (platform === "facebook") {
-            // Use Facebook video upload endpoint
-            return apiRequest("POST", "/api/facebook/post-video", {
-              videoUrl,
-              message,
-            }).then((res) => res.json());
-          } else {
-            // For other platforms, use general endpoint
-            return apiRequest("POST", "/api/social/post-video", {
-              platform,
-              videoUrl,
-              message,
-            }).then((res) => res.json());
-          }
-        }),
-      );
-      return { results, platforms };
-    },
-    onSuccess: ({ results, platforms }) => {
-      const successful = results.filter((r) => r.status === "fulfilled").length;
-      const failed = results.filter((r) => r.status === "rejected").length;
-
-      // Refresh social accounts status
-      queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
-
-      // Only close dialog if at least one platform succeeded
-      if (successful > 0) {
-        setShowPostDialog(false);
-        setCompletedVideo(null);
-        setSelectedPostPlatforms([]);
-        setPostMessage("");
-      }
-
-      if (failed === 0) {
-        toast({
-          title: "Posted Successfully!",
-          description: `Your video has been shared to ${successful} platform${successful > 1 ? "s" : ""}`,
-        });
-      } else if (successful > 0) {
-        toast({
-          title: "Partially Posted",
-          description: `Posted to ${successful} platform${successful > 1 ? "s" : ""}, ${failed} failed. Dialog kept open to retry.`,
-          variant: "default",
-        });
-      } else {
-        toast({
-          title: "Posting Failed",
-          description:
-            "Failed to post to all platforms. Please check connections and try again.",
-          variant: "destructive",
-        });
-        // Keep dialog open so user can retry
-      }
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Posting Failed",
-        description: error.message || "Failed to post video to social media",
         variant: "destructive",
       });
     },
@@ -1085,14 +972,19 @@ export function VideoGenerator() {
                   watchingVideo.status !== "uploaded" && (
                     <Button
                       onClick={() => {
-                        // Call upload to YouTube mutation
-                        setWatchingVideo(null);
-                        // You can trigger the upload from here if needed
+                        uploadToYoutubeMutation.mutate({
+                          videoId: watchingVideo.id,
+                          title: watchingVideo.title,
+                          description: watchingVideo.topic,
+                          tags: watchingVideo.tags,
+                        });
                       }}
+                      disabled={uploadToYoutubeMutation.isPending}
                       className="bg-red-600 hover:bg-red-700 text-white"
+                      data-testid={`upload-youtube-modal-${watchingVideo.id}`}
                     >
                       <Youtube className="mr-2 h-4 w-4" />
-                      Upload to YouTube
+                      {uploadToYoutubeMutation.isPending ? "Uploading..." : "Upload to YouTube"}
                     </Button>
                   )}
 
@@ -1117,213 +1009,6 @@ export function VideoGenerator() {
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Post to Social Media Dialog */}
-      <Dialog open={showPostDialog} onOpenChange={setShowPostDialog}>
-        <DialogContent className="sm:max-w-lg" data-testid="dialog-post-video">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Share2 className="h-5 w-5 text-primary" />
-              Share Your Video
-            </DialogTitle>
-            <DialogDescription>
-              Your video is ready! Share it on social media to reach your
-              audience.
-            </DialogDescription>
-          </DialogHeader>
-
-          {completedVideo && (
-            <div className="space-y-4 py-4">
-              {/* Video Preview */}
-              <div className="bg-muted rounded-lg p-4 space-y-2">
-                <div className="flex items-start gap-3">
-                  <Video className="h-5 w-5 text-primary mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">
-                      {completedVideo.title}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {completedVideo.topic}
-                    </p>
-                    {!completedVideo.videoUrl && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-                        <Clock className="h-3 w-3 animate-pulse" />
-                        <span>Video URL loading... Please wait a moment.</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Platform Selection */}
-              <div className="space-y-3">
-                <Label>Select Platforms</Label>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    {
-                      id: "youtube",
-                      name: "YouTube",
-                      icon: SiYoutube,
-                      color: "text-red-600",
-                    },
-                    {
-                      id: "facebook",
-                      name: "Facebook",
-                      icon: SiFacebook,
-                      color: "text-blue-600",
-                    },
-                    {
-                      id: "x",
-                      name: "X (Twitter)",
-                      icon: FaSquareXTwitter,
-                      color: "text-black dark:text-white",
-                    },
-                    {
-                      id: "linkedin",
-                      name: "LinkedIn",
-                      icon: SiLinkedin,
-                      color: "text-blue-700",
-                    },
-                  ].map((platform) => (
-                    <div
-                      key={platform.id}
-                      className="flex items-center space-x-2 border rounded-lg p-3 hover:bg-muted/50 transition-colors"
-                      data-testid={`platform-selector-${platform.id}`}
-                    >
-                      <Checkbox
-                        id={`platform-${platform.id}`}
-                        checked={selectedPostPlatforms.includes(platform.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedPostPlatforms([
-                              ...selectedPostPlatforms,
-                              platform.id,
-                            ]);
-                          } else {
-                            setSelectedPostPlatforms(
-                              selectedPostPlatforms.filter(
-                                (p) => p !== platform.id,
-                              ),
-                            );
-                          }
-                        }}
-                        data-testid={`checkbox-${platform.id}`}
-                      />
-                      <Label
-                        htmlFor={`platform-${platform.id}`}
-                        className="flex items-center gap-2 cursor-pointer text-sm font-normal flex-1"
-                      >
-                        <platform.icon
-                          className={`h-4 w-4 ${platform.color}`}
-                        />
-                        {platform.name}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Message Input */}
-              <div className="space-y-2">
-                <Label htmlFor="post-message">Message</Label>
-                <Textarea
-                  id="post-message"
-                  value={postMessage}
-                  onChange={(e) => setPostMessage(e.target.value)}
-                  placeholder="Add a caption for your video..."
-                  className="min-h-[100px]"
-                  data-testid="input-video-post-message"
-                />
-              </div>
-
-              {/* Info Box */}
-              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                <p className="text-xs text-blue-900 dark:text-blue-100">
-                  <strong>Note:</strong> Make sure your accounts are connected
-                  in the Social Media Manager before posting.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowPostDialog(false);
-                setCompletedVideo(null);
-                setSelectedPostPlatforms([]);
-              }}
-              data-testid="button-cancel-post-video"
-            >
-              Not Now
-            </Button>
-            <Button
-              onClick={() => {
-                // CRITICAL: Get latest video data from videos array to avoid stale closure
-                const latestVideo = videos?.find(
-                  (v) => v.id === completedVideo?.id,
-                );
-                const videoUrl = latestVideo?.videoUrl;
-
-                if (!videoUrl) {
-                  toast({
-                    title: "Please wait",
-                    description:
-                      "Video URL is still loading. This usually takes a few seconds.",
-                    variant: "default",
-                  });
-                  return;
-                }
-
-                if (selectedPostPlatforms.length === 0) {
-                  toast({
-                    title: "No platforms selected",
-                    description:
-                      "Please select at least one platform to post to",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-
-                // Post the video to selected platforms with LATEST videoUrl
-                postVideoToSocialMutation.mutate({
-                  videoUrl, // Use fresh videoUrl from videos array
-                  message: postMessage,
-                  platforms: selectedPostPlatforms,
-                });
-
-                // Don't close dialog here - let onSuccess handle it based on results
-              }}
-              disabled={
-                postVideoToSocialMutation.isPending ||
-                selectedPostPlatforms.length === 0 ||
-                !completedVideo?.videoUrl
-              }
-              className="bg-primary"
-              data-testid="button-confirm-post-video"
-            >
-              {postVideoToSocialMutation.isPending ? (
-                <>
-                  <Upload className="mr-2 h-4 w-4 animate-spin" />
-                  Posting...
-                </>
-              ) : !completedVideo?.videoUrl ? (
-                <>
-                  <Clock className="mr-2 h-4 w-4" />
-                  Waiting for Video URL...
-                </>
-              ) : (
-                <>
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Post to {selectedPostPlatforms.length} Platform
-                  {selectedPostPlatforms.length !== 1 ? "s" : ""}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </Card>
