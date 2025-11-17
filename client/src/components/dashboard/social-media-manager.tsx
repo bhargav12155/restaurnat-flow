@@ -227,7 +227,7 @@ export function SocialMediaManager() {
 
     try {
       setConnectingPlatform(platform);
-      
+
       // Show connecting message
       const connectingMsg = messages.oauth.connecting(platform);
       toast({
@@ -321,7 +321,7 @@ export function SocialMediaManager() {
       }, 500);
     } catch (error: any) {
       console.error("OAuth connection error:", error);
-      
+
       // Handle popup blocking specifically
       if (error.message === "POPUP_BLOCKED") {
         toast({
@@ -339,7 +339,7 @@ export function SocialMediaManager() {
           variant: "destructive",
         });
       }
-      
+
       setConnectingPlatform(null);
 
       if (checkClosedInterval) {
@@ -530,7 +530,7 @@ export function SocialMediaManager() {
         if (!selectedFacebookPage) {
           throw new Error("Please select a Facebook Page before posting");
         }
-        
+
         // Use Facebook Pages API for Facebook posting
         const facebookResponse = await apiRequest(
           "POST",
@@ -561,7 +561,7 @@ export function SocialMediaManager() {
         // Use Twitter API for Twitter posting - must use FormData for multer
         const formData = new FormData();
         formData.append("content", data.content);
-        
+
         // Add mediaIds if present
         if (data.mediaIds && data.mediaIds.length > 0) {
           formData.append("mediaIds", JSON.stringify(data.mediaIds));
@@ -590,7 +590,7 @@ export function SocialMediaManager() {
     onSuccess: () => {
       // Refresh accounts to ensure connection status is up-to-date
       queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
-      
+
       toast({
         title: "Posted Successfully!",
         description: "Your content has been shared across selected platforms",
@@ -639,7 +639,7 @@ export function SocialMediaManager() {
     onSuccess: (data) => {
       // Refresh accounts to ensure connection status is up-to-date
       queryClient.invalidateQueries({ queryKey: ["/api/social/accounts"] });
-      
+
       toast({
         title: "Facebook Post Successful!",
         description:
@@ -1167,7 +1167,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
             const platformInfo =
               platformIcons[normalizedPlatform as keyof typeof platformIcons] ||
               { icon: Settings, color: "text-gray-600" }; // Fallback for unknown platforms
-            
+
             const PlatformIcon = platformInfo.icon;
 
             return (
