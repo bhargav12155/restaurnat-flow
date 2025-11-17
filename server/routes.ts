@@ -1013,14 +1013,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Read credentials from Replit Secrets (environment variables)
-      // Priority: BASE_URL > Published URL > Dev URL > Localhost
+      // Priority: Published URL > Dev URL > BASE_URL > Localhost
       const baseUrl =
-        process.env.BASE_URL ||
         (process.env.REPLIT_DEPLOYMENT_URL
           ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
           : process.env.REPLIT_DEV_DOMAIN
           ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : "http://localhost:5000");
+          : process.env.BASE_URL || "http://localhost:5000");
       
       console.log(`🌐 OAuth base URL: ${baseUrl} (production: ${!!process.env.REPLIT_DEPLOYMENT_URL})`);
 
@@ -1212,14 +1211,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : undefined;
 
       // Use production URL for Replit deployments
-      // Priority: BASE_URL > Published URL > Dev URL > Localhost
+      // Priority: Published URL > Dev URL > BASE_URL > Localhost
       const baseUrl =
-        process.env.BASE_URL ||
         (process.env.REPLIT_DEPLOYMENT_URL
           ? `https://${process.env.REPLIT_DEPLOYMENT_URL}`
           : process.env.REPLIT_DEV_DOMAIN
           ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : "http://localhost:5000");
+          : process.env.BASE_URL || "http://localhost:5000");
       
       console.log(`🌐 OAuth callback base URL: ${baseUrl} (production: ${!!process.env.REPLIT_DEPLOYMENT_URL})`);
 
