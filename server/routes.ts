@@ -1860,12 +1860,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`🔍 [SOCIAL] User lookup by username result:`, user ? `Found ${user.id}` : 'Not found');
       }
 
-      // If STILL not found, we have a problem - create the user to prevent orphaned accounts
+      // 🔥 CRITICAL: Detect ID mismatch and fix it!
+      if (user && user.id !== userId) {
+        console.log(
+          `⚠️  [SOCIAL ACCOUNTS] ID MISMATCH! MemStorage: ${user.id} vs Database: ${userId}`
+        );
+        console.log(
+          `🔧 Deleting old MemStorage user and recreating with correct ID...`
+        );
+        // Delete the old incorrectly-ID'd user from MemStorage
+        const memUsers: Map<string, any> | undefined = (storage as any).users;
+        if (memUsers) {
+          memUsers.delete(user.id);
+          console.log(`   ✅ Deleted old user with ID: ${user.id}`);
+        }
+        // Force recreation with correct ID
+        user = null;
+      }
+
+      // If STILL not found, create user with correct database ID
       if (!user) {
-        console.log(`⚠️  [SOCIAL] User not found in MemStorage! This will cause platform loss!`);
-        console.log(`⚠️  [SOCIAL] Session ID: ${req.user.id}, Email: ${req.user.email}`);
-        console.log(`⚠️  [SOCIAL] Creating new user to prevent data loss...`);
-        // This is where platforms get lost - we create a NEW UUID each time!
+        console.log(`⚠️  [SOCIAL] User not found in MemStorage, creating with DB ID: ${userId}`);
+        user = await storage.createUser({
+          id: userId, // 🔥 Use database ID!
+          username: req.user.username || req.user.email?.split("@")[0] || `user_${userId}`,
+          email: req.user.email || undefined,
+          password: "",
+          name: req.user.email || `User ${userId}`,
+          role: (req.user.type === "agent" ? "agent" : "public") as "agent" | "public" | "team_lead",
+        });
+        console.log(`   ✅ Created user in MemStorage with matching DB ID: ${user.id}`);
       }
 
       // Get social media accounts (empty if user not found)
