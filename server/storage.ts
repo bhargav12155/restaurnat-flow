@@ -180,9 +180,9 @@ export interface IStorage {
   ): Promise<PhotoAvatarGroupVoice>;
   getPhotoAvatarGroupVoice(
     groupId: string,
-    userId: number
+    userId: string
   ): Promise<PhotoAvatarGroupVoice | undefined>;
-  listPhotoAvatarGroupVoices(userId: number): Promise<PhotoAvatarGroupVoice[]>;
+  listPhotoAvatarGroupVoices(userId: string): Promise<PhotoAvatarGroupVoice[]>;
 
   // Individual Photo Avatars
   createPhotoAvatar(avatar: InsertPhotoAvatar): Promise<PhotoAvatar>;
@@ -448,7 +448,7 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     // 🔥 FIX: Use passed ID if provided, otherwise generate new UUID
-    const id = insertUser.id || randomUUID();
+    const id = (insertUser as any).id || randomUUID();
     const user: User = {
       ...insertUser,
       id,
@@ -456,7 +456,9 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "agent",
     };
     this.users.set(id, user);
-    console.log(`[STORAGE] createUser - Created user with ID: ${id} (email: ${insertUser.email})`);
+    console.log(
+      `[STORAGE] createUser - Created user with ID: ${id} (email: ${insertUser.email})`
+    );
     return user;
   }
 
@@ -482,6 +484,9 @@ export class MemStorage implements IStorage {
       neighborhood: insertContent.neighborhood || null,
       keywords: insertContent.keywords || null,
       seoOptimized: insertContent.seoOptimized || false,
+      status: insertContent.status || "draft",
+      publishedAt: insertContent.publishedAt || null,
+      scheduledFor: insertContent.scheduledFor || null,
     };
     this.contentPieces.set(id, content);
     return content;
@@ -680,7 +685,7 @@ export class MemStorage implements IStorage {
       inventory: insertData.inventory || null,
       priceGrowth: insertData.priceGrowth || null,
       trend: insertData.trend || null,
-      lastUpdated: insertData.lastUpdated || new Date(),
+      lastUpdated: new Date(),
     };
     this.marketData.set(id, data);
     return data;
@@ -914,6 +919,7 @@ export class MemStorage implements IStorage {
         scheduledFor: scheduleDate,
         status: "pending",
         isEdited: false,
+        isAiGenerated: true,
         originalContent: content,
         neighborhood,
         seoScore: 80, // Default SEO score for generated content
@@ -985,6 +991,11 @@ export class MemStorage implements IStorage {
         youtubeUrl: null,
         youtubeVideoId: null,
         status: "draft",
+        platform: null,
+        heygenVideoId: null,
+        heygenAvatarId: null,
+        heygenVoiceId: null,
+        heygenTemplateId: null,
         tags: [
           "OmahaRealEstate",
           "RealEstateExpert",
@@ -1216,7 +1227,7 @@ export class MemStorage implements IStorage {
 
   async getPhotoAvatarGroupVoice(
     groupId: string,
-    userId: number
+    userId: string
   ): Promise<PhotoAvatarGroupVoice | undefined> {
     const [voice] = await db
       .select()
@@ -1232,7 +1243,7 @@ export class MemStorage implements IStorage {
   }
 
   async listPhotoAvatarGroupVoices(
-    userId: number
+    userId: string
   ): Promise<PhotoAvatarGroupVoice[]> {
     return await db
       .select()
@@ -1454,6 +1465,7 @@ export class MemStorage implements IStorage {
       id: randomUUID(),
       ...asset,
       title: asset.title ?? null,
+      description: asset.description ?? null,
       metadata: asset.metadata ?? null,
       createdAt: new Date(),
     };
