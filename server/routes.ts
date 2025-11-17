@@ -2,12 +2,11 @@ import {
   contentOpportunities,
   insertAvatarSchema,
   insertCompanyProfileSchema,
-  insertVideoContentSchema,
   insertMediaAssetSchema,
+  insertVideoContentSchema,
   tutorialVideos,
   updateScheduledPostSchema,
 } from "@shared/schema";
-import { z } from "zod";
 import crypto from "crypto";
 import { desc, eq } from "drizzle-orm";
 import type { Express, NextFunction, Request, Response } from "express";
@@ -17,6 +16,7 @@ import { createServer, type Server } from "http";
 import multer from "multer";
 import { nanoid } from "nanoid";
 import path from "path";
+import { z } from "zod";
 import { db } from "./db";
 import { requireAuth } from "./middleware/auth";
 import { ObjectNotFoundError, ObjectStorageService } from "./objectStorage";
@@ -100,7 +100,7 @@ async function resolveMediaAssets(
 
   const platformKey = platform.toLowerCase() as PlatformName;
   const capabilities = PLATFORM_MEDIA_CAPABILITIES[platformKey];
-  
+
   if (!capabilities) {
     throw new Error(`Unknown platform: ${platform}`);
   }
@@ -108,19 +108,19 @@ async function resolveMediaAssets(
   // Fetch and validate assets - collect ALL first
   for (const mediaId of mediaIds) {
     const asset = await storage.getMediaAssetById(mediaId);
-    
+
     if (!asset) {
       throw new Error(`Media asset not found: ${mediaId}`);
     }
-    
+
     // Validate ownership
     if (asset.userId !== userId) {
       throw new Error(`Unauthorized access to media asset: ${mediaId}`);
     }
-    
+
     result.assets.push(asset);
     result.mediaIds.push(mediaId);
-    
+
     // Categorize by type - collect ALL (validation happens after)
     if (asset.type === "photo") {
       result.photos.push(asset.url);
@@ -128,34 +128,38 @@ async function resolveMediaAssets(
       result.videos.push(asset.url);
     }
   }
-  
+
   // Validate platform requirements and limits
   const totalMedia = result.photos.length + result.videos.length;
-  
+
   if (capabilities.requiresMedia && totalMedia === 0) {
     throw new Error(`${platform} requires at least one media attachment`);
   }
-  
+
   // Enforce platform limits - reject over-limit submissions
   if (result.photos.length > capabilities.photos) {
     throw new Error(
       `${platform} supports maximum ${capabilities.photos} photo(s), but ${result.photos.length} were provided`
     );
   }
-  
+
   if (result.videos.length > capabilities.videos) {
     throw new Error(
       `${platform} supports maximum ${capabilities.videos} video(s), but ${result.videos.length} were provided`
     );
   }
-  
+
   // Instagram requires exactly ONE asset (1 photo OR 1 video, not both)
-  if (platformKey === 'instagram' && result.photos.length > 0 && result.videos.length > 0) {
+  if (
+    platformKey === "instagram" &&
+    result.photos.length > 0 &&
+    result.videos.length > 0
+  ) {
     throw new Error(
-      'Instagram supports either 1 photo OR 1 video per post, not both. Please select only one asset.'
+      "Instagram supports either 1 photo OR 1 video per post, not both. Please select only one asset."
     );
   }
-  
+
   return result;
 }
 
@@ -1012,18 +1016,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `✅ OAuth connect for user: ${userId} (${user.email || user.username})`
       );
 
-      // Detect base URL from the actual request (works in prod, dev, local, and iframes)
-      const host = req.get('host') || 'localhost:5000';
-      const isLocal = host.includes('localhost');
-      
-      // Force HTTPS for Replit domains (behind reverse proxy), HTTP only for localhost
-      const protocol = isLocal ? 'http' : 'https';
-      const baseUrl = `${protocol}://${host}`;
-      
-      const isProduction = host.includes('multi-users-realtyflow.replit.app');
-      const isDev = host.includes('janeway.replit.dev');
-      
-      console.log(`🌐 OAuth base URL: ${baseUrl} (prod: ${isProduction}, dev: ${isDev}, local: ${isLocal})`);
+      // Read credentials from Replit Secrets (environment variables)
+      const baseUrl =
+        process.env.BASE_URL ||
+        (process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : "http://localhost:5000");
 
       // Create state parameter with userId for OAuth callback
       const state = Buffer.from(JSON.stringify({ userId, platform })).toString(
@@ -1116,69 +1114,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Disconnect social media account
-  app.post("/api/social/disconnect/:platform", requireAuth, async (req, res) => {
-    try {
-      const { platform } = req.params;
+  app.post(
+    "/api/social/disconnect/:platform",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { platform } = req.params;
 
-      if (!req.user?.id) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      // CRITICAL: Resolve the authenticated user to their MemStorage UUID
-      let userId = String(req.user.id);
-      console.log(`🔌 Disconnecting ${platform} for JWT user ${userId} (${req.user.email})`);
-
-      // Try to find user by ID first
-      let user = await storage.getUser(userId);
-
-      // If not found by ID, try by email (critical for DB-authenticated users)
-      if (!user && req.user.email) {
-        const allUsers = Array.from(storage.users?.values() || []);
-        user = allUsers.find((u) => u.email === req.user.email);
-      }
-
-      // If not found by email, try by username as fallback
-      if (!user && req.user.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
-
-      if (!user) {
-        return res.status(404).json({
-          error: "User not found",
-          message: "Could not find user in storage. Please reconnect your account."
-        });
-      }
-
-      // Use the MemStorage UUID for the disconnect operation
-      const resolvedUserId = user.id;
-      console.log(`   → Resolved to MemStorage UUID: ${resolvedUserId}`);
-
-      // Disconnect the account (marks isConnected=false and clears tokens)
-      const disconnectedAccount = await storage.disconnectSocialMediaAccount(resolvedUserId, platform);
-
-      if (!disconnectedAccount) {
-        return res.status(404).json({ 
-          error: "Account not found",
-          message: `No ${platform} account found for this user` 
-        });
-      }
-
-      console.log(`✅ ${platform} disconnected successfully`);
-
-      res.json({
-        success: true,
-        message: `${platform} account disconnected successfully`,
-        account: {
-          id: disconnectedAccount.id,
-          platform: disconnectedAccount.platform,
-          isConnected: disconnectedAccount.isConnected
+        if (!req.user?.id) {
+          return res.status(401).json({ error: "User not authenticated" });
         }
-      });
-    } catch (error) {
-      console.error("Disconnect error:", error);
-      res.status(500).json({ error: "Failed to disconnect account" });
+
+        // CRITICAL: Resolve the authenticated user to their MemStorage UUID
+        let userId = String(req.user.id);
+        console.log(
+          `🔌 Disconnecting ${platform} for JWT user ${userId} (${req.user.email})`
+        );
+
+        // Try to find user by ID first
+        let user = await storage.getUser(userId);
+
+        // If not found by ID, try by email (critical for DB-authenticated users)
+        if (!user && req.user.email) {
+          const allUsers = Array.from(storage.users?.values() || []);
+          user = allUsers.find((u) => u.email === req.user.email);
+        }
+
+        // If not found by email, try by username as fallback
+        if (!user && req.user.username) {
+          user = await storage.getUserByUsername(req.user.username);
+        }
+
+        if (!user) {
+          return res.status(404).json({
+            error: "User not found",
+            message:
+              "Could not find user in storage. Please reconnect your account.",
+          });
+        }
+
+        // Use the MemStorage UUID for the disconnect operation
+        const resolvedUserId = user.id;
+        console.log(`   → Resolved to MemStorage UUID: ${resolvedUserId}`);
+
+        // Disconnect the account (marks isConnected=false and clears tokens)
+        const disconnectedAccount = await storage.disconnectSocialMediaAccount(
+          resolvedUserId,
+          platform
+        );
+
+        if (!disconnectedAccount) {
+          return res.status(404).json({
+            error: "Account not found",
+            message: `No ${platform} account found for this user`,
+          });
+        }
+
+        console.log(`✅ ${platform} disconnected successfully`);
+
+        res.json({
+          success: true,
+          message: `${platform} account disconnected successfully`,
+          account: {
+            id: disconnectedAccount.id,
+            platform: disconnectedAccount.platform,
+            isConnected: disconnectedAccount.isConnected,
+          },
+        });
+      } catch (error) {
+        console.error("Disconnect error:", error);
+        res.status(500).json({ error: "Failed to disconnect account" });
+      }
     }
-  });
+  );
 
   app.get("/api/social/status/:platform", async (req, res) => {
     try {
@@ -1212,18 +1220,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? decodeURIComponent(rawState)
         : undefined;
 
-      // Detect base URL from the actual request (works in prod, dev, local, and iframes)
-      const host = req.get('host') || 'localhost:5000';
-      const isLocal = host.includes('localhost');
-      
-      // Force HTTPS for Replit domains (behind reverse proxy), HTTP only for localhost
-      const protocol = isLocal ? 'http' : 'https';
-      const baseUrl = `${protocol}://${host}`;
-      
-      const isProduction = host.includes('multi-users-realtyflow.replit.app');
-      const isDev = host.includes('janeway.replit.dev');
-      
-      console.log(`🌐 OAuth callback base URL: ${baseUrl} (prod: ${isProduction}, dev: ${isDev}, local: ${isLocal})`);
+      // Use production URL for Replit deployments
+      const baseUrl =
+        process.env.BASE_URL ||
+        (process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : "http://localhost:5000");
 
       if (error) {
         return res.redirect(`${baseUrl}/?oauth_error=${error}`);
@@ -1435,9 +1437,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const existingAccounts = await storage.getSocialMediaAccounts(
             user.id
           );
-          console.log(`🔍 Facebook OAuth - Found ${existingAccounts.length} existing accounts for user ${user.id}`);
-          console.log(`   → Platforms: ${existingAccounts.map(a => `${a.platform}(${a.isConnected})`).join(', ')}`);
-          
+          console.log(
+            `🔍 Facebook OAuth - Found ${existingAccounts.length} existing accounts for user ${user.id}`
+          );
+          console.log(
+            `   → Platforms: ${existingAccounts
+              .map((a) => `${a.platform}(${a.isConnected})`)
+              .join(", ")}`
+          );
+
           const facebookAccount = existingAccounts.find(
             (acc) => acc.platform.toLowerCase() === "facebook"
           );
@@ -1452,7 +1460,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
 
           if (facebookAccount) {
-            console.log(`🔄 Updating existing Facebook account ${facebookAccount.id} (was: ${facebookAccount.isConnected})`);
+            console.log(
+              `🔄 Updating existing Facebook account ${facebookAccount.id} (was: ${facebookAccount.isConnected})`
+            );
             await storage.updateSocialMediaAccount(facebookAccount.id, {
               accessToken,
               metadata,
@@ -1792,43 +1802,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Social media endpoints
   app.get("/api/social/accounts", requireAuth, async (req, res) => {
     try {
-      console.log(`\n🔍 [API] /api/social/accounts - Request from user:`, req.user?.id);
-      
+      console.log("[Social Accounts] Request received", {
+        userId: req.user?.id,
+        userEmail: req.user?.email,
+        authenticated: !!req.user,
+      });
+
       if (!req.user?.id) {
-        console.log(`❌ [API] Unauthorized - no user ID`);
+        console.log("[Social Accounts] Unauthorized - no user ID");
         return res.status(401).json({ error: "Unauthorized" });
       }
 
       // Resolve DB user ID to MemStorage UUID (same logic as connect endpoint)
       let userId = String(req.user.id);
-      console.log(`🔍 [API] Looking up user by ID: ${userId}`);
       let user = await storage.getUser(userId);
 
       // If not found by ID, try by email
       if (!user && req.user.email) {
-        console.log(`🔍 [API] User not found by ID, trying email: ${req.user.email}`);
         const allUsers = Array.from(storage.users?.values() || []);
         user = allUsers.find((u) => u.email === req.user.email);
       }
 
       // If not found by email, try by username
       if (!user && req.user.username) {
-        console.log(`🔍 [API] User not found by email, trying username: ${req.user.username}`);
         user = await storage.getUserByUsername(req.user.username);
-      }
-
-      if (user) {
-        console.log(`✅ [API] Found user: ${user.id} (${user.email})`);
-      } else {
-        console.log(`⚠️ [API] User not found in storage`);
       }
 
       // Get social media accounts (empty if user not found)
       const socialAccounts = user
         ? await storage.getSocialMediaAccounts(user.id)
         : [];
-      
-      console.log(`📊 [API] Retrieved ${socialAccounts.length} social media accounts`);
+
+      console.log("[Social Accounts] Fetched accounts", {
+        userId: user?.id,
+        accountCount: socialAccounts.length,
+        platforms: socialAccounts.map((a) => a.platform),
+      });
 
       // Map accounts to include connection status
       const connectedPlatforms = new Set(
@@ -1902,16 +1911,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     upload.single("photo"),
     async (req, res) => {
       try {
-        const { platform, content, platforms, scheduledFor, mediaIds } = req.body;
+        const { platform, content, platforms, scheduledFor, mediaIds } =
+          req.body;
         const photo = req.file;
-        
+
         // Parse mediaIds if provided as JSON string (multipart forms send strings)
         let parsedMediaIds: string[] = [];
         if (mediaIds) {
           try {
-            parsedMediaIds = typeof mediaIds === "string" ? JSON.parse(mediaIds) : mediaIds;
+            parsedMediaIds =
+              typeof mediaIds === "string" ? JSON.parse(mediaIds) : mediaIds;
             if (!Array.isArray(parsedMediaIds)) {
-              return res.status(400).json({ error: "mediaIds must be an array" });
+              return res
+                .status(400)
+                .json({ error: "mediaIds must be an array" });
             }
           } catch (e) {
             return res.status(400).json({ error: "Invalid mediaIds format" });
@@ -1986,8 +1999,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 platform: platform.toLowerCase(),
               });
             }
-            
-            if (!connectedAccount.accessToken || connectedAccount.accessToken.trim() === "") {
+
+            if (
+              !connectedAccount.accessToken ||
+              connectedAccount.accessToken.trim() === ""
+            ) {
               return res.status(401).json({
                 error: `${platform} account token is missing or expired. Please reconnect your ${platform} account.`,
                 action: "reconnect_account",
@@ -2000,11 +2016,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let mediaResult: MediaResolutionResult | null = null;
           let photoUrl: string | null = null;
           let videoUrl: string | null = null;
-          
+
           try {
             // Priority 1: Media library assets (mediaIds)
             if (parsedMediaIds.length > 0) {
-              mediaResult = await resolveMediaAssets(parsedMediaIds, user.id, platform);
+              mediaResult = await resolveMediaAssets(
+                parsedMediaIds,
+                user.id,
+                platform
+              );
               photoUrl = mediaResult.photos[0] || null;
               videoUrl = mediaResult.videos[0] || null;
             }
@@ -2013,8 +2033,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
               photoUrl = `/uploads/${path.basename(photo.path)}`;
             }
           } catch (mediaError) {
-            return res.status(400).json({ 
-              error: mediaError instanceof Error ? mediaError.message : "Media validation failed" 
+            return res.status(400).json({
+              error:
+                mediaError instanceof Error
+                  ? mediaError.message
+                  : "Media validation failed",
             });
           }
 
@@ -2034,7 +2057,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 undefined,
                 {
                   photoUrls: mediaResult?.photos || [],
-                  videoUrls: mediaResult?.videos || []
+                  videoUrls: mediaResult?.videos || [],
                 }
               );
             } else if (platform.toLowerCase() === "linkedin") {
@@ -2043,7 +2066,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 connectedAccount?.accessToken || "",
                 {
                   photoUrls: mediaResult?.photos || [],
-                  videoUrls: mediaResult?.videos || []
+                  videoUrls: mediaResult?.videos || [],
                 }
               );
             } else if (platform.toLowerCase() === "x") {
@@ -2054,7 +2077,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 photoUrl || undefined,
                 {
                   photoUrls: mediaResult?.photos || [],
-                  videoUrls: mediaResult?.videos || []
+                  videoUrls: mediaResult?.videos || [],
                 }
               );
             } else if (platform.toLowerCase() === "youtube") {
@@ -2071,7 +2094,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 youtubeToken,
                 {
                   photoUrls: mediaResult?.photos || [],
-                  videoUrls: mediaResult?.videos || []
+                  videoUrls: mediaResult?.videos || [],
                 }
               );
             } else {
@@ -2209,8 +2232,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // First, get all Facebook Pages
-      const pages = await socialMediaService.getFacebookPageInfo(delegatedToken);
-      
+      const pages = await socialMediaService.getFacebookPageInfo(
+        delegatedToken
+      );
+
       // Then fetch Instagram Business Account for each page
       const instagramAccounts = [];
       for (const page of pages) {
@@ -2238,73 +2263,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(instagramAccounts);
     } catch (error: any) {
-      console.error("Error fetching Instagram accounts:", error?.message || error);
+      console.error(
+        "Error fetching Instagram accounts:",
+        error?.message || error
+      );
       res.status(500).json({
         error: "Failed to fetch Instagram accounts",
-        details: error?.message || "Unknown error"
+        details: error?.message || "Unknown error",
       });
     }
   });
 
   // Get Instagram Business Account linked to specific Facebook Page
-  app.get("/api/instagram/account/:pageId", requireAuth, async (req: any, res) => {
-    try {
-      const { pageId } = req.params;
-      const user = await resolveMemStorageUser(req);
+  app.get(
+    "/api/instagram/account/:pageId",
+    requireAuth,
+    async (req: any, res) => {
+      try {
+        const { pageId } = req.params;
+        const user = await resolveMemStorageUser(req);
 
-      const socialAccounts = user
-        ? await storage.getSocialMediaAccounts(user.id)
-        : [];
-      const facebookAccount = socialAccounts.find(
-        (acc) => acc.platform.toLowerCase() === "facebook"
-      );
+        const socialAccounts = user
+          ? await storage.getSocialMediaAccounts(user.id)
+          : [];
+        const facebookAccount = socialAccounts.find(
+          (acc) => acc.platform.toLowerCase() === "facebook"
+        );
 
-      const metadata = (facebookAccount?.metadata as any) || {};
-      const delegatedToken =
-        metadata?.pageAccessToken ||
-        facebookAccount?.accessToken ||
-        process.env.FACEBOOK_USER_TOKEN;
+        const metadata = (facebookAccount?.metadata as any) || {};
+        const delegatedToken =
+          metadata?.pageAccessToken ||
+          facebookAccount?.accessToken ||
+          process.env.FACEBOOK_USER_TOKEN;
 
-      if (!delegatedToken) {
-        return res.status(400).json({
-          error: "Facebook token missing. Please reconnect your Facebook account.",
+        if (!delegatedToken) {
+          return res.status(400).json({
+            error:
+              "Facebook token missing. Please reconnect your Facebook account.",
+          });
+        }
+
+        // Fetch Instagram Business Account linked to this Page
+        const response = await fetch(
+          `https://graph.facebook.com/v18.0/${pageId}?fields=instagram_business_account&access_token=${delegatedToken}`
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          return res.status(400).json({
+            error: "Failed to fetch Instagram account",
+            details: errorData.error?.message || "Unknown error",
+          });
+        }
+
+        const data = await response.json();
+
+        if (!data.instagram_business_account) {
+          return res.status(404).json({
+            error: "No Instagram Business Account linked",
+            message:
+              "Please link an Instagram Business account to your Facebook Page first.",
+          });
+        }
+
+        res.json({
+          instagramBusinessAccountId: data.instagram_business_account.id,
+          pageId: pageId,
         });
-      }
-
-      // Fetch Instagram Business Account linked to this Page
-      const response = await fetch(
-        `https://graph.facebook.com/v18.0/${pageId}?fields=instagram_business_account&access_token=${delegatedToken}`
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        return res.status(400).json({
+      } catch (error: any) {
+        console.error(
+          "Error fetching Instagram account:",
+          error?.message || error
+        );
+        res.status(500).json({
           error: "Failed to fetch Instagram account",
-          details: errorData.error?.message || "Unknown error"
+          details: error?.message || "Unknown error",
         });
       }
-
-      const data = await response.json();
-      
-      if (!data.instagram_business_account) {
-        return res.status(404).json({
-          error: "No Instagram Business Account linked",
-          message: "Please link an Instagram Business account to your Facebook Page first."
-        });
-      }
-
-      res.json({
-        instagramBusinessAccountId: data.instagram_business_account.id,
-        pageId: pageId
-      });
-    } catch (error: any) {
-      console.error("Error fetching Instagram account:", error?.message || error);
-      res.status(500).json({
-        error: "Failed to fetch Instagram account",
-        details: error?.message || "Unknown error"
-      });
     }
-  });
+  );
 
   app.post(
     "/api/facebook/post",
@@ -2367,12 +2404,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Resolve media from library if mediaIds provided
-        let mediaOptions: { photoUrls?: string[], videoUrls?: string[] } | undefined;
+        let mediaOptions:
+          | { photoUrls?: string[]; videoUrls?: string[] }
+          | undefined;
         if (mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
           const allMedia = await storage.getMediaAssets(user.id);
-          const selectedMedia = allMedia.filter(m => mediaIds.includes(m.id));
-          const photoUrls = selectedMedia.filter(m => m.type === 'photo').map(m => m.url).filter((url): url is string => !!url);
-          const videoUrls = selectedMedia.filter(m => m.type === 'video').map(m => m.url).filter((url): url is string => !!url);
+          const selectedMedia = allMedia.filter((m) => mediaIds.includes(m.id));
+          const photoUrls = selectedMedia
+            .filter((m) => m.type === "photo")
+            .map((m) => m.url)
+            .filter((url): url is string => !!url);
+          const videoUrls = selectedMedia
+            .filter((m) => m.type === "video")
+            .map((m) => m.url)
+            .filter((url): url is string => !!url);
           if (photoUrls.length > 0 || videoUrls.length > 0) {
             mediaOptions = {};
             if (photoUrls.length > 0) mediaOptions.photoUrls = photoUrls;
@@ -2613,8 +2658,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         if (!instagramBusinessAccountId) {
-          return res.status(400).json({ 
-            error: "Instagram Business Account ID is required. Please select an Instagram account." 
+          return res.status(400).json({
+            error:
+              "Instagram Business Account ID is required. Please select an Instagram account.",
           });
         }
 
@@ -2637,7 +2683,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (!resolvedToken) {
           return res.status(400).json({
-            error: "Facebook token missing. Instagram posting requires Facebook connection.",
+            error:
+              "Facebook token missing. Instagram posting requires Facebook connection.",
           });
         }
 
@@ -2647,23 +2694,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
         // Reject mixed media sources (upload + library)
-        if (photo && mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
+        if (
+          photo &&
+          mediaIds &&
+          Array.isArray(mediaIds) &&
+          mediaIds.length > 0
+        ) {
           return res.status(400).json({
-            error: "Cannot use both direct photo upload and media library. Please choose one method.",
+            error:
+              "Cannot use both direct photo upload and media library. Please choose one method.",
           });
         }
 
         // Normalize all media through validation
         let photoUrl: string | null = null;
-        let mediaOptions: { photoUrls?: string[], videoUrls?: string[] } | undefined;
+        let mediaOptions:
+          | { photoUrls?: string[]; videoUrls?: string[] }
+          | undefined;
 
         // If media library IDs provided, use resolveMediaAssets for validation
         if (mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
           try {
-            const resolved = await resolveMediaAssets(mediaIds, user.id, 'instagram');
+            const resolved = await resolveMediaAssets(
+              mediaIds,
+              user.id,
+              "instagram"
+            );
             mediaOptions = {};
-            if (resolved.photos.length > 0) mediaOptions.photoUrls = resolved.photos;
-            if (resolved.videos.length > 0) mediaOptions.videoUrls = resolved.videos;
+            if (resolved.photos.length > 0)
+              mediaOptions.photoUrls = resolved.photos;
+            if (resolved.videos.length > 0)
+              mediaOptions.videoUrls = resolved.videos;
           } catch (error: any) {
             return res.status(400).json({ error: error.message });
           }
@@ -2785,14 +2846,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Support both JSON (from old frontend) and FormData (from new frontend)
         let content = req.body.content;
         const photo = req.file;
-        
+
         // Parse mediaIds if present (sent as JSON string from FormData)
         let mediaIds: string[] = [];
         if (req.body.mediaIds) {
           try {
-            mediaIds = typeof req.body.mediaIds === 'string' 
-              ? JSON.parse(req.body.mediaIds) 
-              : req.body.mediaIds;
+            mediaIds =
+              typeof req.body.mediaIds === "string"
+                ? JSON.parse(req.body.mediaIds)
+                : req.body.mediaIds;
           } catch (e) {
             console.error("Failed to parse mediaIds:", e);
           }
@@ -2820,27 +2882,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Build absolute URL for image if provided
         const baseUrl = `${req.protocol}://${req.get("host")}`;
         const fullPhotoUrl = photoUrl ? baseUrl + photoUrl : undefined;
-        
+
         // Resolve media assets from library if mediaIds provided
-        let mediaOptions: { photoUrls?: string[], videoUrls?: string[] } | undefined;
+        let mediaOptions:
+          | { photoUrls?: string[]; videoUrls?: string[] }
+          | undefined;
         if (mediaIds.length > 0) {
           // Fetch all media assets for user
           const allMedia = await storage.getMediaAssets(user.id);
-          
+
           // Filter by requested IDs
-          const selectedMedia = allMedia.filter(m => mediaIds.includes(m.id));
-          
+          const selectedMedia = allMedia.filter((m) => mediaIds.includes(m.id));
+
           // Extract URLs by type
           const photoUrls = selectedMedia
-            .filter(m => m.type === 'photo')
-            .map(m => m.url)
+            .filter((m) => m.type === "photo")
+            .map((m) => m.url)
             .filter((url): url is string => !!url);
-          
+
           const videoUrls = selectedMedia
-            .filter(m => m.type === 'video')
-            .map(m => m.url)
+            .filter((m) => m.type === "video")
+            .map((m) => m.url)
             .filter((url): url is string => !!url);
-          
+
           if (photoUrls.length > 0 || videoUrls.length > 0) {
             mediaOptions = {};
             if (photoUrls.length > 0) mediaOptions.photoUrls = photoUrls;
@@ -4356,17 +4420,25 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
 
       const { type, source } = req.query;
-      
+
       // Validate query parameters
       const allowedTypes = ["video", "photo", "avatar"];
       const allowedSources = ["upload", "heygen", "library"];
-      
+
       if (type && !allowedTypes.includes(type as string)) {
-        return res.status(400).json({ error: "Invalid type. Must be one of: video, photo, avatar" });
+        return res
+          .status(400)
+          .json({
+            error: "Invalid type. Must be one of: video, photo, avatar",
+          });
       }
-      
+
       if (source && !allowedSources.includes(source as string)) {
-        return res.status(400).json({ error: "Invalid source. Must be one of: upload, heygen, library" });
+        return res
+          .status(400)
+          .json({
+            error: "Invalid source. Must be one of: upload, heygen, library",
+          });
       }
 
       const media = await storage.getMediaAssets(
@@ -4381,119 +4453,141 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  app.post("/api/media/upload", requireAuth, upload.single("file"), async (req: any, res) => {
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded" });
-      }
-
-      let { title, description, type, source, metadata, width, height, durationSeconds, thumbnailUrl, avatarId } = req.body;
-
-      // Normalize empty/whitespace strings to undefined (multipart forms send "" or "  " for empty fields)
-      const normalize = (val: any) => {
-        if (val === null || val === undefined) return undefined;
-        if (typeof val === "string") {
-          const trimmed = val.trim();
-          return trimmed === "" ? undefined : trimmed;
+  app.post(
+    "/api/media/upload",
+    requireAuth,
+    upload.single("file"),
+    async (req: any, res) => {
+      try {
+        const user = await resolveMemStorageUser(req);
+        if (!user) {
+          return res.status(401).json({ error: "Authentication required" });
         }
-        return val;
-      };
-      title = normalize(title);
-      description = normalize(description);
-      type = normalize(type);
-      source = normalize(source);
-      metadata = normalize(metadata);
-      width = normalize(width);
-      height = normalize(height);
-      durationSeconds = normalize(durationSeconds);
-      thumbnailUrl = normalize(thumbnailUrl);
-      avatarId = normalize(avatarId);
 
-      // Build media asset data (omit undefined fields for drizzle-zod validation)
-      const mediaData: any = {
-        userId: user.id,
-        type: type || (req.file.mimetype.startsWith("video/") ? "video" : "photo"),
-        source: source || "upload",
-        url: `/uploads/${req.file.filename}`,
-        title: title || req.file.originalname || "Untitled",
-        mimeType: req.file.mimetype,
-        fileSize: req.file.size,
-      };
-
-      // Validate required string fields are non-empty
-      if (!mediaData.title.trim()) {
-        return res.status(400).json({ error: "Title cannot be empty" });
-      }
-      if (!mediaData.type.trim()) {
-        return res.status(400).json({ error: "Type cannot be empty" });
-      }
-      if (!mediaData.source.trim()) {
-        return res.status(400).json({ error: "Source cannot be empty" });
-      }
-
-      // Only include optional fields if they have values
-      if (description) mediaData.description = description;
-      if (thumbnailUrl) mediaData.thumbnailUrl = thumbnailUrl;
-      if (avatarId) mediaData.avatarId = avatarId;
-
-      // Parse and validate numbers (reject NaN)
-      if (width !== undefined) {
-        const parsedWidth = parseInt(width);
-        if (Number.isNaN(parsedWidth)) {
-          return res.status(400).json({ error: "Invalid width value" });
+        if (!req.file) {
+          return res.status(400).json({ error: "No file uploaded" });
         }
-        mediaData.width = parsedWidth;
-      }
-      if (height !== undefined) {
-        const parsedHeight = parseInt(height);
-        if (Number.isNaN(parsedHeight)) {
-          return res.status(400).json({ error: "Invalid height value" });
-        }
-        mediaData.height = parsedHeight;
-      }
-      if (durationSeconds !== undefined) {
-        const parsedDuration = parseFloat(durationSeconds);
-        if (Number.isNaN(parsedDuration)) {
-          return res.status(400).json({ error: "Invalid duration value" });
-        }
-        mediaData.durationSeconds = parsedDuration;
-      }
 
-      // Parse metadata JSON (handle both string and object inputs)
-      if (metadata) {
-        if (typeof metadata === "object") {
-          // Already parsed (e.g., from XHR JSON request)
-          mediaData.metadata = metadata;
-        } else if (typeof metadata === "string") {
-          // Needs parsing (e.g., from multipart form)
-          try {
-            mediaData.metadata = JSON.parse(metadata);
-          } catch (e) {
-            return res.status(400).json({ error: "Invalid metadata JSON" });
+        let {
+          title,
+          description,
+          type,
+          source,
+          metadata,
+          width,
+          height,
+          durationSeconds,
+          thumbnailUrl,
+          avatarId,
+        } = req.body;
+
+        // Normalize empty/whitespace strings to undefined (multipart forms send "" or "  " for empty fields)
+        const normalize = (val: any) => {
+          if (val === null || val === undefined) return undefined;
+          if (typeof val === "string") {
+            const trimmed = val.trim();
+            return trimmed === "" ? undefined : trimmed;
           }
-        } else {
-          return res.status(400).json({ error: "Metadata must be object or JSON string" });
+          return val;
+        };
+        title = normalize(title);
+        description = normalize(description);
+        type = normalize(type);
+        source = normalize(source);
+        metadata = normalize(metadata);
+        width = normalize(width);
+        height = normalize(height);
+        durationSeconds = normalize(durationSeconds);
+        thumbnailUrl = normalize(thumbnailUrl);
+        avatarId = normalize(avatarId);
+
+        // Build media asset data (omit undefined fields for drizzle-zod validation)
+        const mediaData: any = {
+          userId: user.id,
+          type:
+            type ||
+            (req.file.mimetype.startsWith("video/") ? "video" : "photo"),
+          source: source || "upload",
+          url: `/uploads/${req.file.filename}`,
+          title: title || req.file.originalname || "Untitled",
+          mimeType: req.file.mimetype,
+          fileSize: req.file.size,
+        };
+
+        // Validate required string fields are non-empty
+        if (!mediaData.title.trim()) {
+          return res.status(400).json({ error: "Title cannot be empty" });
         }
-      }
+        if (!mediaData.type.trim()) {
+          return res.status(400).json({ error: "Type cannot be empty" });
+        }
+        if (!mediaData.source.trim()) {
+          return res.status(400).json({ error: "Source cannot be empty" });
+        }
 
-      // Validate against insert schema
-      const validated = insertMediaAssetSchema.parse(mediaData);
-      const mediaAsset = await storage.createMediaAsset(validated);
+        // Only include optional fields if they have values
+        if (description) mediaData.description = description;
+        if (thumbnailUrl) mediaData.thumbnailUrl = thumbnailUrl;
+        if (avatarId) mediaData.avatarId = avatarId;
 
-      res.json(mediaAsset);
-    } catch (error) {
-      console.error("Upload media error:", error);
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Validation failed", details: error.errors });
+        // Parse and validate numbers (reject NaN)
+        if (width !== undefined) {
+          const parsedWidth = parseInt(width);
+          if (Number.isNaN(parsedWidth)) {
+            return res.status(400).json({ error: "Invalid width value" });
+          }
+          mediaData.width = parsedWidth;
+        }
+        if (height !== undefined) {
+          const parsedHeight = parseInt(height);
+          if (Number.isNaN(parsedHeight)) {
+            return res.status(400).json({ error: "Invalid height value" });
+          }
+          mediaData.height = parsedHeight;
+        }
+        if (durationSeconds !== undefined) {
+          const parsedDuration = parseFloat(durationSeconds);
+          if (Number.isNaN(parsedDuration)) {
+            return res.status(400).json({ error: "Invalid duration value" });
+          }
+          mediaData.durationSeconds = parsedDuration;
+        }
+
+        // Parse metadata JSON (handle both string and object inputs)
+        if (metadata) {
+          if (typeof metadata === "object") {
+            // Already parsed (e.g., from XHR JSON request)
+            mediaData.metadata = metadata;
+          } else if (typeof metadata === "string") {
+            // Needs parsing (e.g., from multipart form)
+            try {
+              mediaData.metadata = JSON.parse(metadata);
+            } catch (e) {
+              return res.status(400).json({ error: "Invalid metadata JSON" });
+            }
+          } else {
+            return res
+              .status(400)
+              .json({ error: "Metadata must be object or JSON string" });
+          }
+        }
+
+        // Validate against insert schema
+        const validated = insertMediaAssetSchema.parse(mediaData);
+        const mediaAsset = await storage.createMediaAsset(validated);
+
+        res.json(mediaAsset);
+      } catch (error) {
+        console.error("Upload media error:", error);
+        if (error instanceof z.ZodError) {
+          return res
+            .status(400)
+            .json({ error: "Validation failed", details: error.errors });
+        }
+        res.status(500).json({ error: "Failed to upload media" });
       }
-      res.status(500).json({ error: "Failed to upload media" });
     }
-  });
+  );
 
   // Avatar Management endpoints
   app.get("/api/avatars", async (req, res) => {
@@ -8711,7 +8805,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   // =====================================================
   // IMAKEPAGE INTEGRATION
   // =====================================================
-  
+
   // NOTE: iMakePage integration uses postMessage API for secure cross-origin communication
   // The parent iMakePage window sends user data to the iframe via window.postMessage
   // No backend proxy needed - all communication happens client-side securely
