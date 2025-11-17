@@ -985,6 +985,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       }
 
+      // 🔥 CRITICAL: Detect ID mismatch and fix it!
+      if (user && user.id !== userId) {
+        console.log(
+          `⚠️  ID MISMATCH DETECTED! MemStorage: ${user.id} vs Database: ${userId}`
+        );
+        console.log(
+          `🔧 Deleting old MemStorage user and recreating with correct ID...`
+        );
+        // Delete the old incorrectly-ID'd user from MemStorage
+        const memUsers: Map<string, any> | undefined = (storage as any).users;
+        if (memUsers) {
+          memUsers.delete(user.id);
+          console.log(`   ✅ Deleted old user with ID: ${user.id}`);
+        }
+        // Force recreation with correct ID
+        user = null;
+      }
+
       // If user still not found, create them ONCE in MemStorage
       // CRITICAL FIX: Use the database user ID to prevent UUID mismatch!
       if (!user) {
