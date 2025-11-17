@@ -351,40 +351,21 @@ export class MemStorage implements IStorage {
   }
 
   async getUser(id: string): Promise<User | undefined> {
-    console.log(`👤 [STORAGE] getUser(${id})`);
-    const user = this.users.get(id);
-    console.log(`   → ${user ? `✅ Found: ${user.email}` : '❌ Not found'}`);
-    return user;
+    return this.users.get(id);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    console.log(`👤 [STORAGE] getUserByUsername(${username})`);
-    const user = Array.from(this.users.values()).find(
+    return Array.from(this.users.values()).find(
       (user) => user.username === username,
     );
-    console.log(`   → ${user ? `✅ Found: ${user.id} (${user.email})` : '❌ Not found'}`);
-    return user;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    console.log(`👤 [STORAGE] getUserByEmail(${email})`);
-    const allUsers = Array.from(this.users.values());
-    console.log(`   → Searching ${allUsers.length} users in memory`);
-    const user = allUsers.find((user) => user.email === email);
-    if (user) {
-      console.log(`   → ✅ Found user: ${user.id} (${user.email}, username: ${user.username})`);
-    } else {
-      console.log(`   → ❌ Not found. Available emails:`, allUsers.map(u => u.email));
-    }
-    return user;
+    return Array.from(this.users.values()).find((user) => user.email === email);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    console.log(`👤 [STORAGE] createUser - NEW USER CREATED!`);
-    console.log(`   → New ID: ${id}`);
-    console.log(`   → Email: ${insertUser.email}`);
-    console.log(`   → Username: ${insertUser.username}`);
     const user: User = {
       ...insertUser,
       id,
@@ -392,7 +373,6 @@ export class MemStorage implements IStorage {
       role: insertUser.role || "agent",
     };
     this.users.set(id, user);
-    console.log(`   → ✅ User created and stored in memory`);
     return user;
   }
 
