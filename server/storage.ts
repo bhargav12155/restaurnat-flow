@@ -416,11 +416,18 @@ export class MemStorage implements IStorage {
   }
 
   async getSocialMediaAccounts(userId: string): Promise<SocialMediaAccount[]> {
-    const accounts = await db
-      .select()
-      .from(socialMediaAccounts)
-      .where(eq(socialMediaAccounts.userId, userId));
-    return accounts;
+    console.log(`📊 [STORAGE] Getting social media accounts for user: ${userId}`);
+    try {
+      const accounts = await db
+        .select()
+        .from(socialMediaAccounts)
+        .where(eq(socialMediaAccounts.userId, userId));
+      console.log(`✅ [STORAGE] Found ${accounts.length} social media accounts for user ${userId}`);
+      return accounts;
+    } catch (error) {
+      console.error(`❌ [STORAGE] Error getting social media accounts:`, error);
+      throw error;
+    }
   }
 
   async getSocialMediaAccountById(
