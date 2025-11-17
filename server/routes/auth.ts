@@ -1,12 +1,12 @@
-import { Router, Request, Response } from "express";
+import { Request, Response, Router } from "express";
+import { z } from "zod";
+import { optionalAuth, requireAuth } from "../middleware/auth";
 import {
   createAgent,
-  loginAgent,
   createOrLoginPublicUser,
+  loginAgent,
   testUserIdentification,
 } from "../utils/auth";
-import { requireAuth, optionalAuth } from "../middleware/auth";
-import { z } from "zod";
 
 const router = Router();
 
@@ -47,7 +47,7 @@ router.post("/agent/register", async (req: Request, res: Response) => {
     // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
     res.cookie("authToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+      secure: process.env.NODE_ENV === "production", // Always secure in production for SameSite=None
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
@@ -103,7 +103,7 @@ router.post("/agent/login", async (req: Request, res: Response) => {
     // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
     res.cookie("authToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+      secure: process.env.NODE_ENV === "production", // Always secure in production for SameSite=None
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
@@ -161,13 +161,13 @@ router.post("/public/login", async (req: Request, res: Response) => {
     const { user, token, isNewUser } = await createOrLoginPublicUser(
       email,
       agentSlug,
-      name,
+      name
     );
 
     // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
     res.cookie("authToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+      secure: process.env.NODE_ENV === "production", // Always secure in production for SameSite=None
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days for public users
     });
@@ -277,7 +277,7 @@ router.post("/login", async (req: Request, res: Response) => {
       loginResult = await createOrLoginPublicUser(
         cleanIdentifier,
         "default", // Default agent slug for email-based access
-        cleanIdentifier.split("@")[0], // Use part before @ as name
+        cleanIdentifier.split("@")[0] // Use part before @ as name
       );
 
       if (loginResult.user) {
@@ -286,7 +286,7 @@ router.post("/login", async (req: Request, res: Response) => {
         // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
         res.cookie("authToken", token, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+          secure: process.env.NODE_ENV === "production", // Always secure in production for SameSite=None
           sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
@@ -312,7 +312,7 @@ router.post("/login", async (req: Request, res: Response) => {
     loginResult = await createOrLoginPublicUser(
       `${cleanIdentifier}@client.temp`,
       cleanIdentifier,
-      cleanIdentifier,
+      cleanIdentifier
     );
 
     if (loginResult.user) {
@@ -321,7 +321,7 @@ router.post("/login", async (req: Request, res: Response) => {
       // Set HTTP-only cookie for token (SameSite=None for iframe/mobile, conditional secure for dev)
       res.cookie("authToken", token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production" || req.secure, // Secure in production or HTTPS
+        secure: process.env.NODE_ENV === "production", // Always secure in production for SameSite=None
         sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // None for production iframe support
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
