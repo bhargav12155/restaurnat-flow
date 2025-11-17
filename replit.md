@@ -32,13 +32,15 @@ The server runs on Express.js with TypeScript in ESM mode. Authentication is han
 - **No Backend Proxy**: All communication happens client-side to prevent cookie leakage
 
 **Social Media OAuth System**: Implements secure OAuth 2.0 flows for third-party platform integrations:
-- **PKCE Implementation**: Uses SHA-256 code challenge/verifier pairs with 10-minute expiration for enhanced security
-- **State Management**: Temporary in-memory storage for PKCE codes with automatic cleanup
+- **PKCE Implementation**: Uses SHA-256 code challenge/verifier pairs with 10-minute expiration for enhanced security (required for Twitter/X OAuth 2.0)
+- **PKCE Storage**: Database-backed storage using `pkce_store` table ensures PKCE codes persist across server instances and deployments, preventing OAuth callback failures
+- **State Management**: Automatic cleanup of expired PKCE entries every 10 minutes via scheduled database cleanup
 - **User Reconciliation**: Automatically creates users in MemStorage from OIDC tokens during OAuth flows
 - **Token Storage**: Securely stores access tokens and refresh tokens in social media account records
 - **Callback Handling**: Platform-specific callback handlers with comprehensive error handling and user-friendly success pages
 - **Multi-Platform Support**: Extensible architecture supporting Twitter/X, YouTube, LinkedIn with consistent patterns
 - **Platform Normalization**: Frontend normalizes platform aliases (twitter→x, facebook_page→facebook) and provides fallback icons (Settings) for unknown platforms to ensure all connected accounts are visible
+- **Production Configuration**: Requires `BASE_URL` environment variable set to production URL (e.g., `https://multi-users-realtyflow.replit.app`) for proper OAuth redirect handling
 
 ### Database Design
 The application uses PostgreSQL with Drizzle ORM for type-safe database operations. The schema supports both main users (real estate agents) and public users (clients) with multi-tenancy through agent slugs. Key tables include users, properties, AI-generated content, social posts, SEO keywords, user activity tracking, and file uploads. Session storage is implemented for authentication persistence.
