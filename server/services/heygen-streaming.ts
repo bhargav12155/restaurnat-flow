@@ -55,6 +55,11 @@ export class HeyGenStreamingService {
 
       const sessionData = await response.json();
       console.log('✅ HeyGen session created:', sessionData.data?.session_id);
+      console.log('🔍 HeyGen API Response Keys:', Object.keys(sessionData.data || {}));
+      console.log('🔍 Has ice_servers:', !!sessionData.data?.ice_servers);
+      console.log('🔍 Has sdp:', !!sessionData.data?.sdp);
+      console.log('🔍 ice_servers value:', sessionData.data?.ice_servers);
+      console.log('🔍 sdp value:', sessionData.data?.sdp);
 
       // Store session
       const session: StreamingSession = {
