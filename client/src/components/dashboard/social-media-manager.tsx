@@ -1460,10 +1460,7 @@ ${agentName} | ${brokerageName}
                 </Button>
               )}
             </div>
-            <div className="relative rounded-xl border-2 border-border bg-gradient-to-br from-muted/30 to-muted/10 p-6 max-h-[500px] overflow-y-auto shadow-sm hover:shadow-md transition-shadow">
-              {/* Decorative corner accent */}
-              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-primary/5 to-transparent rounded-bl-3xl pointer-events-none" />
-              
+            <div className="relative rounded-lg border border-border bg-gradient-to-br from-muted/20 to-muted/5 p-4 max-h-[400px] overflow-y-auto overflow-x-hidden w-full">
               <MediaLibrary
                 onSelectMedia={setSelectedMediaIds}
                 selectedMediaIds={selectedMediaIds}
