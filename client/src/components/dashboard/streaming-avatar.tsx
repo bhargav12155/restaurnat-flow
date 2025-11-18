@@ -105,8 +105,12 @@ export function StreamingAvatar() {
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      // Send answer back to server (implementation depends on HeyGen's requirements)
-      // This would typically involve sending the answer SDP back to complete the connection
+      // Send answer SDP back to HeyGen to complete the connection
+      console.log('📤 Sending SDP answer to complete connection...');
+      await apiRequest('POST', `/api/streaming/sessions/${sessionData.sessionId}/ice`, {
+        sdp: answer.sdp
+      });
+      console.log('✅ SDP answer submitted successfully');
       
       setIsConnected(true);
       setIsConnecting(false);

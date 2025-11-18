@@ -25,30 +25,24 @@ export class HeyGenStreamingService {
   // Create a new streaming session
   async createSession(userId: string, avatarId?: string) {
     try {
-      // Generate unique session ID
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      
-      // Create access token for streaming
-      const token = await this.createAccessToken();
-      
-      // Start the avatar session via API
-      const response = await fetch('https://api.heygen.com/v1/streaming.start', {
+      // Start the avatar session via NEW API endpoint
+      const response = await fetch('https://api.heygen.com/v1/streaming.new', {
         method: 'POST',
         headers: {
           'X-Api-Key': this.apiKey,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sessionId: sessionId,
-          avatarName: avatarId || 'Wayne_20240711',
           quality: 'medium',
+          avatar_id: avatarId || 'Wayne_20240711',
           voice: {
-            voiceId: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+            voice_id: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
             rate: 1.0,
-            emotion: 'FRIENDLY'
+            emotion: 'Friendly'
           },
-          language: 'en',
-          disableIdleTimeout: false,
+          video_encoding: 'H264',
+          disable_idle_timeout: false,
+          activity_idle_timeout: 120,
           version: 'v2'
         })
       });
@@ -60,10 +54,11 @@ export class HeyGenStreamingService {
       }
 
       const sessionData = await response.json();
+      console.log('✅ HeyGen session created:', sessionData.data?.session_id);
 
       // Store session
       const session: StreamingSession = {
-        sessionId: sessionData.data?.session_id || sessionId,
+        sessionId: sessionData.data?.session_id,
         userId,
         avatarName: avatarId || 'default',
         createdAt: new Date(),
@@ -74,8 +69,9 @@ export class HeyGenStreamingService {
 
       return {
         sessionId: session.sessionId,
-        iceServers: session.iceServers,
-        offer: session.offer,
+        url: sessionData.data?.url,
+        accessToken: sessionData.data?.access_token,
+        realtimeEndpoint: sessionData.data?.realtime_endpoint,
         sessionData: sessionData.data
       };
     } catch (error) {
@@ -84,23 +80,33 @@ export class HeyGenStreamingService {
     }
   }
 
-  // Create access token for streaming
-  private async createAccessToken(): Promise<string> {
-    const response = await fetch('https://api.heygen.com/v1/streaming.create_token', {
+  // Submit ICE candidate or SDP answer to complete WebRTC connection
+  async submitICE(sessionId: string, candidate?: any, sdp?: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    const response = await fetch(`https://api.heygen.com/v1/streaming.ice`, {
       method: 'POST',
       headers: {
         'X-Api-Key': this.apiKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({})
+      body: JSON.stringify({
+        session_id: sessionId,
+        candidate: candidate,
+        sdp: sdp
+      })
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to create access token: ${response.status}`);
+      const errorData = await response.json();
+      console.error('Failed to submit ICE:', errorData);
+      throw new Error(`Failed to submit ICE: ${response.status}`);
     }
 
-    const data = await response.json();
-    return data.data.token;
+    return await response.json();
   }
 
   // Make avatar speak
