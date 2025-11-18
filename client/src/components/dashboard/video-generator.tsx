@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +58,7 @@ interface Avatar {
   style: string;
   gender: string;
   isActive: boolean;
+  supportsGestures?: boolean;
 }
 
 interface VideoContent {
@@ -123,6 +125,7 @@ export function VideoGenerator() {
   const [selectedVideoPlatform, setSelectedVideoPlatform] = useState("youtube");
   const [duration, setDuration] = useState("60");
   const [generatedScript, setGeneratedScript] = useState("");
+  const [gestureIntensity, setGestureIntensity] = useState(0);
   const [editingVideo, setEditingVideo] = useState<VideoContent | null>(null);
   const [watchingVideo, setWatchingVideo] = useState<VideoContent | null>(null);
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
@@ -255,11 +258,13 @@ export function VideoGenerator() {
       avatarId,
       avatarType: type,
       uploadedAvatarPhoto: photoUrl,
+      gestureIntensity: intensity,
     }: {
       videoId: string;
       avatarId?: string;
       avatarType?: string;
       uploadedAvatarPhoto?: string | null;
+      gestureIntensity?: number;
     }) => {
       const response = await apiRequest(
         "POST",
@@ -268,6 +273,7 @@ export function VideoGenerator() {
           avatarId,
           avatarType: type,
           uploadedAvatarPhoto: photoUrl,
+          gestureIntensity: intensity,
         },
       );
       return response.json();
@@ -657,6 +663,67 @@ export function VideoGenerator() {
                 </TabsContent>
               </Tabs>
             </div>
+
+            {/* Gesture Controls - Show for custom avatars or gesture-enabled public avatars */}
+            {(() => {
+              const selectedAvatarData = avatars?.find(a => a.id === selectedAvatar);
+              const showGestureControls = avatarType === 'custom' || (selectedAvatarData?.supportsGestures);
+              
+              if (!showGestureControls) return null;
+              
+              return (
+                <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
+                  <div className="flex items-center gap-2">
+                    <Hand className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    <Label className="text-base font-semibold text-purple-900 dark:text-purple-100">
+                      Gesture & Expressiveness Controls
+                    </Label>
+                    <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100">
+                      Gesture-Enabled
+                    </Badge>
+                  </div>
+                  
+                  <p className="text-sm text-purple-800 dark:text-purple-200">
+                    Control how animated and expressive your avatar will be. Higher values add more natural hand gestures and body movements.
+                  </p>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                        Gesture Intensity
+                      </Label>
+                      <span className="text-sm font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900 px-3 py-1 rounded-full">
+                        {gestureIntensity === 0 ? 'Off' : gestureIntensity === 1 ? 'Subtle' : gestureIntensity === 2 ? 'Moderate' : 'Expressive'}
+                      </span>
+                    </div>
+                    
+                    <Slider
+                      min={0}
+                      max={3}
+                      step={1}
+                      value={[gestureIntensity]}
+                      onValueChange={(value) => setGestureIntensity(value[0])}
+                      className="cursor-pointer"
+                      data-testid="slider-gesture-intensity"
+                    />
+                    
+                    <div className="flex justify-between text-xs text-purple-700 dark:text-purple-300 mt-1">
+                      <span>Off</span>
+                      <span>Subtle</span>
+                      <span>Moderate</span>
+                      <span>Expressive</span>
+                    </div>
+                  </div>
+                  
+                  <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
+                    <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <AlertDescription className="text-purple-800 dark:text-purple-200 text-xs">
+                      <strong>How it works:</strong> Gesture intensity controls how frequently and prominently your avatar uses hand movements and body language. "Off" = traditional lip-sync only. "Expressive" = maximum natural gestures and movements.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              );
+            })()}
 
             {/* Video Details */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1086,6 +1153,7 @@ export function VideoGenerator() {
                               avatarId: avatarType === "public" ? (selectedAvatar || video.avatarId || "") : undefined,
                               avatarType,
                               uploadedAvatarPhoto: avatarType === "talking_photo" ? uploadedAvatarPhoto : undefined,
+                              gestureIntensity,
                             });
                           }}
                           disabled={generateVideoMutation.isPending}

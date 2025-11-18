@@ -6,7 +6,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Mic, MicOff, Video, VideoOff, Volume2, VolumeX, Send, StopCircle, Loader2, Phone } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Label } from '@/components/ui/label';
+import { Mic, MicOff, Video, VideoOff, Volume2, VolumeX, Send, StopCircle, Loader2, Phone, Hand, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import * as LiveKitClient from 'livekit-client';
@@ -27,6 +29,7 @@ export function StreamingAvatarComponent() {
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [message, setMessage] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [gestureIntensity, setGestureIntensity] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -50,8 +53,8 @@ export function StreamingAvatarComponent() {
 
   // Create streaming session and connect with LiveKit
   const startSessionMutation = useMutation({
-    mutationFn: async (avatarId: string) => {
-      const res = await apiRequest('POST', '/api/streaming/sessions', { avatarId });
+    mutationFn: async ({ avatarId, gestureIntensity }: { avatarId: string; gestureIntensity: number }) => {
+      const res = await apiRequest('POST', '/api/streaming/sessions', { avatarId, gestureIntensity });
       const data = await res.json();
       
       console.log('🔍 Backend response:', {
@@ -285,6 +288,59 @@ export function StreamingAvatarComponent() {
             </Select>
           </div>
 
+          {/* Gesture Controls */}
+          <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
+            <div className="flex items-center gap-2">
+              <Hand className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <Label className="text-base font-semibold text-purple-900 dark:text-purple-100">
+                Real-Time Gesture & Expressiveness
+              </Label>
+              <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100">
+                Pro Feature
+              </Badge>
+            </div>
+            
+            <p className="text-sm text-purple-800 dark:text-purple-200">
+              Control how animated and expressive your live avatar will be during the streaming session.
+            </p>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                  Gesture Intensity
+                </Label>
+                <span className="text-sm font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900 px-3 py-1 rounded-full">
+                  {gestureIntensity === 0 ? 'Off' : gestureIntensity === 1 ? 'Subtle' : gestureIntensity === 2 ? 'Moderate' : 'Expressive'}
+                </span>
+              </div>
+              
+              <Slider
+                min={0}
+                max={3}
+                step={1}
+                value={[gestureIntensity]}
+                onValueChange={(value) => setGestureIntensity(value[0])}
+                disabled={isConnected || isConnecting}
+                className="cursor-pointer"
+                data-testid="slider-streaming-gesture-intensity"
+              />
+              
+              <div className="flex justify-between text-xs text-purple-700 dark:text-purple-300 mt-1">
+                <span>Off</span>
+                <span>Subtle</span>
+                <span>Moderate</span>
+                <span>Expressive</span>
+              </div>
+            </div>
+            
+            <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
+              <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <AlertDescription className="text-purple-800 dark:text-purple-200 text-xs">
+                <strong>Note:</strong> Gesture settings must be configured before starting the session. Changes take effect on next connection.
+              </AlertDescription>
+            </Alert>
+          </div>
+
           {/* Connection Status */}
           <div className="flex items-center gap-2">
             <Badge variant={isConnected ? "default" : "secondary"} data-testid="connection-status">
@@ -301,7 +357,7 @@ export function StreamingAvatarComponent() {
           <div className="flex gap-2">
             {!isConnected ? (
               <Button
-                onClick={() => startSessionMutation.mutate(selectedAvatar)}
+                onClick={() => startSessionMutation.mutate({ avatarId: selectedAvatar, gestureIntensity })}
                 disabled={isConnecting || !selectedAvatar}
                 className="flex-1"
                 data-testid="button-start-session"
