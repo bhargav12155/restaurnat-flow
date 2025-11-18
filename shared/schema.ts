@@ -287,13 +287,13 @@ export const seoKeywords = pgTable("seo_keywords", {
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   keyword: text("keyword").notNull(),
-  currentRanking: integer("current_ranking"),
-  previousRanking: integer("previous_ranking"),
   searchVolume: integer("search_volume"),
   difficulty: integer("difficulty"),
-  url: text("url"),
   lastChecked: timestamp("last_checked"),
   createdAt: timestamp("created_at").defaultNow(),
+  currentRank: integer("current_rank"),
+  previousRank: integer("previous_rank"),
+  neighborhood: text("neighborhood"),
 });
 
 // =====================================================
@@ -321,9 +321,10 @@ export const analytics = pgTable("analytics", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  metric: text("metric").notNull(),
-  value: numeric("value"),
-  date: timestamp("date").defaultNow(),
+  metricType: text("metric_type").notNull(),
+  metricValue: numeric("metric_value"),
+  dimension: text("dimension"),
+  timestamp: timestamp("timestamp").defaultNow(),
   metadata: jsonb("metadata"),
 });
 
