@@ -1,5 +1,5 @@
 {
-  "id": "e8c87a68-950f-4629-b5a0-d96c40172908",
+  "id": "ae1eef6f-fcfe-4e12-a0ba-a9cc8aa9234e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -90,20 +90,26 @@
           "primaryKey": false,
           "notNull": true
         },
-        "metric": {
-          "name": "metric",
+        "metric_type": {
+          "name": "metric_type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "value": {
-          "name": "value",
+        "metric_value": {
+          "name": "metric_value",
           "type": "numeric",
           "primaryKey": false,
           "notNull": false
         },
-        "date": {
-          "name": "date",
+        "dimension": {
+          "name": "dimension",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timestamp": {
+          "name": "timestamp",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
@@ -1960,18 +1966,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "current_ranking": {
-          "name": "current_ranking",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "previous_ranking": {
-          "name": "previous_ranking",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "search_volume": {
           "name": "search_volume",
           "type": "integer",
@@ -1981,12 +1975,6 @@
         "difficulty": {
           "name": "difficulty",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "url": {
-          "name": "url",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -2002,6 +1990,24 @@
           "primaryKey": false,
           "notNull": false,
           "default": "now()"
+        },
+        "current_rank": {
+          "name": "current_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_rank": {
+          "name": "previous_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "neighborhood": {
+          "name": "neighborhood",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
