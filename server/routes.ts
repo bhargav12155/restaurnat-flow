@@ -7,6 +7,7 @@ import {
   insertScheduledPostSchema,
   tutorialVideos,
   updateScheduledPostSchema,
+  pkceStore,
 } from "@shared/schema";
 import crypto from "crypto";
 import { desc, eq, sql } from "drizzle-orm";
@@ -51,12 +52,12 @@ function generateCodeChallenge(verifier: string): string {
 // Database-backed PKCE storage functions
 async function storePKCE(state: string, codeVerifier: string, expiresInMs: number = 600000) {
   const expiresAt = new Date(Date.now() + expiresInMs);
-  await db.insert(schema.pkceStore).values({
+  await db.insert(pkceStore).values({
     state,
     codeVerifier,
     expiresAt,
   }).onConflictDoUpdate({
-    target: schema.pkceStore.state,
+    target: pkceStore.state,
     set: { codeVerifier, expiresAt }
   });
 }
@@ -64,14 +65,14 @@ async function storePKCE(state: string, codeVerifier: string, expiresInMs: numbe
 async function retrievePKCE(state: string): Promise<{ codeVerifier: string; expiresAt: Date } | null> {
   const result = await db
     .select()
-    .from(schema.pkceStore)
-    .where(eq(schema.pkceStore.state, state))
+    .from(pkceStore)
+    .where(eq(pkceStore.state, state))
     .limit(1);
   
   if (result.length === 0) return null;
   
   // Delete after retrieval (one-time use)
-  await db.delete(schema.pkceStore).where(eq(schema.pkceStore.state, state));
+  await db.delete(pkceStore).where(eq(pkceStore.state, state));
   
   return {
     codeVerifier: result[0].codeVerifier,
@@ -83,7 +84,7 @@ async function retrievePKCE(state: string): Promise<{ codeVerifier: string; expi
 setInterval(async () => {
   const now = new Date();
   try {
-    await db.delete(schema.pkceStore).where(sql`${schema.pkceStore.expiresAt} < ${now}`);
+    await db.delete(pkceStore).where(sql`${pkceStore.expiresAt} < ${now}`);
   } catch (error) {
     console.error("Error cleaning up expired PKCE entries:", error);
   }
@@ -1740,63 +1741,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? await storage.getSocialMediaAccounts(user.id)
         : [];
 
-      // Map accounts to include connection status
-      const connectedPlatforms = new Set(
-        socialAccounts.map((acc) => acc.platform.toLowerCase())
+      // Create a map of platforms to their account data
+      const accountMap = new Map(
+        socialAccounts.map((acc) => [acc.platform.toLowerCase(), acc])
       );
 
-      // Return all platforms with their connection status
+      // Also handle twitter/x alias
+      if (accountMap.has("twitter")) {
+        accountMap.set("x", accountMap.get("twitter")!);
+      }
+      if (accountMap.has("x") && !accountMap.has("twitter")) {
+        accountMap.set("twitter", accountMap.get("x")!);
+      }
+
+      // Return all platforms with their actual connection status and data
       // Order: Working platforms first (Facebook, X, YouTube, LinkedIn), then non-working (Instagram, TikTok)
       const platforms = [
         {
-          id: nanoid(),
+          id: accountMap.get("facebook")?.id || nanoid(),
           platform: "facebook",
-          isConnected: connectedPlatforms.has("facebook"),
-          lastSync: connectedPlatforms.has("facebook")
-            ? new Date().toISOString()
-            : null,
+          isConnected: accountMap.get("facebook")?.isConnected || false,
+          lastSync: accountMap.get("facebook")?.lastSync || null,
         },
         {
-          id: nanoid(),
+          id: accountMap.get("x")?.id || nanoid(),
           platform: "x",
-          isConnected:
-            connectedPlatforms.has("x") || connectedPlatforms.has("twitter"),
-          lastSync:
-            connectedPlatforms.has("x") || connectedPlatforms.has("twitter")
-              ? new Date().toISOString()
-              : null,
+          isConnected: accountMap.get("x")?.isConnected || false,
+          lastSync: accountMap.get("x")?.lastSync || null,
         },
         {
-          id: nanoid(),
+          id: accountMap.get("youtube")?.id || nanoid(),
           platform: "youtube",
-          isConnected: connectedPlatforms.has("youtube"),
-          lastSync: connectedPlatforms.has("youtube")
-            ? new Date().toISOString()
-            : null,
+          isConnected: accountMap.get("youtube")?.isConnected || false,
+          lastSync: accountMap.get("youtube")?.lastSync || null,
         },
         {
-          id: nanoid(),
+          id: accountMap.get("linkedin")?.id || nanoid(),
           platform: "linkedin",
-          isConnected: connectedPlatforms.has("linkedin"),
-          lastSync: connectedPlatforms.has("linkedin")
-            ? new Date().toISOString()
-            : null,
+          isConnected: accountMap.get("linkedin")?.isConnected || false,
+          lastSync: accountMap.get("linkedin")?.lastSync || null,
         },
         {
-          id: nanoid(),
+          id: accountMap.get("instagram")?.id || nanoid(),
           platform: "instagram",
-          isConnected: connectedPlatforms.has("instagram"),
-          lastSync: connectedPlatforms.has("instagram")
-            ? new Date().toISOString()
-            : null,
+          isConnected: accountMap.get("instagram")?.isConnected || false,
+          lastSync: accountMap.get("instagram")?.lastSync || null,
         },
         {
-          id: nanoid(),
+          id: accountMap.get("tiktok")?.id || nanoid(),
           platform: "tiktok",
-          isConnected: connectedPlatforms.has("tiktok"),
-          lastSync: connectedPlatforms.has("tiktok")
-            ? new Date().toISOString()
-            : null,
+          isConnected: accountMap.get("tiktok")?.isConnected || false,
+          lastSync: accountMap.get("tiktok")?.lastSync || null,
         },
       ];
 
