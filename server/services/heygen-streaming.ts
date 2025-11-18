@@ -118,11 +118,6 @@ export class HeyGenStreamingService {
 
   // Start the streaming session
   async startSession(sessionId: string) {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error('Session not found');
-    }
-
     const response = await fetch(`https://api.heygen.com/v1/streaming.start`, {
       method: 'POST',
       headers: {
