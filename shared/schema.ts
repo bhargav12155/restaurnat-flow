@@ -179,30 +179,17 @@ export const photoAvatarGroupVoices = pgTable("photo_avatar_group_voices", {
 // =====================================================
 // PHOTO AVATARS TABLE (Individual Avatars)
 // =====================================================
-export const photoAvatars = pgTable(
-  "photo_avatars",
-  {
-    id: varchar("id")
-      .primaryKey()
-      .default(sql`gen_random_uuid()`),
-    userId: varchar("user_id").notNull(),
-    heygenAvatarId: text("heygen_avatar_id").notNull().unique(), // Individual avatar ID from HeyGen
-    groupDbId: varchar("group_db_id").notNull(), // Foreign key to photoAvatarGroups.id (our DB ID)
-    heygenGroupId: text("heygen_group_id").notNull(), // HeyGen's group ID for convenience
-    name: text("name"),
-    pose: text("pose"), // e.g., "half_body", "full_body"
-    status: text("status").default("pending"), // 'pending', 'processing', 'ready', 'failed'
-    metadata: jsonb("metadata"),
-    createdAt: timestamp("created_at").defaultNow(),
-  },
-  (table) => [
-    index("idx_photo_avatars_heygen_id").on(table.heygenAvatarId),
-    index("idx_photo_avatars_user_heygen").on(
-      table.userId,
-      table.heygenAvatarId,
-    ),
-  ],
-);
+export const photoAvatars = pgTable("photo_avatars", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id").notNull(),
+  photoUrl: text("photo_url").notNull(),
+  heygenPhotoId: text("heygen_photo_id"),
+  poseType: text("pose_type").notNull(),
+  processingStatus: text("processing_status").default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 // =====================================================
 // MEDIA ASSETS TABLE (Unified Media Library)
