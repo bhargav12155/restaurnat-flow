@@ -348,6 +348,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     return Boolean(value);
   };
+
+  // Helper function to ensure S3 URLs are properly formatted
+  const ensureS3Url = (urlOrKey: string | null | undefined): string | null => {
+    if (!urlOrKey) return null;
+    // If already a URL, return as-is
+    if (urlOrKey.startsWith('http://') || urlOrKey.startsWith('https://')) {
+      return urlOrKey;
+    }
+    // Otherwise, convert S3 key to full URL
+    const s3Service = new S3UploadService();
+    return s3Service.getS3Url(urlOrKey);
+  };
   // =====================================================
   // NEBRASKA HOME HUB INTEGRATION ENDPOINT
   // =====================================================
@@ -7317,8 +7329,15 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       const videos = await storage.getVideoContent(String(userId), status);
 
+      // Ensure all video URLs are properly formatted
+      const videosWithUrls = videos.map(video => ({
+        ...video,
+        videoUrl: ensureS3Url(video.videoUrl),
+        thumbnailUrl: ensureS3Url(video.thumbnailUrl),
+      }));
+
       console.log("✅ Backend: Found", videos.length, "videos");
-      res.json(videos);
+      res.json(videosWithUrls);
     } catch (error: any) {
       console.error("❌ Backend: Failed to get videos");
       console.error("❌ Backend: Error message:", error?.message);
@@ -9067,14 +9086,14 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       // Get generated videos from video_content table and transform to media format
       const videos = await storage.getVideoContent(String(userId), "ready");
       
-      // Transform videos to media asset format
+      // Transform videos to media asset format with proper S3 URLs
       const videoAssets = videos.map(video => ({
         id: video.id,
         userId: video.userId,
         type: "video" as const,
         source: "heygen" as const,
-        url: video.videoUrl || "",
-        thumbnailUrl: video.thumbnailUrl || null,
+        url: ensureS3Url(video.videoUrl) || "",
+        thumbnailUrl: ensureS3Url(video.thumbnailUrl),
         title: video.title,
         description: video.script?.substring(0, 200) || null,
         avatarId: video.avatarId || null,
