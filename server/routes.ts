@@ -5379,7 +5379,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const { avatarId } = req.body;
+      const { avatarId, avatarType, uploadedAvatarPhoto } = req.body;
 
       // Ownership check - only allow users to generate videos for their own video content
       const video = await storage.getVideoByIdAndUser(id, userId);
@@ -5439,11 +5439,16 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           );
 
           // Check if this is a talking photo avatar (created from uploaded photo)
+          // Support both: 1) explicit avatarType from frontend, 2) legacy avatar.avatarImageUrl detection
           const isTalkingPhoto =
-            !!avatar.avatarImageUrl &&
-            avatar.avatarImageUrl.includes("/uploads/");
+            avatarType === "talking_photo" ||
+            (!!avatar.avatarImageUrl &&
+              avatar.avatarImageUrl.includes("/uploads/"));
           console.log(
             `Avatar type: ${isTalkingPhoto ? "talking_photo" : "avatar"}`
+          );
+          console.log(
+            `Frontend avatarType: ${avatarType}, uploadedAvatarPhoto: ${uploadedAvatarPhoto ? "provided" : "none"}`
           );
 
           // Handle voice selection - use a valid HeyGen voice ID
