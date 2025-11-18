@@ -1044,7 +1044,7 @@ export function VideoGenerator() {
               <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
                 <ObjectUploader
                   maxNumberOfFiles={1}
-                  maxFileSize={104857600}
+                  maxFileSize={209715200}
                   onGetUploadParameters={async () => {
                     const response = await apiRequest("POST", "/api/objects/upload", {});
                     const data = await response.json();
@@ -1071,7 +1071,7 @@ export function VideoGenerator() {
                     <div className="text-center">
                       <p className="font-medium">Upload Video File</p>
                       <p className="text-sm text-muted-foreground">
-                        Supports MP4, MOV, AVI files up to 100MB
+                        Supports MP4, MOV, WEBM, MKV (up to 200MB)
                       </p>
                     </div>
                   </div>
