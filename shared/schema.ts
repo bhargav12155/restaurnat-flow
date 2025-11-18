@@ -269,12 +269,12 @@ export const socialMediaAccounts = pgTable("social_media_accounts", {
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   platform: text("platform").notNull(), // 'facebook', 'instagram', 'linkedin', 'x'
-  accountId: text("account_id").notNull(),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at"),
   isConnected: boolean("is_connected").default(false),
-  lastSync: timestamp("last_sync"),
-  metadata: jsonb("metadata"),
+  accountUsername: text("account_username"),
+  lastSynced: timestamp("last_synced"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

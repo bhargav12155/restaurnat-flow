@@ -358,12 +358,12 @@ CREATE TABLE "social_media_accounts" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
 	"platform" text NOT NULL,
-	"account_id" text NOT NULL,
 	"access_token" text,
 	"refresh_token" text,
+	"token_expires_at" timestamp,
 	"is_connected" boolean DEFAULT false,
-	"last_sync" timestamp,
-	"metadata" jsonb,
+	"account_username" text,
+	"last_synced" timestamp,
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
