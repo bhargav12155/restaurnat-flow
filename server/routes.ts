@@ -4,6 +4,7 @@ import {
   insertBrandSettingsSchema,
   insertCompanyProfileSchema,
   insertVideoContentSchema,
+  insertScheduledPostSchema,
   tutorialVideos,
   updateScheduledPostSchema,
 } from "@shared/schema";
