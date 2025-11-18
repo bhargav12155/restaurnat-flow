@@ -208,7 +208,11 @@ export function SocialMediaManager() {
   const { toast } = useToast();
 
   // Fetch company profile for dynamic content
-  const { data: companyProfile } = useQuery({
+  const { data: companyProfile } = useQuery<{
+    agentName?: string;
+    brokerageName?: string;
+    businessName?: string;
+  }>({
     queryKey: ["/api/company/profile"],
   });
 
@@ -738,7 +742,7 @@ ${
 
 Contact ${agentName} at ${brokerageName} for more information!
 
-#JustListed #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} ${
+#JustListed #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} ${
           neighborhoodTag ? `#${neighborhoodTag}` : ""
         }`,
 
@@ -812,7 +816,7 @@ I'm ${agentName} with ${brokerageName}, and I'd love to show you this amazing pr
           property.neighborhood
             ? property.neighborhood.replace(/\s+/g, "")
             : "OmahaHomes"
-        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #RealEstate #HomeTour`,
+        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #RealEstate #HomeTour`,
       },
 
       just_sold: {
@@ -833,7 +837,7 @@ Thinking of buying or selling? I'd love to help you achieve your real estate goa
 
 ${agentName} | ${brokerageName}
 
-#JustSold #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #RealEstateSuccess`,
+#JustSold #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #RealEstateSuccess`,
 
         instagram: `✅ SOLD!
 
@@ -855,7 +859,7 @@ Ready to make your move? Let's chat! 📞
           property.address
         }\n\nAnother successful closing! 🎉\n\n${
           property.neighborhood ? `${property.neighborhood} market strong!` : ""
-        }\n\n${agentName} | ${brokerageName.split(" ").map(w => w.charAt(0)).join("")}\n\n#JustSold #OmahaRealEstate`,
+        }\n\n${agentName} | ${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")}\n\n#JustSold #OmahaRealEstate`,
 
         youtube: `🎉 SOLD! ${property.address} | Another Successful Closing!
 
@@ -895,7 +899,7 @@ ${agentName} | ${brokerageName}
           property.neighborhood
             ? property.neighborhood.replace(/\s+/g, "")
             : "OmahaHomes"
-        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #RealEstateSuccess #SoldHomes`,
+        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #RealEstateSuccess #SoldHomes`,
       },
 
       price_improvement: {
@@ -918,7 +922,7 @@ ${
 
 Contact ${agentName} at ${brokerageName} today!
 
-#PriceImprovement #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #Opportunity`,
+#PriceImprovement #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #Opportunity`,
 
         instagram: `💰 PRICE DROP ALERT!
 
@@ -945,7 +949,7 @@ DM me now! 📩
           property.neighborhood
             ? `${property.neighborhood} opportunity!`
             : "Great opportunity!"
-        }\n\n${agentName} | ${brokerageName.split(" ").map(w => w.charAt(0)).join("")}\n\n#PriceImprovement`,
+        }\n\n${agentName} | ${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")}\n\n#PriceImprovement`,
 
         youtube: `💰 PRICE IMPROVEMENT! ${property.address} | Now ${formatPrice(
           property.listPrice,
@@ -1018,7 +1022,7 @@ See you there! 👋
           property.bedrooms
         }BD ${property.bathrooms}BA\n\n${
           property.neighborhood ? `${property.neighborhood} gem!` : "Must see!"
-        }\n\n${agentName} | ${brokerageName.split(" ").map(w => w.charAt(0)).join("")}\n\n#OpenHouse`,
+        }\n\n${agentName} | ${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")}\n\n#OpenHouse`,
 
         youtube: `🏠 OPEN HOUSE THIS WEEKEND! ${property.address}
 
@@ -1550,7 +1554,7 @@ ${agentName} | ${brokerageName}
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 bg-golden-accent rounded-full flex items-center justify-center">
                           <span className="text-xs font-bold text-golden-foreground">
-                            {agentName.split(' ').map(n => n.charAt(0)).join('').substring(0, 2)}
+                            {agentName.split(' ').map((n: string) => n.charAt(0)).join('').substring(0, 2)}
                           </span>
                         </div>
                         <div className="flex-1">
