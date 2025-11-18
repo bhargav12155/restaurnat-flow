@@ -156,7 +156,7 @@ export class HeyGenStreamingService {
       throw new Error('Session not found');
     }
 
-    const response = await fetch(`https://api.heygen.com/v1/streaming.speak`, {
+    const response = await fetch(`https://api.heygen.com/v1/streaming.task`, {
       method: 'POST',
       headers: {
         'X-Api-Key': this.apiKey,
@@ -165,11 +165,13 @@ export class HeyGenStreamingService {
       body: JSON.stringify({
         session_id: sessionId,
         text,
-        task_type: taskType
+        task_type: taskType.toLowerCase()
       })
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`HeyGen speak error (${response.status}):`, errorText);
       throw new Error(`Failed to make avatar speak: ${response.status}`);
     }
 
