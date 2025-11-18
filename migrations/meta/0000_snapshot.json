@@ -1,5 +1,5 @@
 {
-  "id": "10094f45-ff16-4e9f-9d63-cd4e29492511",
+  "id": "0e26f2a6-1602-4499-a2bf-3df65509afd4",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -90,20 +90,26 @@
           "primaryKey": false,
           "notNull": true
         },
-        "metric": {
-          "name": "metric",
+        "metric_type": {
+          "name": "metric_type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "value": {
-          "name": "value",
-          "type": "integer",
+        "metric_value": {
+          "name": "metric_value",
+          "type": "numeric",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "date": {
-          "name": "date",
+        "dimension": {
+          "name": "dimension",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timestamp": {
+          "name": "timestamp",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
@@ -147,30 +153,17 @@
           "primaryKey": false,
           "notNull": true
         },
-        "description": {
-          "name": "description",
+        "heygen_avatar_id": {
+          "name": "heygen_avatar_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "avatar_image_url": {
-          "name": "avatar_image_url",
+        "avatar_type": {
+          "name": "avatar_type",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "voice_id": {
-          "name": "voice_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "style": {
-          "name": "style",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "'professional'"
+          "notNull": true
         },
         "gender": {
           "name": "gender",
@@ -178,18 +171,31 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_active": {
-          "name": "is_active",
+        "preview_image_url": {
+          "name": "preview_image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "preview_video_url": {
+          "name": "preview_video_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_public": {
+          "name": "is_public",
           "type": "boolean",
           "primaryKey": false,
           "notNull": false,
-          "default": true
+          "default": false
         },
-        "metadata": {
-          "name": "metadata",
-          "type": "jsonb",
+        "supports_gestures": {
+          "name": "supports_gestures",
+          "type": "boolean",
           "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "default": false
         },
         "created_at": {
           "name": "created_at",
@@ -202,7 +208,99 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "avatars_heygen_avatar_id_unique": {
+          "name": "avatars_heygen_avatar_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "heygen_avatar_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.brand_settings": {
+      "name": "brand_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assets": {
+          "name": "assets",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "colors": {
+          "name": "colors",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fonts": {
+          "name": "fonts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "social_connections": {
+          "name": "social_connections",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "logo_info": {
+          "name": "logo_info",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "brand_settings_user_id_unique": {
+          "name": "brand_settings_user_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -516,36 +614,29 @@
           "primaryKey": false,
           "notNull": true
         },
-        "audio_url": {
-          "name": "audio_url",
+        "heygen_voice_id": {
+          "name": "heygen_voice_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "duration": {
-          "name": "duration",
-          "type": "integer",
+        "language": {
+          "name": "language",
+          "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "file_size": {
-          "name": "file_size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "heygen_audio_asset_id": {
-          "name": "heygen_audio_asset_id",
+        "gender": {
+          "name": "gender",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "status": {
-          "name": "status",
+        "sample_audio_url": {
+          "name": "sample_audio_url",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -558,7 +649,15 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "custom_voices_heygen_voice_id_unique": {
+          "name": "custom_voices_heygen_voice_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "heygen_voice_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1254,6 +1353,44 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pkce_store": {
+      "name": "pkce_store",
+      "schema": "",
+      "columns": {
+        "state": {
+          "name": "state",
+          "type": "varchar",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "code_verifier": {
+          "name": "code_verifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

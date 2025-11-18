@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1763420367188,
-      "tag": "0000_glorious_the_initiative",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1763421451777,
-      "tag": "0001_wide_fixer",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1763505200166,
-      "tag": "0002_equal_wildside",
+      "when": 1763506093637,
+      "tag": "0000_charming_phil_sheldon",
       "breakpoints": true
     }
   ]
