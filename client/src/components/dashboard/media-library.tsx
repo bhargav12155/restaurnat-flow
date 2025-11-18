@@ -240,65 +240,101 @@ export function MediaLibrary({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredAssets.map((asset) => (
             <Card
               key={asset.id}
-              className={`relative cursor-pointer transition-all hover:shadow-lg ${
+              className={`group relative cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${
                 selectedIds.includes(asset.id)
-                  ? "ring-2 ring-primary shadow-lg"
-                  : ""
+                  ? "ring-2 ring-primary shadow-xl scale-[1.02]"
+                  : "hover:ring-1 hover:ring-border"
               }`}
               onClick={() => toggleSelection(asset.id)}
               data-testid={`card-media-${asset.id}`}
             >
               <CardContent className="p-0">
-                {/* Media preview */}
-                <div className="aspect-square relative overflow-hidden rounded-t-lg bg-muted">
+                {/* Media preview - larger and better aspect ratio */}
+                <div className="aspect-video relative overflow-hidden rounded-t-lg bg-gradient-to-br from-muted to-muted/50">
                   {asset.type === "photo" ? (
                     <img
                       src={asset.url}
                       alt={asset.title || "Media asset"}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain bg-black/5"
+                      loading="lazy"
                     />
+                  ) : asset.thumbnailUrl ? (
+                    // Show video thumbnail if available
+                    <div className="relative w-full h-full">
+                      <img
+                        src={asset.thumbnailUrl}
+                        alt={asset.title || "Video thumbnail"}
+                        className="w-full h-full object-contain bg-black/5"
+                        loading="lazy"
+                      />
+                      {/* Play button overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+                        <div className="bg-white/90 rounded-full p-3 group-hover:bg-white group-hover:scale-110 transition-all shadow-lg">
+                          <FileVideo className="h-8 w-8 text-primary" />
+                        </div>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-                      <FileVideo className="h-12 w-12 text-muted-foreground" />
+                    // Fallback for videos without thumbnails
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-500/10 to-pink-500/10">
+                      <div className="bg-white/90 rounded-full p-4 mb-2 group-hover:scale-110 transition-transform shadow-lg">
+                        <FileVideo className="h-10 w-10 text-primary" />
+                      </div>
+                      <span className="text-sm text-muted-foreground font-medium">Video File</span>
                     </div>
                   )}
 
-                  {/* Selection indicator */}
+                  {/* Selection indicator - larger and more visible */}
                   {selectedIds.includes(asset.id) && (
-                    <div className="absolute top-2 right-2 bg-primary text-primary-foreground rounded-full p-1">
-                      <Check className="h-4 w-4" />
+                    <div className="absolute top-3 right-3 bg-primary text-primary-foreground rounded-full p-2 shadow-lg animate-in zoom-in-50 duration-200">
+                      <Check className="h-5 w-5 stroke-[3]" />
                     </div>
                   )}
 
-                  {/* Type badge */}
-                  <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                  {/* Type badge - improved visibility */}
+                  <div className="absolute bottom-3 left-3 bg-black/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 shadow-lg">
                     {asset.type === "photo" ? (
-                      <ImageIcon className="h-3 w-3" />
+                      <ImageIcon className="h-3.5 w-3.5" />
                     ) : (
-                      <FileVideo className="h-3 w-3" />
+                      <FileVideo className="h-3.5 w-3.5" />
                     )}
-                    {asset.type}
+                    {asset.type.toUpperCase()}
                   </div>
+
+                  {/* Duration badge for videos */}
+                  {asset.type === "video" && asset.duration && (
+                    <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-medium shadow-lg">
+                      {Math.floor(asset.duration / 60)}:{String(Math.floor(asset.duration % 60)).padStart(2, '0')}
+                    </div>
+                  )}
                 </div>
 
-                {/* Media info */}
-                <div className="p-3 space-y-1">
+                {/* Media info - improved spacing and typography */}
+                <div className="p-4 space-y-2">
                   <div
-                    className="text-sm font-medium truncate"
+                    className="text-sm font-semibold truncate group-hover:text-primary transition-colors"
                     data-testid={`text-title-${asset.id}`}
+                    title={asset.title || "Untitled"}
                   >
                     {asset.title || "Untitled"}
                   </div>
-                  <div className="text-xs text-muted-foreground capitalize">
-                    {asset.source}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span className="capitalize font-medium bg-muted px-2 py-0.5 rounded">
+                      {asset.source}
+                    </span>
+                    {asset.fileSize && (
+                      <span className="font-medium">
+                        {(asset.fileSize / 1024 / 1024).toFixed(1)} MB
+                      </span>
+                    )}
                   </div>
-                  {asset.fileSize && (
-                    <div className="text-xs text-muted-foreground">
-                      {(asset.fileSize / 1024 / 1024).toFixed(2)} MB
+                  {asset.width && asset.height && (
+                    <div className="text-xs text-muted-foreground font-medium">
+                      {asset.width} × {asset.height}
                     </div>
                   )}
                 </div>
