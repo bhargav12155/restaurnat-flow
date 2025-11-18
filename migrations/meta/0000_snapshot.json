@@ -1,5 +1,5 @@
 {
-  "id": "a7f18d1f-9706-4dff-8db5-159725b46229",
+  "id": "97089cc6-dafb-4639-b194-877f8256a28e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -322,20 +322,20 @@
           "primaryKey": false,
           "notNull": true
         },
-        "business_name": {
-          "name": "business_name",
+        "company_name": {
+          "name": "company_name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "agent_name": {
-          "name": "agent_name",
+        "logo_url": {
+          "name": "logo_url",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "agent_title": {
-          "name": "agent_title",
+        "website": {
+          "name": "website",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -352,27 +352,39 @@
           "primaryKey": false,
           "notNull": false
         },
-        "office_address": {
-          "name": "office_address",
+        "address": {
+          "name": "address",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "license_number": {
-          "name": "license_number",
+        "city": {
+          "name": "city",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "brokerage_name": {
-          "name": "brokerage_name",
+        "state": {
+          "name": "state",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "tagline": {
-          "name": "tagline",
+        "zip_code": {
+          "name": "zip_code",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bio": {
+          "name": "bio",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "social_links": {
+          "name": "social_links",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -424,6 +436,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "opportunity_type": {
+          "name": "opportunity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "title": {
           "name": "title",
           "type": "text",
@@ -438,35 +456,17 @@
         },
         "priority": {
           "name": "priority",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'medium'"
-        },
-        "neighborhood": {
-          "name": "neighborhood",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "keyword_id": {
-          "name": "keyword_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "trend_source": {
-          "name": "trend_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "search_signal": {
-          "name": "search_signal",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "default": 50
+          "default": 5
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'pending'"
         },
         "metadata": {
           "name": "metadata",
@@ -474,8 +474,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "generated_at": {
-          "name": "generated_at",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
@@ -1162,55 +1162,24 @@
           "primaryKey": false,
           "notNull": true
         },
+        "group_name": {
+          "name": "group_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "heygen_group_id": {
           "name": "heygen_group_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "image_hash": {
-          "name": "image_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "s3_image_url": {
-          "name": "s3_image_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "heygen_image_key": {
-          "name": "heygen_image_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
+        "training_status": {
+          "name": "training_status",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "default": "'pending'"
-        },
-        "training_progress": {
-          "name": "training_progress",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "default": 0
-        },
-        "metadata": {
-          "name": "metadata",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",

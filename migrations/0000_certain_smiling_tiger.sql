@@ -52,15 +52,17 @@ CREATE TABLE "brand_settings" (
 CREATE TABLE "company_profiles" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
-	"business_name" text NOT NULL,
-	"agent_name" text NOT NULL,
-	"agent_title" text,
+	"company_name" text NOT NULL,
+	"logo_url" text,
+	"website" text,
 	"phone" text,
 	"email" text,
-	"office_address" text,
-	"license_number" text,
-	"brokerage_name" text,
-	"tagline" text,
+	"address" text,
+	"city" text,
+	"state" text,
+	"zip_code" text,
+	"bio" text,
+	"social_links" jsonb,
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now(),
 	CONSTRAINT "company_profiles_user_id_unique" UNIQUE("user_id")
@@ -69,15 +71,13 @@ CREATE TABLE "company_profiles" (
 CREATE TABLE "content_opportunities" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
+	"opportunity_type" text NOT NULL,
 	"title" text NOT NULL,
 	"description" text NOT NULL,
-	"priority" text DEFAULT 'medium' NOT NULL,
-	"neighborhood" text,
-	"keyword_id" text,
-	"trend_source" text NOT NULL,
-	"search_signal" integer DEFAULT 50,
+	"priority" integer DEFAULT 5,
+	"status" text DEFAULT 'pending',
 	"metadata" jsonb,
-	"generated_at" timestamp DEFAULT now()
+	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE "content_pieces" (
@@ -188,14 +188,9 @@ CREATE TABLE "photo_avatar_group_voices" (
 CREATE TABLE "photo_avatar_groups" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
+	"group_name" text NOT NULL,
 	"heygen_group_id" text NOT NULL,
-	"name" text NOT NULL,
-	"image_hash" text,
-	"s3_image_url" text,
-	"heygen_image_key" text,
-	"status" text DEFAULT 'pending' NOT NULL,
-	"training_progress" integer DEFAULT 0,
-	"metadata" jsonb,
+	"training_status" text DEFAULT 'pending' NOT NULL,
 	"created_at" timestamp DEFAULT now(),
 	CONSTRAINT "photo_avatar_groups_heygen_group_id_unique" UNIQUE("heygen_group_id")
 );
