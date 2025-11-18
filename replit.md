@@ -48,6 +48,19 @@ The application uses PostgreSQL with Drizzle ORM for type-safe database operatio
 ### AI Integration
 Content generation is powered by OpenAI's GPT-5 model, specifically optimized for real estate marketing in the Omaha market. The AI service generates tailored content for social posts, blog articles, property descriptions, and email campaigns with local market knowledge and neighborhood-specific insights.
 
+### Avatar Support & Gestures
+**Video Generation**: Supports three avatar types:
+- Public Avatars: HeyGen's professional avatars with lip-sync only
+- Talking Photo: Upload a single photo for AI-generated talking head videos
+- Custom Photo Avatars: Multi-pose photo avatar groups with full gesture support (hand movements, body animation)
+
+**Streaming Avatars**: Only supports dedicated streaming avatars:
+- Public HeyGen streaming avatars (Wayne, Angela, Josh, Anna, Tyler)
+- Custom streaming avatars imported via HeyGen API (must have valid `heygenAvatarId`)
+- **Photo avatar groups NOT supported** for streaming (only for video generation)
+
+**Gesture Controls**: Available for avatars with `supportsGestures=true`. Intensity levels: Off, Subtle, Moderate, Expressive (0-3 scale). Gesture controls dynamically show/hide based on selected avatar's capabilities.
+
 ### Storage Architecture
 The application implements a dual-storage strategy combining HeyGen's API storage with AWS S3 for backup and long-term archival:
 
