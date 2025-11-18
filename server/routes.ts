@@ -8231,13 +8231,13 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         tutorialVideos.createdAt
       );
 
-      // Convert S3 paths to full URLs
+      // Convert S3 paths to full URLs (handle both keys and existing URLs)
       const s3Service = new S3UploadService();
       const videosWithUrls = videos.map((video) => ({
         ...video,
-        videoUrl: s3Service.getS3Url(video.videoUrl),
+        videoUrl: video.videoUrl.startsWith('http') ? video.videoUrl : s3Service.getS3Url(video.videoUrl),
         thumbnailUrl: video.thumbnailUrl
-          ? s3Service.getS3Url(video.thumbnailUrl)
+          ? (video.thumbnailUrl.startsWith('http') ? video.thumbnailUrl : s3Service.getS3Url(video.thumbnailUrl))
           : null,
       }));
 
@@ -9131,13 +9131,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
         const s3Service = new S3UploadService();
         const fileBuffer = await fs.promises.readFile(file.path);
-        const s3Key = await s3Service.uploadFile(
+        fileUrl = await s3Service.uploadFile(
           parseInt(userId!),
           fileBuffer,
           `${Date.now()}-${file.originalname}`,
           file.mimetype
         );
-        fileUrl = s3Service.getS3Url(s3Key);
       } else {
         // Use local file path if S3 not configured
         fileUrl = `/uploads/${file.filename}`;
