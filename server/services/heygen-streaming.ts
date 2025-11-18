@@ -116,6 +116,34 @@ export class HeyGenStreamingService {
     return await response.json();
   }
 
+  // Start the streaming session
+  async startSession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    const response = await fetch(`https://api.heygen.com/v1/streaming.start`, {
+      method: 'POST',
+      headers: {
+        'X-Api-Key': this.apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Failed to start session:', errorData);
+      throw new Error(`Failed to start session: ${response.status}`);
+    }
+
+    console.log('✅ Session started:', sessionId);
+    return await response.json();
+  }
+
   // Make avatar speak
   async speak(sessionId: string, text: string, taskType: 'TALK' | 'REPEAT' = 'TALK') {
     const session = this.sessions.get(sessionId);

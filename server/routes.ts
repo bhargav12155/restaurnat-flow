@@ -5615,6 +5615,21 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Start streaming session
+  app.post("/api/streaming/start", async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+
+      const streamingService = new HeyGenStreamingService();
+      await streamingService.startSession(sessionId);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to start streaming session:", error);
+      res.status(500).json({ error: "Failed to start streaming session" });
+    }
+  });
+
   // Make avatar speak
   app.post("/api/streaming/sessions/:sessionId/speak", async (req, res) => {
     try {
