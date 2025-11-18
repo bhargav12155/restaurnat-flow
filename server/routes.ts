@@ -4259,6 +4259,27 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  app.post("/api/scheduled-posts", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user.id);
+      
+      // Validate the request body
+      const postData = insertScheduledPostSchema.parse({
+        userId,
+        ...req.body,
+      });
+
+      const createdPost = await storage.createScheduledPost(postData);
+      res.status(201).json(createdPost);
+    } catch (error) {
+      console.error("Create scheduled post error:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ error: "Invalid post data", details: error });
+      }
+      res.status(500).json({ error: "Failed to create scheduled post" });
+    }
+  });
+
   // Generate 30-day content calendar
   app.post("/api/content/generate-plan", requireAuth, async (req: any, res) => {
     try {
