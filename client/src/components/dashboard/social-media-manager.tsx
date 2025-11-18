@@ -1688,12 +1688,12 @@ ${agentName} | ${brokerageName}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      // Check file size (YouTube max is 256GB, but we'll limit to 100MB for demo)
-                      if (file.size > 100 * 1024 * 1024) {
+                      // Check file size (HeyGen max is 200MB)
+                      if (file.size > 200 * 1024 * 1024) {
                         toast({
                           title: "File Too Large",
                           description:
-                            "Please select a video smaller than 100MB",
+                            "Please select a video smaller than 200MB",
                           variant: "destructive",
                         });
                         return;
@@ -1708,7 +1708,7 @@ ${agentName} | ${brokerageName}
                   className="w-full"
                 />
                 <div className="text-xs text-muted-foreground">
-                  Supported formats: MP4, MOV, AVI, WMV, FLV, WebM (max 100MB)
+                  Supported formats: MP4, MOV, WEBM, MKV (max 200MB)
                 </div>
               </div>
             )}
