@@ -36,7 +36,7 @@ export class S3UploadService {
     });
 
     await upload.done();
-    return key;
+    return this.getS3Url(key);
   }
 
   async getFile(key: string): Promise<Buffer> {
