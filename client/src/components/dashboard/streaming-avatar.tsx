@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,28 +8,37 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Mic, MicOff, Video, VideoOff, Volume2, VolumeX, Send, StopCircle, Loader2, Phone, PhoneOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { apiRequest } from '@/lib/queryClient';
+import StreamingAvatar, { 
+  AvatarQuality, 
+  StreamingEvents, 
+  TaskType,
+  TaskMode,
+  VoiceEmotion 
+} from '@heygen/streaming-avatar';
 
-interface StreamingSession {
-  sessionId: string;
-  iceServers: any;
-  offer: string;
+interface SessionInfo {
+  session_id: string;
+  url: string;
+  access_token: string;
+  session_duration_limit: number;
 }
 
 export function StreamingAvatar() {
   const { toast } = useToast();
   const [selectedAvatar, setSelectedAvatar] = useState<string>('');
-  const [session, setSession] = useState<StreamingSession | null>(null);
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isVoiceChatActive, setIsVoiceChatActive] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [message, setMessage] = useState('');
+  const [accessToken, setAccessToken] = useState<string>('');
   
   const videoRef = useRef<HTMLVideoElement>(null);
-  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
+  const avatarRef = useRef<StreamingAvatar | null>(null);
 
   // HeyGen's public streaming avatars (these always work)
   const defaultStreamingAvatars = [
