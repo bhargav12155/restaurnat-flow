@@ -1,5 +1,5 @@
 {
-  "id": "ae1eef6f-fcfe-4e12-a0ba-a9cc8aa9234e",
+  "id": "a7f18d1f-9706-4dff-8db5-159725b46229",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2212,12 +2212,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "account_id": {
-          "name": "account_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "access_token": {
           "name": "access_token",
           "type": "text",
@@ -2230,6 +2224,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "token_expires_at": {
+          "name": "token_expires_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "is_connected": {
           "name": "is_connected",
           "type": "boolean",
@@ -2237,15 +2237,15 @@
           "notNull": false,
           "default": false
         },
-        "last_sync": {
-          "name": "last_sync",
-          "type": "timestamp",
+        "account_username": {
+          "name": "account_username",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "metadata": {
-          "name": "metadata",
-          "type": "jsonb",
+        "last_synced": {
+          "name": "last_synced",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
