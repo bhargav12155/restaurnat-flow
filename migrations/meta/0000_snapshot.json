@@ -1,5 +1,5 @@
 {
-  "id": "01a73b0c-7919-4acc-83ad-7813ef788311",
+  "id": "e8c87a68-950f-4629-b5a0-d96c40172908",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -90,26 +90,20 @@
           "primaryKey": false,
           "notNull": true
         },
-        "metric_type": {
-          "name": "metric_type",
+        "metric": {
+          "name": "metric",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "metric_value": {
-          "name": "metric_value",
+        "value": {
+          "name": "value",
           "type": "numeric",
           "primaryKey": false,
           "notNull": false
         },
-        "dimension": {
-          "name": "dimension",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "timestamp": {
-          "name": "timestamp",
+        "date": {
+          "name": "date",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
