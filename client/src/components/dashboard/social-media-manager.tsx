@@ -212,6 +212,16 @@ export function SocialMediaManager() {
   const [showPostComposer, setShowPostComposer] = useState(false);
   const { toast } = useToast();
 
+  // Fetch company profile for dynamic content
+  const { data: companyProfile } = useQuery({
+    queryKey: ["/api/company/profile"],
+  });
+
+  // Get agent name and brokerage with smart defaults
+  const agentName = companyProfile?.agentName || "[Your Name]";
+  const brokerageName = companyProfile?.brokerageName || "[Your Brokerage]";
+  const businessName = companyProfile?.businessName || "[Your Business]";
+
   // OAuth-enabled platforms (only platforms with full OAuth backend support)
   const oauthPlatforms = [
     "facebook",
@@ -754,9 +764,9 @@ ${
     : ""
 }
 
-Contact Mike Bjork at Berkshire Hathaway HomeServices for more information!
+Contact ${agentName} at ${brokerageName} for more information!
 
-#JustListed #OmahaRealEstate #MikeBjork #BHHS ${
+#JustListed #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} ${
           neighborhoodTag ? `#${neighborhoodTag}` : ""
         }`,
 
@@ -775,7 +785,7 @@ ${property.description.substring(0, 150)}...
 
 DM for details! 📩
 
-#JustListed #OmahaHomes #RealEstate #MikeBjork ${
+#JustListed #OmahaHomes #RealEstate #${agentName.replace(/\s+/g, "")} ${
           neighborhoodTag ? `#${neighborhoodTag}` : ""
         }`,
 
@@ -786,7 +796,7 @@ DM for details! 📩
         }BA\n\n${property.description.substring(
           0,
           100,
-        )}...\n\nContact Mike Bjork for details!\n\n#JustListed #OmahaRealEstate`,
+        )}...\n\nContact ${agentName} for details!\n\n#JustListed #OmahaRealEstate`,
 
         youtube: `🏠 NEW LISTING: ${property.address} | ${formatPrice(
           property.listPrice,
@@ -824,13 +834,13 @@ ${
     : "• Beautifully maintained interior\n• Great neighborhood location\n• Move-in ready condition"
 }
 
-I'm Mike Bjork with Berkshire Hathaway HomeServices, and I'd love to show you this amazing property. Call or text me today to schedule your private showing!
+I'm ${agentName} with ${brokerageName}, and I'd love to show you this amazing property. Call or text me today to schedule your private showing!
 
 #JustListed #OmahaRealEstate #${
           property.neighborhood
             ? property.neighborhood.replace(/\s+/g, "")
             : "OmahaHomes"
-        } #MikeBjork #BerkshireHathaway #RealEstate #HomeTour`,
+        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #RealEstate #HomeTour`,
       },
 
       just_sold: {
@@ -849,9 +859,9 @@ ${
 
 Thinking of buying or selling? I'd love to help you achieve your real estate goals!
 
-Mike Bjork | Berkshire Hathaway HomeServices
+${agentName} | ${brokerageName}
 
-#JustSold #OmahaRealEstate #MikeBjork #BHHS #RealEstateSuccess`,
+#JustSold #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #RealEstateSuccess`,
 
         instagram: `✅ SOLD!
 
@@ -867,13 +877,13 @@ ${
 
 Ready to make your move? Let's chat! 📞
 
-#Sold #OmahaRealEstate #MikeBjork #RealEstateSuccess`,
+#Sold #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #RealEstateSuccess`,
 
         x: `✅ SOLD!\n\n${
           property.address
         }\n\nAnother successful closing! 🎉\n\n${
           property.neighborhood ? `${property.neighborhood} market strong!` : ""
-        }\n\nMike Bjork | BHHS\n\n#JustSold #OmahaRealEstate`,
+        }\n\n${agentName} | ${brokerageName.split(" ").map(w => w.charAt(0)).join("")}\n\n#JustSold #OmahaRealEstate`,
 
         youtube: `🎉 SOLD! ${property.address} | Another Successful Closing!
 
@@ -907,13 +917,13 @@ ${
 
 Thinking about selling your home? I'd love to discuss your goals and show you how I can maximize your property's value in today's market.
 
-Mike Bjork | Berkshire Hathaway HomeServices
+${agentName} | ${brokerageName}
 
 #JustSold #OmahaRealEstate #${
           property.neighborhood
             ? property.neighborhood.replace(/\s+/g, "")
             : "OmahaHomes"
-        } #MikeBjork #BerkshireHathaway #RealEstateSuccess #SoldHomes`,
+        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #RealEstateSuccess #SoldHomes`,
       },
 
       price_improvement: {
@@ -934,9 +944,9 @@ ${
     : "Don't miss this opportunity!"
 }
 
-Contact Mike Bjork at Berkshire Hathaway HomeServices today!
+Contact ${agentName} at ${brokerageName} today!
 
-#PriceImprovement #OmahaRealEstate #MikeBjork #BHHS #Opportunity`,
+#PriceImprovement #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map(w => w.charAt(0)).join("")} #Opportunity`,
 
         instagram: `💰 PRICE DROP ALERT!
 
@@ -963,7 +973,7 @@ DM me now! 📩
           property.neighborhood
             ? `${property.neighborhood} opportunity!`
             : "Great opportunity!"
-        }\n\nMike Bjork | BHHS\n\n#PriceImprovement`,
+        }\n\n${agentName} | ${brokerageName.split(" ").map(w => w.charAt(0)).join("")}\n\n#PriceImprovement`,
 
         youtube: `💰 PRICE IMPROVEMENT! ${property.address} | Now ${formatPrice(
           property.listPrice,
@@ -980,9 +990,9 @@ What makes this price improvement significant:
 • Creates opportunity for serious buyers
 • Perfect timing for today's market
 
-Don't wait on this opportunity! Contact Mike Bjork at Berkshire Hathaway HomeServices today.
+Don't wait on this opportunity! Contact ${agentName} at ${brokerageName} today.
 
-#PriceImprovement #OmahaRealEstate #MikeBjork #RealEstateOpportunity`,
+#PriceImprovement #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #RealEstateOpportunity`,
       },
 
       open_houses: {
@@ -1006,9 +1016,9 @@ ${
 
 No appointment necessary - just stop by!
 
-Mike Bjork | Berkshire Hathaway HomeServices
+${agentName} | ${brokerageName}
 
-#OpenHouse #OmahaRealEstate #MikeBjork #WeekendViewing`,
+#OpenHouse #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #WeekendViewing`,
 
         instagram: `🏠 OPEN HOUSE ALERT!
 
@@ -1036,7 +1046,7 @@ See you there! 👋
           property.bedrooms
         }BD ${property.bathrooms}BA\n\n${
           property.neighborhood ? `${property.neighborhood} gem!` : "Must see!"
-        }\n\nMike Bjork | BHHS\n\n#OpenHouse`,
+        }\n\n${agentName} | ${brokerageName.split(" ").map(w => w.charAt(0)).join("")}\n\n#OpenHouse`,
 
         youtube: `🏠 OPEN HOUSE THIS WEEKEND! ${property.address}
 
@@ -1052,9 +1062,9 @@ No appointment necessary - just stop by! I'll be there to answer questions and s
 
 Can't make the open house? Call or text me to schedule a private showing at your convenience.
 
-Mike Bjork | Berkshire Hathaway HomeServices
+${agentName} | ${brokerageName}
 
-#OpenHouse #WeekendViewing #OmahaRealEstate #MikeBjork #HomeTour`,
+#OpenHouse #WeekendViewing #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #HomeTour`,
       },
     };
 
@@ -1065,7 +1075,7 @@ Mike Bjork | Berkshire Hathaway HomeServices
 
     return `Check out this amazing property at ${
       property.address
-    }! ${formatPrice(property.listPrice)} | Contact Mike Bjork for details.`;
+    }! ${formatPrice(property.listPrice)} | Contact ${agentName} for details.`;
   };
 
   const handlePost = () => {
@@ -1547,15 +1557,15 @@ Mike Bjork | Berkshire Hathaway HomeServices
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 bg-golden-accent rounded-full flex items-center justify-center">
                           <span className="text-xs font-bold text-golden-foreground">
-                            MB
+                            {agentName.split(' ').map(n => n.charAt(0)).join('').substring(0, 2)}
                           </span>
                         </div>
                         <div className="flex-1">
                           <div className="font-medium text-sm text-foreground">
-                            Mike Bjork
+                            {agentName}
                           </div>
                           <div className="text-xs text-muted-foreground mb-2">
-                            Bjork Group at BHHS
+                            {businessName} at {brokerageName}
                           </div>
                           <div className="text-sm text-foreground whitespace-pre-wrap">
                             {postContent}
