@@ -36,7 +36,8 @@ import {
   Palette,
   AlertCircle,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  Sparkles
 } from "lucide-react";
 
 interface Avatar {
@@ -1325,125 +1326,211 @@ export function AvatarCreator() {
                     </div>
 
                     {/* Comprehensive Gesture Avatar Creation Guide */}
-                    <Collapsible className="border rounded-lg">
+                    <Collapsible className="border rounded-lg border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
                       <CollapsibleTrigger asChild>
-                        <Button variant="ghost" className="w-full justify-between p-4 hover:bg-muted/50">
+                        <Button variant="ghost" className="w-full justify-between p-4 hover:bg-primary/10">
                           <div className="flex items-center gap-2">
-                            <Video className="h-5 w-5 text-primary" />
-                            <span className="font-medium">How to Create Gesture-Enabled Avatars</span>
+                            <Video className="h-5 w-5 text-primary animate-pulse" />
+                            <span className="font-semibold text-lg">🎬 How to Create Gesture-Enabled Avatars</span>
+                            <Badge variant="secondary" className="ml-2">Step-by-Step Guide</Badge>
                           </div>
                           <ChevronDown className="h-4 w-4" />
                         </Button>
                       </CollapsibleTrigger>
-                      <CollapsibleContent className="p-4 space-y-4 border-t">
+                      <CollapsibleContent className="p-6 space-y-6 border-t bg-background/50">
                         {/* Step-by-step guide */}
-                        <div className="space-y-4">
-                          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">📋 Quick Overview</h4>
-                            <p className="text-sm text-blue-800 dark:text-blue-200">
-                              Gesture-enabled avatars allow full hand movements and body gestures in your videos and live streams.
-                              Your paid HeyGen account supports this advanced feature for both pre-recorded videos and real-time streaming.
+                        <div className="space-y-6">
+                          {/* Overview Card */}
+                          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-2 border-blue-300 dark:border-blue-700 rounded-xl p-5 shadow-sm">
+                            <h4 className="font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2 text-lg">
+                              <Sparkles className="h-5 w-5" />
+                              What Makes Gesture Avatars Special?
+                            </h4>
+                            <p className="text-sm text-blue-900 dark:text-blue-100 leading-relaxed mb-3">
+                              <strong>Gesture-enabled avatars</strong> bring your videos to life with natural hand movements, facial expressions, and body language perfectly synced to your script. 
+                              Unlike standard avatars that only do lip-sync, gesture avatars can wave, point, nod, and express emotions just like a real person!
                             </p>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div className="bg-white/50 dark:bg-black/20 rounded-lg p-2">
+                                <span className="font-semibold">✅ Works With:</span> Both video generation & live streaming
+                              </div>
+                              <div className="bg-white/50 dark:bg-black/20 rounded-lg p-2">
+                                <span className="font-semibold">⏱️ Processing:</span> 5-7 business days after upload
+                              </div>
+                              <div className="bg-white/50 dark:bg-black/20 rounded-lg p-2">
+                                <span className="font-semibold">🎬 Requires:</span> Custom video footage of yourself
+                              </div>
+                              <div className="bg-white/50 dark:bg-black/20 rounded-lg p-2">
+                                <span className="font-semibold">🎭 Gestures:</span> Up to 10 per video
+                              </div>
+                            </div>
                           </div>
 
-                          <div className="space-y-3">
-                            <h4 className="font-semibold flex items-center gap-2">
-                              <Camera className="h-4 w-4" />
-                              Filming Guidelines for Maximum Quality
+                          {/* Watch Tutorial Video */}
+                          <div className="bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                            <h4 className="font-semibold text-purple-900 dark:text-purple-100 mb-2 flex items-center gap-2">
+                              <Play className="h-4 w-4" />
+                              📺 Watch Official HeyGen Tutorial
                             </h4>
-                            
-                            <div className="space-y-2 text-sm">
-                              <div className="border-l-4 border-primary pl-3">
-                                <p className="font-medium">🎬 Video Structure</p>
-                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
-                                  <li><strong>Duration:</strong> 30 seconds minimum</li>
-                                  <li><strong>First 30s:</strong> Speak neutrally without gestures (establishes baseline)</li>
-                                  <li><strong>After 30s:</strong> Perform 1 gesture every 2 seconds</li>
-                                  <li><strong>Recommended total:</strong> 60-90 seconds with 15-30 gestures</li>
-                                </ul>
-                              </div>
+                            <p className="text-sm text-purple-800 dark:text-purple-200 mb-3">
+                              Before you start, watch this 5-minute official tutorial from HeyGen Academy showing exactly how to film and create gesture-enabled avatars:
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open('https://community.heygen.com/public/resources/heygen-academy-101-gesture-control', '_blank')}
+                              className="w-full bg-white dark:bg-purple-900 border-purple-300"
+                            >
+                              <Play className="h-4 w-4 mr-2" />
+                              Watch HeyGen Academy: Gesture Control Tutorial
+                            </Button>
+                          </div>
 
-                              <div className="border-l-4 border-green-500 pl-3">
-                                <p className="font-medium">✅ Supported Gestures</p>
-                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
-                                  <li>Waving hello/goodbye</li>
-                                  <li>Thumbs up/down</li>
-                                  <li>Pointing (at camera, to sides)</li>
-                                  <li>Nodding and head tilts</li>
-                                  <li>Open palm gestures</li>
-                                  <li>Hand movements near face (not covering it)</li>
-                                  <li>Counting with fingers</li>
-                                  <li>Shrugging shoulders</li>
-                                </ul>
-                              </div>
+                          {/* Step-by-Step Filming Process */}
+                          <div className="space-y-4">
+                            <h3 className="font-bold text-lg flex items-center gap-2 border-b pb-2">
+                              <Camera className="h-5 w-5 text-primary" />
+                              📹 Step-by-Step Filming Process
+                            </h3>
 
-                              <div className="border-l-4 border-amber-500 pl-3">
-                                <p className="font-medium">⚙️ Technical Requirements</p>
-                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
-                                  <li><strong>Resolution:</strong> 1080p @ 30 FPS (or 4K @ 60 FPS)</li>
-                                  <li><strong>Lighting:</strong> Soft, even lighting without harsh shadows</li>
-                                  <li><strong>Framing:</strong> 2-3 feet from camera, head centered in frame</li>
-                                  <li><strong>Background:</strong> Green screen optional but recommended</li>
-                                  <li><strong>Hand position:</strong> Keep gestures below shoulder height</li>
-                                  <li><strong>Camera:</strong> Fixed position, no panning or zooming</li>
-                                </ul>
-                              </div>
-
-                              <div className="border-l-4 border-red-500 pl-3">
-                                <p className="font-medium">🚫 Avoid These Actions</p>
-                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
-                                  <li>Rapid head shaking or spinning</li>
-                                  <li>Covering your face with hands</li>
-                                  <li>Turning around or showing your back</li>
-                                  <li>Extreme arm movements above head</li>
-                                  <li>Walking in/out of frame</li>
-                                  <li>Props or holding objects (unless they're part of your character)</li>
-                                </ul>
-                              </div>
-
-                              <div className="border-l-4 border-purple-500 pl-3">
-                                <p className="font-medium">💡 Pro Tips</p>
-                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
-                                  <li>Wear solid colors (avoid patterns that may cause artifacts)</li>
-                                  <li>Use a teleprompter or notes to maintain eye contact</li>
-                                  <li>Practice gestures beforehand to ensure smooth movements</li>
-                                  <li>Record multiple takes and choose the best one</li>
-                                  <li>Speak naturally during gestures (HeyGen will learn the association)</li>
-                                </ul>
+                            {/* STEP 1: Setup Your Recording Space */}
+                            <div className="border-2 border-green-300 dark:border-green-700 rounded-xl p-4 bg-green-50/50 dark:bg-green-950/20">
+                              <div className="flex items-start gap-3">
+                                <div className="bg-green-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold shrink-0">1</div>
+                                <div className="space-y-2 flex-1">
+                                  <h5 className="font-bold text-green-900 dark:text-green-100">Setup Your Recording Space</h5>
+                                  <div className="text-sm space-y-2 text-green-900 dark:text-green-100">
+                                    <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                                      <p className="font-semibold mb-2">📸 Camera & Positioning:</p>
+                                      <ul className="list-disc list-inside ml-2 space-y-1">
+                                        <li>Use 4K camera or modern smartphone (1080p minimum)</li>
+                                        <li>Mount on tripod - <strong>NO handheld!</strong></li>
+                                        <li>Position <strong>2-3 feet</strong> from camera</li>
+                                        <li>Frame yourself <strong>chest-up</strong> (head & shoulders visible)</li>
+                                        <li>Center yourself in frame</li>
+                                      </ul>
+                                    </div>
+                                    <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                                      <p className="font-semibold mb-2">💡 Lighting Setup:</p>
+                                      <ul className="list-disc list-inside ml-2 space-y-1">
+                                        <li><strong>Natural daylight:</strong> Face a window (not behind you)</li>
+                                        <li><strong>Studio setup:</strong> Two soft lights on each side</li>
+                                        <li><strong>Goal:</strong> No shadows on face or background</li>
+                                        <li>Optional: Backlight behind you for depth</li>
+                                      </ul>
+                                    </div>
+                                    <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                                      <p className="font-semibold mb-2">🎨 Background:</p>
+                                      <ul className="list-disc list-inside ml-2 space-y-1">
+                                        <li>Clean, simple wall (solid color preferred)</li>
+                                        <li>Green screen optional but recommended</li>
+                                        <li><strong>Avoid:</strong> Busy patterns, other people, moving objects</li>
+                                      </ul>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="bg-muted rounded-lg p-4 space-y-3">
-                              <h4 className="font-semibold">🎥 Creation Steps</h4>
-                              <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                                <li>Record your video following the guidelines above</li>
-                                <li>Go to <a href="https://app.heygen.com/streaming-avatar" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">HeyGen Studio Avatar</a></li>
-                                <li>Click "Create Custom Avatar" and upload your video</li>
-                                <li>Enable "Gesture Control" during avatar creation</li>
-                                <li>Wait for processing (usually 1-4 hours)</li>
-                                <li>Once ready, import your avatar using the form below</li>
-                              </ol>
+                            {/* STEP 2: Record Your Video */}
+                            <div className="border-2 border-amber-300 dark:border-amber-700 rounded-xl p-4 bg-amber-50/50 dark:bg-amber-950/20">
+                              <div className="flex items-start gap-3">
+                                <div className="bg-amber-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold shrink-0">2</div>
+                                <div className="space-y-2 flex-1">
+                                  <h5 className="font-bold text-amber-900 dark:text-amber-100">Record Your Video - Follow This EXACT Structure</h5>
+                                  <div className="text-sm space-y-2 text-amber-900 dark:text-amber-100">
+                                    <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3 border-l-4 border-amber-600">
+                                      <p className="font-bold mb-2">⏱️ CRITICAL TIMING STRUCTURE:</p>
+                                      <div className="space-y-3">
+                                        <div className="pl-3 border-l-2 border-amber-500">
+                                          <p className="font-semibold">Seconds 0-30: <span className="text-amber-700 dark:text-amber-300">Neutral Baseline</span></p>
+                                          <p className="text-xs mt-1">Speak naturally with NO GESTURES at all. This teaches HeyGen your neutral state.</p>
+                                        </div>
+                                        <div className="pl-3 border-l-2 border-green-500">
+                                          <p className="font-semibold">Seconds 31+: <span className="text-green-700 dark:text-green-300">Gesture Phase</span></p>
+                                          <p className="text-xs mt-1"><strong>Perform 1 gesture → Return to neutral → Wait 2 seconds → Next gesture</strong></p>
+                                          <p className="text-xs mt-1">Total: 60-90 seconds with 15-30 different gestures</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                                      <p className="font-semibold mb-2">✅ Example Gestures to Perform:</p>
+                                      <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div>• 👋 Wave hello</div>
+                                        <div>• 👍 Thumbs up</div>
+                                        <div>• 👉 Point forward</div>
+                                        <div>• 👈 Point to side</div>
+                                        <div>• 🙂 Big smile</div>
+                                        <div>• 😊 Friendly nod</div>
+                                        <div>• 🤝 Open palm gesture</div>
+                                        <div>• 🤷 Shrug shoulders</div>
+                                        <div>• 💭 Thinking (hand on chin)</div>
+                                        <div>• 🎯 Counting (1, 2, 3 with fingers)</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
 
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => window.open('https://app.heygen.com/streaming-avatar', '_blank')}
-                                className="flex-1"
-                              >
-                                <ExternalLink className="h-4 w-4 mr-2" />
-                                Create on HeyGen
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => window.open('https://help.heygen.com/en/articles/8868166-how-to-create-a-custom-avatar', '_blank')}
-                                className="flex-1"
-                              >
-                                <ExternalLink className="h-4 w-4 mr-2" />
-                                View HeyGen Docs
-                              </Button>
+                            {/* STEP 3: Upload to HeyGen Platform */}
+                            <div className="border-2 border-blue-300 dark:border-blue-700 rounded-xl p-4 bg-blue-50/50 dark:bg-blue-950/20">
+                              <div className="flex items-start gap-3">
+                                <div className="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold shrink-0">3</div>
+                                <div className="space-y-2 flex-1">
+                                  <h5 className="font-bold text-blue-900 dark:text-blue-100">Upload Your Video to HeyGen</h5>
+                                  <div className="text-sm space-y-2 text-blue-900 dark:text-blue-100">
+                                    <ol className="list-decimal list-inside space-y-2 bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                                      <li>Log into your <a href="https://app.heygen.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-semibold">HeyGen account</a></li>
+                                      <li>Navigate to <strong>Avatars → Create Avatar</strong></li>
+                                      <li>Select <strong>"Hyper-Realistic Avatar"</strong> (video upload option)</li>
+                                      <li>Upload your gesture-ready video file</li>
+                                      <li>Complete identity verification (required for custom avatars)</li>
+                                      <li>Wait 5-7 business days for processing ⏳</li>
+                                    </ol>
+                                    <div className="flex gap-2 mt-3">
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => window.open('https://app.heygen.com/streaming-avatar', '_blank')}
+                                        className="flex-1"
+                                      >
+                                        <Upload className="h-4 w-4 mr-2" />
+                                        Create on HeyGen
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => window.open('https://help.heygen.com/en/articles/8868166-how-to-create-a-custom-avatar', '_blank')}
+                                        className="flex-1"
+                                      >
+                                        <ExternalLink className="h-4 w-4 mr-2" />
+                                        Documentation
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* STEP 4: Import Your Gesture Avatar */}
+                            <div className="border-2 border-purple-300 dark:border-purple-700 rounded-xl p-4 bg-purple-50/50 dark:bg-purple-950/20">
+                              <div className="flex items-start gap-3">
+                                <div className="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold shrink-0">4</div>
+                                <div className="space-y-2 flex-1">
+                                  <h5 className="font-bold text-purple-900 dark:text-purple-100">Import Avatar to RealtyFlow</h5>
+                                  <div className="text-sm space-y-2 text-purple-900 dark:text-purple-100">
+                                    <p className="bg-white/60 dark:bg-black/20 rounded-lg p-3">
+                                      Once HeyGen processes your avatar (you'll get an email), return here and use the <strong>"Import by Avatar ID"</strong> form below. 
+                                      Your gesture-enabled avatar will be available for both video generation and live streaming!
+                                    </p>
+                                    <div className="bg-white/60 dark:bg-black/20 rounded-lg p-3 border-l-4 border-purple-600">
+                                      <p className="font-semibold mb-1">💡 Quick Tip:</p>
+                                      <p className="text-xs">Use the "Browse Your HeyGen Avatars" button to automatically see all your avatars including gesture-enabled ones. They'll be marked with a 🖐️ Gestures badge!</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
