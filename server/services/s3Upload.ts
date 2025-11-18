@@ -71,6 +71,7 @@ export class S3UploadService {
   }
 
   getS3Url(key: string): string {
-    return `https://${this.bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    const region = process.env.AWS_REGION || 'us-east-2';
+    return `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
   }
 }
