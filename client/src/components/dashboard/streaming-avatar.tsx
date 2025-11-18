@@ -78,6 +78,16 @@ export function StreamingAvatar() {
   // Setup WebRTC connection
   const setupWebRTC = async (sessionData: StreamingSession) => {
     try {
+      console.log('🔧 Setting up WebRTC with session data:', {
+        hasIceServers: !!sessionData.iceServers,
+        hasOffer: !!sessionData.offer,
+        sessionId: sessionData.sessionId
+      });
+
+      if (!sessionData.iceServers || !sessionData.offer) {
+        throw new Error('Missing iceServers or offer in session data');
+      }
+
       // Create peer connection
       const pc = new RTCPeerConnection({
         iceServers: sessionData.iceServers
@@ -87,6 +97,7 @@ export function StreamingAvatar() {
 
       // Handle incoming stream
       pc.ontrack = (event) => {
+        console.log('📹 Received video track');
         if (videoRef.current && event.streams[0]) {
           videoRef.current.srcObject = event.streams[0];
         }
@@ -94,9 +105,14 @@ export function StreamingAvatar() {
 
       // Handle connection state
       pc.onconnectionstatechange = () => {
+        console.log('🔌 Connection state:', pc.connectionState);
         if (pc.connectionState === 'connected') {
           setIsConnected(true);
           setIsConnecting(false);
+          toast({
+            title: "Connected!",
+            description: "Streaming avatar is ready.",
+          });
         } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
           setIsConnected(false);
           setIsConnecting(false);
@@ -104,11 +120,13 @@ export function StreamingAvatar() {
       };
 
       // Set remote offer and create answer
+      console.log('📥 Setting remote offer...');
       await pc.setRemoteDescription(new RTCSessionDescription({
         type: 'offer',
         sdp: sessionData.offer
       }));
 
+      console.log('📝 Creating answer...');
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -122,10 +140,11 @@ export function StreamingAvatar() {
       setIsConnected(true);
       setIsConnecting(false);
     } catch (error) {
-      console.error('WebRTC setup failed:', error);
+      console.error('❌ WebRTC setup failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       toast({
         title: "Connection Failed",
-        description: "Failed to establish video connection.",
+        description: `Failed to establish video connection: ${errorMessage}`,
         variant: "destructive"
       });
       setIsConnecting(false);
