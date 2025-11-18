@@ -1,6 +1,8 @@
 import {
   type Analytics,
   type Avatar,
+  type BrandSettings,
+  brandSettings as brandSettingsTable,
   type CompanyProfile,
   companyProfiles,
   type ContentPiece,
@@ -8,6 +10,7 @@ import {
   customVoices,
   type InsertAnalytics,
   type InsertAvatar,
+  type InsertBrandSettings,
   type InsertCompanyProfile,
   type InsertContentPiece,
   type InsertCustomVoice,
@@ -200,6 +203,10 @@ export interface IStorage {
   // Company Profile
   getCompanyProfile(userId: string): Promise<CompanyProfile | null>;
   upsertCompanyProfile(profile: InsertCompanyProfile): Promise<CompanyProfile>;
+
+  // Brand Settings
+  getBrandSettings(userId: string): Promise<BrandSettings | null>;
+  upsertBrandSettings(settings: InsertBrandSettings): Promise<BrandSettings>;
 
   // Media Assets
   getMediaAssets(
@@ -1425,6 +1432,32 @@ export class MemStorage implements IStorage {
         target: companyProfiles.userId,
         set: {
           ...profile,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async getBrandSettings(userId: string): Promise<BrandSettings | null> {
+    const [settings] = await db
+      .select()
+      .from(brandSettingsTable)
+      .where(eq(brandSettingsTable.userId, userId))
+      .limit(1);
+    return settings || null;
+  }
+
+  async upsertBrandSettings(
+    settings: InsertBrandSettings
+  ): Promise<BrandSettings> {
+    const [result] = await db
+      .insert(brandSettingsTable)
+      .values(settings)
+      .onConflictDoUpdate({
+        target: brandSettingsTable.userId,
+        set: {
+          ...settings,
           updatedAt: new Date(),
         },
       })

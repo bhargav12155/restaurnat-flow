@@ -1,6 +1,7 @@
 import {
   contentOpportunities,
   insertAvatarSchema,
+  insertBrandSettingsSchema,
   insertCompanyProfileSchema,
   insertVideoContentSchema,
   tutorialVideos,
@@ -7952,23 +7953,50 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   });
 
   // Brand settings endpoints
-  app.put("/api/brand-settings", async (req, res) => {
+  app.put("/api/brand-settings", requireAuth, async (req, res) => {
     try {
-      const { assets, colors, fonts, description } = req.body;
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
 
-      // In a real implementation, you would save this to the database
-      // For now, we'll just simulate success
+      const { assets, colors, fonts, description, socialConnections, logoInfo } = req.body;
 
-      console.log("Brand settings updated:", {
+      // Validate the payload using Zod schema (partial to allow updates)
+      const validationResult = insertBrandSettingsSchema.partial().safeParse({
+        userId: user.id,
         assets,
         colors,
         fonts,
         description,
+        socialConnections,
+        logoInfo,
       });
+
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid brand settings data",
+          details: validationResult.error.errors
+        });
+      }
+
+      // Save to database using storage interface
+      const brandSettings = await storage.upsertBrandSettings({
+        userId: user.id,
+        assets: assets || null,
+        colors: colors || null,
+        fonts: fonts || null,
+        description: description || null,
+        socialConnections: socialConnections || null,
+        logoInfo: logoInfo || null,
+      });
+
+      console.log(`✅ Brand settings saved for user ${user.id}`);
 
       res.json({
         success: true,
         message: "Brand settings saved successfully",
+        data: brandSettings,
       });
     } catch (error) {
       console.error("Error saving brand settings:", error);
@@ -7977,33 +8005,52 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   });
 
   // Get brand settings
-  app.get("/api/brand-settings", async (req, res) => {
+  app.get("/api/brand-settings", requireAuth, async (req, res) => {
     try {
-      // In a real implementation, fetch from database
-      const defaultBrandSettings = {
-        assets: [
-          { id: "primary-logo", name: "Primary Logo", type: "logo" },
-          { id: "icon", name: "Icon/Favicon", type: "icon" },
-          { id: "banner", name: "Banner/Header Image", type: "banner" },
-          { id: "background", name: "Background Pattern", type: "background" },
-        ],
-        colors: {
-          primary: "#daa520",
-          secondary: "#b8860b",
-          accent: "#ffd700",
-          background: "#ffffff",
-          text: "#333333",
-        },
-        fonts: {
-          heading: "Playfair Display",
-          body: "Inter",
-          accent: "Cormorant Garamond",
-        },
-        description:
-          "Golden Brick Real Estate - Premium luxury properties in Omaha, Nebraska. Specializing in high-end residential and commercial real estate with personalized service and expert market knowledge.",
-      };
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
 
-      res.json(defaultBrandSettings);
+      // Fetch from database
+      const brandSettings = await storage.getBrandSettings(user.id);
+
+      // If no settings exist, return defaults
+      if (!brandSettings) {
+        const defaultBrandSettings = {
+          assets: [
+            { id: "primary-logo", name: "Primary Logo", type: "logo" },
+            { id: "icon", name: "Icon/Favicon", type: "icon" },
+            { id: "banner", name: "Banner/Header Image", type: "banner" },
+            { id: "background", name: "Background Pattern", type: "background" },
+          ],
+          colors: {
+            primary: "#daa520",
+            secondary: "#b8860b",
+            accent: "#ffd700",
+            background: "#ffffff",
+            text: "#333333",
+          },
+          fonts: {
+            heading: "Playfair Display",
+            body: "Inter",
+            accent: "Cormorant Garamond",
+          },
+          description:
+            "Golden Brick Real Estate - Premium luxury properties in Omaha, Nebraska. Specializing in high-end residential and commercial real estate with personalized service and expert market knowledge.",
+        };
+        return res.json(defaultBrandSettings);
+      }
+
+      // Return the saved settings
+      res.json({
+        assets: brandSettings.assets || [],
+        colors: brandSettings.colors || {},
+        fonts: brandSettings.fonts || {},
+        description: brandSettings.description || "",
+        socialConnections: brandSettings.socialConnections || {},
+        logoInfo: brandSettings.logoInfo || null,
+      });
     } catch (error) {
       console.error("Error fetching brand settings:", error);
       res.status(500).json({ error: "Failed to fetch brand settings" });
