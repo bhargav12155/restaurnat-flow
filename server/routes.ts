@@ -8862,6 +8862,182 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // ==================== UNIFIED MEDIA LIBRARY ENDPOINTS ====================
+  
+  // Get all media (unified: media_assets + video_content)
+  app.get("/api/media", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const typeFilter = req.query.type as string | undefined;
+
+      console.log("📚 Backend: Getting unified media library for user:", userId);
+
+      // Get media assets from media_assets table
+      const mediaAssets = await storage.getMediaAssets(String(userId), typeFilter);
+      
+      // Get generated videos from video_content table and transform to media format
+      const videos = await storage.getVideoContent(String(userId), "ready");
+      
+      // Transform videos to media asset format
+      const videoAssets = videos.map(video => ({
+        id: video.id,
+        userId: video.userId,
+        type: "video" as const,
+        source: "heygen" as const,
+        url: video.videoUrl || "",
+        thumbnailUrl: video.thumbnailUrl || null,
+        title: video.title,
+        description: video.script?.substring(0, 200) || null,
+        avatarId: video.avatarId || null,
+        fileSize: null,
+        mimeType: "video/mp4",
+        width: null,
+        height: null,
+        duration: video.duration || null,
+        metadata: video.metadata || null,
+        createdAt: video.createdAt || new Date().toISOString(),
+      }));
+
+      // Combine and sort by creation date (newest first)
+      const allMedia = [...mediaAssets, ...videoAssets].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      // Apply type filter if specified
+      const filteredMedia = typeFilter && typeFilter !== "all"
+        ? allMedia.filter(item => item.type === typeFilter)
+        : allMedia;
+
+      console.log(`✅ Backend: Found ${filteredMedia.length} media items (${mediaAssets.length} assets + ${videoAssets.length} videos)`);
+      res.json(filteredMedia);
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to get media library");
+      console.error("❌ Backend: Error message:", error?.message);
+      res.status(500).json({
+        error: "Failed to get media library",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Upload media to library
+  app.post("/api/media/upload", requireAuth, upload.single("file"), async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+
+      console.log("📤 Backend: Uploading media to library:", file.originalname);
+
+      const type = req.body.type || (file.mimetype.startsWith("video/") ? "video" : "photo");
+      const source = req.body.source || "upload";
+
+      // Upload to S3 if configured
+      let fileUrl = "";
+      let thumbnailUrl = null;
+
+      if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+        const s3Service = new S3UploadService();
+        const fileBuffer = await fs.promises.readFile(file.path);
+        const s3Key = await s3Service.uploadFile(
+          parseInt(userId!),
+          fileBuffer,
+          `${Date.now()}-${file.originalname}`,
+          file.mimetype
+        );
+        fileUrl = s3Service.getS3Url(s3Key);
+      } else {
+        // Use local file path if S3 not configured
+        fileUrl = `/uploads/${file.filename}`;
+      }
+
+      // Create media asset record
+      const mediaAsset = await storage.createMediaAsset({
+        userId: String(userId),
+        type,
+        source,
+        url: fileUrl,
+        thumbnailUrl,
+        title: req.body.title || file.originalname,
+        description: req.body.description || null,
+        avatarId: req.body.avatarId || null,
+        mimeType: file.mimetype,
+        fileSize: file.size,
+        width: null,
+        height: null,
+        durationSeconds: null,
+        metadata: null,
+      });
+
+      console.log("✅ Backend: Media uploaded successfully:", mediaAsset.id);
+      res.json(mediaAsset);
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to upload media");
+      console.error("❌ Backend: Error message:", error?.message);
+      res.status(500).json({
+        error: "Failed to upload media",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Get specific media item
+  app.get("/api/media/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      console.log("📚 Backend: Getting media item:", id);
+
+      // Try media_assets first
+      const mediaAsset = await storage.getMediaAssetById(id);
+      
+      if (mediaAsset) {
+        console.log("✅ Backend: Found media asset");
+        return res.json(mediaAsset);
+      }
+
+      // Try video_content table
+      const video = await storage.getVideoById(id);
+      
+      if (video && video.status === "ready") {
+        // Transform to media format
+        const videoAsset = {
+          id: video.id,
+          userId: video.userId,
+          type: "video" as const,
+          source: "heygen" as const,
+          url: video.videoUrl || "",
+          thumbnailUrl: video.thumbnailUrl || null,
+          title: video.title,
+          description: video.script?.substring(0, 200) || null,
+          avatarId: video.avatarId || null,
+          fileSize: null,
+          mimeType: "video/mp4",
+          width: null,
+          height: null,
+          duration: video.duration || null,
+          metadata: video.metadata || null,
+          createdAt: video.createdAt || new Date().toISOString(),
+        };
+        
+        console.log("✅ Backend: Found video content");
+        return res.json(videoAsset);
+      }
+
+      res.status(404).json({ error: "Media not found" });
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to get media");
+      console.error("❌ Backend: Error message:", error?.message);
+      res.status(500).json({
+        error: "Failed to get media",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
