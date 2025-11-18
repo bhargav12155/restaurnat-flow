@@ -270,8 +270,10 @@ class MultiOpenAIService {
         isAvailable: key.isAvailable,
         capabilities: key.capabilities,
         requestCount: key.requestCount,
+        priority: key.priority,
+        costTier: key.costTier,
         lastError: key.lastError,
-        cooldownUntil: key.quotaResetTime,
+        quotaResetTime: key.quotaResetTime,
       })),
     };
   }
