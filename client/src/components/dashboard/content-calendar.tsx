@@ -688,18 +688,46 @@ export function ContentCalendar() {
     }
   };
   
-  const handleSaveEdit = () => {
-    if (previewContent) {
-      // Save the photo URL to the content
+  const handleSaveEdit = async () => {
+    if (!previewContent) return;
+    
+    // Get the API post ID (remove 'api-' prefix if present)
+    const apiPostId = String(previewContent.id).startsWith('api-') 
+      ? String(previewContent.id).replace('api-', '') 
+      : null;
+    
+    if (!apiPostId) {
+      // For local/mock posts, just update local state
+      setSavedPhotoUrl(photoPreview);
+      toast({
+        title: "Content Updated", 
+        description: "Your content changes have been saved locally",
+      });
+      setIsEditing(false);
+      return;
+    }
+    
+    // Update API post
+    const updates: Partial<ScheduledPost> = {
+      content: editedContent,
+    };
+    
+    // Add photo URL to metadata if changed
+    if (photoPreview !== savedPhotoUrl) {
+      updates.metadata = {
+        ...(previewContent as any).metadata,
+        imageUrl: photoPreview,
+      };
       setSavedPhotoUrl(photoPreview);
     }
     
-    // In a real app, this would save to backend
-    toast({
-      title: "Content Updated", 
-      description: "Your content changes have been saved",
-    });
-    setIsEditing(false);
+    try {
+      await updatePostMutation.mutateAsync({ id: apiPostId, updates });
+      setIsEditing(false);
+    } catch (error) {
+      // Error toast is handled by the mutation
+      console.error('Failed to save edit:', error);
+    }
   };
   
   const handleAIScheduling = async () => {
