@@ -122,6 +122,7 @@ export const avatars = pgTable("avatars", {
   style: text("style").default("professional"), // 'professional', 'casual', 'friendly'
   gender: text("gender"), // 'male', 'female', 'neutral'
   isActive: boolean("is_active").default(true),
+  supportsGestures: boolean("supports_gestures").default(false), // True for custom gesture-enabled avatars
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
 });

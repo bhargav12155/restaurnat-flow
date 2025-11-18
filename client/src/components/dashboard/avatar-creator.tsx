@@ -1316,11 +1316,137 @@ export function AvatarCreator() {
                 <TabsContent value="import" className="space-y-4">
                   <div className="space-y-4">
                     <div className="text-center">
-                      <h3 className="text-lg font-medium mb-2">Import Existing HeyGen Avatar</h3>
+                      <h3 className="text-lg font-medium mb-2">Import Gesture-Enabled Avatars</h3>
                       <p className="text-sm text-muted-foreground">
-                        Import an avatar you've already created in your HeyGen account
+                        Import custom gesture-enabled avatars from your HeyGen account for both video generation and streaming
                       </p>
                     </div>
+
+                    {/* Comprehensive Gesture Avatar Creation Guide */}
+                    <Collapsible className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" className="w-full justify-between p-4 hover:bg-muted/50">
+                          <div className="flex items-center gap-2">
+                            <Video className="h-5 w-5 text-primary" />
+                            <span className="font-medium">How to Create Gesture-Enabled Avatars</span>
+                          </div>
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="p-4 space-y-4 border-t">
+                        {/* Step-by-step guide */}
+                        <div className="space-y-4">
+                          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">📋 Quick Overview</h4>
+                            <p className="text-sm text-blue-800 dark:text-blue-200">
+                              Gesture-enabled avatars allow full hand movements and body gestures in your videos and live streams.
+                              Your paid HeyGen account supports this advanced feature for both pre-recorded videos and real-time streaming.
+                            </p>
+                          </div>
+
+                          <div className="space-y-3">
+                            <h4 className="font-semibold flex items-center gap-2">
+                              <Camera className="h-4 w-4" />
+                              Filming Guidelines for Maximum Quality
+                            </h4>
+                            
+                            <div className="space-y-2 text-sm">
+                              <div className="border-l-4 border-primary pl-3">
+                                <p className="font-medium">🎬 Video Structure</p>
+                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
+                                  <li><strong>Duration:</strong> 30 seconds minimum</li>
+                                  <li><strong>First 30s:</strong> Speak neutrally without gestures (establishes baseline)</li>
+                                  <li><strong>After 30s:</strong> Perform 1 gesture every 2 seconds</li>
+                                  <li><strong>Recommended total:</strong> 60-90 seconds with 15-30 gestures</li>
+                                </ul>
+                              </div>
+
+                              <div className="border-l-4 border-green-500 pl-3">
+                                <p className="font-medium">✅ Supported Gestures</p>
+                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
+                                  <li>Waving hello/goodbye</li>
+                                  <li>Thumbs up/down</li>
+                                  <li>Pointing (at camera, to sides)</li>
+                                  <li>Nodding and head tilts</li>
+                                  <li>Open palm gestures</li>
+                                  <li>Hand movements near face (not covering it)</li>
+                                  <li>Counting with fingers</li>
+                                  <li>Shrugging shoulders</li>
+                                </ul>
+                              </div>
+
+                              <div className="border-l-4 border-amber-500 pl-3">
+                                <p className="font-medium">⚙️ Technical Requirements</p>
+                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
+                                  <li><strong>Resolution:</strong> 1080p @ 30 FPS (or 4K @ 60 FPS)</li>
+                                  <li><strong>Lighting:</strong> Soft, even lighting without harsh shadows</li>
+                                  <li><strong>Framing:</strong> 2-3 feet from camera, head centered in frame</li>
+                                  <li><strong>Background:</strong> Green screen optional but recommended</li>
+                                  <li><strong>Hand position:</strong> Keep gestures below shoulder height</li>
+                                  <li><strong>Camera:</strong> Fixed position, no panning or zooming</li>
+                                </ul>
+                              </div>
+
+                              <div className="border-l-4 border-red-500 pl-3">
+                                <p className="font-medium">🚫 Avoid These Actions</p>
+                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
+                                  <li>Rapid head shaking or spinning</li>
+                                  <li>Covering your face with hands</li>
+                                  <li>Turning around or showing your back</li>
+                                  <li>Extreme arm movements above head</li>
+                                  <li>Walking in/out of frame</li>
+                                  <li>Props or holding objects (unless they're part of your character)</li>
+                                </ul>
+                              </div>
+
+                              <div className="border-l-4 border-purple-500 pl-3">
+                                <p className="font-medium">💡 Pro Tips</p>
+                                <ul className="list-disc list-inside ml-2 space-y-1 text-muted-foreground">
+                                  <li>Wear solid colors (avoid patterns that may cause artifacts)</li>
+                                  <li>Use a teleprompter or notes to maintain eye contact</li>
+                                  <li>Practice gestures beforehand to ensure smooth movements</li>
+                                  <li>Record multiple takes and choose the best one</li>
+                                  <li>Speak naturally during gestures (HeyGen will learn the association)</li>
+                                </ul>
+                              </div>
+                            </div>
+
+                            <div className="bg-muted rounded-lg p-4 space-y-3">
+                              <h4 className="font-semibold">🎥 Creation Steps</h4>
+                              <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                                <li>Record your video following the guidelines above</li>
+                                <li>Go to <a href="https://app.heygen.com/streaming-avatar" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">HeyGen Studio Avatar</a></li>
+                                <li>Click "Create Custom Avatar" and upload your video</li>
+                                <li>Enable "Gesture Control" during avatar creation</li>
+                                <li>Wait for processing (usually 1-4 hours)</li>
+                                <li>Once ready, import your avatar using the form below</li>
+                              </ol>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open('https://app.heygen.com/streaming-avatar', '_blank')}
+                                className="flex-1"
+                              >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Create on HeyGen
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open('https://help.heygen.com/en/articles/8868166-how-to-create-a-custom-avatar', '_blank')}
+                                className="flex-1"
+                              >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                View HeyGen Docs
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
 
                     {/* Manual Import by ID */}
                     <div className="border rounded-lg p-4 space-y-3">
