@@ -196,11 +196,6 @@ export function SocialMediaManager() {
   );
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const [uploadedPhoto, setUploadedPhoto] = useState<string | null>(null);
-  const [photoUploadMode, setPhotoUploadMode] = useState<
-    "upload" | "stock" | "ai"
-  >("upload");
-  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
   const [facebookPages, setFacebookPages] = useState<any[]>([]);
   const [selectedFacebookPage, setSelectedFacebookPage] = useState<string>("");
   const [uploadedVideo, setUploadedVideo] = useState<File | null>(null);
@@ -422,28 +417,6 @@ export function SocialMediaManager() {
     };
     loadFacebookPages();
   }, []);
-
-  // Automatically pull MLS photos when a property is selected
-  useEffect(() => {
-    if (
-      selectedProperty &&
-      selectedProperty.photoUrls &&
-      selectedProperty.photoUrls.length > 0
-    ) {
-      // Use the first MLS photo from the property
-      const mlsPhoto = selectedProperty.photoUrls[0];
-      setUploadedPhoto(mlsPhoto);
-
-      const photoMsg = {
-        title: "Photo added!",
-        description: `Your property photo from ${selectedProperty.address} is ready to post`,
-      };
-      toast({
-        title: photoMsg.title,
-        description: photoMsg.description,
-      });
-    }
-  }, [selectedProperty]);
 
   // Handle YouTube posting with on-demand authentication
   const handleYouTubePost = async (content: string, videoFile?: File) => {
@@ -676,7 +649,6 @@ export function SocialMediaManager() {
           "Your content has been posted to Facebook successfully.",
       });
       setPostContent("");
-      setUploadedPhoto(null);
       setSelectedProperty(null);
       setSelectedPostType(null);
       setSelectedFacebookPage("");
@@ -1394,11 +1366,6 @@ ${agentName} | ${brokerageName}
                       selectedPostType === type.id ? null : type.id;
                     setSelectedPostType(newType);
 
-                    // Show photo upload for "Create Your Own"
-                    if (type.id === "create_your_own" && newType) {
-                      setShowPhotoUpload(true);
-                    }
-
                     // Auto-generate content if property is selected
                     if (
                       selectedProperty &&
@@ -1570,15 +1537,6 @@ ${agentName} | ${brokerageName}
                           <div className="text-sm text-foreground whitespace-pre-wrap">
                             {postContent}
                           </div>
-                          {uploadedPhoto && (
-                            <div className="mt-3 border rounded-lg overflow-hidden">
-                              <img
-                                src={uploadedPhoto}
-                                alt="Post attachment"
-                                className="w-full h-48 object-cover"
-                              />
-                            </div>
-                          )}
                           {selectedProperty && (
                             <div className="mt-3 p-3 bg-background rounded-md border">
                               <div className="font-medium text-sm">
@@ -1608,22 +1566,6 @@ ${agentName} | ${brokerageName}
                   </div>
                 </DialogContent>
               </Dialog>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`relative ${
-                  uploadedPhoto
-                    ? "text-green-600 hover:text-green-700"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setShowPhotoUpload(true)}
-                data-testid="button-add-photo"
-              >
-                <Image className="h-4 w-4" />
-                {uploadedPhoto && (
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></div>
-                )}
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -1667,185 +1609,6 @@ ${agentName} | ${brokerageName}
           </div>
         </div>
       </CardContent>
-
-      {/* Photo Upload Dialog for Create Your Own */}
-      <Dialog open={showPhotoUpload} onOpenChange={setShowPhotoUpload}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Photo to Your Post</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Upload a photo to make your social media post more engaging. This
-              photo will be included with your post content.
-            </p>
-
-            {uploadedPhoto ? (
-              <div className="space-y-3">
-                <div className="border rounded-lg overflow-hidden">
-                  <img
-                    src={uploadedPhoto}
-                    alt="Selected photo"
-                    className="w-full h-48 object-cover"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-green-600 font-medium">
-                    Photo selected successfully!
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setUploadedPhoto(null)}
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Tabs
-                value={photoUploadMode}
-                onValueChange={(value) =>
-                  setPhotoUploadMode(value as "upload" | "stock" | "ai")
-                }
-                className="w-full"
-              >
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="upload">Upload Photo</TabsTrigger>
-                  <TabsTrigger value="stock">Stock Photos</TabsTrigger>
-                  <TabsTrigger value="ai">AI Image</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="upload" className="space-y-4">
-                  <ObjectUploader
-                    maxNumberOfFiles={1}
-                    maxFileSize={10485760}
-                    onGetUploadParameters={async () => {
-                      const response = await apiRequest(
-                        "POST",
-                        "/api/objects/upload",
-                        {},
-                      );
-                      const data = await response.json();
-                      return {
-                        method: "PUT" as const,
-                        url: data.uploadURL,
-                      };
-                    }}
-                    onComplete={(uploadedFileUrl: string) => {
-                      // Convert Google Cloud Storage URL to local /objects/ endpoint
-                      const fileName = uploadedFileUrl.split("/").pop();
-                      const localImageUrl = `/objects/${fileName}`;
-                      setUploadedPhoto(localImageUrl);
-                      toast({
-                        title: "Photo Uploaded",
-                        description:
-                          "Your photo is ready to be included in your post",
-                      });
-                    }}
-                    buttonClassName="w-full"
-                  >
-                    <div className="flex items-center justify-center gap-2 py-8">
-                      <Upload className="h-5 w-5" />
-                      <span>Choose Photo</span>
-                    </div>
-                  </ObjectUploader>
-                </TabsContent>
-
-                <TabsContent value="stock" className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3 max-h-64 overflow-y-auto">
-                    {stockPhotos.map((photo) => (
-                      <div
-                        key={photo.id}
-                        className="relative cursor-pointer border rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
-                        onClick={() => {
-                          setUploadedPhoto(photo.url);
-                          toast({
-                            title: "Stock Photo Selected",
-                            description: `"${photo.title}" is ready to be included in your post`,
-                          });
-                        }}
-                      >
-                        <img
-                          src={photo.url}
-                          alt={photo.title}
-                          className="w-full h-24 object-cover"
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white p-1">
-                          <p className="text-xs truncate">{photo.title}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="ai" className="space-y-4">
-                  <div className="space-y-3">
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="ai-prompt"
-                        className="text-sm font-medium"
-                      >
-                        Describe the image you want to generate
-                      </Label>
-                      <Input
-                        id="ai-prompt"
-                        placeholder="e.g., Modern luxury home with golden accents at sunset"
-                        className="w-full"
-                      />
-                    </div>
-
-                    <Button
-                      className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-                      onClick={() => {
-                        toast({
-                          title: "AI Image Generation",
-                          description:
-                            "This feature will generate custom images using AI. Coming soon!",
-                        });
-                      }}
-                    >
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Generate AI Image
-                    </Button>
-
-                    <div className="text-xs text-muted-foreground text-center">
-                      AI will create a custom image based on your description,
-                      perfectly tailored for your social media post.
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            )}
-
-            <div className="flex items-center gap-2 pt-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setShowPhotoUpload(false);
-                  if (
-                    selectedPostType === "create_your_own" &&
-                    !uploadedPhoto
-                  ) {
-                    setSelectedPostType(null);
-                  }
-                }}
-              >
-                {uploadedPhoto ? "Continue" : "Skip Photo"}
-              </Button>
-              {uploadedPhoto && (
-                <Button
-                  className="flex-1"
-                  onClick={() => setShowPhotoUpload(false)}
-                >
-                  Use This Photo
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Video Upload Dialog for YouTube */}
       <Dialog open={showVideoUpload} onOpenChange={setShowVideoUpload}>
