@@ -10,7 +10,7 @@ import { ScheduledPostsManager } from "@/components/dashboard/scheduled-posts-ma
 import { SEOOptimizer } from "@/components/dashboard/seo-optimizer";
 import { SocialLinksPrompt } from "@/components/dashboard/social-links-prompt";
 import { SocialMediaManager } from "@/components/dashboard/social-media-manager";
-import { StreamingAvatar } from "@/components/dashboard/streaming-avatar";
+import { StreamingAvatarComponent } from "@/components/dashboard/streaming-avatar";
 import { TemplateManager } from "@/components/dashboard/template-manager";
 import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
 import { VideoGenerator } from "@/components/dashboard/video-generator";
@@ -86,7 +86,7 @@ export default function Dashboard() {
       case "ai-video":
         return <VideoGenerator />;
       case "streaming-avatar":
-        return <StreamingAvatar />;
+        return <StreamingAvatarComponent />;
       case "photo-avatars":
         return <PhotoAvatarManager />;
       case "video-generation":
