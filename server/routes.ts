@@ -1802,6 +1802,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create or update a social media account
+  app.post("/api/social/accounts", requireAuth, async (req, res) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { platform, isConnected, accessToken, refreshToken, providerId, accountId } = req.body;
+
+      if (!platform) {
+        return res.status(400).json({ error: "Platform is required" });
+      }
+
+      // accountId is required for database - use providerId or generate a test ID
+      const finalAccountId = accountId || providerId || `test_${platform}_${Date.now()}`;
+
+      // Resolve DB user ID to MemStorage UUID
+      let userId = String(req.user.id);
+      let user = await storage.getUser(userId);
+
+      if (!user && req.user.email) {
+        user = await storage.getUserByEmail(req.user.email);
+      }
+
+      if (!user && req.user.username) {
+        user = await storage.getUserByUsername(req.user.username);
+      }
+
+      if (!user) {
+        return res.status(404).json({
+          error: "User not found",
+          message: "Could not find user in storage",
+        });
+      }
+
+      // Check if account already exists
+      const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+      const existingAccount = existingAccounts.find(
+        (acc) => acc.platform.toLowerCase() === platform.toLowerCase()
+      );
+
+      let account;
+      if (existingAccount) {
+        // Update existing account
+        account = await storage.updateSocialMediaAccount(existingAccount.id, {
+          isConnected: isConnected ?? true,
+          accessToken: accessToken || null,
+          refreshToken: refreshToken || null,
+          lastSync: isConnected ? new Date() : null,
+        });
+      } else {
+        // Create new account
+        account = await storage.createSocialMediaAccount({
+          userId: user.id,
+          platform: platform.toLowerCase(),
+          accountId: finalAccountId, // Required field in database
+          isConnected: isConnected ?? true,
+          accessToken: accessToken || null,
+          refreshToken: refreshToken || null,
+        });
+      }
+
+      console.log(`✅ Social account ${existingAccount ? 'updated' : 'created'} for ${platform}`);
+
+      res.json({
+        success: true,
+        account,
+        message: `${platform} account ${existingAccount ? 'updated' : 'created'} successfully`,
+      });
+    } catch (error) {
+      console.error("Create/update social account error:", error);
+      res.status(500).json({ error: "Failed to create/update social account" });
+    }
+  });
+
   // Platform character limits
   const PLATFORM_CHARACTER_LIMITS: Record<string, number> = {
     x: 280,
