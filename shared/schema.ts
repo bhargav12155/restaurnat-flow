@@ -321,10 +321,9 @@ export const analytics = pgTable("analytics", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  metricType: text("metric_type").notNull(),
-  metricValue: numeric("metric_value"),
-  dimension: text("dimension"),
-  timestamp: timestamp("timestamp").defaultNow(),
+  metric: text("metric").notNull(),
+  value: numeric("value"),
+  date: timestamp("date").defaultNow(),
   metadata: jsonb("metadata"),
 });
 

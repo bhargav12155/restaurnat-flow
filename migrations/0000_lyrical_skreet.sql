@@ -13,10 +13,9 @@ CREATE TABLE "ai_content" (
 CREATE TABLE "analytics" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
-	"metric_type" text NOT NULL,
-	"metric_value" numeric,
-	"dimension" text,
-	"timestamp" timestamp DEFAULT now(),
+	"metric" text NOT NULL,
+	"value" numeric,
+	"date" timestamp DEFAULT now(),
 	"metadata" jsonb
 );
 --> statement-breakpoint
