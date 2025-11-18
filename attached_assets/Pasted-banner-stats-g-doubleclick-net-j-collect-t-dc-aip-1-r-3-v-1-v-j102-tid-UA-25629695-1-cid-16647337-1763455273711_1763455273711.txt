@@ -1,0 +1,200 @@
+banner.
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=2127208602&gjid=1639990712&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=1005827719:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=436973611&gjid=27123033&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=1804793753:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=1521904069&gjid=1177911166&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=311488749:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=357483095&gjid=334762355&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=1795000782:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=379948251&gjid=1958852377&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=259955936:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=1251251795&gjid=470244556&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=331849778:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=1949843267&gjid=1542409675&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=608184894:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'ambient-light-sensor'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'battery'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'execution-while-not-rendered'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'layout-animations'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'legacy-image-formats'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'navigation-override'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'oversized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'publickey-credentials'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'speaker-selection'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'unoptimized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Unrecognized feature: 'unsized-media'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Allow attribute will take precedence over 'allowfullscreen'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arfe%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.Understand this warning
+ WebSocket connection to 'wss://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/?token=FJO_3xd_d4oe' failed: 
+setupWebSocket @ client:536Understand this error
+stats.g.doubleclick.net/j/collect?t=dc&aip=1&_r=3&v=1&_v=j102&tid=UA-25629695-1&cid=1664733759.1755978977&jid=1542441379&gjid=76149518&_gid=1179153980.1763394378&_u=SCCAgEAjQAAAAGgCIAD~&z=1692088958:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENTUnderstand this error
+client:536 WebSocket connection to 'wss://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/?token=FJO_3xd_d4oe' failed: 
+setupWebSocket @ client:536Understand this error
+client:536 Uncaught (in promise) SyntaxError: Failed to construct 'WebSocket': The URL 'wss://localhost:undefined/?token=FJO_3xd_d4oe' is invalid.
+    at setupWebSocket (client:536:19)
+    at fallback (client:509:16)
+    at WebSocket.<anonymous> (client:555:7)Understand this error
+injected.js:27 🔍 Social accounts data: undefined
+injected.js:27 🔍 Is loading: true
+injected.js:27 🔍 Error: null
+injected.js:27 🔍 Document cookies: 
+injected.js:27 🔌 Connecting to WebSocket: wss://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/ws?userId=6
+injected.js:27 ✅ WebSocket connected
+injected.js:27 📨 WebSocket message: Object
+injected.js:27 🔍 Social accounts data: Array(6)
+injected.js:27 🔍 Is loading: false
+injected.js:27 🔍 Error: null
+injected.js:27 🔍 Document cookies: 
+injected.js:27 Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading
+(anonymous) @ injected.js:27Understand this warning
+2injected.js:27 Google Maps loaded successfully
+injected.js:27 As of March 1st, 2025, google.maps.places.AutocompleteService is not available to new customers. Please use google.maps.places.AutocompleteSuggestion instead. At this time, google.maps.places.AutocompleteService is not scheduled to be discontinued, but google.maps.places.AutocompleteSuggestion is recommended over google.maps.places.AutocompleteService. While google.maps.places.AutocompleteService will continue to receive bug fixes for any major regressions, existing bugs in google.maps.places.AutocompleteService will not be addressed. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/legacy for additional details and https://developers.google.com/maps/documentation/javascript/places-migration-overview for the migration guide.
+(anonymous) @ injected.js:27Understand this warning
+injected.js:27 Google Maps loaded successfully
+injected.js:27 🔍 Backend response: {hasSessionId: true, hasUrl: true, hasAccessToken: true, sessionData: {…}}
+injected.js:27 🔌 Connecting to LiveKit... {url: 'wss://heygen-feapbkvq.livekit.cloud', hasToken: true}
+injected.js:27 🔍 Backend response: {hasSessionId: true, hasUrl: true, hasAccessToken: true, sessionData: {…}}
+injected.js:27 🔌 Connecting to LiveKit... {url: 'wss://heygen-feapbkvq.livekit.cloud', hasToken: true}
+injected.js:204  POST https://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/streaming/start 500 (Internal Server Error)
+apply @ injected.js:204
+apiRequest @ queryClient.ts:18
+connectLiveKit @ streaming-avatar.tsx:91
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233Understand this error
+injected.js:27 ❌ LiveKit connection failed: Error: 500: {"error":"Failed to start streaming session"}
+    at throwIfResNotOk (queryClient.ts:6:11)
+    at async apiRequest (queryClient.ts:25:3)
+    at async connectLiveKit (streaming-avatar.tsx:91:7)
+    at async Object.onSuccess (streaming-avatar.tsx:69:7)
+    at async _a6.execute (@tanstack_react-query.js?v=7599f2db:1233:7)
+(anonymous) @ injected.js:27
+connectLiveKit @ streaming-avatar.tsx:159
+await in connectLiveKit
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233Understand this error
+injected.js:204  POST https://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/streaming/start 500 (Internal Server Error)
+apply @ injected.js:204
+apiRequest @ queryClient.ts:18
+connectLiveKit @ streaming-avatar.tsx:91
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233Understand this error
+injected.js:27 ❌ LiveKit connection failed: Error: 500: {"error":"Failed to start streaming session"}
+    at throwIfResNotOk (queryClient.ts:6:11)
+    at async apiRequest (queryClient.ts:25:3)
+    at async connectLiveKit (streaming-avatar.tsx:91:7)
+    at async Object.onSuccess (streaming-avatar.tsx:69:7)
+    at async _a6.execute (@tanstack_react-query.js?v=7599f2db:1233:7)
+(anonymous) @ injected.js:27
+connectLiveKit @ streaming-avatar.tsx:159
+await in connectLiveKit
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233Understand this error
+injected.js:27 🔍 Backend response: {hasSessionId: true, hasUrl: true, hasAccessToken: true, sessionData: {…}}
+injected.js:27 🔌 Connecting to LiveKit... {url: 'wss://heygen-feapbkvq.livekit.cloud', hasToken: true}
+injected.js:204  POST https://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/streaming/start 500 (Internal Server Error)
+apply @ injected.js:204
+apiRequest @ queryClient.ts:18
+connectLiveKit @ streaming-avatar.tsx:91
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233
+await in execute
+mutate @ @tanstack_react-query.js?v=7599f2db:2630
+(anonymous) @ @tanstack_react-query.js?v=7599f2db:3295
+onClick @ streaming-avatar.tsx:304
+callCallback2 @ chunk-RPCDYKBN.js?v=7599f2db:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=7599f2db:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=7599f2db:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=7599f2db:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=7599f2db:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=7599f2db:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=7599f2db:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=7599f2db:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=7599f2db:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=7599f2db:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=7599f2db:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=7599f2db:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=7599f2db:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=7599f2db:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=7599f2db:5449Understand this error
+injected.js:27 ❌ LiveKit connection failed: Error: 500: {"error":"Failed to start streaming session"}
+    at throwIfResNotOk (queryClient.ts:6:11)
+    at async apiRequest (queryClient.ts:25:3)
+    at async connectLiveKit (streaming-avatar.tsx:91:7)
+    at async Object.onSuccess (streaming-avatar.tsx:69:7)
+    at async _a6.execute (@tanstack_react-query.js?v=7599f2db:1233:7)
+(anonymous) @ injected.js:27
+connectLiveKit @ streaming-avatar.tsx:159
+await in connectLiveKit
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233
+await in execute
+mutate @ @tanstack_react-query.js?v=7599f2db:2630
+(anonymous) @ @tanstack_react-query.js?v=7599f2db:3295
+onClick @ streaming-avatar.tsx:304
+callCallback2 @ chunk-RPCDYKBN.js?v=7599f2db:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=7599f2db:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=7599f2db:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=7599f2db:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=7599f2db:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=7599f2db:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=7599f2db:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=7599f2db:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=7599f2db:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=7599f2db:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=7599f2db:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=7599f2db:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=7599f2db:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=7599f2db:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=7599f2db:5449Understand this error
+injected.js:27 🔍 Backend response: {hasSessionId: true, hasUrl: true, hasAccessToken: true, sessionData: {…}}
+injected.js:27 🔌 Connecting to LiveKit... {url: 'wss://heygen-feapbkvq.livekit.cloud', hasToken: true}
+injected.js:204  POST https://596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev/api/streaming/start 500 (Internal Server Error)
+apply @ injected.js:204
+apiRequest @ queryClient.ts:18
+connectLiveKit @ streaming-avatar.tsx:91
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233
+await in execute
+mutate @ @tanstack_react-query.js?v=7599f2db:2630
+(anonymous) @ @tanstack_react-query.js?v=7599f2db:3295
+onClick @ streaming-avatar.tsx:304
+callCallback2 @ chunk-RPCDYKBN.js?v=7599f2db:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=7599f2db:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=7599f2db:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=7599f2db:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=7599f2db:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=7599f2db:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=7599f2db:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=7599f2db:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=7599f2db:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=7599f2db:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=7599f2db:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=7599f2db:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=7599f2db:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=7599f2db:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=7599f2db:5449Understand this error
+injected.js:27 ❌ LiveKit connection failed: Error: 500: {"error":"Failed to start streaming session"}
+    at throwIfResNotOk (queryClient.ts:6:11)
+    at async apiRequest (queryClient.ts:25:3)
+    at async connectLiveKit (streaming-avatar.tsx:91:7)
+    at async Object.onSuccess (streaming-avatar.tsx:69:7)
+    at async _a6.execute (@tanstack_react-query.js?v=7599f2db:1233:7)
+(anonymous) @ injected.js:27
+connectLiveKit @ streaming-avatar.tsx:159
+await in connectLiveKit
+onSuccess @ streaming-avatar.tsx:69
+execute @ @tanstack_react-query.js?v=7599f2db:1233
+await in execute
+mutate @ @tanstack_react-query.js?v=7599f2db:2630
+(anonymous) @ @tanstack_react-query.js?v=7599f2db:3295
+onClick @ streaming-avatar.tsx:304
+callCallback2 @ chunk-RPCDYKBN.js?v=7599f2db:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=7599f2db:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=7599f2db:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=7599f2db:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=7599f2db:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=7599f2db:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=7599f2db:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=7599f2db:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=7599f2db:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=7599f2db:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=7599f2db:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=7599f2db:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=7599f2db:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=7599f2db:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=7599f2db:5449Understand this error
