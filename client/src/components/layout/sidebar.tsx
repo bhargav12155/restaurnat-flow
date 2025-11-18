@@ -31,7 +31,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
+import { cn, getUserInitials, getUserDisplayName } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 
 const navigationItems = [
   { icon: Home, label: "Dashboard", href: "#", key: "dashboard" },
@@ -124,6 +125,7 @@ function SidebarContent({
   onClose,
 }: SidebarContentProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handleAdvancedAdvertisingClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -243,15 +245,15 @@ function SidebarContent({
         <div className={cn("flex items-center", isCollapsed ? "justify-center flex-col space-y-2" : "space-x-3")}>
           <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-primary-foreground text-sm font-medium">
-              MB
+              {user ? getUserInitials(user.name, user.email) : "U"}
             </span>
           </div>
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">
-                Mike Bjork
+                {user ? getUserDisplayName(user.name, user.email) : "User"}
               </p>
-              <p className="text-xs text-muted-foreground truncate">Team Lead</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.type === "agent" ? "Agent" : "User"}</p>
             </div>
           )}
           <Button
