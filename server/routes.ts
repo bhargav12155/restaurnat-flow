@@ -36,6 +36,19 @@ import { SocialMediaError, socialMediaService } from "./services/socialMedia";
 import { storage } from "./storage";
 import { realtimeService } from "./websocket";
 
+// Shared streaming service instance (singleton) to maintain session state across requests
+let streamingServiceInstance: HeyGenStreamingService | null = null;
+function getStreamingService(): HeyGenStreamingService {
+  if (!streamingServiceInstance) {
+    streamingServiceInstance = new HeyGenStreamingService();
+    // Set up automatic session cleanup every 10 minutes
+    setInterval(() => {
+      streamingServiceInstance?.cleanupOldSessions();
+    }, 10 * 60 * 1000); // 10 minutes
+  }
+  return streamingServiceInstance;
+}
+
 const DEFAULT_SOCIAL_SAMPLE_IMAGE =
   process.env.SOCIAL_TEST_IMAGE_URL ||
   "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1080&q=80";
@@ -5582,7 +5595,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   // List available streaming avatars
   app.get("/api/streaming/avatars", async (req, res) => {
     try {
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
       const avatars = await streamingService.listStreamingAvatars();
       res.json({ avatars });
     } catch (error) {
@@ -5600,7 +5613,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
 
       const { avatarId, gestureIntensity } = req.body;
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
 
       const session = await streamingService.createSession(user.id, avatarId, gestureIntensity);
       console.log('🔍 Session response:', JSON.stringify({
@@ -5621,7 +5634,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     try {
       const { sessionId } = req.body;
 
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
       await streamingService.startSession(sessionId);
 
       res.json({ success: true });
@@ -5637,7 +5650,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const { sessionId } = req.params;
       const { text, taskType = "TALK" } = req.body;
 
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
       await streamingService.speak(sessionId, text, taskType);
 
       res.json({ success: true });
@@ -5654,7 +5667,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       try {
         const { sessionId } = req.params;
 
-        const streamingService = new HeyGenStreamingService();
+        const streamingService = getStreamingService();
         await streamingService.startVoiceChat(sessionId);
 
         res.json({ success: true });
@@ -5672,7 +5685,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       try {
         const { sessionId } = req.params;
 
-        const streamingService = new HeyGenStreamingService();
+        const streamingService = getStreamingService();
         await streamingService.stopVoiceChat(sessionId);
 
         res.json({ success: true });
@@ -5688,7 +5701,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     try {
       const { sessionId } = req.params;
 
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
       await streamingService.interrupt(sessionId);
 
       res.json({ success: true });
@@ -5704,7 +5717,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const { sessionId } = req.params;
       const { candidate, sdp } = req.body;
 
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
       await streamingService.submitICE(sessionId, candidate, sdp);
 
       res.json({ success: true });
@@ -5719,7 +5732,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     try {
       const { sessionId } = req.params;
 
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
       await streamingService.endSession(sessionId);
 
       res.json({ success: true });
@@ -5737,7 +5750,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(404).json({ error: "User not found" });
       }
 
-      const streamingService = new HeyGenStreamingService();
+      const streamingService = getStreamingService();
       const sessions = streamingService.getActiveSessions(user.id);
 
       res.json({ sessions });
