@@ -253,15 +253,21 @@ export function VideoGenerator() {
     mutationFn: async ({
       videoId,
       avatarId,
+      avatarType: type,
+      uploadedAvatarPhoto: photoUrl,
     }: {
       videoId: string;
-      avatarId: string;
+      avatarId?: string;
+      avatarType?: string;
+      uploadedAvatarPhoto?: string | null;
     }) => {
       const response = await apiRequest(
         "POST",
         `/api/videos/${videoId}/generate-video`,
         {
           avatarId,
+          avatarType: type,
+          uploadedAvatarPhoto: photoUrl,
         },
       );
       return response.json();
@@ -1048,12 +1054,40 @@ export function VideoGenerator() {
                       {video.status === "ready" && (
                         <Button
                           size="sm"
-                          onClick={() =>
+                          onClick={() => {
+                            // Validate tab-specific requirements
+                            if (avatarType === "public" && !selectedAvatar) {
+                              toast({
+                                title: "Avatar Required",
+                                description: "Please select a public avatar before generating the video.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            if (avatarType === "talking_photo" && !uploadedAvatarPhoto) {
+                              toast({
+                                title: "Photo Required",
+                                description: "Please upload a photo before generating the video.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            if (avatarType === "custom") {
+                              toast({
+                                title: "Custom Avatar Not Yet Available",
+                                description: "Custom gesture-enabled avatars must be created on HeyGen platform first. Once created, they'll appear in the Public Avatars tab.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            
                             generateVideoMutation.mutate({
                               videoId: video.id,
-                              avatarId: selectedAvatar || video.avatarId || "",
-                            })
-                          }
+                              avatarId: avatarType === "public" ? (selectedAvatar || video.avatarId || "") : undefined,
+                              avatarType,
+                              uploadedAvatarPhoto: avatarType === "talking_photo" ? uploadedAvatarPhoto : undefined,
+                            });
+                          }}
                           disabled={generateVideoMutation.isPending}
                           data-testid={`generate-video-${video.id}`}
                         >
