@@ -8366,6 +8366,47 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Import company profile from template or external app (for iframe embedding)
+  app.post("/api/company/profile/import", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      console.log("📥 Importing company profile template for user:", userId);
+
+      // Accept template data from external app or manual import
+      const templateData = req.body;
+      
+      // Validate and merge with userId
+      const validation = insertCompanyProfileSchema.safeParse({
+        ...templateData,
+        userId,
+      });
+
+      if (!validation.success) {
+        console.error("❌ Template validation failed:", validation.error.errors);
+        return res.status(400).json({
+          error: "Invalid template data",
+          details: validation.error.errors,
+        });
+      }
+
+      const profile = await storage.upsertCompanyProfile(validation.data);
+      console.log("✅ Company profile imported successfully");
+      
+      res.json({ 
+        success: true, 
+        profile,
+        message: "Company profile imported successfully"
+      });
+    } catch (error) {
+      console.error("Error importing company profile:", error);
+      res.status(500).json({ error: "Failed to import company profile" });
+    }
+  });
+
   // Serve uploaded files statically
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 

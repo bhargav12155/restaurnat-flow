@@ -424,10 +424,15 @@ export class OpenAIService {
     try {
       const prompt = this.buildPrompt(request);
       
-      // Use company profile data or fallback to defaults
-      const agentName = request.companyProfile?.agentName || "Mike Bjork";
-      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "Berkshire Hathaway HomeServices";
-      const agentTitle = request.companyProfile?.agentTitle || "real estate agent";
+      // Fetch company profile from storage with smart defaults
+      const { getCompanyProfileOrDefaults } = await import("../utils/profile-helper");
+      const storage = (await import("../storage")).storage;
+      const profile = await getCompanyProfileOrDefaults(storage, request.userId);
+      
+      // Use profile data (will show placeholders like "[Your Name]" if not set up)
+      const agentName = request.companyProfile?.agentName || profile.agentName || "[Your Name]";
+      const businessName = request.companyProfile?.businessName || profile.businessName || profile.brokerageName || "[Your Business]";
+      const agentTitle = request.companyProfile?.agentTitle || profile.agentTitle || "real estate professional";
 
       const response = await multiOpenAI.makeRequest(
         "content",
