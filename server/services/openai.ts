@@ -374,6 +374,7 @@ export interface CompanyProfileData {
 export interface ContentGenerationRequest {
   type: "blog" | "social" | "property_feature";
   topic: string;
+  userId?: string;
   aiPrompt?: string;
   neighborhood?: string;
   keywords?: string[];
