@@ -69,6 +69,8 @@ export class HeyGenStreamingService {
 
       return {
         sessionId: session.sessionId,
+        iceServers: sessionData.data?.ice_servers,
+        offer: sessionData.data?.sdp?.sdp,
         url: sessionData.data?.url,
         accessToken: sessionData.data?.access_token,
         realtimeEndpoint: sessionData.data?.realtime_endpoint,
