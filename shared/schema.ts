@@ -151,14 +151,9 @@ export const photoAvatarGroups = pgTable("photo_avatar_groups", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  heygenGroupId: text("heygen_group_id").notNull().unique(), // HeyGen avatar group ID
-  name: text("name").notNull(),
-  imageHash: text("image_hash"), // SHA-256 hash of original image for duplicate detection
-  s3ImageUrl: text("s3_image_url"), // S3 backup URL
-  heygenImageKey: text("heygen_image_key"), // HeyGen image key
-  status: text("status").notNull().default("pending"), // 'pending', 'training', 'ready', 'failed'
-  trainingProgress: integer("training_progress").default(0), // 0-100
-  metadata: jsonb("metadata"),
+  groupName: text("group_name").notNull(),
+  heygenGroupId: text("heygen_group_id").notNull().unique(),
+  trainingStatus: text("training_status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -665,15 +660,17 @@ export const companyProfiles = pgTable("company_profiles", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique(),
-  businessName: text("business_name").notNull(),
-  agentName: text("agent_name").notNull(),
-  agentTitle: text("agent_title"),
+  companyName: text("company_name").notNull(),
+  logoUrl: text("logo_url"),
+  website: text("website"),
   phone: text("phone"),
   email: text("email"),
-  officeAddress: text("office_address"),
-  licenseNumber: text("license_number"),
-  brokerageName: text("brokerage_name"),
-  tagline: text("tagline"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  bio: text("bio"),
+  socialLinks: jsonb("social_links"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -925,15 +922,13 @@ export const contentOpportunities = pgTable("content_opportunities", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
+  opportunityType: text("opportunity_type").notNull(),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  priority: text("priority").notNull().default("medium"), // 'high', 'medium', 'low'
-  neighborhood: text("neighborhood"),
-  keywordId: text("keyword_id"),
-  trendSource: text("trend_source").notNull(), // 'market', 'keyword', 'trend'
-  searchSignal: integer("search_signal").default(50), // 0-100 score
+  priority: integer("priority").default(5),
+  status: text("status").default("pending"),
   metadata: jsonb("metadata"),
-  generatedAt: timestamp("generated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
@@ -965,7 +960,7 @@ export const insertContentOpportunitySchema = createInsertSchema(
   contentOpportunities,
 ).omit({
   id: true,
-  generatedAt: true,
+  createdAt: true,
 });
 
 export type UserSession = typeof userSessions.$inferSelect;
