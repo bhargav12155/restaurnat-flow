@@ -23,8 +23,30 @@ export class HeyGenStreamingService {
   }
 
   // Create a new streaming session
-  async createSession(userId: string, avatarId?: string) {
+  async createSession(userId: string, avatarId?: string, gestureIntensity: number = 0) {
     try {
+      // Build the request payload with gesture support
+      const payload: any = {
+        quality: 'medium',
+        avatar_id: avatarId || 'Wayne_20240711',
+        voice: {
+          voice_id: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
+          rate: 1.0,
+          emotion: 'Friendly'
+        },
+        video_encoding: 'H264',
+        disable_idle_timeout: false,
+        activity_idle_timeout: 120,
+        version: 'v2'
+      };
+
+      // Add gesture support if intensity > 0
+      if (gestureIntensity > 0) {
+        payload.gesture = {
+          intensity: gestureIntensity
+        };
+      }
+
       // Start the avatar session via NEW API endpoint
       const response = await fetch('https://api.heygen.com/v1/streaming.new', {
         method: 'POST',
@@ -32,19 +54,7 @@ export class HeyGenStreamingService {
           'X-Api-Key': this.apiKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          quality: 'medium',
-          avatar_id: avatarId || 'Wayne_20240711',
-          voice: {
-            voice_id: '2d5b0e6cf36f460aa7fc47e3eee4ba54',
-            rate: 1.0,
-            emotion: 'Friendly'
-          },
-          video_encoding: 'H264',
-          disable_idle_timeout: false,
-          activity_idle_timeout: 120,
-          version: 'v2'
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
