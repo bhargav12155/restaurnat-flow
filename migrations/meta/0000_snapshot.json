@@ -1,5 +1,5 @@
 {
-  "id": "0e26f2a6-1602-4499-a2bf-3df65509afd4",
+  "id": "434157b4-467a-42ea-8272-5f05243d68c2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1247,54 +1247,36 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "user_id": {
-          "name": "user_id",
+        "group_id": {
+          "name": "group_id",
           "type": "varchar",
           "primaryKey": false,
           "notNull": true
         },
-        "heygen_avatar_id": {
-          "name": "heygen_avatar_id",
+        "photo_url": {
+          "name": "photo_url",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "group_db_id": {
-          "name": "group_db_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "heygen_group_id": {
-          "name": "heygen_group_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
+        "heygen_photo_id": {
+          "name": "heygen_photo_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "pose": {
-          "name": "pose",
+        "pose_type": {
+          "name": "pose_type",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
-        "status": {
-          "name": "status",
+        "processing_status": {
+          "name": "processing_status",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "default": "'pending'"
-        },
-        "metadata": {
-          "name": "metadata",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -1304,55 +1286,10 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "idx_photo_avatars_heygen_id": {
-          "name": "idx_photo_avatars_heygen_id",
-          "columns": [
-            {
-              "expression": "heygen_avatar_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_photo_avatars_user_heygen": {
-          "name": "idx_photo_avatars_user_heygen",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "heygen_avatar_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "photo_avatars_heygen_avatar_id_unique": {
-          "name": "photo_avatars_heygen_avatar_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "heygen_avatar_id"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

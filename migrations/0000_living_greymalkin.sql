@@ -202,16 +202,12 @@ CREATE TABLE "photo_avatar_groups" (
 --> statement-breakpoint
 CREATE TABLE "photo_avatars" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"user_id" varchar NOT NULL,
-	"heygen_avatar_id" text NOT NULL,
-	"group_db_id" varchar NOT NULL,
-	"heygen_group_id" text NOT NULL,
-	"name" text,
-	"pose" text,
-	"status" text DEFAULT 'pending',
-	"metadata" jsonb,
-	"created_at" timestamp DEFAULT now(),
-	CONSTRAINT "photo_avatars_heygen_avatar_id_unique" UNIQUE("heygen_avatar_id")
+	"group_id" varchar NOT NULL,
+	"photo_url" text NOT NULL,
+	"heygen_photo_id" text,
+	"pose_type" text NOT NULL,
+	"processing_status" text DEFAULT 'pending',
+	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE "pkce_store" (
@@ -478,6 +474,4 @@ ALTER TABLE "engagement_leads" ADD CONSTRAINT "engagement_leads_agent_id_users_i
 ALTER TABLE "property_interactions" ADD CONSTRAINT "property_interactions_public_user_id_public_users_id_fk" FOREIGN KEY ("public_user_id") REFERENCES "public"."public_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "property_likes" ADD CONSTRAINT "property_likes_public_user_id_public_users_id_fk" FOREIGN KEY ("public_user_id") REFERENCES "public"."public_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_public_user_id_public_users_id_fk" FOREIGN KEY ("public_user_id") REFERENCES "public"."public_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_photo_avatars_heygen_id" ON "photo_avatars" USING btree ("heygen_avatar_id");--> statement-breakpoint
-CREATE INDEX "idx_photo_avatars_user_heygen" ON "photo_avatars" USING btree ("user_id","heygen_avatar_id");--> statement-breakpoint
 CREATE INDEX "IDX_session_expire" ON "sessions" USING btree ("expire");
