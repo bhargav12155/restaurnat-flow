@@ -1805,46 +1805,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Platform character limits
+  const PLATFORM_CHARACTER_LIMITS: Record<string, number> = {
+    x: 280,
+    twitter: 280,
+    facebook: 63206,
+    linkedin: 3000,
+    instagram: 2200,
+    youtube: 5000,
+    tiktok: 2200,
+  };
+
+  // Validate character limits for a given platform
+  const validateCharacterLimit = (content: string, platform: string): { valid: boolean; message?: string } => {
+    const limit = PLATFORM_CHARACTER_LIMITS[platform.toLowerCase()] || 5000;
+    if (content.length > limit) {
+      return {
+        valid: false,
+        message: `Post exceeds ${platform} character limit (${limit} chars). Current length: ${content.length}`,
+      };
+    }
+    return { valid: true };
+  };
+
   app.post(
     "/api/social/post",
     requireAuth,
     upload.single("photo"),
     async (req, res) => {
       try {
-        const { platform, content, platforms, scheduledFor } = req.body;
+        const { platform, content, platforms, scheduledFor, text, mediaType, mediaId } = req.body;
         const photo = req.file;
+        
+        // Support both 'content' and 'text' for post content
+        const postContent = text || content;
+        
+        // Fetch media URLs if mediaType and mediaId are provided
+        let mediaUrls = { photoUrls: [] as string[], videoUrls: [] as string[] };
+        
+        // Get logged-in user from session (needed for media fetch and posting)
+        const sessionId = req.user?.id;
+        if (!sessionId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Resolve DB user ID to MemStorage UUID
+        let userId = String(sessionId);
+        let user = await storage.getUser(userId);
+
+        // If not found by ID, try by email (CRITICAL for DB-authenticated users)
+        if (!user && req.user?.email) {
+          user = await storage.getUserByEmail(req.user.email);
+        }
+
+        // If not found by email, try by username
+        if (!user && req.user?.username) {
+          user = await storage.getUserByUsername(req.user.username);
+        }
+
+        if (!user) {
+          return res.status(404).json({
+            error:
+              "User not found in storage. Please reconnect your social accounts.",
+          });
+        }
+        
+        // Fetch media URLs from database if media attachment is specified
+        if (mediaType && mediaId) {
+          if (mediaType === 'avatar') {
+            const avatar = await storage.getAvatarById(mediaId);
+            if (avatar && avatar.videoUrl) {
+              mediaUrls.videoUrls.push(avatar.videoUrl);
+            } else if (avatar && avatar.photoUrl) {
+              mediaUrls.photoUrls.push(avatar.photoUrl);
+            }
+          } else if (mediaType === 'video') {
+            const video = await storage.getVideoById(mediaId);
+            if (video && video.videoUrl) {
+              mediaUrls.videoUrls.push(video.videoUrl);
+            } else if (video && video.thumbnailUrl) {
+              mediaUrls.photoUrls.push(video.thumbnailUrl);
+            }
+          }
+        }
 
         if (platform) {
-          // Single platform posting (new functionality)
-          if (!content) {
+          // Single platform posting (existing functionality)
+          if (!postContent) {
             return res.status(400).json({ error: "Content is required" });
           }
 
-          // Get logged-in user from session
-          const sessionId = req.user?.id;
-          if (!sessionId) {
-            return res.status(401).json({ error: "User not authenticated" });
-          }
-
-          // Resolve DB user ID to MemStorage UUID (same logic as connect/accounts endpoints)
-          let userId = String(sessionId);
-          let user = await storage.getUser(userId);
-
-          // If not found by ID, try by email (CRITICAL for DB-authenticated users)
-          if (!user && req.user?.email) {
-            user = await storage.getUserByEmail(req.user.email);
-          }
-
-          // If not found by email, try by username
-          if (!user && req.user?.username) {
-            user = await storage.getUserByUsername(req.user.username);
-          }
-
-          if (!user) {
-            return res.status(404).json({
-              error:
-                "User not found in storage. Please reconnect your social accounts.",
-            });
+          // Validate character limit
+          const validationResult = validateCharacterLimit(postContent, platform);
+          if (!validationResult.valid) {
+            return res.status(400).json({ error: validationResult.message });
           }
 
           // Get user's social accounts to check if platform is connected
@@ -1903,6 +1957,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Actually post to the platform
           let postResult;
           try {
+            // Prepare media options from uploaded photo or fetched media
+            const mediaOptions = {
+              photoUrls: photoUrl ? [photoUrl, ...mediaUrls.photoUrls] : mediaUrls.photoUrls,
+              videoUrls: mediaUrls.videoUrls,
+            };
+            
             if (platform.toLowerCase() === "facebook") {
               return res.status(400).json({
                 error:
@@ -1910,31 +1970,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
             } else if (platform.toLowerCase() === "instagram") {
               postResult = await socialMediaService.postToInstagram(
-                content,
-                photoUrl || "",
-                connectedAccount?.accessToken || ""
+                postContent,
+                photoUrl || mediaUrls.photoUrls[0] || "",
+                connectedAccount?.accessToken || "",
+                undefined,
+                mediaOptions
               );
             } else if (platform.toLowerCase() === "linkedin") {
               postResult = await socialMediaService.postToLinkedIn(
-                content,
-                connectedAccount?.accessToken || ""
+                postContent,
+                connectedAccount?.accessToken || "",
+                mediaOptions
               );
             } else if (platform.toLowerCase() === "x") {
-              postResult = await socialMediaService.postToX(
-                content,
-                connectedAccount?.accessToken || ""
+              postResult = await socialMediaService.postToTwitter(
+                user.id,
+                postContent,
+                mediaUrls.photoUrls[0],
+                mediaOptions
               );
             } else if (platform.toLowerCase() === "youtube") {
               // For YouTube, we need title and description
-              const title = req.body.title || content.substring(0, 100) + "...";
-              const description = req.body.description || content;
+              const title = req.body.title || postContent.substring(0, 100) + "...";
+              const description = req.body.description || postContent;
               // Use mock token if no connected account
               const youtubeToken =
                 connectedAccount?.accessToken || "mock_youtube_token";
               postResult = await socialMediaService.postToYoutube(
                 title,
                 description,
-                photoUrl || undefined,
+                photoUrl || mediaUrls.videoUrls[0] || undefined,
                 youtubeToken
               );
             } else {
@@ -1953,13 +2018,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const scheduledPost = await storage.createScheduledPost({
             userId: user.id,
             platform: platform.toLowerCase(),
-            content,
+            content: postContent,
             scheduledFor: new Date(), // Posted immediately
             status: "posted",
             postType: "manual_post",
-            hashtags: content.match(/#\w+/g) || [],
+            hashtags: postContent.match(/#\w+/g) || [],
             isEdited: false,
-            originalContent: content,
+            originalContent: postContent,
             neighborhood: null,
           });
 
@@ -1979,15 +2044,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
             timestamp: new Date().toISOString(),
             scheduledPostId: scheduledPost.id,
           });
-        } else {
-          // Multi-platform posting (existing functionality)
-          console.log("Posting to platforms:", platforms, "Content:", content);
+        } else if (platforms && Array.isArray(platforms) && platforms.length > 0) {
+          // Multi-platform posting
+          if (!postContent) {
+            return res.status(400).json({ error: "Content is required" });
+          }
+
+          // Validate character limits for all selected platforms
+          const invalidPlatforms = platforms.filter(p => !validateCharacterLimit(postContent, p).valid);
+          if (invalidPlatforms.length > 0) {
+            const validationMessages = invalidPlatforms.map(p => {
+              const result = validateCharacterLimit(postContent, p);
+              return `${p}: ${result.message}`;
+            });
+            return res.status(400).json({
+              error: "Post exceeds character limit for some platforms",
+              details: validationMessages,
+            });
+          }
+
+          const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+          const results: any[] = [];
+          const errors: any[] = [];
+
+          // Post to each platform
+          for (const targetPlatform of platforms) {
+            try {
+              const connectedAccount = socialAccounts.find(
+                (account) =>
+                  account.platform.toLowerCase() === targetPlatform.toLowerCase()
+              );
+
+              // Check if account is connected (except YouTube which uses mock)
+              if (targetPlatform.toLowerCase() !== "youtube") {
+                if (!connectedAccount || !connectedAccount.accessToken) {
+                  errors.push({
+                    platform: targetPlatform,
+                    error: `${targetPlatform} account not connected`,
+                  });
+                  continue;
+                }
+              }
+
+              // Prepare media options
+              const mediaOptions = {
+                photoUrls: mediaUrls.photoUrls,
+                videoUrls: mediaUrls.videoUrls,
+              };
+
+              let postResult;
+              
+              if (targetPlatform.toLowerCase() === "facebook") {
+                errors.push({
+                  platform: targetPlatform,
+                  error: "Direct Facebook profile posting not supported",
+                });
+                continue;
+              } else if (targetPlatform.toLowerCase() === "instagram") {
+                postResult = await socialMediaService.postToInstagram(
+                  postContent,
+                  mediaUrls.photoUrls[0] || "",
+                  connectedAccount?.accessToken || "",
+                  undefined,
+                  mediaOptions
+                );
+              } else if (targetPlatform.toLowerCase() === "linkedin") {
+                postResult = await socialMediaService.postToLinkedIn(
+                  postContent,
+                  connectedAccount?.accessToken || "",
+                  mediaOptions
+                );
+              } else if (targetPlatform.toLowerCase() === "x") {
+                postResult = await socialMediaService.postToTwitter(
+                  user.id,
+                  postContent,
+                  mediaUrls.photoUrls[0],
+                  mediaOptions
+                );
+              } else if (targetPlatform.toLowerCase() === "youtube") {
+                const title = req.body.title || postContent.substring(0, 100);
+                const description = req.body.description || postContent;
+                const youtubeToken =
+                  connectedAccount?.accessToken || "mock_youtube_token";
+                postResult = await socialMediaService.postToYoutube(
+                  title,
+                  description,
+                  mediaUrls.videoUrls[0],
+                  youtubeToken
+                );
+              } else {
+                errors.push({
+                  platform: targetPlatform,
+                  error: `Unsupported platform: ${targetPlatform}`,
+                });
+                continue;
+              }
+
+              // Create record of successful post
+              await storage.createScheduledPost({
+                userId: user.id,
+                platform: targetPlatform.toLowerCase(),
+                content: postContent,
+                scheduledFor: new Date(),
+                status: "posted",
+                postType: "manual_post",
+                hashtags: postContent.match(/#\w+/g) || [],
+                isEdited: false,
+                originalContent: postContent,
+                neighborhood: null,
+              });
+
+              results.push({
+                platform: targetPlatform,
+                success: true,
+                postId: postResult.postId,
+              });
+            } catch (platformError) {
+              console.error(`Error posting to ${targetPlatform}:`, platformError);
+              errors.push({
+                platform: targetPlatform,
+                error: platformError instanceof Error ? platformError.message : "Unknown error",
+              });
+            }
+          }
 
           res.json({
-            success: true,
-            postId: `post_${Date.now()}`,
-            platforms,
-            scheduledFor,
+            success: results.length > 0,
+            message: `Posted to ${results.length} of ${platforms.length} platforms`,
+            results,
+            errors: errors.length > 0 ? errors : undefined,
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          return res.status(400).json({
+            error: "Either platform or platforms array is required",
           });
         }
       } catch (error) {
