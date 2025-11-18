@@ -498,6 +498,8 @@ export const insertScheduledPostSchema = createInsertSchema(
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  scheduledFor: z.coerce.date(), // Coerce ISO strings to Date objects
 });
 
 // Update schema for PATCH operations - only mutable fields
