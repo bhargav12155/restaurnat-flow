@@ -48,6 +48,7 @@ interface Avatar {
   isActive: boolean;
   avatarImageUrl: string | null;
   voiceId: string | null;
+  supportsGestures?: boolean;
 }
 
 const avatarStyles = [
@@ -1557,9 +1558,19 @@ export function AvatarCreator() {
                                     )}
                                   </div>
                                   <div className="flex-1">
-                                    <div className="font-medium text-sm">{avatar.avatar_name}</div>
+                                    <div className="font-medium text-sm flex items-center gap-2">
+                                      {avatar.avatar_name}
+                                      {avatar.avatar_type === 'studio' && (
+                                        <Badge variant="default" className="text-xs">
+                                          🖐️ Gestures
+                                        </Badge>
+                                      )}
+                                    </div>
                                     <div className="text-xs text-muted-foreground">ID: {avatar.avatar_id}</div>
-                                    <div className="text-xs text-muted-foreground">Status: {avatar.status}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Status: {avatar.status}
+                                      {avatar.avatar_type && ` • Type: ${avatar.avatar_type}`}
+                                    </div>
                                   </div>
                                   {selectedImportAvatar?.avatar_id === avatar.avatar_id && (
                                     <div className="text-primary">
