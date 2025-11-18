@@ -43,6 +43,7 @@ import {
 import { useEffect, useState } from "react";
 import { MediaLibrary } from "./media-library";
 import { PropertySelector } from "./property-selector";
+import { PostComposer } from "./post-composer";
 
 interface SocialMediaAccount {
   id: string;
@@ -208,6 +209,7 @@ export function SocialMediaManager() {
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null,
   );
+  const [showPostComposer, setShowPostComposer] = useState(false);
   const { toast } = useToast();
 
   // OAuth-enabled platforms (only platforms with full OAuth backend support)
@@ -1163,9 +1165,19 @@ Mike Bjork | Berkshire Hathaway HomeServices
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg font-semibold text-foreground">
-          Social Media Manager
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg font-semibold text-foreground">
+            Social Media Manager
+          </CardTitle>
+          <Button
+            onClick={() => setShowPostComposer(true)}
+            className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
+            data-testid="button-create-post"
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            Create Post
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Platform Selection */}
@@ -1921,6 +1933,12 @@ Mike Bjork | Berkshire Hathaway HomeServices
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Post Composer */}
+      <PostComposer
+        open={showPostComposer}
+        onOpenChange={setShowPostComposer}
+      />
     </Card>
   );
 }
