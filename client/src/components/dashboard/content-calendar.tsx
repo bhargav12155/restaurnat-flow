@@ -850,7 +850,7 @@ export function ContentCalendar() {
         <div className="space-y-4">
           {/* Month View */}
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 gap-4">
               <Select
                 value={`${format(selectedDate, "MMMM")} ${format(selectedDate, "yyyy")}`}
                 onValueChange={handleMonthYearChange}
@@ -866,6 +866,23 @@ export function ContentCalendar() {
                       </SelectItem>
                     ))
                   )}
+                </SelectContent>
+              </Select>
+              
+              {/* Status Filter */}
+              <Select
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+              >
+                <SelectTrigger className="w-40" data-testid="select-status-filter">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Posts</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="posted">Posted</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
             </div>
