@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -392,166 +391,88 @@ export function VideoGenerator() {
         </p>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="templates" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="templates">Omaha Templates</TabsTrigger>
-            <TabsTrigger value="create">Create Custom</TabsTrigger>
-            <TabsTrigger value="upload">Upload Video</TabsTrigger>
-            <TabsTrigger value="avatars">AI Avatars</TabsTrigger>
-            <TabsTrigger value="manage">Manage Videos</TabsTrigger>
-          </TabsList>
+        <div className="space-y-6">
+          {/* Quick Navigation Buttons */}
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const element = document.getElementById("templates-section");
+                element?.scrollIntoView({ behavior: "smooth" });
+              }}
+              data-testid="button-templates"
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              Templates
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const element = document.getElementById("custom-creation");
+                element?.scrollIntoView({ behavior: "smooth" });
+              }}
+              data-testid="button-manual-creation"
+            >
+              <Edit2 className="mr-2 h-4 w-4" />
+              Manual Creation
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const element = document.getElementById("upload-section");
+                element?.scrollIntoView({ behavior: "smooth" });
+              }}
+              data-testid="button-upload-video"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Upload Video
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const element = document.getElementById("manage-videos");
+                element?.scrollIntoView({ behavior: "smooth" });
+              }}
+              data-testid="button-manage-videos"
+            >
+              <Video className="mr-2 h-4 w-4" />
+              Manage Videos
+            </Button>
+          </div>
 
-          <TabsContent value="templates" className="space-y-4">
-            <OmahaVideoTemplates />
-          </TabsContent>
-
-          <TabsContent value="upload" className="space-y-4">
-            <div className="space-y-6">
+          {/* Video Templates - Top Section */}
+          <div id="templates-section" className="border rounded-lg p-6 bg-gradient-to-r from-primary/5 to-purple-500/5 scroll-mt-4">
+            <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-medium mb-2">
-                  Upload Your Own Video
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  Quick Start: Choose a Template
                 </h3>
-                <p className="text-sm text-muted-foreground">
-                  Upload your existing real estate videos to manage and share
-                  them through the platform
+                <p className="text-sm text-muted-foreground mt-1">
+                  Select a pre-designed template and customize it for instant video creation
                 </p>
               </div>
-
-              {uploadedVideo ? (
-                <div className="space-y-4">
-                  <div className="border rounded-lg overflow-hidden">
-                    <video
-                      controls
-                      className="w-full max-h-64"
-                      data-testid="uploaded-video-preview"
-                    >
-                      <source src={uploadedVideo} type="video/mp4" />
-                      Your browser does not support the video tag.
-                    </video>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label
-                        htmlFor="upload-video-title"
-                        className="text-sm font-medium"
-                      >
-                        Video Title
-                      </Label>
-                      <Input
-                        id="upload-video-title"
-                        value={uploadVideoTitle}
-                        onChange={(e) => setUploadVideoTitle(e.target.value)}
-                        placeholder="e.g., Virtual Tour of Dundee Home"
-                        data-testid="input-upload-video-title"
-                      />
-                    </div>
-                    <div>
-                      <Label
-                        htmlFor="upload-video-description"
-                        className="text-sm font-medium"
-                      >
-                        Description
-                      </Label>
-                      <Input
-                        id="upload-video-description"
-                        value={uploadVideoDescription}
-                        onChange={(e) =>
-                          setUploadVideoDescription(e.target.value)
-                        }
-                        placeholder="Brief description of your video"
-                        data-testid="input-upload-video-description"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-4 border-t">
-                    <p className="text-sm text-green-600 font-medium">
-                      Video uploaded successfully!
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setUploadedVideo(null);
-                          setUploadVideoTitle("");
-                          setUploadVideoDescription("");
-                        }}
-                        data-testid="button-remove-video"
-                      >
-                        Remove Video
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          // Handle saving the uploaded video
-                          toast({
-                            title: "Video Saved!",
-                            description:
-                              "Your uploaded video has been added to your video library",
-                          });
-                          setUploadedVideo(null);
-                          setUploadVideoTitle("");
-                          setUploadVideoDescription("");
-                        }}
-                        data-testid="button-save-uploaded-video"
-                      >
-                        Save to Library
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
-                  <ObjectUploader
-                    maxNumberOfFiles={1}
-                    maxFileSize={104857600} // 100MB for video files
-                    onGetUploadParameters={async () => {
-                      const response = await apiRequest(
-                        "POST",
-                        "/api/objects/upload",
-                        {},
-                      );
-                      const data = await response.json();
-                      return {
-                        method: "PUT" as const,
-                        url: data.uploadURL,
-                      };
-                    }}
-                    onComplete={(uploadedFileUrl: string) => {
-                      // Convert Google Cloud Storage URL to local /objects/ endpoint
-                      const fileName = uploadedFileUrl.split("/").pop();
-                      const localVideoUrl = `/objects/${fileName}`;
-                      setUploadedVideo(localVideoUrl);
-                      toast({
-                        title: "Video Uploaded",
-                        description:
-                          "Your video is ready! Add a title and description below.",
-                      });
-                    }}
-                    buttonClassName="w-full min-h-32"
-                  >
-                    <div className="flex flex-col items-center justify-center gap-3 py-8">
-                      <div className="p-3 rounded-full bg-muted">
-                        <Upload className="h-6 w-6" />
-                      </div>
-                      <div className="text-center">
-                        <p className="font-medium">Upload Video File</p>
-                        <p className="text-sm text-muted-foreground">
-                          Supports MP4, MOV, AVI files up to 100MB
-                        </p>
-                      </div>
-                    </div>
-                  </ObjectUploader>
-                </div>
-              )}
             </div>
-          </TabsContent>
+            <OmahaVideoTemplates />
+          </div>
 
-          <TabsContent value="avatars" className="space-y-4">
-            <AvatarCreator />
-          </TabsContent>
-
-          <TabsContent value="create" className="space-y-4">
+          {/* Manual Creation Section */}
+          <div id="custom-creation" className="border rounded-lg p-6 scroll-mt-4">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Edit2 className="h-5 w-5 text-primary" />
+                Or Create Custom Video
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Build your video from scratch with full control over every detail
+              </p>
+            </div>
+            
+            <div className="space-y-4">
             {/* Avatar Selection */}
             <div>
               <Label htmlFor="avatar-select" className="text-sm font-medium">
@@ -785,16 +706,149 @@ export function VideoGenerator() {
                 </Button>
               )}
             </div>
-          </TabsContent>
+          </div>
+          </div>
 
-          <TabsContent value="manage" className="space-y-4">
+          {/* Upload Section */}
+          <div id="upload-section" className="border rounded-lg p-6 scroll-mt-4">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Upload className="h-5 w-5 text-primary" />
+                Upload Your Own Video
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Upload your existing real estate videos to manage and share them through the platform
+              </p>
+            </div>
+            
+            {uploadedVideo ? (
+              <div className="space-y-4">
+                <div className="border rounded-lg overflow-hidden">
+                  <video
+                    controls
+                    className="w-full max-h-64"
+                    data-testid="uploaded-video-preview"
+                  >
+                    <source src={uploadedVideo} type="video/mp4" />
+                    Your browser does not support the video tag.
+                  </video>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="upload-video-title" className="text-sm font-medium">
+                      Video Title
+                    </Label>
+                    <Input
+                      id="upload-video-title"
+                      value={uploadVideoTitle}
+                      onChange={(e) => setUploadVideoTitle(e.target.value)}
+                      placeholder="e.g., Virtual Tour of Dundee Home"
+                      data-testid="input-upload-video-title"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="upload-video-description" className="text-sm font-medium">
+                      Description
+                    </Label>
+                    <Input
+                      id="upload-video-description"
+                      value={uploadVideoDescription}
+                      onChange={(e) => setUploadVideoDescription(e.target.value)}
+                      placeholder="Brief description of your video"
+                      data-testid="input-upload-video-description"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <p className="text-sm text-green-600 font-medium">Video uploaded successfully!</p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setUploadedVideo(null);
+                        setUploadVideoTitle("");
+                        setUploadVideoDescription("");
+                      }}
+                      data-testid="button-remove-video"
+                    >
+                      Remove Video
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        toast({
+                          title: "Video Saved!",
+                          description: "Your uploaded video has been added to your video library",
+                        });
+                        setUploadedVideo(null);
+                        setUploadVideoTitle("");
+                        setUploadVideoDescription("");
+                      }}
+                      data-testid="button-save-uploaded-video"
+                    >
+                      Save to Library
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
+                <ObjectUploader
+                  maxNumberOfFiles={1}
+                  maxFileSize={104857600}
+                  onGetUploadParameters={async () => {
+                    const response = await apiRequest("POST", "/api/objects/upload", {});
+                    const data = await response.json();
+                    return {
+                      method: "PUT" as const,
+                      url: data.uploadURL,
+                    };
+                  }}
+                  onComplete={(uploadedFileUrl: string) => {
+                    const fileName = uploadedFileUrl.split("/").pop();
+                    const localVideoUrl = `/objects/${fileName}`;
+                    setUploadedVideo(localVideoUrl);
+                    toast({
+                      title: "Video Uploaded",
+                      description: "Your video is ready! Add a title and description below.",
+                    });
+                  }}
+                  buttonClassName="w-full min-h-32"
+                >
+                  <div className="flex flex-col items-center justify-center gap-3 py-8">
+                    <div className="p-3 rounded-full bg-muted">
+                      <Upload className="h-6 w-6" />
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium">Upload Video File</p>
+                      <p className="text-sm text-muted-foreground">
+                        Supports MP4, MOV, AVI files up to 100MB
+                      </p>
+                    </div>
+                  </div>
+                </ObjectUploader>
+              </div>
+            )}
+          </div>
+
+          {/* Manage Videos Section */}
+          <div id="manage-videos" className="border rounded-lg p-6 scroll-mt-4">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Video className="h-5 w-5 text-primary" />
+                Manage Your Videos
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                View and manage all your created videos
+              </p>
+            </div>
+            
             {videos?.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Video className="mx-auto h-8 w-8 mb-2" />
                 <p>No videos created yet</p>
-                <p className="text-xs">
-                  Switch to "Create New Video" tab to get started
-                </p>
+                <p className="text-xs">Use the templates or manual creation above to get started</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -906,8 +960,8 @@ export function VideoGenerator() {
                 ))}
               </div>
             )}
-          </TabsContent>
-        </Tabs>
+          </div>
+        </div>
       </CardContent>
 
       {/* Watch Video Modal */}
