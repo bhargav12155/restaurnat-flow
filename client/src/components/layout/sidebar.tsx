@@ -32,7 +32,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn, getUserInitials, getUserDisplayName } from "@/lib/utils";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/useAuth";
 
 const navigationItems = [
   { icon: Home, label: "Dashboard", href: "#", key: "dashboard" },
