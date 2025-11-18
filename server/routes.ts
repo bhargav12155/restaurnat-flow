@@ -5379,7 +5379,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const { avatarId, avatarType, uploadedAvatarPhoto } = req.body;
+      const { avatarId, avatarType, uploadedAvatarPhoto, gestureIntensity } = req.body;
 
       // Ownership check - only allow users to generate videos for their own video content
       const video = await storage.getVideoByIdAndUser(id, userId);
@@ -5473,6 +5473,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             quality: "720p", // 720p for free tier as per documentation
             speed: 1.1, // Slightly faster speech as shown in docs
             isTalkingPhoto, // Pass this flag to the service
+            gestureIntensity: gestureIntensity !== undefined ? gestureIntensity : 0, // Gesture support
           });
 
           if (heygenResponse.data?.video_id) {
@@ -5598,10 +5599,10 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(404).json({ error: "User not found" });
       }
 
-      const { avatarId } = req.body;
+      const { avatarId, gestureIntensity } = req.body;
       const streamingService = new HeyGenStreamingService();
 
-      const session = await streamingService.createSession(user.id, avatarId);
+      const session = await streamingService.createSession(user.id, avatarId, gestureIntensity);
       console.log('🔍 Session response:', JSON.stringify({
         sessionId: session.sessionId,
         hasIceServers: !!session.iceServers,
