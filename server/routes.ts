@@ -6035,7 +6035,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           const status = isCompleted
             ? "ready"
             : looksCount > 0
-            ? "pending"
+            ? "ready"  // If it has looks, it's ready to use!
             : rawStatus;
 
           return {
@@ -6108,7 +6108,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           status: isCompleted
             ? "ready"
             : looksCount > 0
-            ? "pending"
+            ? "ready"  // If it has looks, it's ready to use!
             : rawStatus,
           created_at: dbGroup.createdAt || new Date().toISOString(),
           avatar_count: looksCount,
