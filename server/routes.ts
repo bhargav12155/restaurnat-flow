@@ -349,6 +349,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return Boolean(value);
   };
 
+  // Debug endpoint to verify all database tables exist
+  app.get("/api/debug/tables", async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT table_name, 
+               (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = t.table_name) as column_count
+        FROM information_schema.tables t
+        WHERE table_schema = 'public'
+        ORDER BY table_name
+      `);
+      
+      const tables = result.rows.map((row: any) => ({
+        name: row.table_name,
+        columns: parseInt(row.column_count)
+      }));
+      
+      res.json({
+        total: tables.length,
+        tables: tables,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Helper function to ensure S3 URLs are properly formatted
   const ensureS3Url = (urlOrKey: string | null | undefined): string | null => {
     if (!urlOrKey) return null;
