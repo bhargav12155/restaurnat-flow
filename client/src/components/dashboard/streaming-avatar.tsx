@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,6 +19,14 @@ interface StreamingSession {
   accessToken: string;
 }
 
+interface Avatar {
+  avatar_id: string;
+  avatar_name: string;
+  preview_image_url?: string;
+  avatar_type?: string;
+  supportsGestures?: boolean;
+}
+
 export function StreamingAvatarComponent() {
   const { toast } = useToast();
   const [selectedAvatar, setSelectedAvatar] = useState<string>('');
@@ -35,21 +43,42 @@ export function StreamingAvatarComponent() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const roomRef = useRef<LiveKitClient.Room | null>(null);
 
+  // Fetch stored custom avatars (streaming-compatible)
+  const { data: customAvatarsResponse } = useQuery({
+    queryKey: ['/api/avatars'],
+  });
+
   // HeyGen's public streaming avatars
-  const defaultStreamingAvatars = [
-    { avatar_id: 'Wayne_20240711', avatar_name: 'Wayne - Professional Male' },
-    { avatar_id: 'Angela-inblackskirt-20220820', avatar_name: 'Angela - Professional Female' },
-    { avatar_id: 'josh_lite3_20230714', avatar_name: 'Josh - Casual Male' },
-    { avatar_id: 'Anna_public_3_20240108', avatar_name: 'Anna - Business Woman' },
-    { avatar_id: 'Tyler-incasualsuit-20220721', avatar_name: 'Tyler - Casual Male' },
+  const defaultStreamingAvatars: Avatar[] = [
+    { avatar_id: 'Wayne_20240711', avatar_name: 'Wayne - Professional Male', avatar_type: 'public' },
+    { avatar_id: 'Angela-inblackskirt-20220820', avatar_name: 'Angela - Professional Female', avatar_type: 'public' },
+    { avatar_id: 'josh_lite3_20230714', avatar_name: 'Josh - Casual Male', avatar_type: 'public' },
+    { avatar_id: 'Anna_public_3_20240108', avatar_name: 'Anna - Business Woman', avatar_type: 'public' },
+    { avatar_id: 'Tyler-incasualsuit-20220721', avatar_name: 'Tyler - Casual Male', avatar_type: 'public' },
+  ];
+
+  // Combine streaming-compatible avatars: stored avatars + public avatars
+  // NOTE: Photo avatar groups are NOT included because they only work for video generation, not streaming
+  const allAvatars: Avatar[] = [
+    // Stored custom streaming avatars (from avatars API with HeyGen streaming IDs)
+    ...(customAvatarsResponse || [])
+      .filter((avatar: any) => avatar.heygenAvatarId) // Only include if has HeyGen streaming ID
+      .map((avatar: any) => ({
+        avatar_id: avatar.heygenAvatarId,
+        avatar_name: `${avatar.name} (Custom)`,
+        avatar_type: 'custom',
+        supportsGestures: avatar.supportsGestures || false,
+      })),
+    // Public HeyGen streaming avatars
+    ...defaultStreamingAvatars,
   ];
 
   // Set default avatar
   useEffect(() => {
-    if (!selectedAvatar && defaultStreamingAvatars.length > 0) {
-      setSelectedAvatar(defaultStreamingAvatars[0].avatar_id);
+    if (!selectedAvatar && allAvatars.length > 0) {
+      setSelectedAvatar(allAvatars[0].avatar_id);
     }
-  }, [selectedAvatar]);
+  }, [selectedAvatar, allAvatars.length]);
 
   // Create streaming session and connect with LiveKit
   const startSessionMutation = useMutation({
@@ -275,30 +304,38 @@ export function StreamingAvatarComponent() {
                 <SelectValue placeholder="Choose an avatar" />
               </SelectTrigger>
               <SelectContent>
-                {defaultStreamingAvatars.map((avatar) => (
-                  <SelectItem 
-                    key={avatar.avatar_id} 
-                    value={avatar.avatar_id}
-                    data-testid={`avatar-option-${avatar.avatar_id}`}
-                  >
-                    {avatar.avatar_name}
-                  </SelectItem>
-                ))}
+                {allAvatars.length === 0 ? (
+                  <SelectItem value="loading" disabled>Loading avatars...</SelectItem>
+                ) : (
+                  allAvatars.map((avatar) => (
+                    <SelectItem 
+                      key={avatar.avatar_id} 
+                      value={avatar.avatar_id}
+                      data-testid={`avatar-option-${avatar.avatar_id}`}
+                    >
+                      {avatar.avatar_name} {avatar.supportsGestures && '✨'}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              {allAvatars.length} avatars available • ✨ = Gesture support
+            </p>
           </div>
 
-          {/* Gesture Controls */}
-          <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
-            <div className="flex items-center gap-2">
-              <Hand className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              <Label className="text-base font-semibold text-purple-900 dark:text-purple-100">
-                Real-Time Gesture & Expressiveness
-              </Label>
-              <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100">
-                Pro Feature
-              </Badge>
-            </div>
+          {/* Gesture Controls - Only show for gesture-enabled avatars */}
+          {allAvatars.find(a => a.avatar_id === selectedAvatar)?.supportsGestures && (
+            <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
+              <div className="flex items-center gap-2">
+                <Hand className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <Label className="text-base font-semibold text-purple-900 dark:text-purple-100">
+                  Real-Time Gesture & Expressiveness
+                </Label>
+                <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100">
+                  Pro Feature
+                </Badge>
+              </div>
             
             <p className="text-sm text-purple-800 dark:text-purple-200">
               Control how animated and expressive your live avatar will be during the streaming session.
@@ -333,13 +370,14 @@ export function StreamingAvatarComponent() {
               </div>
             </div>
             
-            <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
-              <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              <AlertDescription className="text-purple-800 dark:text-purple-200 text-xs">
-                <strong>Note:</strong> Gesture settings must be configured before starting the session. Changes take effect on next connection.
-              </AlertDescription>
-            </Alert>
-          </div>
+              <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
+                <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                <AlertDescription className="text-purple-800 dark:text-purple-200 text-xs">
+                  <strong>Note:</strong> Gesture settings must be configured before starting the session. Changes take effect on next connection.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
 
           {/* Connection Status */}
           <div className="flex items-center gap-2">

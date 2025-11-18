@@ -141,10 +141,20 @@ export function VideoGenerator() {
     queryKey: ["/api/avatars"],
   });
 
+  const { data: photoAvatarGroupsResponse } = useQuery({
+    queryKey: ['/api/photo-avatars/groups'],
+  });
+
   const { data: videos } = useQuery<VideoContent[]>({
     queryKey: ["/api/videos"],
     refetchInterval: 30000, // Refresh every 30 seconds for status updates
   });
+
+  // Combine photo avatar groups as custom avatars
+  const photoAvatarGroups = photoAvatarGroupsResponse?.avatar_group_list || [];
+  const readyPhotoAvatars = photoAvatarGroups.filter((group: any) => 
+    group.status === 'ready' && group.num_looks > 0
+  );
 
   // Reset duration when platform changes
   useEffect(() => {
@@ -621,44 +631,57 @@ export function VideoGenerator() {
                   </div>
                 </TabsContent>
 
-                {/* Custom Avatar Tab */}
+                {/* Custom Avatar Tab - Show photo avatars */}
                 <TabsContent value="custom" className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground mb-3">
-                      Create a fully animated avatar with hand gestures and body movements by filming yourself.
+                      Use custom photo avatars you've created with full gesture support and body movements.
                     </p>
-                    <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800">
+                    
+                    {readyPhotoAvatars.length > 0 ? (
+                      <div className="space-y-3">
+                        <Select
+                          onValueChange={setSelectedAvatar}
+                          value={selectedAvatar}
+                          data-testid="select-custom-avatar"
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose a custom photo avatar" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {readyPhotoAvatars.map((group: any) => (
+                              <SelectItem key={group.group_id} value={group.group_id}>
+                                <div className="flex items-center space-x-2">
+                                  <Hand className="h-4 w-4 text-purple-600" />
+                                  <span>
+                                    {group.name} ({group.num_looks} looks) ✨
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          {readyPhotoAvatars.length} custom photo avatar{readyPhotoAvatars.length !== 1 ? 's' : ''} available • ✨ = Gesture support
+                        </p>
+                      </div>
+                    ) : (
+                      <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        <AlertTitle className="text-blue-900 dark:text-blue-100">No Custom Avatars Yet</AlertTitle>
+                        <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                          Create a custom photo avatar in the "Photo Avatar" tab to use gesture-enabled avatars with hand movements and body animation.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 mt-4">
                       <Hand className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                      <AlertTitle className="text-amber-900 dark:text-amber-100">Filming Guidelines for Gestures</AlertTitle>
-                      <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm space-y-2">
-                        <p><strong>Structure:</strong> 30 seconds neutral speaking + 1 gesture every 2 seconds</p>
-                        <p><strong>Supported gestures:</strong> Waves, thumbs up, pointing, nodding, hand movements</p>
-                        <p><strong>Technical requirements:</strong></p>
-                        <ul className="list-disc list-inside ml-2 space-y-1">
-                          <li>1080p at 30 FPS (or 4K at 60 FPS)</li>
-                          <li>Soft, even lighting; no harsh shadows</li>
-                          <li>2-3 feet from camera, head centered</li>
-                          <li>Green screen optional</li>
-                          <li>Keep hand gestures below shoulder height</li>
-                        </ul>
-                        <p><strong>Avoid:</strong> Rapid head shaking, covering face, spinning around, extreme movements</p>
+                      <AlertTitle className="text-amber-900 dark:text-amber-100">Gesture Support</AlertTitle>
+                      <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
+                        Custom photo avatars support natural hand gestures and body movements. Use the gesture intensity slider below to control animation level.
                       </AlertDescription>
                     </Alert>
-                    <div className="mt-4 p-4 bg-secondary rounded-lg">
-                      <p className="text-sm font-medium mb-2">Create Custom Avatar on HeyGen Platform</p>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        Custom gesture-enabled avatars must be created directly on HeyGen's platform. Once created, they'll appear in your public avatars list.
-                      </p>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => window.open('https://app.heygen.com/streaming-avatar', '_blank')}
-                        data-testid="button-create-custom-avatar"
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Create Custom Avatar on HeyGen
-                      </Button>
-                    </div>
                   </div>
                 </TabsContent>
               </Tabs>
