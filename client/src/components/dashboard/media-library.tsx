@@ -313,28 +313,31 @@ export function MediaLibrary({
                   )}
                 </div>
 
-                {/* Media info - improved spacing and typography */}
-                <div className="p-4 space-y-2">
+                {/* Media info - redesigned for better visual hierarchy */}
+                <div className="p-4 bg-gradient-to-b from-background to-muted/20 space-y-2.5">
                   <div
-                    className="text-sm font-semibold truncate group-hover:text-primary transition-colors"
+                    className="text-sm font-bold truncate group-hover:text-primary transition-colors leading-tight"
                     data-testid={`text-title-${asset.id}`}
                     title={asset.title || "Untitled"}
                   >
                     {asset.title || "Untitled"}
                   </div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span className="capitalize font-medium bg-muted px-2 py-0.5 rounded">
+                  
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center capitalize text-xs font-semibold bg-primary/10 text-primary px-2.5 py-1 rounded-full">
                       {asset.source}
                     </span>
                     {asset.fileSize && (
-                      <span className="font-medium">
+                      <span className="text-xs font-semibold text-muted-foreground/80">
                         {(asset.fileSize / 1024 / 1024).toFixed(1)} MB
                       </span>
                     )}
                   </div>
+                  
                   {asset.width && asset.height && (
-                    <div className="text-xs text-muted-foreground font-medium">
-                      {asset.width} × {asset.height}
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 font-medium pt-0.5">
+                      <div className="w-3 h-3 border border-current rounded opacity-60" />
+                      <span>{asset.width} × {asset.height}</span>
                     </div>
                   )}
                 </div>
