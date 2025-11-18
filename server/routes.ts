@@ -5671,6 +5671,22 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Submit ICE candidate or SDP answer
+  app.post("/api/streaming/sessions/:sessionId/ice", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const { candidate, sdp } = req.body;
+
+      const streamingService = new HeyGenStreamingService();
+      await streamingService.submitICE(sessionId, candidate, sdp);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to submit ICE:", error);
+      res.status(500).json({ error: "Failed to submit ICE" });
+    }
+  });
+
   // End streaming session
   app.delete("/api/streaming/sessions/:sessionId", async (req, res) => {
     try {
