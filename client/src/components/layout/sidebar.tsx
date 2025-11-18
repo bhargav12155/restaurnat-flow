@@ -64,19 +64,7 @@ const navigationItems = [
   },
   { icon: BarChart3, label: "Analytics", href: "#analytics", key: "analytics" },
   {
-    icon: Video,
-    label: "AI Video Generator",
-    href: "#ai-video",
-    key: "ai-video",
-  },
-  {
-    icon: Radio,
-    label: "Streaming Avatar",
-    href: "#streaming-avatar",
-    key: "streaming-avatar",
-  },
-  {
-    icon: Users,
+    icon: Camera,
     label: "Photo Avatars",
     href: "#photo-avatars",
     key: "photo-avatars",
@@ -88,10 +76,10 @@ const navigationItems = [
     key: "video-generation",
   },
   {
-    icon: FileVideo,
-    label: "Video Templates",
-    href: "#templates",
-    key: "templates",
+    icon: Radio,
+    label: "Streaming Avatar",
+    href: "#streaming-avatar",
+    key: "streaming-avatar",
   },
   {
     icon: Target,
