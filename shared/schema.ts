@@ -698,6 +698,33 @@ export const insertCompanyProfileSchema = createInsertSchema(
 export type CompanyProfile = typeof companyProfiles.$inferSelect;
 export type InsertCompanyProfile = z.infer<typeof insertCompanyProfileSchema>;
 
+// =====================================================
+// BRAND SETTINGS TABLE (Branding & Visual Identity)
+// =====================================================
+export const brandSettings = pgTable("brand_settings", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  assets: jsonb("assets"),
+  colors: jsonb("colors"),
+  fonts: jsonb("fonts"),
+  description: text("description"),
+  socialConnections: jsonb("social_connections"),
+  logoInfo: jsonb("logo_info"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBrandSettingsSchema = createInsertSchema(brandSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type BrandSettings = typeof brandSettings.$inferSelect;
+export type InsertBrandSettings = z.infer<typeof insertBrandSettingsSchema>;
+
 // Legacy types (keeping for compatibility)
 export type UpsertUser = typeof users.$inferInsert;
 export type InsertAIContent = z.infer<typeof insertAIContentSchema>;
