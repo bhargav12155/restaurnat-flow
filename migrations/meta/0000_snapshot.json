@@ -1,5 +1,5 @@
 {
-  "id": "434157b4-467a-42ea-8272-5f05243d68c2",
+  "id": "01a73b0c-7919-4acc-83ad-7813ef788311",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1966,14 +1966,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "current_rank": {
-          "name": "current_rank",
+        "current_ranking": {
+          "name": "current_ranking",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
-        "previous_rank": {
-          "name": "previous_rank",
+        "previous_ranking": {
+          "name": "previous_ranking",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
@@ -1990,8 +1990,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "neighborhood": {
-          "name": "neighborhood",
+        "url": {
+          "name": "url",
           "type": "text",
           "primaryKey": false,
           "notNull": false
