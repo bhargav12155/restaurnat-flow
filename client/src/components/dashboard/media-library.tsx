@@ -142,15 +142,15 @@ export function MediaLibrary({
 
   return (
     <div className="space-y-4">
-      {/* Header with filters and upload */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Label>Filter:</Label>
+      {/* Header with filters and upload - responsive layout */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Label className="text-sm font-medium whitespace-nowrap">Filter:</Label>
           <Select
             value={filter}
             onValueChange={(v) => setFilter(v as typeof filter)}
           >
-            <SelectTrigger className="w-32" data-testid="select-media-filter">
+            <SelectTrigger className="w-[140px]" data-testid="select-media-filter">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -167,17 +167,19 @@ export function MediaLibrary({
           </Select>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Input
             type="file"
             accept="image/*,video/*"
             onChange={handleFileChange}
-            className="w-64"
+            className="flex-1 sm:w-48 lg:w-64"
             data-testid="input-media-upload"
           />
           <Button
             onClick={handleUpload}
             disabled={!uploadFile || uploadMutation.isPending}
+            size="default"
+            className="shrink-0"
             data-testid="button-upload-media"
           >
             {uploadMutation.isPending ? (
@@ -221,26 +223,38 @@ export function MediaLibrary({
 
       {/* Media grid */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center py-16">
+          <div className="text-center space-y-3">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
+            <p className="text-sm text-muted-foreground">Loading your media library...</p>
+          </div>
         </div>
       ) : filteredAssets.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <div className="text-center space-y-2">
-              <div className="text-muted-foreground">
+        <Card className="border-dashed border-2">
+          <CardContent className="flex flex-col items-center justify-center py-16 px-6">
+            <div className="text-center space-y-3 max-w-sm">
+              <div className="bg-muted/50 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-2">
+                {filter === "photo" ? (
+                  <ImageIcon className="h-8 w-8 text-muted-foreground/60" />
+                ) : filter === "video" ? (
+                  <FileVideo className="h-8 w-8 text-muted-foreground/60" />
+                ) : (
+                  <Upload className="h-8 w-8 text-muted-foreground/60" />
+                )}
+              </div>
+              <div className="text-base font-medium text-foreground">
                 {filter === "all"
                   ? "No media in your library yet"
                   : `No ${filter}s in your library yet`}
               </div>
               <p className="text-sm text-muted-foreground">
-                Upload some media to get started
+                Upload some media using the button above to get started
               </p>
             </div>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredAssets.map((asset) => (
             <Card
               key={asset.id}
@@ -313,33 +327,31 @@ export function MediaLibrary({
                   )}
                 </div>
 
-                {/* Media info - redesigned for better visual hierarchy */}
-                <div className="p-4 bg-gradient-to-b from-background to-muted/20 space-y-2.5">
+                {/* Media info - compact and clean */}
+                <div className="p-3 bg-gradient-to-b from-background to-muted/20 space-y-2">
                   <div
-                    className="text-sm font-bold truncate group-hover:text-primary transition-colors leading-tight"
+                    className="text-sm font-semibold truncate group-hover:text-primary transition-colors leading-tight"
                     data-testid={`text-title-${asset.id}`}
                     title={asset.title || "Untitled"}
                   >
                     {asset.title || "Untitled"}
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center capitalize text-xs font-semibold bg-primary/10 text-primary px-2.5 py-1 rounded-full">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center capitalize text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                       {asset.source}
                     </span>
                     {asset.fileSize && (
-                      <span className="text-xs font-semibold text-muted-foreground/80">
+                      <span className="text-xs font-medium text-muted-foreground/70">
                         {(asset.fileSize / 1024 / 1024).toFixed(1)} MB
                       </span>
                     )}
+                    {asset.width && asset.height && (
+                      <span className="text-xs font-medium text-muted-foreground/70">
+                        {asset.width} × {asset.height}
+                      </span>
+                    )}
                   </div>
-                  
-                  {asset.width && asset.height && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70 font-medium pt-0.5">
-                      <div className="w-3 h-3 border border-current rounded opacity-60" />
-                      <span>{asset.width} × {asset.height}</span>
-                    </div>
-                  )}
                 </div>
               </CardContent>
             </Card>
