@@ -1432,15 +1432,34 @@ ${agentName} | ${brokerageName}
             )}
 
           {/* Media Library */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-muted-foreground">
-                Media Library{" "}
-                {selectedMediaIds.length > 0 &&
-                  `(${selectedMediaIds.length} selected)`}
+              <div className="flex items-center gap-2">
+                <Image className="h-4 w-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">
+                  Media Library
+                </span>
+                {selectedMediaIds.length > 0 && (
+                  <span className="px-2 py-0.5 bg-primary/10 text-primary text-xs font-medium rounded-full">
+                    {selectedMediaIds.length} selected
+                  </span>
+                )}
               </div>
+              {selectedMediaIds.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedMediaIds([])}
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Clear Selection
+                </Button>
+              )}
             </div>
-            <div className="border rounded-lg p-4 max-h-[400px] overflow-y-auto">
+            <div className="relative rounded-xl border-2 border-border bg-gradient-to-br from-muted/30 to-muted/10 p-6 max-h-[500px] overflow-y-auto shadow-sm hover:shadow-md transition-shadow">
+              {/* Decorative corner accent */}
+              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-primary/5 to-transparent rounded-bl-3xl pointer-events-none" />
+              
               <MediaLibrary
                 onSelectMedia={setSelectedMediaIds}
                 selectedMediaIds={selectedMediaIds}
@@ -1448,6 +1467,13 @@ ${agentName} | ${brokerageName}
                 typeFilter="all"
               />
             </div>
+            
+            {/* Helper text below the container */}
+            {selectedMediaIds.length === 0 && (
+              <p className="text-xs text-muted-foreground/70 text-center -mt-1">
+                Click media items to attach them to your post
+              </p>
+            )}
           </div>
 
           <Textarea
