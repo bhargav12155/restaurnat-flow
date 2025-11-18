@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Mic, MicOff, Video, VideoOff, Volume2, VolumeX, Send, StopCircle, Loader2, Phone, PhoneOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import StreamingAvatar, { 
+import StreamingAvatarSDK, { 
   AvatarQuality, 
   StreamingEvents, 
   TaskType,
@@ -17,28 +17,26 @@ import StreamingAvatar, {
   VoiceEmotion 
 } from '@heygen/streaming-avatar';
 
-interface SessionInfo {
-  session_id: string;
-  url: string;
-  access_token: string;
-  session_duration_limit: number;
+interface StreamingSession {
+  sessionId: string;
+  iceServers: any;
+  offer: string;
 }
 
 export function StreamingAvatar() {
   const { toast } = useToast();
   const [selectedAvatar, setSelectedAvatar] = useState<string>('');
-  const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
+  const [session, setSession] = useState<StreamingSession | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isVoiceChatActive, setIsVoiceChatActive] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [message, setMessage] = useState('');
-  const [accessToken, setAccessToken] = useState<string>('');
   
   const videoRef = useRef<HTMLVideoElement>(null);
-  const avatarRef = useRef<StreamingAvatar | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
   // HeyGen's public streaming avatars (these always work)
   const defaultStreamingAvatars = [
