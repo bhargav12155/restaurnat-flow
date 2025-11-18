@@ -22,6 +22,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AvatarCreator } from "./avatar-creator";
 import { OmahaVideoTemplates } from "./omaha-video-templates";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -42,6 +44,10 @@ import {
   X,
   Eye,
   Share2,
+  Info,
+  Image,
+  Hand,
+  ExternalLink,
 } from "lucide-react";
 
 interface Avatar {
@@ -108,6 +114,8 @@ const neighborhoods = [
 
 export function VideoGenerator() {
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
+  const [avatarType, setAvatarType] = useState<"public" | "talking_photo" | "custom">("public");
+  const [uploadedAvatarPhoto, setUploadedAvatarPhoto] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState("");
   const [videoTopic, setVideoTopic] = useState("");
   const [selectedNeighborhood, setSelectedNeighborhood] = useState("");
@@ -473,31 +481,175 @@ export function VideoGenerator() {
             </div>
             
             <div className="space-y-4">
-            {/* Avatar Selection */}
-            <div>
-              <Label htmlFor="avatar-select" className="text-sm font-medium">
-                Select Your Avatar
+            {/* Avatar Selection with Three Options */}
+            <div className="space-y-4">
+              <Label className="text-sm font-medium">
+                Choose Avatar Type
               </Label>
-              <Select
-                onValueChange={setSelectedAvatar}
-                data-testid="select-avatar"
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose an avatar that looks like you" />
-                </SelectTrigger>
-                <SelectContent>
-                  {avatars?.map((avatar) => (
-                    <SelectItem key={avatar.id} value={avatar.id}>
-                      <div className="flex items-center space-x-2">
-                        <User className="h-4 w-4" />
-                        <span>
-                          {avatar.name} ({avatar.style})
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+              {/* Informational Alert */}
+              <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertTitle className="text-blue-900 dark:text-blue-100">Avatar Animation Options</AlertTitle>
+                <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                  Choose how your avatar will move:
+                  <ul className="mt-2 space-y-1 list-disc list-inside">
+                    <li><strong>Public Avatars</strong>: Professional lip-sync only (quick & easy)</li>
+                    <li><strong>Talking Photo</strong>: Upload your photo for subtle head/body movements</li>
+                    <li><strong>Custom Avatar</strong>: Film yourself with gestures for hand movements & full animation</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+
+              <Tabs value={avatarType} onValueChange={(value) => setAvatarType(value as any)} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="public" className="flex items-center gap-2" data-testid="tab-public-avatar">
+                    <User className="h-4 w-4" />
+                    Public Avatars
+                  </TabsTrigger>
+                  <TabsTrigger value="talking_photo" className="flex items-center gap-2" data-testid="tab-talking-photo">
+                    <Image className="h-4 w-4" />
+                    Talking Photo
+                  </TabsTrigger>
+                  <TabsTrigger value="custom" className="flex items-center gap-2" data-testid="tab-custom-avatar">
+                    <Hand className="h-4 w-4" />
+                    Custom Avatar
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Public Avatars Tab */}
+                <TabsContent value="public" className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Professional avatars with accurate lip-sync. Perfect for quick professional videos.
+                    </p>
+                    <Select
+                      onValueChange={setSelectedAvatar}
+                      value={selectedAvatar}
+                      data-testid="select-avatar"
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a public avatar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {avatars?.filter(a => !a.description?.includes('custom'))?.map((avatar) => (
+                          <SelectItem key={avatar.id} value={avatar.id}>
+                            <div className="flex items-center space-x-2">
+                              <User className="h-4 w-4" />
+                              <span>
+                                {avatar.name} ({avatar.style})
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </TabsContent>
+
+                {/* Talking Photo Tab */}
+                <TabsContent value="talking_photo" className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Upload a photo to create an AI avatar with subtle head and body movements. Great for personalized content.
+                    </p>
+                    <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                      {uploadedAvatarPhoto ? (
+                        <div className="space-y-3">
+                          <div className="relative inline-block">
+                            <img 
+                              src={uploadedAvatarPhoto} 
+                              alt="Avatar preview" 
+                              className="w-32 h-32 rounded-full object-cover mx-auto"
+                            />
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                              onClick={() => setUploadedAvatarPhoto(null)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                            Photo uploaded! Your talking photo avatar is ready.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <Camera className="h-12 w-12 mx-auto text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">Upload Your Photo</p>
+                            <p className="text-sm text-muted-foreground">
+                              For best results: Clear headshot, well-lit, neutral background
+                            </p>
+                          </div>
+                          <ObjectUploader
+                            acceptedFileTypes="image/*"
+                            onGetUploadParameters={async () => {
+                              const response = await apiRequest("GET", "/api/upload/signed-url?fileType=image/jpeg");
+                              const data = await response.json();
+                              return { method: "PUT" as const, url: data.url };
+                            }}
+                            onComplete={(url: string) => {
+                              setUploadedAvatarPhoto(url);
+                              toast({
+                                title: "Photo Uploaded!",
+                                description: "Your talking photo avatar is ready to use.",
+                              });
+                            }}
+                            data-testid="upload-avatar-photo"
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Choose Photo
+                          </ObjectUploader>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </TabsContent>
+
+                {/* Custom Avatar Tab */}
+                <TabsContent value="custom" className="space-y-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Create a fully animated avatar with hand gestures and body movements by filming yourself.
+                    </p>
+                    <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800">
+                      <Hand className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <AlertTitle className="text-amber-900 dark:text-amber-100">Filming Guidelines for Gestures</AlertTitle>
+                      <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm space-y-2">
+                        <p><strong>Structure:</strong> 30 seconds neutral speaking + 1 gesture every 2 seconds</p>
+                        <p><strong>Supported gestures:</strong> Waves, thumbs up, pointing, nodding, hand movements</p>
+                        <p><strong>Technical requirements:</strong></p>
+                        <ul className="list-disc list-inside ml-2 space-y-1">
+                          <li>1080p at 30 FPS (or 4K at 60 FPS)</li>
+                          <li>Soft, even lighting; no harsh shadows</li>
+                          <li>2-3 feet from camera, head centered</li>
+                          <li>Green screen optional</li>
+                          <li>Keep hand gestures below shoulder height</li>
+                        </ul>
+                        <p><strong>Avoid:</strong> Rapid head shaking, covering face, spinning around, extreme movements</p>
+                      </AlertDescription>
+                    </Alert>
+                    <div className="mt-4 p-4 bg-secondary rounded-lg">
+                      <p className="text-sm font-medium mb-2">Create Custom Avatar on HeyGen Platform</p>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Custom gesture-enabled avatars must be created directly on HeyGen's platform. Once created, they'll appear in your public avatars list.
+                      </p>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => window.open('https://app.heygen.com/streaming-avatar', '_blank')}
+                        data-testid="button-create-custom-avatar"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Create Custom Avatar on HeyGen
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
 
             {/* Video Details */}
