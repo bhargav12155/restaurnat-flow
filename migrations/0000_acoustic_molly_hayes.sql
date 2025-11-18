@@ -318,11 +318,11 @@ CREATE TABLE "seo_keywords" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
 	"keyword" text NOT NULL,
-	"current_rank" integer,
-	"previous_rank" integer,
+	"current_ranking" integer,
+	"previous_ranking" integer,
 	"search_volume" integer,
 	"difficulty" integer,
-	"neighborhood" text,
+	"url" text,
 	"last_checked" timestamp,
 	"created_at" timestamp DEFAULT now()
 );
