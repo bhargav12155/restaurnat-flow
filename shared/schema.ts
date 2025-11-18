@@ -11,6 +11,7 @@ import {
   real,
   unique,
   serial,
+  numeric,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -116,14 +117,13 @@ export const avatars = pgTable("avatars", {
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   name: text("name").notNull(),
-  description: text("description"),
-  avatarImageUrl: text("avatar_image_url"), // URL to the avatar's appearance image
-  voiceId: text("voice_id"), // ID for AI voice synthesis
-  style: text("style").default("professional"), // 'professional', 'casual', 'friendly'
-  gender: text("gender"), // 'male', 'female', 'neutral'
-  isActive: boolean("is_active").default(true),
-  supportsGestures: boolean("supports_gestures").default(false), // True for custom gesture-enabled avatars
-  metadata: jsonb("metadata"),
+  heygenAvatarId: text("heygen_avatar_id").notNull().unique(),
+  avatarType: text("avatar_type").notNull(), // 'public', 'talking_photo', 'photo_avatar_group'
+  gender: text("gender"),
+  previewImageUrl: text("preview_image_url"),
+  previewVideoUrl: text("preview_video_url"),
+  isPublic: boolean("is_public").default(false),
+  supportsGestures: boolean("supports_gestures").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -135,12 +135,11 @@ export const customVoices = pgTable("custom_voices", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  name: text("name").notNull(), // User-given name like "My Professional Voice"
-  audioUrl: text("audio_url").notNull(), // S3 URL or local path to the audio file
-  duration: integer("duration"), // Duration in seconds (optional)
-  fileSize: integer("file_size"), // File size in bytes (optional)
-  heygenAudioAssetId: text("heygen_audio_asset_id"), // HeyGen audio asset ID for video generation
-  status: text("status").notNull().default("pending"), // 'pending', 'ready', 'failed'
+  name: text("name").notNull(),
+  heygenVoiceId: text("heygen_voice_id").notNull().unique(),
+  language: text("language").notNull(),
+  gender: text("gender"),
+  sampleAudioUrl: text("sample_audio_url"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -335,9 +334,10 @@ export const analytics = pgTable("analytics", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  metric: text("metric").notNull(),
-  value: integer("value").notNull(),
-  date: timestamp("date").defaultNow(),
+  metricType: text("metric_type").notNull(),
+  metricValue: numeric("metric_value"),
+  dimension: text("dimension"),
+  timestamp: timestamp("timestamp").defaultNow(),
   metadata: jsonb("metadata"),
 });
 
@@ -491,6 +491,7 @@ export const insertMarketDataSchema = createInsertSchema(marketData).omit({
 
 export const insertAnalyticsSchema = createInsertSchema(analytics).omit({
   id: true,
+  timestamp: true,
 });
 
 export const insertScheduledPostSchema = createInsertSchema(

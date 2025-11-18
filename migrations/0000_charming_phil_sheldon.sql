@@ -13,9 +13,10 @@ CREATE TABLE "ai_content" (
 CREATE TABLE "analytics" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
-	"metric" text NOT NULL,
-	"value" integer NOT NULL,
-	"date" timestamp DEFAULT now(),
+	"metric_type" text NOT NULL,
+	"metric_value" numeric,
+	"dimension" text,
+	"timestamp" timestamp DEFAULT now(),
 	"metadata" jsonb
 );
 --> statement-breakpoint
@@ -23,14 +24,29 @@ CREATE TABLE "avatars" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
 	"name" text NOT NULL,
-	"description" text,
-	"avatar_image_url" text,
-	"voice_id" text,
-	"style" text DEFAULT 'professional',
+	"heygen_avatar_id" text NOT NULL,
+	"avatar_type" text NOT NULL,
 	"gender" text,
-	"is_active" boolean DEFAULT true,
-	"metadata" jsonb,
-	"created_at" timestamp DEFAULT now()
+	"preview_image_url" text,
+	"preview_video_url" text,
+	"is_public" boolean DEFAULT false,
+	"supports_gestures" boolean DEFAULT false,
+	"created_at" timestamp DEFAULT now(),
+	CONSTRAINT "avatars_heygen_avatar_id_unique" UNIQUE("heygen_avatar_id")
+);
+--> statement-breakpoint
+CREATE TABLE "brand_settings" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"assets" jsonb,
+	"colors" jsonb,
+	"fonts" jsonb,
+	"description" text,
+	"social_connections" jsonb,
+	"logo_info" jsonb,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "brand_settings_user_id_unique" UNIQUE("user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "company_profiles" (
@@ -85,12 +101,12 @@ CREATE TABLE "custom_voices" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar NOT NULL,
 	"name" text NOT NULL,
-	"audio_url" text NOT NULL,
-	"duration" integer,
-	"file_size" integer,
-	"heygen_audio_asset_id" text,
-	"status" text DEFAULT 'pending' NOT NULL,
-	"created_at" timestamp DEFAULT now()
+	"heygen_voice_id" text NOT NULL,
+	"language" text NOT NULL,
+	"gender" text,
+	"sample_audio_url" text,
+	"created_at" timestamp DEFAULT now(),
+	CONSTRAINT "custom_voices_heygen_voice_id_unique" UNIQUE("heygen_voice_id")
 );
 --> statement-breakpoint
 CREATE TABLE "engagement_leads" (
@@ -196,6 +212,13 @@ CREATE TABLE "photo_avatars" (
 	"metadata" jsonb,
 	"created_at" timestamp DEFAULT now(),
 	CONSTRAINT "photo_avatars_heygen_avatar_id_unique" UNIQUE("heygen_avatar_id")
+);
+--> statement-breakpoint
+CREATE TABLE "pkce_store" (
+	"state" varchar PRIMARY KEY NOT NULL,
+	"code_verifier" text NOT NULL,
+	"expires_at" timestamp NOT NULL,
+	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE "post_media" (
