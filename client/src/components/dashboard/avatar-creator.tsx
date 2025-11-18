@@ -35,7 +35,8 @@ import {
   Volume2,
   Palette,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  ExternalLink
 } from "lucide-react";
 
 interface Avatar {
