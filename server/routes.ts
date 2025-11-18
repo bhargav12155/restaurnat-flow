@@ -5602,6 +5602,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const streamingService = new HeyGenStreamingService();
 
       const session = await streamingService.createSession(user.id, avatarId);
+      console.log('🔍 Session response:', JSON.stringify({
+        sessionId: session.sessionId,
+        hasIceServers: !!session.iceServers,
+        hasOffer: !!session.offer,
+        iceServersLength: session.iceServers?.length
+      }));
       res.json(session);
     } catch (error) {
       console.error("Failed to create streaming session:", error);
