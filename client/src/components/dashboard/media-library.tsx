@@ -141,16 +141,16 @@ export function MediaLibrary({
   });
 
   return (
-    <div className="space-y-4">
-      {/* Header with filters and upload - responsive layout */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Label className="text-sm font-medium whitespace-nowrap">Filter:</Label>
+    <div className="space-y-3 w-full overflow-hidden">
+      {/* Header with filters and upload - compact layout */}
+      <div className="flex flex-col gap-3 w-full">
+        <div className="flex items-center gap-2">
+          <Label className="text-xs font-medium whitespace-nowrap">Filter:</Label>
           <Select
             value={filter}
             onValueChange={(v) => setFilter(v as typeof filter)}
           >
-            <SelectTrigger className="w-[140px]" data-testid="select-media-filter">
+            <SelectTrigger className="w-[120px] h-8 text-xs" data-testid="select-media-filter">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -167,188 +167,170 @@ export function MediaLibrary({
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full">
           <Input
             type="file"
             accept="image/*,video/*"
             onChange={handleFileChange}
-            className="flex-1 sm:w-48 lg:w-64"
+            className="flex-1 h-8 text-xs"
             data-testid="input-media-upload"
           />
           <Button
             onClick={handleUpload}
             disabled={!uploadFile || uploadMutation.isPending}
-            size="default"
-            className="shrink-0"
+            size="sm"
+            className="shrink-0 h-8"
             data-testid="button-upload-media"
           >
             {uploadMutation.isPending ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                <span className="text-xs">Uploading...</span>
               </>
             ) : (
               <>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload
+                <Upload className="mr-1 h-3 w-3" />
+                <span className="text-xs">Upload</span>
               </>
             )}
           </Button>
         </div>
       </div>
 
-      {/* Selection summary */}
+      {/* Selection summary - compact */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center justify-between bg-primary/10 p-3 rounded-lg">
+        <div className="flex items-center justify-between bg-primary/10 px-3 py-2 rounded-md">
           <span
-            className="text-sm font-medium"
+            className="text-xs font-medium"
             data-testid="text-selection-count"
           >
-            {selectedIds.length} {selectedIds.length === 1 ? "item" : "items"}{" "}
-            selected
+            {selectedIds.length} selected
           </span>
           <Button
             variant="ghost"
             size="sm"
+            className="h-6 px-2"
             onClick={() => {
               onSelectMedia?.([]);
             }}
             data-testid="button-clear-selection"
           >
-            <X className="h-4 w-4 mr-2" />
-            Clear
+            <X className="h-3 w-3 mr-1" />
+            <span className="text-xs">Clear</span>
           </Button>
         </div>
       )}
 
-      {/* Media grid */}
+      {/* Media grid - compact vertical layout */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="text-center space-y-3">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-            <p className="text-sm text-muted-foreground">Loading your media library...</p>
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center space-y-2">
+            <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto" />
+            <p className="text-xs text-muted-foreground">Loading...</p>
           </div>
         </div>
       ) : filteredAssets.length === 0 ? (
         <Card className="border-dashed border-2">
-          <CardContent className="flex flex-col items-center justify-center py-16 px-6">
-            <div className="text-center space-y-3 max-w-sm">
-              <div className="bg-muted/50 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-2">
+          <CardContent className="flex flex-col items-center justify-center py-8 px-4">
+            <div className="text-center space-y-2 max-w-xs">
+              <div className="bg-muted/50 rounded-full w-12 h-12 flex items-center justify-center mx-auto">
                 {filter === "photo" ? (
-                  <ImageIcon className="h-8 w-8 text-muted-foreground/60" />
+                  <ImageIcon className="h-5 w-5 text-muted-foreground/60" />
                 ) : filter === "video" ? (
-                  <FileVideo className="h-8 w-8 text-muted-foreground/60" />
+                  <FileVideo className="h-5 w-5 text-muted-foreground/60" />
                 ) : (
-                  <Upload className="h-8 w-8 text-muted-foreground/60" />
+                  <Upload className="h-5 w-5 text-muted-foreground/60" />
                 )}
               </div>
-              <div className="text-base font-medium text-foreground">
+              <div className="text-sm font-medium text-foreground">
                 {filter === "all"
-                  ? "No media in your library yet"
-                  : `No ${filter}s in your library yet`}
+                  ? "No media yet"
+                  : `No ${filter}s yet`}
               </div>
-              <p className="text-sm text-muted-foreground">
-                Upload some media using the button above to get started
+              <p className="text-xs text-muted-foreground">
+                Upload media to get started
               </p>
             </div>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full">
           {filteredAssets.map((asset) => (
             <Card
               key={asset.id}
-              className={`group relative cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-[1.02] ${
+              className={`group relative cursor-pointer transition-all duration-150 hover:shadow-lg ${
                 selectedIds.includes(asset.id)
-                  ? "ring-2 ring-primary shadow-xl scale-[1.02]"
+                  ? "ring-2 ring-primary shadow-lg"
                   : "hover:ring-1 hover:ring-border"
               }`}
               onClick={() => toggleSelection(asset.id)}
               data-testid={`card-media-${asset.id}`}
             >
               <CardContent className="p-0">
-                {/* Media preview - larger and better aspect ratio */}
-                <div className="aspect-video relative overflow-hidden rounded-t-lg bg-gradient-to-br from-muted to-muted/50">
+                {/* Media preview - small thumbnail */}
+                <div className="aspect-square relative overflow-hidden rounded-t-lg bg-gradient-to-br from-muted to-muted/50">
                   {asset.type === "photo" ? (
                     <img
                       src={asset.url}
                       alt={asset.title || "Media asset"}
-                      className="w-full h-full object-contain bg-black/5"
+                      className="w-full h-full object-cover"
                       loading="lazy"
                     />
                   ) : asset.thumbnailUrl ? (
-                    // Show video thumbnail if available
                     <div className="relative w-full h-full">
                       <img
                         src={asset.thumbnailUrl}
                         alt={asset.title || "Video thumbnail"}
-                        className="w-full h-full object-contain bg-black/5"
+                        className="w-full h-full object-cover"
                         loading="lazy"
                       />
-                      {/* Play button overlay */}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
-                        <div className="bg-white/90 rounded-full p-3 group-hover:bg-white group-hover:scale-110 transition-all shadow-lg">
-                          <FileVideo className="h-8 w-8 text-primary" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <div className="bg-white/90 rounded-full p-2">
+                          <FileVideo className="h-4 w-4 text-primary" />
                         </div>
                       </div>
                     </div>
                   ) : (
-                    // Fallback for videos without thumbnails
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-500/10 to-pink-500/10">
-                      <div className="bg-white/90 rounded-full p-4 mb-2 group-hover:scale-110 transition-transform shadow-lg">
-                        <FileVideo className="h-10 w-10 text-primary" />
-                      </div>
-                      <span className="text-sm text-muted-foreground font-medium">Video File</span>
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-500/10 to-pink-500/10">
+                      <FileVideo className="h-6 w-6 text-primary" />
                     </div>
                   )}
 
-                  {/* Selection indicator - larger and more visible */}
+                  {/* Selection indicator - compact */}
                   {selectedIds.includes(asset.id) && (
-                    <div className="absolute top-3 right-3 bg-primary text-primary-foreground rounded-full p-2 shadow-lg animate-in zoom-in-50 duration-200">
-                      <Check className="h-5 w-5 stroke-[3]" />
+                    <div className="absolute top-1.5 right-1.5 bg-primary text-primary-foreground rounded-full p-1 shadow-md">
+                      <Check className="h-3 w-3 stroke-[3]" />
                     </div>
                   )}
 
-                  {/* Type badge - improved visibility */}
-                  <div className="absolute bottom-3 left-3 bg-black/80 backdrop-blur-sm text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 shadow-lg">
+                  {/* Type badge - compact */}
+                  <div className="absolute bottom-1.5 left-1.5 bg-black/75 text-white px-1.5 py-0.5 rounded text-[10px] font-medium flex items-center gap-1">
                     {asset.type === "photo" ? (
-                      <ImageIcon className="h-3.5 w-3.5" />
+                      <ImageIcon className="h-2.5 w-2.5" />
                     ) : (
-                      <FileVideo className="h-3.5 w-3.5" />
+                      <FileVideo className="h-2.5 w-2.5" />
                     )}
                     {asset.type.toUpperCase()}
                   </div>
-
-                  {/* Duration badge for videos */}
-                  {asset.type === "video" && asset.duration && (
-                    <div className="absolute bottom-3 right-3 bg-black/80 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-medium shadow-lg">
-                      {Math.floor(asset.duration / 60)}:{String(Math.floor(asset.duration % 60)).padStart(2, '0')}
-                    </div>
-                  )}
                 </div>
 
-                {/* Media info - compact and clean */}
-                <div className="p-3 bg-gradient-to-b from-background to-muted/20 space-y-2">
+                {/* Media info - minimal */}
+                <div className="p-2 bg-background">
                   <div
-                    className="text-sm font-semibold truncate group-hover:text-primary transition-colors leading-tight"
+                    className="text-xs font-medium truncate group-hover:text-primary transition-colors"
                     data-testid={`text-title-${asset.id}`}
                     title={asset.title || "Untitled"}
                   >
                     {asset.title || "Untitled"}
                   </div>
                   
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center capitalize text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[10px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded-full capitalize">
                       {asset.source}
                     </span>
                     {asset.fileSize && (
-                      <span className="text-xs font-medium text-muted-foreground/70">
-                        {(asset.fileSize / 1024 / 1024).toFixed(1)} MB
-                      </span>
-                    )}
-                    {asset.width && asset.height && (
-                      <span className="text-xs font-medium text-muted-foreground/70">
-                        {asset.width} × {asset.height}
+                      <span className="text-[10px] text-muted-foreground">
+                        {(asset.fileSize / 1024 / 1024).toFixed(1)}MB
                       </span>
                     )}
                   </div>
