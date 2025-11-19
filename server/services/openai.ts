@@ -441,7 +441,7 @@ export class OpenAIService {
         "content",
         async (client) => {
           return await client.chat.completions.create({
-            model: "gpt-5",
+            model: "gpt-4o",
             messages: [
               {
                 role: "system",
@@ -621,7 +621,7 @@ export class OpenAIService {
         "social",
         async (client) => {
           return await client.chat.completions.create({
-            model: "gpt-5",
+            model: "gpt-4o",
             messages: [
               {
                 role: "system",
@@ -672,7 +672,7 @@ export class OpenAIService {
         "content",
         async (client) => {
           return await client.chat.completions.create({
-            model: "gpt-5",
+            model: "gpt-4o",
             messages: [
               {
                 role: "system",
@@ -863,7 +863,7 @@ Respond with JSON in this format:
         "content",
         async (client) => {
           return await client.chat.completions.create({
-            model: "gpt-5",
+            model: "gpt-4o",
             messages: [
               {
                 role: "system",
@@ -989,7 +989,7 @@ Respond with JSON in this format:
         "content",
         async (client) => {
           return await client.chat.completions.create({
-            model: "gpt-5",
+            model: "gpt-4o",
             messages: [
               {
                 role: "system",
@@ -1152,7 +1152,7 @@ Please enhance this content while keeping the same core message and format.`;
         "content",
         async (client) => {
           return await client.chat.completions.create({
-            model: "gpt-5",
+            model: "gpt-4o",
             messages: [
               {
                 role: "system",
