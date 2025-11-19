@@ -12,6 +12,7 @@ import { SocialLinksPrompt } from "@/components/dashboard/social-links-prompt";
 import { SocialMediaManager } from "@/components/dashboard/social-media-manager";
 import { StreamingAvatarComponent } from "@/components/dashboard/streaming-avatar";
 import { TemplateManager } from "@/components/dashboard/template-manager";
+import VideoAvatarManager from "@/components/dashboard/video-avatar-manager";
 import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
 import { VideoGenerator } from "@/components/dashboard/video-generator";
 import { VideoTemplates } from "@/components/dashboard/video-templates";
@@ -21,9 +22,9 @@ import { Button } from "@/components/ui/button";
 import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { VERSION_DISPLAY } from "@/lib/version";
 import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
-import { VERSION_DISPLAY } from "@/lib/version";
 
 export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -89,6 +90,8 @@ export default function Dashboard() {
         return <StreamingAvatarComponent />;
       case "photo-avatars":
         return <PhotoAvatarManager />;
+      case "video-avatars":
+        return <VideoAvatarManager />;
       case "video-generation":
         return <VideoGenerationManager />;
       case "templates":
@@ -165,7 +168,9 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-2 sm:gap-4">
             <div className="min-w-0 flex-1">
               <h1 className="text-lg sm:text-2xl font-semibold text-foreground truncate">
-                <span className="hidden sm:inline">AI SEO & Social Media Dashboard</span>
+                <span className="hidden sm:inline">
+                  AI SEO & Social Media Dashboard
+                </span>
                 <span className="sm:hidden">Dashboard</span>
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground hidden md:block">
@@ -181,11 +186,15 @@ export default function Dashboard() {
                 disabled={isGenerating}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
                 size="sm"
-                aria-label={isGenerating ? "Generating content..." : "Generate content"}
+                aria-label={
+                  isGenerating ? "Generating content..." : "Generate content"
+                }
                 data-testid="button-generate-content"
               >
                 <Sparkles className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{isGenerating ? "Generating..." : "Generate Content"}</span>
+                <span className="hidden sm:inline">
+                  {isGenerating ? "Generating..." : "Generate Content"}
+                </span>
               </Button>
               <NotificationPanel
                 userId={user?.id?.toString()}
@@ -197,7 +206,9 @@ export default function Dashboard() {
         </header>
 
         {/* Dashboard Content */}
-        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">{renderActiveView()}</div>
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+          {renderActiveView()}
+        </div>
       </main>
 
       {/* Social Links Prompt Modal */}

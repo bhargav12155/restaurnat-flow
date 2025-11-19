@@ -24,6 +24,7 @@ import {
   type InsertSeoKeyword,
   type InsertSocialMediaAccount,
   type InsertUser,
+  type InsertVideoAvatar,
   type InsertVideoContent,
   type MarketData,
   type MediaAsset,
@@ -39,6 +40,8 @@ import {
   type SeoKeyword,
   type SocialMediaAccount,
   type User,
+  type VideoAvatar,
+  videoAvatars,
   type VideoContent,
   videoContent as videoContentTable,
 } from "@shared/schema";
@@ -199,6 +202,21 @@ export interface IStorage {
     updates: Partial<PhotoAvatar>
   ): Promise<PhotoAvatar | undefined>;
   deletePhotoAvatar(heygenAvatarId: string, userId: string): Promise<boolean>;
+
+  // Video Avatars (Enterprise HeyGen Feature)
+  createVideoAvatar(avatar: InsertVideoAvatar): Promise<VideoAvatar>;
+  getVideoAvatar(
+    userId: string,
+    heygenAvatarId: string
+  ): Promise<VideoAvatar | undefined>;
+  listVideoAvatars(userId: string): Promise<VideoAvatar[]>;
+  updateVideoAvatarStatus(
+    userId: string,
+    heygenAvatarId: string,
+    status: string,
+    errorMessage?: string
+  ): Promise<VideoAvatar | undefined>;
+  deleteVideoAvatar(userId: string, heygenAvatarId: string): Promise<boolean>;
 
   // Company Profile
   getCompanyProfile(userId: string): Promise<CompanyProfile | null>;
@@ -1402,6 +1420,80 @@ export class MemStorage implements IStorage {
         and(
           eq(photoAvatars.heygenAvatarId, heygenAvatarId),
           eq(photoAvatars.userId, userId)
+        )
+      );
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Video Avatars (Enterprise HeyGen Feature)
+  async createVideoAvatar(avatar: InsertVideoAvatar): Promise<VideoAvatar> {
+    const [result] = await db.insert(videoAvatars).values(avatar).returning();
+    return result;
+  }
+
+  async getVideoAvatar(
+    userId: string,
+    heygenAvatarId: string
+  ): Promise<VideoAvatar | undefined> {
+    const [avatar] = await db
+      .select()
+      .from(videoAvatars)
+      .where(
+        and(
+          eq(videoAvatars.heygenAvatarId, heygenAvatarId),
+          eq(videoAvatars.userId, userId)
+        )
+      )
+      .limit(1);
+    return avatar;
+  }
+
+  async listVideoAvatars(userId: string): Promise<VideoAvatar[]> {
+    return await db
+      .select()
+      .from(videoAvatars)
+      .where(eq(videoAvatars.userId, userId))
+      .orderBy(desc(videoAvatars.createdAt));
+  }
+
+  async updateVideoAvatarStatus(
+    userId: string,
+    heygenAvatarId: string,
+    status: string,
+    errorMessage?: string
+  ): Promise<VideoAvatar | undefined> {
+    const updates: any = {
+      status,
+      errorMessage: errorMessage || null,
+    };
+
+    if (status === "complete") {
+      updates.completedAt = new Date();
+    }
+
+    const [result] = await db
+      .update(videoAvatars)
+      .set(updates)
+      .where(
+        and(
+          eq(videoAvatars.heygenAvatarId, heygenAvatarId),
+          eq(videoAvatars.userId, userId)
+        )
+      )
+      .returning();
+    return result;
+  }
+
+  async deleteVideoAvatar(
+    userId: string,
+    heygenAvatarId: string
+  ): Promise<boolean> {
+    const result = await db
+      .delete(videoAvatars)
+      .where(
+        and(
+          eq(videoAvatars.heygenAvatarId, heygenAvatarId),
+          eq(videoAvatars.userId, userId)
         )
       );
     return result.rowCount ? result.rowCount > 0 : false;

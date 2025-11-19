@@ -1,5 +1,15 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { cn, getUserDisplayName, getUserInitials } from "@/lib/utils";
 import {
   BarChart3,
   Bot,
@@ -7,7 +17,6 @@ import {
   Camera,
   ChevronLeft,
   ChevronRight,
-  FileVideo,
   Home,
   MapPin,
   Menu,
@@ -18,21 +27,10 @@ import {
   Settings,
   Share2,
   Target,
-  Users,
   Video,
-  X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
-import { useState, useEffect } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { cn, getUserInitials, getUserDisplayName } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
 
 const navigationItems = [
   { icon: Home, label: "Dashboard", href: "#", key: "dashboard" },
@@ -68,6 +66,12 @@ const navigationItems = [
     label: "Photo Avatars",
     href: "#photo-avatars",
     key: "photo-avatars",
+  },
+  {
+    icon: Video,
+    label: "Video Avatars",
+    href: "#video-avatars",
+    key: "video-avatars",
   },
   {
     icon: Video,
@@ -133,8 +137,15 @@ function SidebarContent({
   return (
     <>
       {/* Header */}
-      <div className={cn("border-b border-border", isCollapsed ? "p-4" : "p-6")}>
-        <div className={cn("flex items-center", isCollapsed ? "justify-center" : "space-x-3")}>
+      <div
+        className={cn("border-b border-border", isCollapsed ? "p-4" : "p-6")}
+      >
+        <div
+          className={cn(
+            "flex items-center",
+            isCollapsed ? "justify-center" : "space-x-3"
+          )}
+        >
           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
             <img
               src="/my-golden-brick-logo.png"
@@ -189,13 +200,33 @@ function SidebarContent({
               >
                 {isAdvancedAdvertising ? (
                   <>
-                    <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
-                    {!isCollapsed && item.label}
+                    <item.icon
+                      className={cn("h-4 w-4", !isCollapsed && "mr-3")}
+                    />
+                    {!isCollapsed && (
+                      <span className="flex items-center gap-2 flex-1">
+                        {item.label}
+                      </span>
+                    )}
                   </>
                 ) : (
-                  <a href={item.href}>
-                    <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
-                    {!isCollapsed && item.label}
+                  <a href={item.href} className="flex items-center flex-1">
+                    <item.icon
+                      className={cn("h-4 w-4", !isCollapsed && "mr-3")}
+                    />
+                    {!isCollapsed && (
+                      <span className="flex items-center gap-2 flex-1">
+                        {item.label}
+                        {item.label === "Video Avatars" && (
+                          <Badge
+                            variant="secondary"
+                            className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                          >
+                            ENTERPRISE
+                          </Badge>
+                        )}
+                      </span>
+                    )}
                   </a>
                 )}
               </Button>
@@ -229,8 +260,15 @@ function SidebarContent({
       </nav>
 
       {/* User Profile */}
-      <div className={cn("border-t border-border", isCollapsed ? "p-2" : "p-4")}>
-        <div className={cn("flex items-center", isCollapsed ? "justify-center flex-col space-y-2" : "space-x-3")}>
+      <div
+        className={cn("border-t border-border", isCollapsed ? "p-2" : "p-4")}
+      >
+        <div
+          className={cn(
+            "flex items-center",
+            isCollapsed ? "justify-center flex-col space-y-2" : "space-x-3"
+          )}
+        >
           <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-primary-foreground text-sm font-medium">
               {user ? getUserInitials(user.name, user.email) : "U"}
@@ -241,7 +279,9 @@ function SidebarContent({
               <p className="text-sm font-medium text-foreground truncate">
                 {user ? getUserDisplayName(user.name, user.email) : "User"}
               </p>
-              <p className="text-xs text-muted-foreground truncate">{user?.type === "agent" ? "Agent" : "User"}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {user?.type === "agent" ? "Agent" : "User"}
+              </p>
             </div>
           )}
           <Button
@@ -314,7 +354,7 @@ export function Sidebar({ activeView = "dashboard" }: SidebarProps) {
         )}
       >
         <SidebarContent activeView={activeView} isCollapsed={isCollapsed} />
-        
+
         {/* Toggle Button */}
         <Button
           variant="ghost"
