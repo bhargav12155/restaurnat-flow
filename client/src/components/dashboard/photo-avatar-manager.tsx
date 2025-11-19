@@ -1516,9 +1516,15 @@ export function PhotoAvatarManager() {
                                 </div>
                               )}
                               {group.status === "pending" && (
-                                <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                                <div className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                                   <Clock className="w-3 h-3" />
-                                  <span className="text-[9px] font-semibold">Needs Training</span>
+                                  <span className="text-[9px] font-semibold">Processing Images</span>
+                                </div>
+                              )}
+                              {group.status === "completed" && (
+                                <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
+                                  <UserPlus className="w-3 h-3" />
+                                  <span className="text-[9px] font-semibold">Ready to Train</span>
                                 </div>
                               )}
                             </div>
@@ -1548,6 +1554,13 @@ export function PhotoAvatarManager() {
                         {/* Compact Action Buttons */}
                         <div className="flex gap-1.5 pt-1">
                           {group.status === "pending" && (
+                            <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 px-2 py-1 rounded text-[10px]">
+                              <Clock className="w-3 h-3 animate-spin" />
+                              <span>HeyGen is processing images...</span>
+                            </div>
+                          )}
+                          
+                          {group.status === "completed" && (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -1561,11 +1574,11 @@ export function PhotoAvatarManager() {
                                     className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 h-7 text-[10px] px-2"
                                   >
                                     <UserPlus className="w-3 h-3 mr-1" />
-                                    Train
+                                    {trainGroupMutation.isPending ? "Training..." : "Train Avatar"}
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>You need to train to make sure you can generate variations of the avatar</p>
+                                  <p>Train this avatar to generate custom variations and looks</p>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
