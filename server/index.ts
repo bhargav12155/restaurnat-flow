@@ -91,6 +91,13 @@ app.use((req, res, next) => {
   // Initialize WebSocket server for real-time updates
   realtimeService.initialize(server);
 
+  // Initialize automatic post scheduler
+  const { PostScheduler } = await import("./services/post-scheduler");
+  const { storage } = await import("./storage");
+  const { socialMediaService } = await import("./services/socialMedia");
+  const postScheduler = new PostScheduler(storage, socialMediaService);
+  postScheduler.start();
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
