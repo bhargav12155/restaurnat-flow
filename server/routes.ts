@@ -3906,7 +3906,7 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         systemPrompt:
           "You are an expert real estate marketing AI that creates optimized content schedules based on SEO data and market analytics. Always respond with valid JSON only.",
         temperature: 0.7,
-        maxTokens: 1500,
+        maxTokens: 4000,
         jsonMode: true,
       });
 
