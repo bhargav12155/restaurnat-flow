@@ -3853,7 +3853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { keywords, marketData, timeframe, focus } = req.body;
 
       // Create AI prompt for intelligent content scheduling
-      const prompt = `You are an expert real estate marketing strategist and SEO specialist. Based on the following data, create an optimal 30-day content calendar for Mike Bjork's real estate business in Omaha, Nebraska.
+      const prompt = `You are an expert real estate marketing strategist and SEO specialist. Based on the following data, create an optimal 15-day content calendar for Mike Bjork's real estate business in Omaha, Nebraska.
 
 SEO Keywords to target: ${keywords
         .map(

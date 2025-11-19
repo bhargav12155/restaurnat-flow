@@ -751,7 +751,10 @@ export function ContentCalendar() {
       const validKeywords = Array.isArray(keywords) ? keywords : [];
       const validMarketData = Array.isArray(marketData) ? marketData : [];
       
-      // Generate AI-optimized content schedule
+      // Generate AI-optimized content schedule (with 60-second timeout)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
       const response = await fetch('/api/ai/schedule-content', {
         method: 'POST',
         headers: {
@@ -760,11 +763,14 @@ export function ContentCalendar() {
         body: JSON.stringify({
           keywords: validKeywords.slice(0, 5), // Top 5 keywords
           marketData: validMarketData.slice(0, 3), // Top 3 market trends
-          timeframe: '30-days',
+          timeframe: '15-days',
           focus: 'high-impact',
-          prompt: 'You are a Luxury real estate agent. Create a month worth social media posts. Optimize what days are best for each platform.'
+          prompt: 'You are a Luxury real estate agent. Create 2 weeks worth of social media posts. Optimize what days are best for each platform.'
         }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         throw new Error('Failed to generate AI schedule');
@@ -815,13 +821,23 @@ export function ContentCalendar() {
         description: `Generated ${aiSchedule.contentCount} optimized posts and added them to your calendar.`,
       });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI scheduling error:', error);
-      toast({
-        title: "AI Scheduling Error",
-        description: "Failed to generate optimized schedule. Please try again.",
-        variant: "destructive"
-      });
+      
+      // Handle timeout specifically
+      if (error.name === 'AbortError') {
+        toast({
+          title: "Request Timeout",
+          description: "AI generation took too long (60s limit). Please try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "AI Scheduling Error",
+          description: "Failed to generate optimized schedule. Please try again.",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsGenerating(false);
     }
