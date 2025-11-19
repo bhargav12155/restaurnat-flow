@@ -1,0 +1,151 @@
+User
+❌ Failed to upload photo:
+
+2025-11-18 19:24:43.66
+6ae1c531
+User
+Full error: error: syntax error at or near "="
+2025-11-18 19:24:43.66
+6ae1c531
+User
+at async MemStorage.getPhotoAvatarGroupByImageHash (file:///home/runner/workspace/dist/index.js:1660:25)
+2025-11-18 19:24:43.66
+6ae1c531
+User
+at async file:///home/runner/workspace/dist/index.js:13060:32 {
+2025-11-18 19:24:43.66
+6ae1c531
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2025-11-18 19:24:43.66
+6ae1c531
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-11-18 19:25:32.70
+6ae1c531
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2025-11-18 19:25:32.70
+6ae1c531
+User
+}
+2025-11-18 19:25:32.70
+6ae1c531
+User
+hint: undefined,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+code: '42601',
+2025-11-18 19:25:32.70
+6ae1c531
+User
+at async file:///home/runner/workspace/dist/index.js:13060:32 {
+2025-11-18 19:25:32.70
+6ae1c531
+User
+file: 'scan.l',
+2025-11-18 19:25:32.70
+6ae1c531
+User
+table: undefined,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+at async MemStorage.getPhotoAvatarGroupByImageHash (file:///home/runner/workspace/dist/index.js:1660:25)
+2025-11-18 19:25:32.70
+6ae1c531
+User
+internalQuery: undefined,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+❌ Failed to upload photo:
+2025-11-18 19:25:32.70
+6ae1c531
+User
+detail: undefined,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+where: undefined,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+at async NeonPreparedQuery.execute (file:///home/runner/workspace/node_modules/drizzle-orm/neon-serverless/session.js:76:20)
+2025-11-18 19:25:32.70
+6ae1c531
+User
+internalPosition: undefined,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+Full error: error: syntax error at or near "="
+2025-11-18 19:25:32.70
+6ae1c531
+User
+schema: undefined,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+length: 91,
+2025-11-18 19:25:32.70
+6ae1c531
+User
+position: '125',
+2025-11-18 19:25:32.70
+6ae1c531
+User
+Error message: syntax error at or near "="
+2025-11-18 19:25:32.70
+6ae1c531
+User
+severity: 'ERROR',
+2025-11-18 19:25:32.70
+6ae1c531
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-11-18 19:25:50.75
+6ae1c531
+User
+at async file:///home/runner/workspace/dist/index.js:11750:32
+2025-11-18 19:25:50.75
+6ae1c531
+User
+❌ HeyGen audio upload failed: 400 {"code":400543,"message":"Content type not match audio/mpeg != audio/x-m4a"}
+2025-11-18 19:25:50.75
+6ae1c531
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-11-18 19:25:50.75
+6ae1c531
+User
+at HeyGenService.uploadAudio (file:///home/runner/workspace/dist/index.js:5115:13)
+2025-11-18 19:25:50.75
+6ae1c531
+User
+❌ HeyGen upload failed: Error: Failed to upload audio: 400 BAD REQUEST
+2025-11-18 19:25:50.88
+6ae1c531
+User
+at async MemStorage.createCustomVoice (file:///home/runner/workspace/dist/index.js:1614:25)
+2025-11-18 19:25:50.88
+6ae1c531
+User
+table: 'custom_voices',
+2025-11-18 19:25:50.88
+6ae1c531
+User
+}
+2025-11-18 19:25:50.88
+6ae1c531
+User
+constraint: undefined,
+2025-11-18 19:25:50.88
+6ae1c531
+User
+hint: undefined,
+2025-11-18 19:25:50.88
+6ae1c531
+User
+at async NeonPreparedQuery.execute (file:///home/runner/workspace/node_modules/drizzle-orm/neon-serverless/session.js:76:20)
