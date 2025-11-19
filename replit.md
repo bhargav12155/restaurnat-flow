@@ -45,6 +45,12 @@ The server runs on Express.js with TypeScript in ESM mode. Authentication is han
 ### Database Design
 The application uses PostgreSQL with Drizzle ORM for type-safe database operations. The schema supports both main users (real estate agents) and public users (clients) with multi-tenancy through agent slugs. Key tables include users, properties, AI-generated content, social posts, SEO keywords, user activity tracking, and file uploads. Session storage is implemented for authentication persistence.
 
+**Critical Schema Fixes (November 2025):**
+- **Custom Voices Table**: Added required columns (`audio_url`, `file_size`, `heygen_audio_asset_id`, `status`) and made `heygen_voice_id`/`language` optional to match actual upload workflow requirements
+- **Photo Avatar Groups Table**: Corrected field mappings (`groupName` instead of `name`, `trainingStatus` instead of `status`) to align with database schema
+- **Content Opportunities**: Fixed column references to use existing schema (`priority`, `createdAt` instead of non-existent `searchSignal`, `generatedAt`)
+- **Schema Synchronization**: All database operations now correctly use Drizzle-typed fields matching the PostgreSQL schema, eliminating production SQL errors
+
 ### AI Integration
 Content generation is powered by OpenAI's GPT-5 model, specifically optimized for real estate marketing in the Omaha market. The AI service generates tailored content for social posts, blog articles, property descriptions, and email campaigns with local market knowledge and neighborhood-specific insights.
 
