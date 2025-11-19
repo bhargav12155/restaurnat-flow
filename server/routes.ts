@@ -6951,12 +6951,11 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             await storage.createPhotoAvatarGroup({
               userId,
               heygenGroupId: groupId,
-              name,
+              groupName: name,
               imageHash: imageHash || null,
               s3ImageUrl: s3ImageUrl || null,
               heygenImageKey: imageKeys[0], // Primary image key
-              status: "pending",
-              trainingProgress: 0,
+              trainingStatus: "pending",
             });
             console.log("💾 Avatar group metadata saved to database");
           } catch (dbError) {
