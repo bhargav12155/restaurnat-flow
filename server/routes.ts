@@ -6013,17 +6013,21 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
               const heygenFirstLook = looks.avatar_list[0];
               const heygenLookStatus = heygenFirstLook.status; // "pending" or "completed"
               
-              // Update database status if HeyGen finished processing
-              if (dbGroup.status === "created" && heygenLookStatus === "completed") {
+              // Update database status if it doesn't match HeyGen
+              if (dbGroup.status !== heygenLookStatus && heygenLookStatus === "completed") {
                 try {
                   await storage.updatePhotoAvatarGroup(dbGroup.heygenGroupId, userIdString, {
                     status: "completed"
                   });
                   heygenStatus = "completed";
-                  console.log(`✅ Synced status for group ${groupId}: created → completed`);
+                  console.log(`✅ Synced status for group ${groupId}: ${dbGroup.status} → completed`);
                 } catch (updateError) {
                   console.warn(`⚠️ Failed to update status for group ${groupId}:`, updateError);
                 }
+              } else if (heygenLookStatus === "pending") {
+                heygenStatus = "pending";
+              } else {
+                heygenStatus = heygenLookStatus;
               }
               
               // Use first avatar's image if no preview available
