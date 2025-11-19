@@ -154,6 +154,9 @@ export const photoAvatarGroups = pgTable("photo_avatar_groups", {
   groupName: text("group_name").notNull(),
   heygenGroupId: text("heygen_group_id").notNull().unique(),
   trainingStatus: text("training_status").notNull().default("pending"),
+  imageHash: text("image_hash"),
+  heygenImageKey: text("heygen_image_key"),
+  s3ImageUrl: text("s3_image_url"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
