@@ -3488,10 +3488,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dedicated YouTube video upload endpoint
   app.post(
     "/api/youtube/upload-video",
+    requireAuth,
     videoUpload.single("video"),
-    async (req, res) => {
+    async (req: any, res) => {
       try {
-        const { title, description, accessToken } = req.body;
+        const { title, description } = req.body;
         const videoFile = req.file;
 
         if (!videoFile) {
@@ -3502,10 +3503,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Video title is required" });
         }
 
-        if (!accessToken) {
-          return res
-            .status(400)
-            .json({ error: "YouTube access token is required" });
+        // Resolve user ID to MemStorage UUID
+        let userId = String(req.user.id);
+        let user = await storage.getUser(userId);
+
+        if (!user && req.user.email) {
+          user = await storage.getUserByEmail(req.user.email);
+        }
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // Get YouTube account from storage
+        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        const youtubeAccount = socialAccounts.find(
+          (acc) => acc.platform === "youtube"
+        );
+
+        if (!youtubeAccount || !youtubeAccount.isConnected) {
+          return res.status(400).json({
+            error: "YouTube account not connected. Please connect your YouTube account first.",
+          });
+        }
+
+        if (!youtubeAccount.accessToken) {
+          return res.status(400).json({
+            error: "YouTube access token not found. Please reconnect your YouTube account.",
+          });
         }
 
         const absoluteVideoPath = path.resolve(videoFile.path);
@@ -3523,7 +3548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           title,
           description || title,
           absoluteVideoPath,
-          accessToken
+          youtubeAccount.accessToken
         );
 
         fs.unlink(videoFile.path, (unlinkErr) => {
