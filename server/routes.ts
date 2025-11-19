@@ -5861,8 +5861,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const dbGroup = await storage.createPhotoAvatarGroup({
         userId,
         heygenGroupId: heygenGroup.group_id,
-        name,
-        status: "created",
+        groupName: name,
+        trainingStatus: "created",
       });
 
       console.log(
