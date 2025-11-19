@@ -4313,12 +4313,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           .slice(0, 5)
           .map((opp: any) => ({
             userId,
+            opportunityType: opp.trendSource || "trend",
             title: opp.title || "Untitled Opportunity",
             description: opp.description || "AI-generated content opportunity",
             priority: priorityToInt(opp.priority || "medium"),
             neighborhood: opp.neighborhood || null,
             keywordId: opp.relatedKeyword || null,
-            trendSource: opp.trendSource || "trend",
             searchSignal: Math.min(100, Math.max(0, opp.searchSignal || 50)),
             metadata: {
               relatedKeyword: opp.relatedKeyword,
