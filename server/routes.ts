@@ -6284,8 +6284,17 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         );
 
         res.json(looks);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to generate new looks:", error);
+        
+        // Check if it's a HeyGen API error about model not found
+        if (error?.message?.includes("Model not found") || error?.message?.includes("invalid_parameter")) {
+          return res.status(400).json({ 
+            error: "Avatar group training is not complete yet. Please wait for training to finish before generating new looks.",
+            code: "TRAINING_REQUIRED"
+          });
+        }
+        
         res.status(500).json({ error: "Failed to generate new looks" });
       }
     }
