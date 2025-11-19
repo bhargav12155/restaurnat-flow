@@ -4570,6 +4570,61 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Manually publish a scheduled post now
+  app.post("/api/scheduled-posts/:id/publish", requireAuth, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+
+      const post = await storage.getScheduledPostById(id);
+      if (!post) {
+        return res.status(404).json({ error: "Scheduled post not found" });
+      }
+
+      if (post.userId !== userId) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const platform = post.platform.toLowerCase();
+      
+      if (platform === "x" || platform === "twitter") {
+        try {
+          const result = await socialMediaService.postToTwitter(
+            userId,
+            post.content,
+            post.imageUrl
+          );
+
+          await storage.updateScheduledPost(id, {
+            status: "published",
+            metadata: {
+              ...post.metadata,
+              publishedAt: new Date().toISOString(),
+              platformPostId: result.postId,
+            },
+          });
+
+          return res.json({ success: true, postId: result.postId });
+        } catch (error: any) {
+          await storage.updateScheduledPost(id, {
+            status: "failed",
+            metadata: {
+              ...post.metadata,
+              error: error.message,
+              failedAt: new Date().toISOString(),
+            },
+          });
+          return res.status(500).json({ error: error.message });
+        }
+      } else {
+        return res.status(400).json({ error: `Platform ${platform} not yet supported for manual publishing` });
+      }
+    } catch (error: any) {
+      console.error("Manual publish error:", error);
+      res.status(500).json({ error: "Failed to publish post" });
+    }
+  });
+
   // Upload image for scheduled post
   app.post(
     "/api/scheduled-posts/upload-image",
