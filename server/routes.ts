@@ -4298,6 +4298,16 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           throw new Error("Failed to parse AI-generated opportunities");
         }
 
+        // Map priority strings to integers
+        const priorityToInt = (priority: string): number => {
+          const priorityMap: Record<string, number> = {
+            high: 3,
+            medium: 2,
+            low: 1,
+          };
+          return priorityMap[priority?.toLowerCase()] || 2; // Default to medium (2)
+        };
+
         // Validate and prepare for database
         const opportunitiesToInsert = generatedOpportunities
           .slice(0, 5)
@@ -4305,7 +4315,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             userId,
             title: opp.title || "Untitled Opportunity",
             description: opp.description || "AI-generated content opportunity",
-            priority: opp.priority || "medium",
+            priority: priorityToInt(opp.priority || "medium"),
             neighborhood: opp.neighborhood || null,
             keywordId: opp.relatedKeyword || null,
             trendSource: opp.trendSource || "trend",
