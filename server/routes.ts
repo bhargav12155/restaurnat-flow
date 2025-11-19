@@ -6016,7 +6016,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
               // Update database status if it doesn't match HeyGen
               if (dbGroup.status !== heygenLookStatus && heygenLookStatus === "completed") {
                 try {
-                  await storage.updatePhotoAvatarGroup(dbGroup.heygenGroupId, userIdString, {
+                  await storage.updatePhotoAvatarGroup(dbGroup.id, {
                     status: "completed"
                   });
                   heygenStatus = "completed";
