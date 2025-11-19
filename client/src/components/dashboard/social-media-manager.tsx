@@ -463,10 +463,6 @@ export function SocialMediaManager() {
         formData.append("video", videoFile);
         formData.append("title", content.substring(0, 100));
         formData.append("description", content);
-        formData.append(
-          "accessToken",
-          (youtubeAccount as any).accessToken || "",
-        );
 
         const response = await fetch("/api/youtube/upload-video", {
           method: "POST",
