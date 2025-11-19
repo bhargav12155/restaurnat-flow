@@ -1201,13 +1201,7 @@ export class MemStorage implements IStorage {
   ): Promise<CustomVoice> {
     const [voice] = await db
       .insert(customVoices)
-      .values({
-        ...insertVoice,
-        duration: insertVoice.duration || null,
-        fileSize: insertVoice.fileSize || null,
-        heygenAudioAssetId: insertVoice.heygenAudioAssetId || null,
-        status: insertVoice.status || "pending",
-      })
+      .values(insertVoice)
       .returning();
     return voice;
   }
