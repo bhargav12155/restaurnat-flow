@@ -740,8 +740,16 @@ export function ContentCalendar() {
         fetch('/api/market/data')
       ]);
       
+      if (!keywordsResponse.ok || !marketResponse.ok) {
+        throw new Error('Failed to fetch data for AI scheduling');
+      }
+      
       const keywords = await keywordsResponse.json();
       const marketData = await marketResponse.json();
+      
+      // Ensure we have valid arrays
+      const validKeywords = Array.isArray(keywords) ? keywords : [];
+      const validMarketData = Array.isArray(marketData) ? marketData : [];
       
       // Generate AI-optimized content schedule
       const response = await fetch('/api/ai/schedule-content', {
@@ -750,8 +758,8 @@ export function ContentCalendar() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          keywords: keywords.slice(0, 5), // Top 5 keywords
-          marketData: marketData.slice(0, 3), // Top 3 market trends
+          keywords: validKeywords.slice(0, 5), // Top 5 keywords
+          marketData: validMarketData.slice(0, 3), // Top 3 market trends
           timeframe: '30-days',
           focus: 'high-impact',
           prompt: 'You are a Luxury real estate agent. Create a month worth social media posts. Optimize what days are best for each platform.'
