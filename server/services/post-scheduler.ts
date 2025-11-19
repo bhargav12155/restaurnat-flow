@@ -6,6 +6,7 @@ export class PostScheduler {
   private socialMediaService: SocialMediaService;
   private intervalId: NodeJS.Timeout | null = null;
   private isProcessing: boolean = false;
+  private supportedPlatforms = ["x", "twitter"];
 
   constructor(storage: IStorage, socialMediaService: SocialMediaService) {
     this.storage = storage;
@@ -59,7 +60,11 @@ export class PostScheduler {
           const duePosts = scheduledPosts.filter((post) => {
             if (!post.scheduledFor) return false;
             const scheduledTime = new Date(post.scheduledFor);
-            return scheduledTime <= now;
+            const isPastDue = scheduledTime <= now;
+            const isPlatformSupported = this.supportedPlatforms.includes(
+              post.platform.toLowerCase()
+            );
+            return isPastDue && isPlatformSupported;
           });
 
           if (duePosts.length > 0) {
@@ -120,46 +125,8 @@ export class PostScheduler {
             },
           });
         }
-      } else if (platform === "facebook") {
-        console.log(`⚠️ Facebook posting not yet implemented for post ${post.id}`);
-        await this.storage.updateScheduledPost(post.id, {
-          status: "failed",
-          metadata: {
-            ...post.metadata,
-            error: "Facebook posting not yet implemented",
-            failedAt: new Date().toISOString(),
-          },
-        });
-      } else if (platform === "linkedin") {
-        console.log(`⚠️ LinkedIn posting not yet implemented for post ${post.id}`);
-        await this.storage.updateScheduledPost(post.id, {
-          status: "failed",
-          metadata: {
-            ...post.metadata,
-            error: "LinkedIn posting not yet implemented",
-            failedAt: new Date().toISOString(),
-          },
-        });
-      } else if (platform === "instagram") {
-        console.log(`⚠️ Instagram posting not yet implemented for post ${post.id}`);
-        await this.storage.updateScheduledPost(post.id, {
-          status: "failed",
-          metadata: {
-            ...post.metadata,
-            error: "Instagram posting not yet implemented",
-            failedAt: new Date().toISOString(),
-          },
-        });
       } else {
-        console.log(`⚠️ Unknown platform ${platform} for post ${post.id}`);
-        await this.storage.updateScheduledPost(post.id, {
-          status: "failed",
-          metadata: {
-            ...post.metadata,
-            error: `Unknown platform: ${platform}`,
-            failedAt: new Date().toISOString(),
-          },
-        });
+        console.log(`⚠️ Platform ${platform} posting not yet supported, skipping post ${post.id}`);
       }
     } catch (error) {
       console.error(`❌ Error publishing post ${post.id}:`, error);
