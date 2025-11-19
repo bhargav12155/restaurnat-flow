@@ -4099,8 +4099,8 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
         .from(contentOpportunities)
         .where(eq(contentOpportunities.userId, userId))
         .orderBy(
-          desc(contentOpportunities.searchSignal),
-          desc(contentOpportunities.generatedAt)
+          desc(contentOpportunities.priority),
+          desc(contentOpportunities.createdAt)
         );
 
       // If no opportunities exist, generate initial set
