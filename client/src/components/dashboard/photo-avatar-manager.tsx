@@ -1524,7 +1524,9 @@ export function PhotoAvatarManager() {
                               {group.status === "completed" && (
                                 <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                                   <UserPlus className="w-3 h-3" />
-                                  <span className="text-[9px] font-semibold">Ready to Train</span>
+                                  <span className="text-[9px] font-semibold">
+                                    {(!group.avatar_count || group.avatar_count < 2) ? 'Need More Photos' : 'Ready to Train'}
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -1554,34 +1556,52 @@ export function PhotoAvatarManager() {
                         {/* Compact Action Buttons */}
                         <div className="flex gap-1.5 pt-1">
                           {group.status === "pending" && (
-                            <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 px-2 py-1 rounded text-[10px]">
+                            <div className="flex items-center gap-1.5 text-blue-600 bg-blue-50 px-2 py-1 rounded text-[10px]">
                               <Clock className="w-3 h-3 animate-spin" />
                               <span>HeyGen is processing images...</span>
                             </div>
                           )}
                           
                           {group.status === "completed" && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    onClick={() =>
-                                      trainGroupMutation.mutate({ groupId: group.group_id })
-                                    }
-                                    disabled={trainGroupMutation.isPending}
-                                    data-testid={`button-train-${group.group_id}`}
-                                    className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 h-7 text-[10px] px-2"
-                                  >
-                                    <UserPlus className="w-3 h-3 mr-1" />
-                                    {trainGroupMutation.isPending ? "Training..." : "Train Avatar"}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Train this avatar to generate custom variations and looks</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <>
+                              {(!group.avatar_count || group.avatar_count < 2) ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 px-2 py-1 rounded text-[10px]">
+                                        <Upload className="w-3 h-3" />
+                                        <span>Upload {group.avatar_count === 1 ? '2-4 more photos' : 'at least 2 photos'} to train</span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Training requires multiple diverse photos (different angles, expressions, outfits)</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        onClick={() =>
+                                          trainGroupMutation.mutate({ groupId: group.group_id })
+                                        }
+                                        disabled={trainGroupMutation.isPending}
+                                        data-testid={`button-train-${group.group_id}`}
+                                        className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 h-7 text-[10px] px-2"
+                                      >
+                                        <UserPlus className="w-3 h-3 mr-1" />
+                                        {trainGroupMutation.isPending ? "Training..." : `Train Avatar (${group.avatar_count} photos)`}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Train this avatar to generate custom variations and looks</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </>
                           )}
 
                           {group.status === "ready" && (

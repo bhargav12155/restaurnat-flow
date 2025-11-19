@@ -69,11 +69,13 @@ Content generation is powered by OpenAI's GPT-5 model, specifically optimized fo
 
 **Photo Avatar Training Workflow** (Fixed November 19, 2025):
 - Upload photos → HeyGen status = "pending" (processing images) → UI shows "Processing Images..." with spinner
-- HeyGen finishes → status = "completed" → UI shows "Train Avatar" button (previously attempted training too early)
+- HeyGen finishes → status = "completed" → Photos appear in gallery
+- **Upload more photos** → Training requires 2+ diverse photos (different angles, expressions, outfits)
+- When 2+ photos ready → UI shows "Train Avatar" button
 - User clicks Train → trains avatar group → status = "ready" → UI shows "New Looks" and "Edit" buttons
 - Backend automatically syncs HeyGen status from API responses to database when fetching groups
 - Removed automatic training attempt immediately after group creation (was failing because HeyGen needs time to process images first)
-- Fixed "Model not found" errors when generating new looks by enforcing proper training sequence
+- Fixed "Model not found" errors by enforcing proper training sequence and minimum photo requirements (2+ photos needed)
 
 ### Storage Architecture
 The application implements a dual-storage strategy combining HeyGen's API storage with AWS S3 for backup and long-term archival:
