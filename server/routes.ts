@@ -3,11 +3,11 @@ import {
   insertAvatarSchema,
   insertBrandSettingsSchema,
   insertCompanyProfileSchema,
-  insertVideoContentSchema,
   insertScheduledPostSchema,
+  insertVideoContentSchema,
+  pkceStore,
   tutorialVideos,
   updateScheduledPostSchema,
-  pkceStore,
 } from "@shared/schema";
 import crypto from "crypto";
 import { desc, eq, sql } from "drizzle-orm";
@@ -27,6 +27,7 @@ import { HeyGenService } from "./services/heygen";
 import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
 import { HeyGenStreamingService } from "./services/heygen-streaming";
 import { HeyGenTemplateService } from "./services/heygen-template";
+import { HeyGenVideoAvatarService } from "./services/heygen-video-avatar";
 import { IDXService } from "./services/idx";
 import { MLSService } from "./services/mls";
 import { getAPIKeyStatus, openaiService } from "./services/openai";
@@ -63,30 +64,39 @@ function generateCodeChallenge(verifier: string): string {
 }
 
 // Database-backed PKCE storage functions
-async function storePKCE(state: string, codeVerifier: string, expiresInMs: number = 600000) {
+async function storePKCE(
+  state: string,
+  codeVerifier: string,
+  expiresInMs: number = 600000
+) {
   const expiresAt = new Date(Date.now() + expiresInMs);
-  await db.insert(pkceStore).values({
-    state,
-    codeVerifier,
-    expiresAt,
-  }).onConflictDoUpdate({
-    target: pkceStore.state,
-    set: { codeVerifier, expiresAt }
-  });
+  await db
+    .insert(pkceStore)
+    .values({
+      state,
+      codeVerifier,
+      expiresAt,
+    })
+    .onConflictDoUpdate({
+      target: pkceStore.state,
+      set: { codeVerifier, expiresAt },
+    });
 }
 
-async function retrievePKCE(state: string): Promise<{ codeVerifier: string; expiresAt: Date } | null> {
+async function retrievePKCE(
+  state: string
+): Promise<{ codeVerifier: string; expiresAt: Date } | null> {
   const result = await db
     .select()
     .from(pkceStore)
     .where(eq(pkceStore.state, state))
     .limit(1);
-  
+
   if (result.length === 0) return null;
-  
+
   // Delete after retrieval (one-time use)
   await db.delete(pkceStore).where(eq(pkceStore.state, state));
-  
+
   return {
     codeVerifier: result[0].codeVerifier,
     expiresAt: result[0].expiresAt,
@@ -128,7 +138,7 @@ const upload = multer({
 const videoUpload = multer({
   dest: "uploads/videos/",
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit for video uploads
+    fileSize: 500 * 1024 * 1024, // 500MB limit for video uploads (training footage needs 2+ min)
   },
   fileFilter: (req, file, cb) => {
     // Only allow video files
@@ -353,7 +363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const ensureS3Url = (urlOrKey: string | null | undefined): string | null => {
     if (!urlOrKey) return null;
     // If already a URL, return as-is
-    if (urlOrKey.startsWith('http://') || urlOrKey.startsWith('https://')) {
+    if (urlOrKey.startsWith("http://") || urlOrKey.startsWith("https://")) {
       return urlOrKey;
     }
     // Otherwise, convert S3 key to full URL
@@ -1834,14 +1844,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const { platform, isConnected, accessToken, refreshToken, providerId, accountId } = req.body;
+      const {
+        platform,
+        isConnected,
+        accessToken,
+        refreshToken,
+        providerId,
+        accountId,
+      } = req.body;
 
       if (!platform) {
         return res.status(400).json({ error: "Platform is required" });
       }
 
       // accountId is required for database - use providerId or generate a test ID
-      const finalAccountId = accountId || providerId || `test_${platform}_${Date.now()}`;
+      const finalAccountId =
+        accountId || providerId || `test_${platform}_${Date.now()}`;
 
       // Resolve DB user ID to MemStorage UUID
       let userId = String(req.user.id);
@@ -1889,12 +1907,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      console.log(`✅ Social account ${existingAccount ? 'updated' : 'created'} for ${platform}`);
+      console.log(
+        `✅ Social account ${
+          existingAccount ? "updated" : "created"
+        } for ${platform}`
+      );
 
       res.json({
         success: true,
         account,
-        message: `${platform} account ${existingAccount ? 'updated' : 'created'} successfully`,
+        message: `${platform} account ${
+          existingAccount ? "updated" : "created"
+        } successfully`,
       });
     } catch (error) {
       console.error("Create/update social account error:", error);
@@ -1914,7 +1938,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // Validate character limits for a given platform
-  const validateCharacterLimit = (content: string, platform: string): { valid: boolean; message?: string } => {
+  const validateCharacterLimit = (
+    content: string,
+    platform: string
+  ): { valid: boolean; message?: string } => {
     const limit = PLATFORM_CHARACTER_LIMITS[platform.toLowerCase()] || 5000;
     if (content.length > limit) {
       return {
@@ -1931,15 +1958,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     upload.single("photo"),
     async (req, res) => {
       try {
-        const { platform, content, platforms, scheduledFor, text, mediaType, mediaId } = req.body;
+        const {
+          platform,
+          content,
+          platforms,
+          scheduledFor,
+          text,
+          mediaType,
+          mediaId,
+        } = req.body;
         const photo = req.file;
-        
+
         // Support both 'content' and 'text' for post content
         const postContent = text || content;
-        
+
         // Fetch media URLs if mediaType and mediaId are provided
-        let mediaUrls = { photoUrls: [] as string[], videoUrls: [] as string[] };
-        
+        let mediaUrls = {
+          photoUrls: [] as string[],
+          videoUrls: [] as string[],
+        };
+
         // Get logged-in user from session (needed for media fetch and posting)
         const sessionId = req.user?.id;
         if (!sessionId) {
@@ -1966,17 +2004,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
               "User not found in storage. Please reconnect your social accounts.",
           });
         }
-        
+
         // Fetch media URLs from database if media attachment is specified
         if (mediaType && mediaId) {
-          if (mediaType === 'avatar') {
+          if (mediaType === "avatar") {
             const avatar = await storage.getAvatarById(mediaId);
             if (avatar && avatar.videoUrl) {
               mediaUrls.videoUrls.push(avatar.videoUrl);
             } else if (avatar && avatar.photoUrl) {
               mediaUrls.photoUrls.push(avatar.photoUrl);
             }
-          } else if (mediaType === 'video') {
+          } else if (mediaType === "video") {
             const video = await storage.getVideoById(mediaId);
             if (video && video.videoUrl) {
               mediaUrls.videoUrls.push(video.videoUrl);
@@ -1993,7 +2031,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           // Validate character limit
-          const validationResult = validateCharacterLimit(postContent, platform);
+          const validationResult = validateCharacterLimit(
+            postContent,
+            platform
+          );
           if (!validationResult.valid) {
             return res.status(400).json({ error: validationResult.message });
           }
@@ -2056,10 +2097,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           try {
             // Prepare media options from uploaded photo or fetched media
             const mediaOptions = {
-              photoUrls: photoUrl ? [photoUrl, ...mediaUrls.photoUrls] : mediaUrls.photoUrls,
+              photoUrls: photoUrl
+                ? [photoUrl, ...mediaUrls.photoUrls]
+                : mediaUrls.photoUrls,
               videoUrls: mediaUrls.videoUrls,
             };
-            
+
             if (platform.toLowerCase() === "facebook") {
               return res.status(400).json({
                 error:
@@ -2088,7 +2131,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               );
             } else if (platform.toLowerCase() === "youtube") {
               // For YouTube, we need title and description
-              const title = req.body.title || postContent.substring(0, 100) + "...";
+              const title =
+                req.body.title || postContent.substring(0, 100) + "...";
               const description = req.body.description || postContent;
               // Use mock token if no connected account
               const youtubeToken =
@@ -2141,16 +2185,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             timestamp: new Date().toISOString(),
             scheduledPostId: scheduledPost.id,
           });
-        } else if (platforms && Array.isArray(platforms) && platforms.length > 0) {
+        } else if (
+          platforms &&
+          Array.isArray(platforms) &&
+          platforms.length > 0
+        ) {
           // Multi-platform posting
           if (!postContent) {
             return res.status(400).json({ error: "Content is required" });
           }
 
           // Validate character limits for all selected platforms
-          const invalidPlatforms = platforms.filter(p => !validateCharacterLimit(postContent, p).valid);
+          const invalidPlatforms = platforms.filter(
+            (p) => !validateCharacterLimit(postContent, p).valid
+          );
           if (invalidPlatforms.length > 0) {
-            const validationMessages = invalidPlatforms.map(p => {
+            const validationMessages = invalidPlatforms.map((p) => {
               const result = validateCharacterLimit(postContent, p);
               return `${p}: ${result.message}`;
             });
@@ -2169,7 +2219,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             try {
               const connectedAccount = socialAccounts.find(
                 (account) =>
-                  account.platform.toLowerCase() === targetPlatform.toLowerCase()
+                  account.platform.toLowerCase() ===
+                  targetPlatform.toLowerCase()
               );
 
               // Check if account is connected (except YouTube which uses mock)
@@ -2190,7 +2241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               };
 
               let postResult;
-              
+
               if (targetPlatform.toLowerCase() === "facebook") {
                 errors.push({
                   platform: targetPlatform,
@@ -2257,10 +2308,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 postId: postResult.postId,
               });
             } catch (platformError) {
-              console.error(`Error posting to ${targetPlatform}:`, platformError);
+              console.error(
+                `Error posting to ${targetPlatform}:`,
+                platformError
+              );
               errors.push({
                 platform: targetPlatform,
-                error: platformError instanceof Error ? platformError.message : "Unknown error",
+                error:
+                  platformError instanceof Error
+                    ? platformError.message
+                    : "Unknown error",
               });
             }
           }
@@ -4358,7 +4415,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   app.post("/api/scheduled-posts", requireAuth, async (req: any, res) => {
     try {
       const userId = String(req.user.id);
-      
+
       // Validate the request body
       const postData = insertScheduledPostSchema.parse({
         userId,
@@ -4369,8 +4426,10 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       res.status(201).json(createdPost);
     } catch (error) {
       console.error("Create scheduled post error:", error);
-      if (error instanceof Error && error.name === 'ZodError') {
-        return res.status(400).json({ error: "Invalid post data", details: error });
+      if (error instanceof Error && error.name === "ZodError") {
+        return res
+          .status(400)
+          .json({ error: "Invalid post data", details: error });
       }
       res.status(500).json({ error: "Failed to create scheduled post" });
     }
@@ -5326,6 +5385,59 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Generate script without video ID (standalone)
+  app.post("/api/generate-script", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const {
+        topic,
+        neighborhood,
+        videoType,
+        platform = "youtube",
+        duration = 60,
+      } = req.body;
+
+      let script;
+      try {
+        // Try to generate AI script
+        script = await openaiService.generateVideoScript({
+          topic,
+          neighborhood,
+          videoType,
+          platform,
+          duration,
+        });
+      } catch (error: any) {
+        console.error("OpenAI API error:", error);
+
+        // If API quota exceeded or other OpenAI issues, provide a fallback script
+        if (error.status === 429 || error.code === "insufficient_quota") {
+          script = generateFallbackScript(
+            topic,
+            neighborhood || "Omaha",
+            videoType,
+            duration,
+            platform
+          );
+        } else {
+          throw error; // Re-throw if it's not a quota issue
+        }
+      }
+
+      res.json({ script });
+    } catch (error) {
+      console.error("Generate script error:", error);
+      res.status(500).json({
+        error: "Failed to generate script. Please try again later.",
+      });
+    }
+  });
+
   app.post("/api/videos/:id/generate-script", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
@@ -5404,7 +5516,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const { avatarId, avatarType, uploadedAvatarPhoto, gestureIntensity } = req.body;
+      const { avatarId, avatarType, uploadedAvatarPhoto, gestureIntensity } =
+        req.body;
 
       // Ownership check - only allow users to generate videos for their own video content
       const video = await storage.getVideoByIdAndUser(id, userId);
@@ -5412,17 +5525,40 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(404).json({ error: "Video not found" });
       }
 
-      const avatar = avatarId ? await storage.getAvatarById(avatarId) : null;
+      // Handle both regular avatars and photo avatar groups
+      let avatar = null;
+      let isPhotoAvatarGroup = false;
 
-      // Check if we have an avatar
-      if (avatar) {
+      if (avatarId) {
+        // First try to get as regular avatar
+        avatar = await storage.getAvatarById(avatarId);
+
+        // If not found, it might be a photo avatar group_id
+        if (!avatar && avatarType === "talking_photo") {
+          console.log(
+            "🎭 Avatar ID is a photo avatar group, treating as photo avatar"
+          );
+          isPhotoAvatarGroup = true;
+          // Create a temporary avatar object for photo avatar groups
+          avatar = {
+            id: avatarId,
+            metadata: {
+              heygenAvatarId: avatarId, // Use the group_id directly
+            },
+          };
+        }
+      }
+
+      // Check if we have an avatar or photo avatar group
+      if (avatar || isPhotoAvatarGroup) {
         // For testing purposes, generate a demo video first
         // This ensures the avatar test flow works while we fix HeyGen integration
 
         if (
-          !avatar.metadata ||
-          typeof avatar.metadata !== "object" ||
-          !("heygenAvatarId" in avatar.metadata)
+          !isPhotoAvatarGroup &&
+          (!avatar.metadata ||
+            typeof avatar.metadata !== "object" ||
+            !("heygenAvatarId" in avatar.metadata))
         ) {
           // No HeyGen integration yet - create a demo video for testing
           console.log("No HeyGen avatar ID found, creating demo test video");
@@ -5473,7 +5609,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             `Avatar type: ${isTalkingPhoto ? "talking_photo" : "avatar"}`
           );
           console.log(
-            `Frontend avatarType: ${avatarType}, uploadedAvatarPhoto: ${uploadedAvatarPhoto ? "provided" : "none"}`
+            `Frontend avatarType: ${avatarType}, uploadedAvatarPhoto: ${
+              uploadedAvatarPhoto ? "provided" : "none"
+            }`
           );
 
           // Handle voice selection - use a valid HeyGen voice ID
@@ -5498,7 +5636,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             quality: "720p", // 720p for free tier as per documentation
             speed: 1.1, // Slightly faster speech as shown in docs
             isTalkingPhoto, // Pass this flag to the service
-            gestureIntensity: gestureIntensity !== undefined ? gestureIntensity : 0, // Gesture support
+            gestureIntensity:
+              gestureIntensity !== undefined ? gestureIntensity : 0, // Gesture support
           });
 
           if (heygenResponse.data?.video_id) {
@@ -5627,13 +5766,20 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const { avatarId, gestureIntensity } = req.body;
       const streamingService = getStreamingService();
 
-      const session = await streamingService.createSession(user.id, avatarId, gestureIntensity);
-      console.log('🔍 Session response:', JSON.stringify({
-        sessionId: session.sessionId,
-        hasIceServers: !!session.iceServers,
-        hasOffer: !!session.offer,
-        iceServersLength: session.iceServers?.length
-      }));
+      const session = await streamingService.createSession(
+        user.id,
+        avatarId,
+        gestureIntensity
+      );
+      console.log(
+        "🔍 Session response:",
+        JSON.stringify({
+          sessionId: session.sessionId,
+          hasIceServers: !!session.iceServers,
+          hasOffer: !!session.offer,
+          iceServersLength: session.iceServers?.length,
+        })
+      );
       res.json(session);
     } catch (error) {
       console.error("Failed to create streaming session:", error);
@@ -6001,6 +6147,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           let looksCount = 0;
           let heygenStatus = dbGroup.trainingStatus;
           let previewImage = dbGroup.s3ImageUrl;
+          let trainStatus = "empty"; // Default: not trained yet
 
           try {
             const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
@@ -6012,24 +6159,32 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             if (looks?.avatar_list && looks.avatar_list.length > 0) {
               const heygenFirstLook = looks.avatar_list[0];
               const heygenLookStatus = heygenFirstLook.status; // "pending" or "completed"
-              
+
               // Update database status if it doesn't match HeyGen
-              if (dbGroup.trainingStatus !== heygenLookStatus && heygenLookStatus === "completed") {
+              if (
+                dbGroup.trainingStatus !== heygenLookStatus &&
+                heygenLookStatus === "completed"
+              ) {
                 try {
                   await storage.updatePhotoAvatarGroup(dbGroup.id, {
-                    trainingStatus: "completed"
+                    trainingStatus: "completed",
                   });
                   heygenStatus = "completed";
-                  console.log(`✅ Synced status for group ${groupId}: ${dbGroup.trainingStatus} → completed`);
+                  console.log(
+                    `✅ Synced status for group ${groupId}: ${dbGroup.trainingStatus} → completed`
+                  );
                 } catch (updateError) {
-                  console.warn(`⚠️ Failed to update status for group ${groupId}:`, updateError);
+                  console.warn(
+                    `⚠️ Failed to update status for group ${groupId}:`,
+                    updateError
+                  );
                 }
               } else if (heygenLookStatus === "pending") {
                 heygenStatus = "pending";
               } else {
                 heygenStatus = heygenLookStatus;
               }
-              
+
               // Use first avatar's image if no preview available
               if (!previewImage) {
                 previewImage = heygenFirstLook.image_url;
@@ -6040,6 +6195,35 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
               `⚠️ Failed to fetch looks for group ${groupId}:`,
               (e as Error)?.message || e
             );
+          }
+
+          // Check training status from HeyGen
+          try {
+            const trainingStatusResponse =
+              await photoAvatarService.checkTrainingStatus(groupId);
+            console.log(
+              `🔍 Training status for group ${groupId}:`,
+              JSON.stringify(trainingStatusResponse, null, 2)
+            );
+
+            // HeyGen returns { status: "empty" | "processing" | "ready", ... }
+            if (trainingStatusResponse?.status) {
+              trainStatus = trainingStatusResponse.status;
+            } else if (looksCount > 0) {
+              // Fallback: if has looks, must be trained
+              trainStatus = "ready";
+            }
+          } catch (e) {
+            // If training status check fails, infer from other data
+            if (looksCount > 0) {
+              trainStatus = "ready"; // Has looks = trained
+            } else {
+              // Keep as "empty" by default
+              console.warn(
+                `⚠️ Failed to check training status for group ${groupId}:`,
+                (e as Error)?.message || e
+              );
+            }
           }
 
           // Get custom voice for this group if any
@@ -6064,9 +6248,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           // completed = Ready to train
           // ready = Trained and ready to generate looks
           const rawStatus = heygenStatus || dbGroup.trainingStatus || "pending";
-          
+
           let status = rawStatus;
-          if (rawStatus === "ready" || (rawStatus === "completed" && looksCount > 0)) {
+          if (
+            rawStatus === "ready" ||
+            (rawStatus === "completed" && looksCount > 0)
+          ) {
             // Already trained or has looks - ready to generate
             status = "ready";
           } else if (rawStatus === "completed") {
@@ -6081,11 +6268,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             group_id: groupId,
             name: dbGroup.name,
             status,
+            train_status: trainStatus,
             default_voice_id: defaultVoiceId,
             created_at: dbGroup.createdAt || new Date().toISOString(),
             avatar_count: looksCount,
             training_progress:
-              status === "processing" || rawStatus === "processing"
+              trainStatus === "processing"
                 ? dbGroup.trainingProgress || 50
                 : undefined,
             preview_image: previewImage,
@@ -6147,7 +6335,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           status: isCompleted
             ? "ready"
             : looksCount > 0
-            ? "ready"  // If it has looks, it's ready to use!
+            ? "ready" // If it has looks, it's ready to use!
             : rawStatus,
           created_at: dbGroup.createdAt || new Date().toISOString(),
           avatar_count: looksCount,
@@ -6274,9 +6462,26 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         );
 
         res.json(result);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to train avatar group:", error);
-        res.status(500).json({ error: "Failed to train avatar group" });
+
+        // Check if training is already in progress
+        if (
+          error?.message?.includes("Training already in progress") ||
+          error?.message?.includes("training_in_progress")
+        ) {
+          return res.status(400).json({
+            error: "Training already in progress",
+            message:
+              "This avatar group is already being trained. Please wait for it to complete.",
+            code: "TRAINING_IN_PROGRESS",
+          });
+        }
+
+        res.status(500).json({
+          error: "Failed to train avatar group",
+          details: error?.message || String(error),
+        });
       }
     }
   );
@@ -6305,6 +6510,27 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         const { numLooks = 3 } = req.body;
 
         const photoAvatarService = new HeyGenPhotoAvatarService();
+
+        // Check training status first
+        try {
+          const statusCheck = await photoAvatarService.checkTrainingStatus(
+            groupId
+          );
+          console.log("📋 Avatar group training status:", statusCheck);
+
+          if (statusCheck.status !== "ready") {
+            return res.status(400).json({
+              error: "Avatar group must be trained before generating looks",
+              status: statusCheck.status,
+              message: `Current status: ${statusCheck.status}. Please train the avatar group first using the 'Train Avatar' button, then wait for training to complete.`,
+              code: "TRAINING_REQUIRED",
+            });
+          }
+        } catch (statusError) {
+          console.error("Failed to check training status:", statusError);
+          // Continue anyway - the generate call will fail with a better error if not trained
+        }
+
         const looks = await photoAvatarService.generateNewLooks(
           groupId,
           numLooks
@@ -6313,15 +6539,19 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         res.json(looks);
       } catch (error: any) {
         console.error("Failed to generate new looks:", error);
-        
+
         // Check if it's a HeyGen API error about model not found
-        if (error?.message?.includes("Model not found") || error?.message?.includes("invalid_parameter")) {
-          return res.status(400).json({ 
-            error: "Avatar group training is not complete yet. Please wait for training to finish before generating new looks.",
-            code: "TRAINING_REQUIRED"
+        if (
+          error?.message?.includes("Model not found") ||
+          error?.message?.includes("invalid_parameter")
+        ) {
+          return res.status(400).json({
+            error:
+              "Avatar group training is not complete yet. Please wait for training to finish before generating new looks.",
+            code: "TRAINING_REQUIRED",
           });
         }
-        
+
         res.status(500).json({ error: "Failed to generate new looks" });
       }
     }
@@ -6356,6 +6586,64 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       } catch (error) {
         console.error("Failed to check training status:", error);
         res.status(500).json({ error: "Failed to check training status" });
+      }
+    }
+  );
+
+  // Add motion to avatar/look
+  app.post(
+    "/api/photo-avatars/:avatarId/add-motion",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { avatarId } = req.params;
+        const userId = String(req.user?.id);
+        const { prompt, motionType } = req.body;
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        console.log(`🎬 Adding motion to avatar ${avatarId}`);
+
+        // Verify ownership by checking if avatar belongs to user's group
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+
+        try {
+          const avatarDetails = await photoAvatarService.getAvatarDetails(
+            avatarId
+          );
+          const groupId = avatarDetails?.data?.group_id;
+
+          if (groupId) {
+            const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+              groupId,
+              userId
+            );
+            if (!dbGroup) {
+              return res
+                .status(404)
+                .json({ error: "Avatar not found or access denied" });
+            }
+          }
+        } catch (error) {
+          console.warn("Could not verify avatar ownership:", error);
+          // Continue anyway - HeyGen API will reject if user doesn't own it
+        }
+
+        const result = await photoAvatarService.addMotion({
+          avatarId,
+          prompt,
+          motionType,
+        });
+
+        res.json(result);
+      } catch (error: any) {
+        console.error("Failed to add motion:", error);
+        res.status(500).json({
+          error: "Failed to add motion",
+          details: error?.message || String(error),
+        });
       }
     }
   );
@@ -6475,7 +6763,26 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       console.log("✏️ Pose:", pose || "half_body");
       console.log("✏️ Style:", style || "Realistic");
 
+      // Check training status first
       const photoAvatarService = new HeyGenPhotoAvatarService();
+      try {
+        const statusCheck = await photoAvatarService.checkTrainingStatus(
+          groupId
+        );
+        console.log("📋 Avatar group training status:", statusCheck);
+
+        if (statusCheck.status !== "ready") {
+          return res.status(400).json({
+            error: "Avatar group must be trained before generating looks",
+            status: statusCheck.status,
+            message: `Current status: ${statusCheck.status}. Please train the avatar group first using the 'Train Avatar' button.`,
+          });
+        }
+      } catch (statusError) {
+        console.error("Failed to check training status:", statusError);
+        // Continue anyway - the generate call will fail with a better error if not trained
+      }
+
       const result = await photoAvatarService.editLook({
         groupId,
         prompt,
@@ -6488,7 +6795,19 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       res.json(result);
     } catch (error) {
       console.error("Failed to edit look:", error);
-      res.status(500).json({ error: "Failed to edit look" });
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to edit look";
+
+      // Check if it's a "model not found" error
+      if (errorMessage.toLowerCase().includes("model not found")) {
+        return res.status(400).json({
+          error: "Avatar group not trained",
+          message:
+            "This avatar group must be TRAINED before you can generate new looks. Click the 'Train Avatar' button, wait for training to complete, then try again.",
+        });
+      }
+
+      res.status(500).json({ error: errorMessage });
     }
   });
 
@@ -6535,85 +6854,6 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       } catch (error) {
         console.error("Failed to add looks:", error);
         res.status(500).json({ error: "Failed to add looks" });
-      }
-    }
-  );
-
-  // Add motion to photo avatar
-  app.post(
-    "/api/photo-avatars/:avatarId/add-motion",
-    requireAuth,
-    async (req, res) => {
-      try {
-        const userId = String(req.user?.id);
-        if (!userId) {
-          return res.status(401).json({ error: "User not authenticated" });
-        }
-
-        const { avatarId } = req.params;
-
-        // Ownership validation: verify user owns a group containing this avatar
-        const photoAvatarService = new HeyGenPhotoAvatarService();
-        const allUserGroups = await storage.listPhotoAvatarGroups(userId);
-
-        let ownsAvatar = false;
-        let avatarGroupId: string | null = null;
-
-        for (const group of allUserGroups) {
-          try {
-            const looks = await photoAvatarService.getAvatarGroupLooks(
-              group.heygenGroupId
-            );
-            if (
-              looks.avatar_list &&
-              looks.avatar_list.some((a: any) => a.id === avatarId)
-            ) {
-              ownsAvatar = true;
-              avatarGroupId = group.heygenGroupId;
-              break;
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-
-        if (!ownsAvatar) {
-          return res.status(404).json({ error: "Avatar not found" });
-        }
-
-        console.log("🎬 Adding motion to avatar:", avatarId);
-
-        const result = await photoAvatarService.addMotion(avatarId);
-
-        // Get avatar name for notification
-        let avatarName = "Avatar";
-        try {
-          const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(
-            avatarId,
-            userId
-          );
-          if (dbAvatar) {
-            avatarName = dbAvatar.name || avatarName;
-            await storage.updatePhotoAvatar(avatarId, userId, {
-              status: "processing",
-              metadata: { ...dbAvatar.metadata, is_motion: true },
-            });
-          }
-        } catch (e) {
-          console.warn("Could not update avatar in database:", e);
-        }
-
-        // Send notification
-        realtimeService.notifyMotionAdded(
-          parseInt(userId),
-          avatarId,
-          avatarName
-        );
-
-        res.json(result);
-      } catch (error) {
-        console.error("Failed to add motion:", error);
-        res.status(500).json({ error: "Failed to add motion" });
       }
     }
   );
@@ -6829,6 +7069,61 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   );
 
+  // Upload video avatar footage (training/consent)
+  app.post(
+    "/api/upload/video-avatar-footage",
+    requireAuth,
+    videoUpload.single("video"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No video file provided" });
+        }
+
+        const { type } = req.body; // 'training' or 'consent'
+        const userId = req.user?.id;
+
+        console.log("🎥 Backend: Upload video avatar footage");
+        console.log("🎥 Backend: Type:", type);
+        console.log("🎥 Backend: File size:", req.file.size);
+
+        // Validate file type
+        if (!req.file.mimetype.startsWith("video/")) {
+          return res.status(400).json({ error: "File must be a video" });
+        }
+
+        // Read file buffer
+        const fileBuffer = fs.readFileSync(req.file.path);
+
+        // Upload to S3
+        const s3Service = new S3UploadService();
+        const s3VideoUrl = await s3Service.uploadFile(
+          userId,
+          fileBuffer,
+          `video-avatar-footage/${type}/${nanoid()}_${req.file.originalname}`,
+          req.file.mimetype
+        );
+
+        console.log("✅ Video uploaded to S3:", s3VideoUrl);
+
+        // Clean up temporary file
+        fs.unlinkSync(req.file.path);
+
+        res.json({
+          url: s3VideoUrl,
+          type,
+          size: req.file.size,
+        });
+      } catch (error: any) {
+        console.error("❌ Failed to upload video avatar footage:", error);
+        res.status(500).json({
+          error: "Failed to upload video",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
   // Upload custom photo for photo avatar
   app.post(
     "/api/photo-avatars/upload",
@@ -7002,12 +7297,15 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
         // Don't auto-train - HeyGen needs time to process images first
         // Training will happen when user clicks "Train" button after images are ready
-        console.log("✅ Backend: Avatar group created, waiting for HeyGen to process images");
+        console.log(
+          "✅ Backend: Avatar group created, waiting for HeyGen to process images"
+        );
 
         const responseData = {
           success: true,
           groupId: groupId,
-          message: "Avatar group created. Waiting for HeyGen to process images before training.",
+          message:
+            "Avatar group created. Waiting for HeyGen to process images before training.",
         };
 
         console.log(
@@ -7027,6 +7325,201 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
     }
   );
+
+  // ==================== VIDEO AVATAR API ENDPOINTS (ENTERPRISE) ====================
+
+  // Create video avatar from training footage
+  app.post("/api/video-avatars", requireAuth, async (req, res) => {
+    try {
+      const { name, trainingVideoUrl, consentVideoUrl, voiceId } = req.body;
+      const userId = req.user?.id;
+
+      console.log("🎥 Backend: Create video avatar request received");
+      console.log("🎥 Backend: Name:", name);
+      console.log("🎥 Backend: Training video URL:", trainingVideoUrl);
+      console.log("🎥 Backend: Consent video URL:", consentVideoUrl);
+      console.log("🎥 Backend: Voice ID:", voiceId);
+
+      if (!name || !trainingVideoUrl || !consentVideoUrl) {
+        return res.status(400).json({
+          error: "Name, training video URL, and consent video URL are required",
+        });
+      }
+
+      const videoAvatarService = new HeyGenVideoAvatarService();
+
+      // Validate training footage requirements
+      try {
+        await videoAvatarService.validateTrainingFootage(trainingVideoUrl);
+        console.log("✅ Training footage validation passed");
+      } catch (validationError: any) {
+        console.error(
+          "❌ Training footage validation failed:",
+          validationError.message
+        );
+        return res.status(400).json({
+          error: "Training footage validation failed",
+          details: validationError.message,
+        });
+      }
+
+      // Create video avatar
+      const createRequest: any = {
+        avatar_name: name,
+        training_footage_url: trainingVideoUrl,
+        video_consent_url: consentVideoUrl,
+      };
+
+      // Add optional callback URL if configured
+      if (process.env.HEYGEN_WEBHOOK_URL) {
+        createRequest.callback_url = process.env.HEYGEN_WEBHOOK_URL;
+      }
+
+      const result = await videoAvatarService.createVideoAvatar(createRequest);
+      console.log("✅ Video avatar creation initiated:", result);
+
+      // Save to database
+      if (userId && result.data?.avatar_id) {
+        try {
+          await storage.createVideoAvatar({
+            userId,
+            heygenAvatarId: result.data.avatar_id,
+            avatarName: name,
+            trainingVideoUrl,
+            consentVideoUrl,
+            voiceId: voiceId || null,
+            status: "in_progress",
+          });
+          console.log("💾 Video avatar metadata saved to database");
+        } catch (dbError) {
+          console.error("⚠️ Failed to save video avatar metadata:", dbError);
+        }
+      }
+
+      res.json({
+        success: true,
+        avatarId: result.data?.avatar_id,
+        status: result.data?.status || "in_progress",
+        message:
+          "Video avatar creation initiated. This may take several hours.",
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to create video avatar:", error);
+      res.status(500).json({
+        error: "Failed to create video avatar",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Check video avatar creation status
+  app.get(
+    "/api/video-avatars/:avatarId/status",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { avatarId } = req.params;
+        console.log("🎥 Backend: Check video avatar status:", avatarId);
+
+        const videoAvatarService = new HeyGenVideoAvatarService();
+        const status = await videoAvatarService.checkVideoAvatarStatus(
+          avatarId
+        );
+
+        console.log("✅ Video avatar status:", status);
+
+        // Update database if status changed
+        const userId = req.user?.id;
+        if (
+          userId &&
+          (status.status === "complete" || status.status === "failed")
+        ) {
+          try {
+            await storage.updateVideoAvatarStatus(
+              userId,
+              avatarId,
+              status.status,
+              status.error_message
+            );
+            console.log("💾 Video avatar status updated in database");
+          } catch (dbError) {
+            console.error("⚠️ Failed to update video avatar status:", dbError);
+          }
+        }
+
+        res.json(status);
+      } catch (error: any) {
+        console.error("❌ Failed to check video avatar status:", error);
+        res.status(500).json({
+          error: "Failed to check video avatar status",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
+  // List all video avatars
+  app.get("/api/video-avatars", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log("🎥 Backend: List video avatars for user:", userId);
+
+      // Get from database instead of HeyGen API
+      const avatars = await storage.listVideoAvatars(userId);
+
+      console.log("✅ Video avatars retrieved:", avatars.length);
+      res.json(avatars);
+    } catch (error: any) {
+      console.error("❌ Failed to list video avatars:", error);
+      res.status(500).json({
+        error: "Failed to list video avatars",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Delete video avatar
+  app.delete("/api/video-avatars/:avatarId", requireAuth, async (req, res) => {
+    try {
+      const { avatarId } = req.params;
+      const userId = req.user?.id;
+
+      console.log("🎥 Backend: Delete video avatar:", avatarId);
+
+      const videoAvatarService = new HeyGenVideoAvatarService();
+      await videoAvatarService.deleteVideoAvatar(avatarId);
+
+      console.log("✅ Video avatar deleted from HeyGen");
+
+      // Delete from database
+      if (userId) {
+        try {
+          await storage.deleteVideoAvatar(userId, avatarId);
+          console.log("💾 Video avatar deleted from database");
+        } catch (dbError) {
+          console.error(
+            "⚠️ Failed to delete video avatar from database:",
+            dbError
+          );
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Video avatar deleted successfully",
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to delete video avatar:", error);
+      res.status(500).json({
+        error: "Failed to delete video avatar",
+        details: error?.message || String(error),
+      });
+    }
+  });
 
   // ==================== VIDEO GENERATION ENDPOINTS ====================
 
@@ -7351,7 +7844,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const videos = await storage.getVideoContent(String(userId), status);
 
       // Ensure all video URLs are properly formatted
-      const videosWithUrls = videos.map(video => ({
+      const videosWithUrls = videos.map((video) => ({
         ...video,
         videoUrl: ensureS3Url(video.videoUrl),
         thumbnailUrl: ensureS3Url(video.thumbnailUrl),
@@ -8148,7 +8641,14 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const { assets, colors, fonts, description, socialConnections, logoInfo } = req.body;
+      const {
+        assets,
+        colors,
+        fonts,
+        description,
+        socialConnections,
+        logoInfo,
+      } = req.body;
 
       // Validate the payload using Zod schema (partial to allow updates)
       const validationResult = insertBrandSettingsSchema.partial().safeParse({
@@ -8162,9 +8662,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       });
 
       if (!validationResult.success) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "Invalid brand settings data",
-          details: validationResult.error.errors
+          details: validationResult.error.errors,
         });
       }
 
@@ -8210,7 +8710,11 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             { id: "primary-logo", name: "Primary Logo", type: "logo" },
             { id: "icon", name: "Icon/Favicon", type: "icon" },
             { id: "banner", name: "Banner/Header Image", type: "banner" },
-            { id: "background", name: "Background Pattern", type: "background" },
+            {
+              id: "background",
+              name: "Background Pattern",
+              type: "background",
+            },
           ],
           colors: {
             primary: "#daa520",
@@ -8275,9 +8779,13 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const s3Service = new S3UploadService();
       const videosWithUrls = videos.map((video) => ({
         ...video,
-        videoUrl: video.videoUrl.startsWith('http') ? video.videoUrl : s3Service.getS3Url(video.videoUrl),
+        videoUrl: video.videoUrl.startsWith("http")
+          ? video.videoUrl
+          : s3Service.getS3Url(video.videoUrl),
         thumbnailUrl: video.thumbnailUrl
-          ? (video.thumbnailUrl.startsWith('http') ? video.thumbnailUrl : s3Service.getS3Url(video.thumbnailUrl))
+          ? video.thumbnailUrl.startsWith("http")
+            ? video.thumbnailUrl
+            : s3Service.getS3Url(video.thumbnailUrl)
           : null,
       }));
 
@@ -8544,7 +9052,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       // Accept template data from external app or manual import
       const templateData = req.body;
-      
+
       // Validate and merge with userId
       const validation = insertCompanyProfileSchema.safeParse({
         ...templateData,
@@ -8552,7 +9060,10 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       });
 
       if (!validation.success) {
-        console.error("❌ Template validation failed:", validation.error.errors);
+        console.error(
+          "❌ Template validation failed:",
+          validation.error.errors
+        );
         return res.status(400).json({
           error: "Invalid template data",
           details: validation.error.errors,
@@ -8561,11 +9072,11 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       const profile = await storage.upsertCompanyProfile(validation.data);
       console.log("✅ Company profile imported successfully");
-      
-      res.json({ 
-        success: true, 
+
+      res.json({
+        success: true,
         profile,
-        message: "Company profile imported successfully"
+        message: "Company profile imported successfully",
       });
     } catch (error) {
       console.error("Error importing company profile:", error);
@@ -9092,23 +9603,29 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   });
 
   // ==================== UNIFIED MEDIA LIBRARY ENDPOINTS ====================
-  
+
   // Get all media (unified: media_assets + video_content)
   app.get("/api/media", requireAuth, async (req, res) => {
     try {
       const userId = req.user?.id;
       const typeFilter = req.query.type as string | undefined;
 
-      console.log("📚 Backend: Getting unified media library for user:", userId);
+      console.log(
+        "📚 Backend: Getting unified media library for user:",
+        userId
+      );
 
       // Get media assets from media_assets table
-      const mediaAssets = await storage.getMediaAssets(String(userId), typeFilter);
-      
+      const mediaAssets = await storage.getMediaAssets(
+        String(userId),
+        typeFilter
+      );
+
       // Get generated videos from video_content table and transform to media format
       const videos = await storage.getVideoContent(String(userId), "ready");
-      
+
       // Transform videos to media asset format with proper S3 URLs
-      const videoAssets = videos.map(video => ({
+      const videoAssets = videos.map((video) => ({
         id: video.id,
         userId: video.userId,
         type: "video" as const,
@@ -9128,16 +9645,20 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }));
 
       // Combine and sort by creation date (newest first)
-      const allMedia = [...mediaAssets, ...videoAssets].sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      const allMedia = [...mediaAssets, ...videoAssets].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
       // Apply type filter if specified
-      const filteredMedia = typeFilter && typeFilter !== "all"
-        ? allMedia.filter(item => item.type === typeFilter)
-        : allMedia;
+      const filteredMedia =
+        typeFilter && typeFilter !== "all"
+          ? allMedia.filter((item) => item.type === typeFilter)
+          : allMedia;
 
-      console.log(`✅ Backend: Found ${filteredMedia.length} media items (${mediaAssets.length} assets + ${videoAssets.length} videos)`);
+      console.log(
+        `✅ Backend: Found ${filteredMedia.length} media items (${mediaAssets.length} assets + ${videoAssets.length} videos)`
+      );
       res.json(filteredMedia);
     } catch (error: any) {
       console.error("❌ Backend: Failed to get media library");
@@ -9150,67 +9671,80 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   });
 
   // Upload media to library
-  app.post("/api/media/upload", requireAuth, upload.single("file"), async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      const file = req.file;
-      
-      if (!file) {
-        return res.status(400).json({ error: "No file provided" });
-      }
+  app.post(
+    "/api/media/upload",
+    requireAuth,
+    upload.single("file"),
+    async (req, res) => {
+      try {
+        const userId = req.user?.id;
+        const file = req.file;
 
-      console.log("📤 Backend: Uploading media to library:", file.originalname);
+        if (!file) {
+          return res.status(400).json({ error: "No file provided" });
+        }
 
-      const type = req.body.type || (file.mimetype.startsWith("video/") ? "video" : "photo");
-      const source = req.body.source || "upload";
-
-      // Upload to S3 if configured
-      let fileUrl = "";
-      let thumbnailUrl = null;
-
-      if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-        const s3Service = new S3UploadService();
-        const fileBuffer = await fs.promises.readFile(file.path);
-        fileUrl = await s3Service.uploadFile(
-          parseInt(userId!),
-          fileBuffer,
-          `${Date.now()}-${file.originalname}`,
-          file.mimetype
+        console.log(
+          "📤 Backend: Uploading media to library:",
+          file.originalname
         );
-      } else {
-        // Use local file path if S3 not configured
-        fileUrl = `/uploads/${file.filename}`;
+
+        const type =
+          req.body.type ||
+          (file.mimetype.startsWith("video/") ? "video" : "photo");
+        const source = req.body.source || "upload";
+
+        // Upload to S3 if configured
+        let fileUrl = "";
+        let thumbnailUrl = null;
+
+        if (
+          process.env.AWS_ACCESS_KEY_ID &&
+          process.env.AWS_SECRET_ACCESS_KEY
+        ) {
+          const s3Service = new S3UploadService();
+          const fileBuffer = await fs.promises.readFile(file.path);
+          fileUrl = await s3Service.uploadFile(
+            parseInt(userId!),
+            fileBuffer,
+            `${Date.now()}-${file.originalname}`,
+            file.mimetype
+          );
+        } else {
+          // Use local file path if S3 not configured
+          fileUrl = `/uploads/${file.filename}`;
+        }
+
+        // Create media asset record
+        const mediaAsset = await storage.createMediaAsset({
+          userId: String(userId),
+          type,
+          source,
+          url: fileUrl,
+          thumbnailUrl,
+          title: req.body.title || file.originalname,
+          description: req.body.description || null,
+          avatarId: req.body.avatarId || null,
+          mimeType: file.mimetype,
+          fileSize: file.size,
+          width: null,
+          height: null,
+          durationSeconds: null,
+          metadata: null,
+        });
+
+        console.log("✅ Backend: Media uploaded successfully:", mediaAsset.id);
+        res.json(mediaAsset);
+      } catch (error: any) {
+        console.error("❌ Backend: Failed to upload media");
+        console.error("❌ Backend: Error message:", error?.message);
+        res.status(500).json({
+          error: "Failed to upload media",
+          details: error?.message || String(error),
+        });
       }
-
-      // Create media asset record
-      const mediaAsset = await storage.createMediaAsset({
-        userId: String(userId),
-        type,
-        source,
-        url: fileUrl,
-        thumbnailUrl,
-        title: req.body.title || file.originalname,
-        description: req.body.description || null,
-        avatarId: req.body.avatarId || null,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        width: null,
-        height: null,
-        durationSeconds: null,
-        metadata: null,
-      });
-
-      console.log("✅ Backend: Media uploaded successfully:", mediaAsset.id);
-      res.json(mediaAsset);
-    } catch (error: any) {
-      console.error("❌ Backend: Failed to upload media");
-      console.error("❌ Backend: Error message:", error?.message);
-      res.status(500).json({
-        error: "Failed to upload media",
-        details: error?.message || String(error),
-      });
     }
-  });
+  );
 
   // Get specific media item
   app.get("/api/media/:id", requireAuth, async (req, res) => {
@@ -9221,7 +9755,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       // Try media_assets first
       const mediaAsset = await storage.getMediaAssetById(id);
-      
+
       if (mediaAsset) {
         console.log("✅ Backend: Found media asset");
         return res.json(mediaAsset);
@@ -9229,7 +9763,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       // Try video_content table
       const video = await storage.getVideoById(id);
-      
+
       if (video && video.status === "ready") {
         // Transform to media format
         const videoAsset = {
@@ -9250,7 +9784,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           metadata: video.metadata || null,
           createdAt: video.createdAt || new Date().toISOString(),
         };
-        
+
         console.log("✅ Backend: Found video content");
         return res.json(videoAsset);
       }
