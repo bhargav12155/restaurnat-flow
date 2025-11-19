@@ -1,17 +1,17 @@
 import { sql } from "drizzle-orm";
 import {
-  index,
-  pgTable,
-  text,
-  varchar,
-  timestamp,
-  jsonb,
-  integer,
   boolean,
-  real,
-  unique,
-  serial,
+  index,
+  integer,
+  jsonb,
   numeric,
+  pgTable,
+  real,
+  serial,
+  text,
+  timestamp,
+  unique,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -24,7 +24,7 @@ export const sessions = pgTable(
     sess: jsonb("sess").notNull(),
     expire: timestamp("expire").notNull(),
   },
-  (table) => [index("IDX_session_expire").on(table.expire)],
+  (table) => [index("IDX_session_expire").on(table.expire)]
 );
 
 // =====================================================
@@ -59,7 +59,7 @@ export const publicUsers = pgTable(
   (table) => ({
     // Composite unique constraint: one email per agent
     uniqueAgentClient: unique().on(table.agentSlug, table.email),
-  }),
+  })
 );
 
 // =====================================================
@@ -191,6 +191,25 @@ export const photoAvatars = pgTable("photo_avatars", {
   poseType: text("pose_type").notNull(),
   processingStatus: text("processing_status").default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =====================================================
+// VIDEO AVATARS TABLE (Enterprise HeyGen Feature)
+// =====================================================
+export const videoAvatars = pgTable("video_avatars", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  avatarName: text("avatar_name").notNull(),
+  heygenAvatarId: text("heygen_avatar_id").notNull().unique(),
+  trainingVideoUrl: text("training_video_url").notNull(), // S3 URL to training footage
+  consentVideoUrl: text("consent_video_url").notNull(), // S3 URL to consent video
+  voiceId: text("voice_id"), // Optional voice ID for the avatar
+  status: text("status").notNull().default("in_progress"), // in_progress, complete, failed
+  errorMessage: text("error_message"), // Error details if status is failed
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
 });
 
 // =====================================================
@@ -462,7 +481,7 @@ export const insertContentPieceSchema = createInsertSchema(contentPieces).omit({
 });
 
 export const insertSocialMediaAccountSchema = createInsertSchema(
-  socialMediaAccounts,
+  socialMediaAccounts
 ).omit({
   id: true,
   createdAt: true,
@@ -483,15 +502,15 @@ export const insertAnalyticsSchema = createInsertSchema(analytics).omit({
   timestamp: true,
 });
 
-export const insertScheduledPostSchema = createInsertSchema(
-  scheduledPosts,
-).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-}).extend({
-  scheduledFor: z.coerce.date(), // Coerce ISO strings to Date objects
-});
+export const insertScheduledPostSchema = createInsertSchema(scheduledPosts)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    scheduledFor: z.coerce.date(), // Coerce ISO strings to Date objects
+  });
 
 // Update schema for PATCH operations - only mutable fields
 export const updateScheduledPostSchema = z
@@ -565,7 +584,7 @@ export const insertSocialApiKeysSchema = createInsertSchema(socialApiKeys).omit(
     id: true,
     createdAt: true,
     updatedAt: true,
-  },
+  }
 );
 
 export const insertCustomVoiceSchema = createInsertSchema(customVoices).omit({
@@ -625,6 +644,9 @@ export type InsertPhotoAvatarGroupVoice =
 export type PhotoAvatar = typeof photoAvatars.$inferSelect;
 export type InsertPhotoAvatar = typeof photoAvatars.$inferInsert;
 
+export type VideoAvatar = typeof videoAvatars.$inferSelect;
+export type InsertVideoAvatar = typeof videoAvatars.$inferInsert;
+
 export const insertPhotoAvatarSchema = createInsertSchema(photoAvatars).omit({
   id: true,
   createdAt: true,
@@ -649,7 +671,7 @@ export const tutorialVideos = pgTable("tutorial_videos", {
 });
 
 export const insertTutorialVideoSchema = createInsertSchema(
-  tutorialVideos,
+  tutorialVideos
 ).omit({
   id: true,
   createdAt: true,
@@ -683,7 +705,7 @@ export const companyProfiles = pgTable("company_profiles", {
 });
 
 export const insertCompanyProfileSchema = createInsertSchema(
-  companyProfiles,
+  companyProfiles
 ).omit({
   id: true,
   createdAt: true,
@@ -711,11 +733,13 @@ export const brandSettings = pgTable("brand_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertBrandSettingsSchema = createInsertSchema(brandSettings).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
+export const insertBrandSettingsSchema = createInsertSchema(brandSettings).omit(
+  {
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+  }
+);
 
 export type BrandSettings = typeof brandSettings.$inferSelect;
 export type InsertBrandSettings = z.infer<typeof insertBrandSettingsSchema>;
@@ -842,32 +866,36 @@ export type PlatformScore = z.infer<typeof platformScoreSchema>;
 // =====================================================
 
 // User Sessions - Track anonymous user browsing sessions
-export const userSessions = pgTable("user_sessions", {
-  id: serial("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
-  publicUserId: integer("public_user_id").references(() => publicUsers.id),
-  agentSlug: text("agent_slug").notNull(),
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-  deviceType: text("device_type"),
-  browserName: text("browser_name"),
-  operatingSystem: text("operating_system"),
-  country: text("country"),
-  city: text("city"),
-  firstPageVisited: text("first_page_visited"),
-  lastPageVisited: text("last_page_visited"),
-  totalTimeSpentSeconds: integer("total_time_spent_seconds").default(0),
-  totalPageViews: integer("total_page_views").default(0),
-  totalPropertiesViewed: integer("total_properties_viewed").default(0),
-  totalPropertiesLiked: integer("total_properties_liked").default(0),
-  conversionType: text("conversion_type"),
-  conversionValue: text("conversion_value"),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => ({
-  sessionIdKey: unique("user_sessions_session_id_key").on(table.sessionId),
-}));
+export const userSessions = pgTable(
+  "user_sessions",
+  {
+    id: serial("id").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    publicUserId: integer("public_user_id").references(() => publicUsers.id),
+    agentSlug: text("agent_slug").notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    deviceType: text("device_type"),
+    browserName: text("browser_name"),
+    operatingSystem: text("operating_system"),
+    country: text("country"),
+    city: text("city"),
+    firstPageVisited: text("first_page_visited"),
+    lastPageVisited: text("last_page_visited"),
+    totalTimeSpentSeconds: integer("total_time_spent_seconds").default(0),
+    totalPageViews: integer("total_page_views").default(0),
+    totalPropertiesViewed: integer("total_properties_viewed").default(0),
+    totalPropertiesLiked: integer("total_properties_liked").default(0),
+    conversionType: text("conversion_type"),
+    conversionValue: text("conversion_value"),
+    isActive: boolean("is_active").default(true),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    sessionIdKey: unique("user_sessions_session_id_key").on(table.sessionId),
+  })
+);
 
 // Property Interactions - Track individual user interactions
 export const propertyInteractions = pgTable("property_interactions", {
@@ -945,7 +973,7 @@ export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
 });
 
 export const insertPropertyInteractionSchema = createInsertSchema(
-  propertyInteractions,
+  propertyInteractions
 ).omit({
   id: true,
   createdAt: true,
@@ -957,14 +985,14 @@ export const insertPropertyLikeSchema = createInsertSchema(propertyLikes).omit({
 });
 
 export const insertEngagementLeadSchema = createInsertSchema(
-  engagementLeads,
+  engagementLeads
 ).omit({
   id: true,
   createdAt: true,
 });
 
 export const insertContentOpportunitySchema = createInsertSchema(
-  contentOpportunities,
+  contentOpportunities
 ).omit({
   id: true,
   createdAt: true,

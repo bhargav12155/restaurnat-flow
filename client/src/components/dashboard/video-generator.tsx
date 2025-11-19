@@ -1,10 +1,17 @@
-import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -12,44 +19,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AvatarCreator } from "./avatar-creator";
-import { OmahaVideoTemplates } from "./omaha-video-templates";
-import { ObjectUploader } from "@/components/ObjectUploader";
-import { apiRequest } from "@/lib/queryClient";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Play,
-  Video,
+  Camera,
+  Clock,
   Edit2,
+  Eye,
+  FileVideo,
+  Hand,
+  Image,
+  Info,
+  Play,
+  Sparkles,
   Upload,
   User,
-  Clock,
-  Youtube,
+  Video,
   Wand2,
-  Camera,
-  FileVideo,
-  Sparkles,
   X,
-  Eye,
-  Share2,
-  Info,
-  Image,
-  Hand,
-  ExternalLink,
+  Youtube,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { OmahaVideoTemplates } from "./omaha-video-templates";
 
 interface Avatar {
   id: string;
@@ -116,8 +111,12 @@ const neighborhoods = [
 
 export function VideoGenerator() {
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
-  const [avatarType, setAvatarType] = useState<"public" | "talking_photo" | "custom">("public");
-  const [uploadedAvatarPhoto, setUploadedAvatarPhoto] = useState<string | null>(null);
+  const [avatarType, setAvatarType] = useState<
+    "public" | "talking_photo" | "custom"
+  >("public");
+  const [uploadedAvatarPhoto, setUploadedAvatarPhoto] = useState<string | null>(
+    null
+  );
   const [videoTitle, setVideoTitle] = useState("");
   const [videoTopic, setVideoTopic] = useState("");
   const [selectedNeighborhood, setSelectedNeighborhood] = useState("");
@@ -142,7 +141,11 @@ export function VideoGenerator() {
   });
 
   const { data: photoAvatarGroupsResponse } = useQuery({
-    queryKey: ['/api/photo-avatars/groups'],
+    queryKey: ["/api/photo-avatars/groups"],
+  });
+
+  const { data: videoAvatars } = useQuery({
+    queryKey: ["/api/video-avatars"],
   });
 
   const { data: videos } = useQuery<VideoContent[]>({
@@ -152,8 +155,8 @@ export function VideoGenerator() {
 
   // Combine photo avatar groups as custom avatars
   const photoAvatarGroups = photoAvatarGroupsResponse?.avatar_group_list || [];
-  const readyPhotoAvatars = photoAvatarGroups.filter((group: any) => 
-    group.status === 'ready' && group.num_looks > 0
+  const readyPhotoAvatars = photoAvatarGroups.filter(
+    (group: any) => group.status === "ready" && group.num_looks > 0
   );
 
   // Reset duration when platform changes
@@ -202,12 +205,41 @@ export function VideoGenerator() {
       const response = await apiRequest("POST", "/api/videos", videoData);
       return response.json();
     },
-    onSuccess: (newVideo) => {
+    onSuccess: async (newVideo) => {
       toast({
-        title: "Video Created!",
-        description: "Your video project has been created successfully",
+        title: "Video Project Created!",
+        description: "Now generating video with HeyGen...",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
+
+      // Automatically trigger video generation if avatar is selected
+      if (selectedAvatar) {
+        try {
+          console.log("🎬 Auto-generating video:", {
+            videoId: newVideo.id,
+            avatarId: selectedAvatar,
+            avatarType: avatarType,
+            gestureIntensity: gestureIntensity,
+          });
+
+          await generateVideoMutation.mutateAsync({
+            videoId: newVideo.id,
+            avatarId: selectedAvatar,
+            avatarType: avatarType === "custom" ? "talking_photo" : "avatar",
+            uploadedAvatarPhoto: null,
+            gestureIntensity: avatarType === "custom" ? gestureIntensity : 0,
+          });
+        } catch (error) {
+          console.error("❌ Auto-generation failed:", error);
+          toast({
+            title: "Generation Error",
+            description:
+              "Video created but generation failed. Try generating manually.",
+            variant: "destructive",
+          });
+        }
+      }
+
       // Reset form
       setVideoTitle("");
       setVideoTopic("");
@@ -226,23 +258,15 @@ export function VideoGenerator() {
   });
 
   const generateScriptMutation = useMutation({
-    mutationFn: async ({
-      videoId,
-      topic,
-      neighborhood,
-      videoType,
-      duration,
-    }: any) => {
-      const response = await apiRequest(
-        "POST",
-        `/api/videos/${videoId}/generate-script`,
-        {
-          topic,
-          neighborhood,
-          videoType,
-          duration: parseInt(duration),
-        },
-      );
+    mutationFn: async ({ topic, neighborhood, videoType, duration }: any) => {
+      // Generate script via OpenAI without needing a video ID
+      const response = await apiRequest("POST", "/api/generate-script", {
+        topic,
+        neighborhood,
+        videoType,
+        platform: selectedVideoPlatform,
+        duration: parseInt(duration),
+      });
       return response.json();
     },
     onSuccess: (data) => {
@@ -251,7 +275,6 @@ export function VideoGenerator() {
         title: "Script Generated!",
         description: "AI has created your video script",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
     },
     onError: (error: any) => {
       toast({
@@ -284,7 +307,7 @@ export function VideoGenerator() {
           avatarType: type,
           uploadedAvatarPhoto: photoUrl,
           gestureIntensity: intensity,
-        },
+        }
       );
       return response.json();
     },
@@ -314,7 +337,7 @@ export function VideoGenerator() {
           description,
           tags,
           privacy: "public",
-        },
+        }
       );
       return response.json();
     },
@@ -344,6 +367,21 @@ export function VideoGenerator() {
       return;
     }
 
+    // Check avatar selection - must have either public or custom avatar
+    const hasPublicAvatar = avatarType === "public" && selectedAvatar;
+    const hasCustomAvatar = avatarType === "custom" && selectedAvatar;
+
+    if (!hasPublicAvatar && !hasCustomAvatar) {
+      toast({
+        title: "Avatar Required",
+        description: `Please select a ${
+          avatarType === "public" ? "public" : "custom photo"
+        } avatar to generate the video`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     createVideoMutation.mutate({
       title: videoTitle,
       script: generatedScript || `This is a video about ${videoTopic}`,
@@ -352,7 +390,7 @@ export function VideoGenerator() {
       videoType: selectedVideoType || "market_update",
       platform: selectedVideoPlatform,
       duration: parseInt(duration),
-      avatarId: selectedAvatar || null,
+      avatarId: selectedAvatar, // This is either a public avatar ID or photo avatar group_id
       tags: [
         "OmahaRealEstate",
         "RealEstate",
@@ -360,17 +398,24 @@ export function VideoGenerator() {
         selectedVideoType,
         selectedVideoPlatform,
       ].filter(Boolean),
-      status: "draft",
+      status: "generating", // Send to HeyGen immediately
     });
   };
 
-  const handleGenerateScript = (videoId: string) => {
+  const handleGenerateScript = () => {
+    if (!videoTopic) {
+      toast({
+        title: "Topic Required",
+        description: "Please enter a topic for your video",
+        variant: "destructive",
+      });
+      return;
+    }
+
     generateScriptMutation.mutate({
-      videoId,
       topic: videoTopic,
       neighborhood: selectedNeighborhood,
       videoType: selectedVideoType,
-      platform: selectedVideoPlatform,
       duration,
     });
   };
@@ -475,7 +520,10 @@ export function VideoGenerator() {
           </div>
 
           {/* Video Templates - Top Section */}
-          <div id="templates-section" className="border rounded-lg p-6 bg-gradient-to-r from-primary/5 to-purple-500/5 scroll-mt-4">
+          <div
+            id="templates-section"
+            className="border rounded-lg p-6 bg-gradient-to-r from-primary/5 to-purple-500/5 scroll-mt-4"
+          >
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -483,7 +531,8 @@ export function VideoGenerator() {
                   Quick Start: Choose a Template
                 </h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Select a pre-designed template and customize it for instant video creation
+                  Select a pre-designed template and customize it for instant
+                  video creation
                 </p>
               </div>
             </div>
@@ -491,484 +540,661 @@ export function VideoGenerator() {
           </div>
 
           {/* Manual Creation Section */}
-          <div id="custom-creation" className="border rounded-lg p-6 scroll-mt-4">
+          <div
+            id="custom-creation"
+            className="border rounded-lg p-6 scroll-mt-4"
+          >
             <div className="mb-6">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Edit2 className="h-5 w-5 text-primary" />
                 Or Create Custom Video
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Build your video from scratch with full control over every detail
+                Build your video from scratch with full control over every
+                detail
               </p>
             </div>
-            
-            <div className="space-y-4">
-            {/* Avatar Selection with Three Options */}
-            <div className="space-y-4">
-              <Label className="text-sm font-medium">
-                Choose Avatar Type
-              </Label>
-              
-              {/* Informational Alert */}
-              <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
-                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <AlertTitle className="text-blue-900 dark:text-blue-100">Avatar Animation Options</AlertTitle>
-                <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
-                  Choose how your avatar will move:
-                  <ul className="mt-2 space-y-1 list-disc list-inside">
-                    <li><strong>Public Avatars</strong>: Professional lip-sync only (quick & easy)</li>
-                    <li><strong>Talking Photo</strong>: Upload your photo for subtle head/body movements</li>
-                    <li><strong>Custom Avatar</strong>: Film yourself with gestures for hand movements & full animation</li>
-                  </ul>
-                </AlertDescription>
-              </Alert>
 
-              <Tabs value={avatarType} onValueChange={(value) => setAvatarType(value as any)} className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="public" className="flex items-center gap-2" data-testid="tab-public-avatar">
-                    <User className="h-4 w-4" />
-                    Public Avatars
-                  </TabsTrigger>
-                  <TabsTrigger value="talking_photo" className="flex items-center gap-2" data-testid="tab-talking-photo">
-                    <Image className="h-4 w-4" />
-                    Talking Photo
-                  </TabsTrigger>
-                  <TabsTrigger value="custom" className="flex items-center gap-2" data-testid="tab-custom-avatar">
-                    <Hand className="h-4 w-4" />
-                    Custom Avatar
-                  </TabsTrigger>
-                </TabsList>
+            <div className="space-y-4">
+              {/* Avatar Selection with Three Options */}
+              <div className="space-y-4">
+                <Label className="text-sm font-medium">
+                  Choose Avatar Type
+                </Label>
 
-                {/* Public Avatars Tab */}
-                <TabsContent value="public" className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Professional avatars with accurate lip-sync. Perfect for quick professional videos.
-                    </p>
-                    <Select
-                      onValueChange={setSelectedAvatar}
-                      value={selectedAvatar}
-                      data-testid="select-avatar"
+                {/* Informational Alert */}
+                <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                  <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <AlertTitle className="text-blue-900 dark:text-blue-100">
+                    Avatar Animation Options
+                  </AlertTitle>
+                  <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                    Choose how your avatar will move:
+                    <ul className="mt-2 space-y-1 list-disc list-inside">
+                      <li>
+                        <strong>Public Avatars</strong>: Professional lip-sync
+                        only (quick & easy)
+                      </li>
+                      <li>
+                        <strong>Talking Photo</strong>: Upload your photo for
+                        subtle head/body movements
+                      </li>
+                      <li>
+                        <strong>Custom Avatar</strong>: Film yourself with
+                        gestures for hand movements & full animation
+                      </li>
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+
+                <Tabs
+                  value={avatarType}
+                  onValueChange={(value) => setAvatarType(value as any)}
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger
+                      value="public"
+                      className="flex items-center gap-2"
+                      data-testid="tab-public-avatar"
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a public avatar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {avatars?.filter(a => !a.description?.includes('custom'))?.map((avatar) => (
-                          <SelectItem key={avatar.id} value={avatar.id}>
-                            <div className="flex items-center space-x-2">
-                              <User className="h-4 w-4" />
-                              <span>
-                                {avatar.name} ({avatar.style})
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </TabsContent>
+                      <User className="h-4 w-4" />
+                      Public
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="talking_photo"
+                      className="flex items-center gap-2"
+                      data-testid="tab-talking-photo"
+                    >
+                      <Image className="h-4 w-4" />
+                      Photo
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="custom"
+                      className="flex items-center gap-2"
+                      data-testid="tab-custom-avatar"
+                    >
+                      <Hand className="h-4 w-4" />
+                      Custom
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="video_avatar"
+                      className="flex items-center gap-2"
+                    >
+                      <Video className="h-4 w-4" />
+                      Video
+                    </TabsTrigger>
+                  </TabsList>
 
-                {/* Talking Photo Tab */}
-                <TabsContent value="talking_photo" className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Upload a photo to create an AI avatar with subtle head and body movements. Great for personalized content.
-                    </p>
-                    <div className="border-2 border-dashed rounded-lg p-6 text-center">
-                      {uploadedAvatarPhoto ? (
-                        <div className="space-y-3">
-                          <div className="relative inline-block">
-                            <img 
-                              src={uploadedAvatarPhoto} 
-                              alt="Avatar preview" 
-                              className="w-32 h-32 rounded-full object-cover mx-auto"
-                            />
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
-                              onClick={() => setUploadedAvatarPhoto(null)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                          <p className="text-sm text-green-600 dark:text-green-400 font-medium">
-                            Photo uploaded! Your talking photo avatar is ready.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <Camera className="h-12 w-12 mx-auto text-muted-foreground" />
-                          <div>
-                            <p className="font-medium">Upload Your Photo</p>
-                            <p className="text-sm text-muted-foreground">
-                              For best results: Clear headshot, well-lit, neutral background
-                            </p>
-                          </div>
-                          <ObjectUploader
-                            acceptedFileTypes="image/*"
-                            onGetUploadParameters={async () => {
-                              const response = await apiRequest("GET", "/api/upload/signed-url?fileType=image/jpeg");
-                              const data = await response.json();
-                              return { method: "PUT" as const, url: data.url };
-                            }}
-                            onComplete={(url: string) => {
-                              setUploadedAvatarPhoto(url);
-                              toast({
-                                title: "Photo Uploaded!",
-                                description: "Your talking photo avatar is ready to use.",
-                              });
-                            }}
-                            data-testid="upload-avatar-photo"
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            Choose Photo
-                          </ObjectUploader>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </TabsContent>
-
-                {/* Custom Avatar Tab - Show photo avatars */}
-                <TabsContent value="custom" className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Use custom photo avatars you've created with full gesture support and body movements.
-                    </p>
-                    
-                    {readyPhotoAvatars.length > 0 ? (
-                      <div className="space-y-3">
-                        <Select
-                          onValueChange={setSelectedAvatar}
-                          value={selectedAvatar}
-                          data-testid="select-custom-avatar"
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choose a custom photo avatar" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {readyPhotoAvatars.map((group: any) => (
-                              <SelectItem key={group.group_id} value={group.group_id}>
+                  {/* Public Avatars Tab */}
+                  <TabsContent value="public" className="space-y-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Professional avatars with accurate lip-sync. Perfect for
+                        quick professional videos.
+                      </p>
+                      <Select
+                        onValueChange={setSelectedAvatar}
+                        value={selectedAvatar}
+                        data-testid="select-avatar"
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a public avatar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {avatars
+                            ?.filter((a) => !a.description?.includes("custom"))
+                            ?.map((avatar) => (
+                              <SelectItem key={avatar.id} value={avatar.id}>
                                 <div className="flex items-center space-x-2">
-                                  <Hand className="h-4 w-4 text-purple-600" />
+                                  <User className="h-4 w-4" />
                                   <span>
-                                    {group.name} ({group.num_looks} looks) ✨
+                                    {avatar.name} ({avatar.style})
                                   </span>
                                 </div>
                               </SelectItem>
                             ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          {readyPhotoAvatars.length} custom photo avatar{readyPhotoAvatars.length !== 1 ? 's' : ''} available • ✨ = Gesture support
-                        </p>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TabsContent>
+
+                  {/* Talking Photo Tab */}
+                  <TabsContent value="talking_photo" className="space-y-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Upload a photo to create an AI avatar with subtle head
+                        and body movements. Great for personalized content.
+                      </p>
+                      <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                        {uploadedAvatarPhoto ? (
+                          <div className="space-y-3">
+                            <div className="relative inline-block">
+                              <img
+                                src={uploadedAvatarPhoto}
+                                alt="Avatar preview"
+                                className="w-32 h-32 rounded-full object-cover mx-auto"
+                              />
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                                onClick={() => setUploadedAvatarPhoto(null)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                              Photo uploaded! Your talking photo avatar is
+                              ready.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <Camera className="h-12 w-12 mx-auto text-muted-foreground" />
+                            <div>
+                              <p className="font-medium">Upload Your Photo</p>
+                              <p className="text-sm text-muted-foreground">
+                                For best results: Clear headshot, well-lit,
+                                neutral background
+                              </p>
+                            </div>
+                            <ObjectUploader
+                              acceptedFileTypes="image/*"
+                              onGetUploadParameters={async () => {
+                                const response = await apiRequest(
+                                  "GET",
+                                  "/api/upload/signed-url?fileType=image/jpeg"
+                                );
+                                const data = await response.json();
+                                return {
+                                  method: "PUT" as const,
+                                  url: data.url,
+                                };
+                              }}
+                              onComplete={(url: string) => {
+                                setUploadedAvatarPhoto(url);
+                                toast({
+                                  title: "Photo Uploaded!",
+                                  description:
+                                    "Your talking photo avatar is ready to use.",
+                                });
+                              }}
+                              data-testid="upload-avatar-photo"
+                            >
+                              <Upload className="h-4 w-4 mr-2" />
+                              Choose Photo
+                            </ObjectUploader>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
-                        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                        <AlertTitle className="text-blue-900 dark:text-blue-100">No Custom Avatars Yet</AlertTitle>
-                        <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
-                          Create a custom photo avatar in the "Photo Avatar" tab to use gesture-enabled avatars with hand movements and body animation.
+                    </div>
+                  </TabsContent>
+
+                  {/* Custom Avatar Tab - Show photo avatars */}
+                  <TabsContent value="custom" className="space-y-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Use custom photo avatars you've created with full
+                        gesture support and body movements.
+                      </p>
+
+                      {readyPhotoAvatars.length > 0 ? (
+                        <div className="space-y-3">
+                          <Select
+                            onValueChange={setSelectedAvatar}
+                            value={selectedAvatar}
+                            data-testid="select-custom-avatar"
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose a custom photo avatar" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {readyPhotoAvatars.map((group: any) => (
+                                <SelectItem
+                                  key={group.group_id}
+                                  value={group.group_id}
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    <Hand className="h-4 w-4 text-purple-600" />
+                                    <span>
+                                      {group.name} ({group.num_looks} looks) ✨
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {readyPhotoAvatars.length} custom photo avatar
+                            {readyPhotoAvatars.length !== 1 ? "s" : ""}{" "}
+                            available • ✨ = Gesture support
+                          </p>
+                        </div>
+                      ) : (
+                        <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          <AlertTitle className="text-blue-900 dark:text-blue-100">
+                            No Custom Avatars Yet
+                          </AlertTitle>
+                          <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                            Create a custom photo avatar in the "Photo Avatar"
+                            tab to use gesture-enabled avatars with hand
+                            movements and body animation.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 mt-4">
+                        <Hand className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        <AlertTitle className="text-amber-900 dark:text-amber-100">
+                          Gesture Support
+                        </AlertTitle>
+                        <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
+                          Custom photo avatars support natural hand gestures and
+                          body movements. Use the gesture intensity slider below
+                          to control animation level.
                         </AlertDescription>
                       </Alert>
-                    )}
-                    
-                    <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800 mt-4">
-                      <Hand className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                      <AlertTitle className="text-amber-900 dark:text-amber-100">Gesture Support</AlertTitle>
-                      <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
-                        Custom photo avatars support natural hand gestures and body movements. Use the gesture intensity slider below to control animation level.
+                    </div>
+                  </TabsContent>
+
+                  {/* Video Avatar Tab */}
+                  <TabsContent value="video_avatar" className="space-y-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        High-fidelity video avatars created from training
+                        footage (Enterprise feature)
+                      </p>
+                      {videoAvatars && videoAvatars.length > 0 ? (
+                        <div className="space-y-3">
+                          <Select
+                            onValueChange={setSelectedAvatar}
+                            value={selectedAvatar}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose a video avatar" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {videoAvatars
+                                .filter((va: any) => va.status === "complete")
+                                .map((avatar: any) => (
+                                  <SelectItem
+                                    key={avatar.heygenAvatarId}
+                                    value={avatar.heygenAvatarId}
+                                  >
+                                    <div className="flex items-center space-x-2">
+                                      <Video className="h-4 w-4" />
+                                      <span>{avatar.avatarName}</span>
+                                      <Badge
+                                        variant="secondary"
+                                        className="ml-2 text-xs"
+                                      >
+                                        Video Avatar
+                                      </Badge>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {
+                              videoAvatars.filter(
+                                (va: any) => va.status === "complete"
+                              ).length
+                            }{" "}
+                            video avatar
+                            {videoAvatars.filter(
+                              (va: any) => va.status === "complete"
+                            ).length !== 1
+                              ? "s"
+                              : ""}{" "}
+                            available
+                          </p>
+                        </div>
+                      ) : (
+                        <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          <AlertTitle className="text-blue-900 dark:text-blue-100">
+                            No Video Avatars Yet
+                          </AlertTitle>
+                          <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                            Create a video avatar from training footage in the
+                            "Video Avatars" section. Video avatars provide the
+                            most realistic and high-fidelity results.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800 mt-4">
+                        <Video className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                        <AlertTitle className="text-purple-900 dark:text-purple-100">
+                          Enterprise Feature
+                        </AlertTitle>
+                        <AlertDescription className="text-purple-800 dark:text-purple-200 text-sm">
+                          Video avatars are created from 2+ minutes of training
+                          footage and provide the highest quality, most
+                          realistic results with natural gestures and
+                          expressions.
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+
+              {/* Gesture Controls - Show for custom avatars or gesture-enabled public avatars */}
+              {(() => {
+                const selectedAvatarData = avatars?.find(
+                  (a) => a.id === selectedAvatar
+                );
+                const showGestureControls =
+                  avatarType === "custom" ||
+                  selectedAvatarData?.supportsGestures;
+
+                if (!showGestureControls) return null;
+
+                return (
+                  <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
+                    <div className="flex items-center gap-2">
+                      <Hand className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                      <Label className="text-base font-semibold text-purple-900 dark:text-purple-100">
+                        Gesture & Expressiveness Controls
+                      </Label>
+                      <Badge
+                        variant="secondary"
+                        className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100"
+                      >
+                        Gesture-Enabled
+                      </Badge>
+                    </div>
+
+                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                      Control how animated and expressive your avatar will be.
+                      Higher values add more natural hand gestures and body
+                      movements.
+                    </p>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                          Gesture Intensity
+                        </Label>
+                        <span className="text-sm font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900 px-3 py-1 rounded-full">
+                          {gestureIntensity === 0
+                            ? "Off"
+                            : gestureIntensity === 1
+                            ? "Subtle"
+                            : gestureIntensity === 2
+                            ? "Moderate"
+                            : "Expressive"}
+                        </span>
+                      </div>
+
+                      <Slider
+                        min={0}
+                        max={3}
+                        step={1}
+                        value={[gestureIntensity]}
+                        onValueChange={(value) => setGestureIntensity(value[0])}
+                        className="cursor-pointer"
+                        data-testid="slider-gesture-intensity"
+                      />
+
+                      <div className="flex justify-between text-xs text-purple-700 dark:text-purple-300 mt-1">
+                        <span>Off</span>
+                        <span>Subtle</span>
+                        <span>Moderate</span>
+                        <span>Expressive</span>
+                      </div>
+                    </div>
+
+                    <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
+                      <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                      <AlertDescription className="text-purple-800 dark:text-purple-200 text-xs">
+                        <strong>How it works:</strong> Gesture intensity
+                        controls how frequently and prominently your avatar uses
+                        hand movements and body language. "Off" = traditional
+                        lip-sync only. "Expressive" = maximum natural gestures
+                        and movements.
                       </AlertDescription>
                     </Alert>
                   </div>
-                </TabsContent>
-              </Tabs>
-            </div>
+                );
+              })()}
 
-            {/* Gesture Controls - Show for custom avatars or gesture-enabled public avatars */}
-            {(() => {
-              const selectedAvatarData = avatars?.find(a => a.id === selectedAvatar);
-              const showGestureControls = avatarType === 'custom' || (selectedAvatarData?.supportsGestures);
-              
-              if (!showGestureControls) return null;
-              
-              return (
-                <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
-                  <div className="flex items-center gap-2">
-                    <Hand className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                    <Label className="text-base font-semibold text-purple-900 dark:text-purple-100">
-                      Gesture & Expressiveness Controls
-                    </Label>
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100">
-                      Gesture-Enabled
-                    </Badge>
-                  </div>
-                  
-                  <p className="text-sm text-purple-800 dark:text-purple-200">
-                    Control how animated and expressive your avatar will be. Higher values add more natural hand gestures and body movements.
-                  </p>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm font-medium text-purple-900 dark:text-purple-100">
-                        Gesture Intensity
-                      </Label>
-                      <span className="text-sm font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900 px-3 py-1 rounded-full">
-                        {gestureIntensity === 0 ? 'Off' : gestureIntensity === 1 ? 'Subtle' : gestureIntensity === 2 ? 'Moderate' : 'Expressive'}
-                      </span>
-                    </div>
-                    
-                    <Slider
-                      min={0}
-                      max={3}
-                      step={1}
-                      value={[gestureIntensity]}
-                      onValueChange={(value) => setGestureIntensity(value[0])}
-                      className="cursor-pointer"
-                      data-testid="slider-gesture-intensity"
-                    />
-                    
-                    <div className="flex justify-between text-xs text-purple-700 dark:text-purple-300 mt-1">
-                      <span>Off</span>
-                      <span>Subtle</span>
-                      <span>Moderate</span>
-                      <span>Expressive</span>
-                    </div>
-                  </div>
-                  
-                  <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200 dark:border-purple-800">
-                    <Info className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                    <AlertDescription className="text-purple-800 dark:text-purple-200 text-xs">
-                      <strong>How it works:</strong> Gesture intensity controls how frequently and prominently your avatar uses hand movements and body language. "Off" = traditional lip-sync only. "Expressive" = maximum natural gestures and movements.
-                    </AlertDescription>
-                  </Alert>
+              {/* Video Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="video-title" className="text-sm font-medium">
+                    Video Title
+                  </Label>
+                  <Input
+                    id="video-title"
+                    value={videoTitle}
+                    onChange={(e) => setVideoTitle(e.target.value)}
+                    placeholder="e.g., Why Dundee is Perfect for Families"
+                    data-testid="input-video-title"
+                  />
                 </div>
-              );
-            })()}
-
-            {/* Video Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="video-title" className="text-sm font-medium">
-                  Video Title
-                </Label>
-                <Input
-                  id="video-title"
-                  value={videoTitle}
-                  onChange={(e) => setVideoTitle(e.target.value)}
-                  placeholder="e.g., Why Dundee is Perfect for Families"
-                  data-testid="input-video-title"
-                />
+                <div>
+                  <Label htmlFor="video-type" className="text-sm font-medium">
+                    Video Type
+                  </Label>
+                  <Select
+                    onValueChange={setSelectedVideoType}
+                    data-testid="select-video-type"
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose video type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {videoTypes.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          <span>
+                            {type.icon} {type.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+
+              {/* Video Platform */}
               <div>
-                <Label htmlFor="video-type" className="text-sm font-medium">
-                  Video Type
+                <Label htmlFor="video-platform" className="text-sm font-medium">
+                  Video Platform
                 </Label>
                 <Select
-                  onValueChange={setSelectedVideoType}
-                  data-testid="select-video-type"
+                  onValueChange={setSelectedVideoPlatform}
+                  defaultValue="youtube"
+                  data-testid="select-video-platform"
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose video type" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {videoTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        <span>
-                          {type.icon} {type.label}
-                        </span>
+                    {videoPlatforms.map((platform) => (
+                      <SelectItem key={platform.value} value={platform.value}>
+                        <div className="flex flex-col items-start">
+                          <span className="flex items-center gap-2">
+                            <span>{platform.icon}</span>
+                            <span>{platform.label}</span>
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {platform.description}
+                          </span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            {/* Video Platform */}
-            <div>
-              <Label htmlFor="video-platform" className="text-sm font-medium">
-                Video Platform
-              </Label>
-              <Select
-                onValueChange={setSelectedVideoPlatform}
-                defaultValue="youtube"
-                data-testid="select-video-platform"
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {videoPlatforms.map((platform) => (
-                    <SelectItem key={platform.value} value={platform.value}>
-                      <div className="flex flex-col items-start">
-                        <span className="flex items-center gap-2">
-                          <span>{platform.icon}</span>
-                          <span>{platform.label}</span>
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {platform.description}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="video-topic" className="text-sm font-medium">
-                  Topic/Content Focus
-                </Label>
-                <Input
-                  id="video-topic"
-                  value={videoTopic}
-                  onChange={(e) => setVideoTopic(e.target.value)}
-                  placeholder="e.g., Best family amenities in Dundee"
-                  data-testid="input-video-topic"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="video-topic" className="text-sm font-medium">
+                    Topic/Content Focus
+                  </Label>
+                  <Input
+                    id="video-topic"
+                    value={videoTopic}
+                    onChange={(e) => setVideoTopic(e.target.value)}
+                    placeholder="e.g., Best family amenities in Dundee"
+                    data-testid="input-video-topic"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="neighborhood" className="text-sm font-medium">
+                    Neighborhood (Optional)
+                  </Label>
+                  <Select
+                    onValueChange={setSelectedNeighborhood}
+                    data-testid="select-neighborhood"
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select neighborhood" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {neighborhoods.map((neighborhood) => (
+                        <SelectItem key={neighborhood} value={neighborhood}>
+                          {neighborhood}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+
               <div>
-                <Label htmlFor="neighborhood" className="text-sm font-medium">
-                  Neighborhood (Optional)
+                <Label htmlFor="duration" className="text-sm font-medium">
+                  Video Duration (seconds)
                 </Label>
                 <Select
-                  onValueChange={setSelectedNeighborhood}
-                  data-testid="select-neighborhood"
+                  onValueChange={setDuration}
+                  value={duration}
+                  data-testid="select-duration"
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select neighborhood" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {neighborhoods.map((neighborhood) => (
-                      <SelectItem key={neighborhood} value={neighborhood}>
-                        {neighborhood}
-                      </SelectItem>
-                    ))}
+                    {selectedVideoPlatform === "story" && (
+                      <>
+                        <SelectItem value="15">
+                          15 seconds - Quick update
+                        </SelectItem>
+                      </>
+                    )}
+                    {selectedVideoPlatform === "reels" && (
+                      <>
+                        <SelectItem value="15">
+                          15 seconds - Quick tip
+                        </SelectItem>
+                        <SelectItem value="30">
+                          30 seconds - Short explanation
+                        </SelectItem>
+                        <SelectItem value="60">
+                          60 seconds - Detailed overview
+                        </SelectItem>
+                        <SelectItem value="90">
+                          90 seconds - Full explanation
+                        </SelectItem>
+                      </>
+                    )}
+                    {selectedVideoPlatform === "youtube" && (
+                      <>
+                        <SelectItem value="60">
+                          1 minute - Quick overview
+                        </SelectItem>
+                        <SelectItem value="120">
+                          2 minutes - Detailed explanation
+                        </SelectItem>
+                        <SelectItem value="180">
+                          3 minutes - Comprehensive guide
+                        </SelectItem>
+                        <SelectItem value="300">
+                          5 minutes - In-depth analysis
+                        </SelectItem>
+                        <SelectItem value="600">
+                          10 minutes - Complete tutorial
+                        </SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            <div>
-              <Label htmlFor="duration" className="text-sm font-medium">
-                Video Duration (seconds)
-              </Label>
-              <Select
-                onValueChange={setDuration}
-                value={duration}
-                data-testid="select-duration"
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedVideoPlatform === "story" && (
-                    <>
-                      <SelectItem value="15">
-                        15 seconds - Quick update
-                      </SelectItem>
-                    </>
-                  )}
-                  {selectedVideoPlatform === "reels" && (
-                    <>
-                      <SelectItem value="15">15 seconds - Quick tip</SelectItem>
-                      <SelectItem value="30">
-                        30 seconds - Short explanation
-                      </SelectItem>
-                      <SelectItem value="60">
-                        60 seconds - Detailed overview
-                      </SelectItem>
-                      <SelectItem value="90">
-                        90 seconds - Full explanation
-                      </SelectItem>
-                    </>
-                  )}
-                  {selectedVideoPlatform === "youtube" && (
-                    <>
-                      <SelectItem value="60">
-                        1 minute - Quick overview
-                      </SelectItem>
-                      <SelectItem value="120">
-                        2 minutes - Detailed explanation
-                      </SelectItem>
-                      <SelectItem value="180">
-                        3 minutes - Comprehensive guide
-                      </SelectItem>
-                      <SelectItem value="300">
-                        5 minutes - In-depth analysis
-                      </SelectItem>
-                      <SelectItem value="600">
-                        10 minutes - Complete tutorial
-                      </SelectItem>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Generated Script Display */}
-            {generatedScript && (
-              <div>
-                <Label className="text-sm font-medium">
-                  Generated Script Preview
-                </Label>
-                <Textarea
-                  value={generatedScript}
-                  onChange={(e) => setGeneratedScript(e.target.value)}
-                  rows={6}
-                  className="mt-2"
-                  placeholder="AI-generated script will appear here..."
-                  data-testid="textarea-script"
-                />
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={handleCreateVideo}
-                disabled={createVideoMutation.isPending}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-                data-testid="button-create-video"
-              >
-                <FileVideo className="mr-2 h-4 w-4" />
-                {createVideoMutation.isPending
-                  ? "Creating..."
-                  : "Create Video Project"}
-              </Button>
-
-              {videoTopic && (
-                <Button
-                  onClick={() => handleGenerateScript("temp")}
-                  disabled={generateScriptMutation.isPending}
-                  variant="outline"
-                  data-testid="button-generate-script"
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  {generateScriptMutation.isPending
-                    ? "Generating..."
-                    : "Generate AI Script"}
-                </Button>
+              {/* Generated Script Display */}
+              {generatedScript && (
+                <div>
+                  <Label className="text-sm font-medium">
+                    Generated Script Preview
+                  </Label>
+                  <Textarea
+                    value={generatedScript}
+                    onChange={(e) => setGeneratedScript(e.target.value)}
+                    rows={6}
+                    className="mt-2"
+                    placeholder="AI-generated script will appear here..."
+                    data-testid="textarea-script"
+                  />
+                </div>
               )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={handleCreateVideo}
+                  disabled={
+                    createVideoMutation.isPending ||
+                    generateVideoMutation.isPending
+                  }
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  data-testid="button-create-video"
+                >
+                  <FileVideo className="mr-2 h-4 w-4" />
+                  {createVideoMutation.isPending
+                    ? "Creating & Generating..."
+                    : generateVideoMutation.isPending
+                    ? "Sending to HeyGen..."
+                    : "Create & Generate Video"}
+                </Button>
+
+                {videoTopic && (
+                  <Button
+                    onClick={handleGenerateScript}
+                    disabled={generateScriptMutation.isPending}
+                    variant="outline"
+                    data-testid="button-generate-script"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    {generateScriptMutation.isPending
+                      ? "Generating..."
+                      : "Generate AI Script"}
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
           </div>
 
           {/* Upload Section */}
-          <div id="upload-section" className="border rounded-lg p-6 scroll-mt-4">
+          <div
+            id="upload-section"
+            className="border rounded-lg p-6 scroll-mt-4"
+          >
             <div className="mb-6">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Upload className="h-5 w-5 text-primary" />
                 Upload Your Own Video
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Upload your existing real estate videos to manage and share them through the platform
+                Upload your existing real estate videos to manage and share them
+                through the platform
               </p>
             </div>
-            
+
             {uploadedVideo ? (
               <div className="space-y-4">
                 <div className="border rounded-lg overflow-hidden">
@@ -984,7 +1210,10 @@ export function VideoGenerator() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="upload-video-title" className="text-sm font-medium">
+                    <Label
+                      htmlFor="upload-video-title"
+                      className="text-sm font-medium"
+                    >
                       Video Title
                     </Label>
                     <Input
@@ -996,13 +1225,18 @@ export function VideoGenerator() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="upload-video-description" className="text-sm font-medium">
+                    <Label
+                      htmlFor="upload-video-description"
+                      className="text-sm font-medium"
+                    >
                       Description
                     </Label>
                     <Input
                       id="upload-video-description"
                       value={uploadVideoDescription}
-                      onChange={(e) => setUploadVideoDescription(e.target.value)}
+                      onChange={(e) =>
+                        setUploadVideoDescription(e.target.value)
+                      }
                       placeholder="Brief description of your video"
                       data-testid="input-upload-video-description"
                     />
@@ -1010,7 +1244,9 @@ export function VideoGenerator() {
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t">
-                  <p className="text-sm text-green-600 font-medium">Video uploaded successfully!</p>
+                  <p className="text-sm text-green-600 font-medium">
+                    Video uploaded successfully!
+                  </p>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -1027,7 +1263,8 @@ export function VideoGenerator() {
                       onClick={() => {
                         toast({
                           title: "Video Saved!",
-                          description: "Your uploaded video has been added to your video library",
+                          description:
+                            "Your uploaded video has been added to your video library",
                         });
                         setUploadedVideo(null);
                         setUploadVideoTitle("");
@@ -1046,7 +1283,11 @@ export function VideoGenerator() {
                   maxNumberOfFiles={1}
                   maxFileSize={209715200}
                   onGetUploadParameters={async () => {
-                    const response = await apiRequest("POST", "/api/objects/upload", {});
+                    const response = await apiRequest(
+                      "POST",
+                      "/api/objects/upload",
+                      {}
+                    );
                     const data = await response.json();
                     return {
                       method: "PUT" as const,
@@ -1059,7 +1300,8 @@ export function VideoGenerator() {
                     setUploadedVideo(localVideoUrl);
                     toast({
                       title: "Video Uploaded",
-                      description: "Your video is ready! Add a title and description below.",
+                      description:
+                        "Your video is ready! Add a title and description below.",
                     });
                   }}
                   buttonClassName="w-full min-h-32"
@@ -1091,12 +1333,14 @@ export function VideoGenerator() {
                 View and manage all your created videos
               </p>
             </div>
-            
+
             {videos?.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Video className="mx-auto h-8 w-8 mb-2" />
                 <p>No videos created yet</p>
-                <p className="text-xs">Use the templates or manual creation above to get started</p>
+                <p className="text-xs">
+                  Use the templates or manual creation above to get started
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1149,15 +1393,20 @@ export function VideoGenerator() {
                             if (avatarType === "public" && !selectedAvatar) {
                               toast({
                                 title: "Avatar Required",
-                                description: "Please select a public avatar before generating the video.",
+                                description:
+                                  "Please select a public avatar before generating the video.",
                                 variant: "destructive",
                               });
                               return;
                             }
-                            if (avatarType === "talking_photo" && !uploadedAvatarPhoto) {
+                            if (
+                              avatarType === "talking_photo" &&
+                              !uploadedAvatarPhoto
+                            ) {
                               toast({
                                 title: "Photo Required",
-                                description: "Please upload a photo before generating the video.",
+                                description:
+                                  "Please upload a photo before generating the video.",
                                 variant: "destructive",
                               });
                               return;
@@ -1165,17 +1414,24 @@ export function VideoGenerator() {
                             if (avatarType === "custom") {
                               toast({
                                 title: "Custom Avatar Not Yet Available",
-                                description: "Custom gesture-enabled avatars must be created on HeyGen platform first. Once created, they'll appear in the Public Avatars tab.",
+                                description:
+                                  "Custom gesture-enabled avatars must be created on HeyGen platform first. Once created, they'll appear in the Public Avatars tab.",
                                 variant: "destructive",
                               });
                               return;
                             }
-                            
+
                             generateVideoMutation.mutate({
                               videoId: video.id,
-                              avatarId: avatarType === "public" ? (selectedAvatar || video.avatarId || "") : undefined,
+                              avatarId:
+                                avatarType === "public"
+                                  ? selectedAvatar || video.avatarId || ""
+                                  : undefined,
                               avatarType,
-                              uploadedAvatarPhoto: avatarType === "talking_photo" ? uploadedAvatarPhoto : undefined,
+                              uploadedAvatarPhoto:
+                                avatarType === "talking_photo"
+                                  ? uploadedAvatarPhoto
+                                  : undefined,
                               gestureIntensity,
                             });
                           }}
@@ -1315,7 +1571,9 @@ export function VideoGenerator() {
                       data-testid={`upload-youtube-modal-${watchingVideo.id}`}
                     >
                       <Youtube className="mr-2 h-4 w-4" />
-                      {uploadToYoutubeMutation.isPending ? "Uploading..." : "Upload to YouTube"}
+                      {uploadToYoutubeMutation.isPending
+                        ? "Uploading..."
+                        : "Upload to YouTube"}
                     </Button>
                   )}
 
