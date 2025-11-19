@@ -5999,7 +5999,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         dbGroups.map(async (dbGroup) => {
           const groupId = dbGroup.heygenGroupId;
           let looksCount = 0;
-          let heygenStatus = dbGroup.status;
+          let heygenStatus = dbGroup.trainingStatus;
           let previewImage = dbGroup.s3ImageUrl;
 
           try {
@@ -6014,13 +6014,13 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
               const heygenLookStatus = heygenFirstLook.status; // "pending" or "completed"
               
               // Update database status if it doesn't match HeyGen
-              if (dbGroup.status !== heygenLookStatus && heygenLookStatus === "completed") {
+              if (dbGroup.trainingStatus !== heygenLookStatus && heygenLookStatus === "completed") {
                 try {
                   await storage.updatePhotoAvatarGroup(dbGroup.id, {
-                    status: "completed"
+                    trainingStatus: "completed"
                   });
                   heygenStatus = "completed";
-                  console.log(`✅ Synced status for group ${groupId}: ${dbGroup.status} → completed`);
+                  console.log(`✅ Synced status for group ${groupId}: ${dbGroup.trainingStatus} → completed`);
                 } catch (updateError) {
                   console.warn(`⚠️ Failed to update status for group ${groupId}:`, updateError);
                 }
@@ -6063,7 +6063,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           // pending = HeyGen processing images
           // completed = Ready to train
           // ready = Trained and ready to generate looks
-          const rawStatus = heygenStatus || dbGroup.status || "pending";
+          const rawStatus = heygenStatus || dbGroup.trainingStatus || "pending";
           
           let status = rawStatus;
           if (rawStatus === "ready" || (rawStatus === "completed" && looksCount > 0)) {
