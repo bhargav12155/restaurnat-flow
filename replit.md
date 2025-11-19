@@ -67,6 +67,14 @@ Content generation is powered by OpenAI's GPT-5 model, specifically optimized fo
 
 **Gesture Controls**: Available for avatars with `supportsGestures=true`. Intensity levels: Off, Subtle, Moderate, Expressive (0-3 scale). Gesture controls dynamically show/hide based on selected avatar's capabilities.
 
+**Photo Avatar Training Workflow** (Fixed November 19, 2025):
+- Upload photos → HeyGen status = "pending" (processing images) → UI shows "Processing Images..." with spinner
+- HeyGen finishes → status = "completed" → UI shows "Train Avatar" button (previously attempted training too early)
+- User clicks Train → trains avatar group → status = "ready" → UI shows "New Looks" and "Edit" buttons
+- Backend automatically syncs HeyGen status from API responses to database when fetching groups
+- Removed automatic training attempt immediately after group creation (was failing because HeyGen needs time to process images first)
+- Fixed "Model not found" errors when generating new looks by enforcing proper training sequence
+
 ### Storage Architecture
 The application implements a dual-storage strategy combining HeyGen's API storage with AWS S3 for backup and long-term archival:
 

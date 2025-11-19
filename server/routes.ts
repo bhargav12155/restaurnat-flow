@@ -6008,13 +6008,28 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
               ? looks.avatar_list.length
               : 0;
 
-            // If s3ImageUrl is not available, use the first avatar's image from HeyGen
-            if (
-              !previewImage &&
-              looks?.avatar_list &&
-              looks.avatar_list.length > 0
-            ) {
-              previewImage = looks.avatar_list[0].image_url;
+            // Sync HeyGen status to database
+            if (looks?.avatar_list && looks.avatar_list.length > 0) {
+              const heygenFirstLook = looks.avatar_list[0];
+              const heygenLookStatus = heygenFirstLook.status; // "pending" or "completed"
+              
+              // Update database status if HeyGen finished processing
+              if (dbGroup.status === "created" && heygenLookStatus === "completed") {
+                try {
+                  await storage.updatePhotoAvatarGroup(dbGroup.heygenGroupId, userIdString, {
+                    status: "completed"
+                  });
+                  heygenStatus = "completed";
+                  console.log(`✅ Synced status for group ${groupId}: created → completed`);
+                } catch (updateError) {
+                  console.warn(`⚠️ Failed to update status for group ${groupId}:`, updateError);
+                }
+              }
+              
+              // Use first avatar's image if no preview available
+              if (!previewImage) {
+                previewImage = heygenFirstLook.image_url;
+              }
             }
           } catch (e) {
             console.warn(
@@ -6040,15 +6055,23 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             );
           }
 
-          // Use database status as source of truth
-          const rawStatus = dbGroup.status || "pending";
-          const isCompleted =
-            rawStatus === "completed" || rawStatus === "ready";
-          const status = isCompleted
-            ? "ready"
-            : looksCount > 0
-            ? "ready"  // If it has looks, it's ready to use!
-            : rawStatus;
+          // Map HeyGen status to our status system
+          // pending = HeyGen processing images
+          // completed = Ready to train
+          // ready = Trained and ready to generate looks
+          const rawStatus = heygenStatus || dbGroup.status || "pending";
+          
+          let status = rawStatus;
+          if (rawStatus === "ready" || (rawStatus === "completed" && looksCount > 0)) {
+            // Already trained or has looks - ready to generate
+            status = "ready";
+          } else if (rawStatus === "completed") {
+            // HeyGen finished processing, ready to train
+            status = "completed";
+          } else {
+            // Still processing images
+            status = "pending";
+          }
 
           return {
             group_id: groupId,
@@ -6973,28 +6996,14 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           }
         }
 
-        if (groupId) {
-          try {
-            console.log("🚀 Backend: Starting training for group:", groupId);
-            await photoAvatarService.trainAvatarGroup(groupId);
-            console.log("✅ Backend: Training started successfully");
-          } catch (trainingError: any) {
-            console.log(
-              "⚠️ Backend: Training failed, but group was created successfully:",
-              trainingError?.message
-            );
-            console.log(
-              "⚠️ Backend: Group creation was successful, training may happen automatically"
-            );
-          }
-        } else {
-          console.log("⚠️ Backend: No groupId found, skipping training");
-        }
+        // Don't auto-train - HeyGen needs time to process images first
+        // Training will happen when user clicks "Train" button after images are ready
+        console.log("✅ Backend: Avatar group created, waiting for HeyGen to process images");
 
         const responseData = {
           success: true,
           groupId: groupId,
-          message: "Avatar group created and training started",
+          message: "Avatar group created. Waiting for HeyGen to process images before training.",
         };
 
         console.log(
