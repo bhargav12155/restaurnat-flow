@@ -15,12 +15,16 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
     const userType = req.userType;
     const userId = req.userId;
 
+    if (!userId) {
+      return res.status(401).json({ error: "User ID not found" });
+    }
+
     if (userType === "agent") {
       // Fetch agent user from database
       const [user] = await db
         .select()
         .from(users)
-        .where(eq(users.id, userId))
+        .where(eq(users.id, userId as string))
         .limit(1);
 
       if (!user) {
@@ -40,7 +44,7 @@ router.get("/me", requireAuth, async (req: Request, res: Response) => {
       const [user] = await db
         .select()
         .from(publicUsers)
-        .where(eq(publicUsers.id, parseInt(userId)))
+        .where(eq(publicUsers.id, parseInt(userId as string)))
         .limit(1);
 
       if (!user) {
