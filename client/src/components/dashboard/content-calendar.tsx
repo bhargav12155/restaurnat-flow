@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { AiGeneratedBadge } from "@/components/shared/ai-generated-badge";
+import { useAuth } from "@/hooks/useAuth";
 
 const calendarDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -393,6 +394,7 @@ interface ScheduledPost {
 }
 
 export function ContentCalendar() {
+  const { user, isLoading: authLoading } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [localGeneratedPosts, setLocalGeneratedPosts] = useState<typeof initialScheduledContent>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -404,6 +406,13 @@ export function ContentCalendar() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const { toast } = useToast();
+  
+  // Get user's display name with proper formatting
+  const rawName = user?.name || user?.email?.split('@')[0];
+  const userName = rawName 
+    ? rawName.charAt(0).toUpperCase() + rawName.slice(1) // Capitalize first letter
+    : "Agent";
+  const hasRealName = !!rawName; // Flag to check if we have a real name vs fallback
 
   const { data: apiScheduledPosts = [], isLoading } = useQuery<ScheduledPost[]>({
     queryKey: ["/api/scheduled-posts", statusFilter],
@@ -1067,7 +1076,7 @@ export function ContentCalendar() {
                       <span className="text-sm font-bold text-golden-foreground">MB</span>
                     </div>
                     <div className="flex-1">
-                      <div className="font-semibold text-sm">Mike Bjork</div>
+                      <div className="font-semibold text-sm">{userName}</div>
                       <div className="text-xs text-gray-500 flex items-center gap-1">
                         <span>{format(new Date(), "MMM d 'at' h:mm a")}</span>
                         <span>·</span>
@@ -1257,7 +1266,7 @@ export function ContentCalendar() {
                       <span className="text-sm font-bold text-golden-foreground">MB</span>
                     </div>
                     <div>
-                      <div className="font-semibold text-sm">Mike Bjork Real Estate</div>
+                      <div className="font-semibold text-sm">{userName} Real Estate</div>
                       <div className="text-xs text-gray-500">Omaha Real Estate Expert</div>
                     </div>
                   </div>
@@ -1340,7 +1349,7 @@ export function ContentCalendar() {
                       <span className="text-sm font-bold text-golden-foreground">MB</span>
                     </div>
                     <div>
-                      <div className="font-semibold text-sm">Mike Bjork</div>
+                      <div className="font-semibold text-sm">{userName}</div>
                       <div className="text-xs text-gray-500">Real Estate Professional at BHHS</div>
                       <div className="text-xs text-gray-400">
                         {format(new Date(), "MMM d, h:mm a")}
@@ -1418,7 +1427,7 @@ export function ContentCalendar() {
                       <span className="text-sm font-bold text-golden-foreground">MB</span>
                     </div>
                     <div className="flex-1">
-                      <div className="font-semibold text-sm">Mike Bjork</div>
+                      <div className="font-semibold text-sm">{userName}</div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
                         {previewContent.platform} • {format(new Date(), "MMM d, h:mm a")}
                       </div>
