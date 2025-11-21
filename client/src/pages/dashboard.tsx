@@ -128,16 +128,9 @@ export default function Dashboard() {
           <>
             <OverviewCards />
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-              <div className="lg:col-span-2 w-full min-w-0">
-                <AIContentGenerator isGenerating={isGenerating} />
-              </div>
-              <div className="w-full min-w-0 space-y-4 sm:space-y-6">
-                <SocialMediaManager />
-              </div>
+            <div className="w-full min-w-0 space-y-4 sm:space-y-6">
+              <SocialMediaManager />
             </div>
-
-            <AISearchOptimizer />
 
             <ScheduledPostsManager />
           </>
