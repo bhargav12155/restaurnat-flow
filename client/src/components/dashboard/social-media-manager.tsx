@@ -1513,21 +1513,6 @@ ${agentName} | ${brokerageName}
           )}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <Button
-                onClick={handleOptimizeContent}
-                disabled={
-                  optimizeContentMutation.isPending || !postContent.trim()
-                }
-                variant="ghost"
-                size="sm"
-                className="text-primary hover:text-primary/80"
-                data-testid="button-optimize-content"
-              >
-                <Sparkles className="mr-1 h-3 w-3" />
-                {optimizeContentMutation.isPending
-                  ? "Optimizing..."
-                  : "AI Optimize"}
-              </Button>
               <Dialog open={showPreview} onOpenChange={setShowPreview}>
                 <DialogTrigger asChild>
                   <Button
@@ -1608,16 +1593,33 @@ ${agentName} | ${brokerageName}
                 <Calendar className="h-4 w-4" />
               </Button>
             </div>
-            <Button
-              onClick={handlePost}
-              disabled={
-                postMutation.isPending || selectedPlatforms.length === 0
-              }
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-              data-testid="button-post-now"
-            >
-              {postMutation.isPending ? "Posting..." : "Post Now"}
-            </Button>
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={handleOptimizeContent}
+                disabled={
+                  optimizeContentMutation.isPending || !postContent.trim()
+                }
+                variant="ghost"
+                size="sm"
+                className="text-primary hover:text-primary/80"
+                data-testid="button-optimize-content"
+              >
+                <Sparkles className="mr-1 h-3 w-3" />
+                {optimizeContentMutation.isPending
+                  ? "Optimizing..."
+                  : "AI Optimize"}
+              </Button>
+              <Button
+                onClick={handlePost}
+                disabled={
+                  postMutation.isPending || selectedPlatforms.length === 0
+                }
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                data-testid="button-post-now"
+              >
+                {postMutation.isPending ? "Posting..." : "Post Now"}
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>
