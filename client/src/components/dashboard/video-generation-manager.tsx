@@ -391,29 +391,17 @@ export function VideoGenerationManager() {
                     ["completed", "ready"].includes(
                       (group.status || "").toLowerCase()
                     ) || (group.avatar_count || 0) > 0;
+                  const statusText =
+                    (group.avatar_count || 0) > 0
+                      ? `ready (${group.avatar_count})`
+                      : group.status || "pending";
                   return (
                     <SelectItem
                       key={group.group_id}
                       value={group.group_id}
                       disabled={!isReady}
                     >
-                      <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center space-x-2">
-                          <User className="h-4 w-4" />
-                          <span>{group.name}</span>
-                        </div>
-                        <span
-                          className={`text-xs rounded px-2 py-0.5 border ${
-                            isReady
-                              ? "border-green-300 text-green-700 bg-green-50"
-                              : "border-yellow-300 text-yellow-700 bg-yellow-50"
-                          }`}
-                        >
-                          {(group.avatar_count || 0) > 0
-                            ? `ready (${group.avatar_count})`
-                            : group.status || "pending"}
-                        </span>
-                      </div>
+                      {group.name} - {statusText}
                     </SelectItem>
                   );
                 })
