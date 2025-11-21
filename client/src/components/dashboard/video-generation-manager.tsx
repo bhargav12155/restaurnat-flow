@@ -408,6 +408,28 @@ export function VideoGenerationManager() {
               )}
             </SelectContent>
           </Select>
+          
+          {/* Avatar Group Preview */}
+          {selectedGroup && (
+            <div className="mt-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+              <p className="text-xs font-semibold text-gray-600 mb-3">Selected Avatar Group</p>
+              <div className="flex items-center gap-4">
+                {availableLooks.length > 0 && (
+                  <img
+                    src={(availableLooks[0] as any).image_url || (availableLooks[0] as any).image}
+                    alt={selectedGroup.name}
+                    className="w-16 h-16 rounded-lg object-cover border border-gray-300"
+                  />
+                )}
+                <div>
+                  <h3 className="font-semibold text-gray-900">{selectedGroup.name}</h3>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {availableLooks.length} look{availableLooks.length !== 1 ? 's' : ''} available
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Avatar Look Selection */}
