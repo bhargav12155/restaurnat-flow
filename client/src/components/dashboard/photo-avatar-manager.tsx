@@ -216,6 +216,8 @@ export function PhotoAvatarManager() {
   } | null>(null);
   const [motionPrompt, setMotionPrompt] = useState("");
   const [motionType, setMotionType] = useState<string>("consistent");
+  const [showGroupNameDialog, setShowGroupNameDialog] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState("");
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
     name: "Mike Bjork Professional Avatar",
     age: "Early Middle Age",
@@ -675,6 +677,27 @@ export function PhotoAvatarManager() {
   };
 
   const handleUploadFiles = async () => {
+    if (uploadedFiles.length === 0) {
+      toast({
+        title: "No Files Selected",
+        description: "Please select at least one photo to upload.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setShowGroupNameDialog(true);
+  };
+
+  const handleConfirmGroupName = async () => {
+    if (!groupNameInput.trim()) {
+      toast({
+        title: "Name Required",
+        description: "Please enter a name for your avatar group.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       // Upload all photos and collect their keys
       const uploadedKeys: string[] = [];
@@ -683,23 +706,12 @@ export function PhotoAvatarManager() {
         uploadedKeys.push(result.imageKey);
       }
 
-      // Ask for avatar group name
-      const groupName = prompt("Enter a name for this avatar group:");
-      if (!groupName) {
-        toast({
-          title: "Upload Cancelled",
-          description: "Please provide a name for your avatar group.",
-          variant: "destructive",
-        });
-        return;
-      }
-
       // Create avatar group with uploaded photos
       const response = await fetch("/api/photo-avatars/create-from-uploads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: groupName,
+          name: groupNameInput.trim(),
           imageKeys: uploadedKeys,
         }),
       });
@@ -708,13 +720,15 @@ export function PhotoAvatarManager() {
 
       toast({
         title: "Avatar Group Created!",
-        description: `Created "${groupName}" with ${uploadedKeys.length} photos. Training will start automatically.`,
+        description: `Created "${groupNameInput.trim()}" with ${uploadedKeys.length} photos. Training will start automatically.`,
       });
 
       queryClient.invalidateQueries({
         queryKey: ["/api/photo-avatars/groups"],
       });
       setUploadedFiles([]);
+      setGroupNameInput("");
+      setShowGroupNameDialog(false);
     } catch (error) {
       console.error("Upload error:", error);
       toast({
