@@ -1265,6 +1265,16 @@ ${agentName} | ${brokerageName}
                   )}
                 </div>
               </div>
+              {!account.isConnected && (account.platform === "facebook" || account.platform === "facebook_page" || account.platform === "instagram") && (
+                <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md w-full">
+                  <p className="text-xs text-blue-900 dark:text-blue-100">
+                    <strong>Note:</strong> {account.platform === "instagram" ? "Instagram" : "Facebook"} posts require a{" "}
+                    {account.platform === "instagram" ? "Business or Creator Account" : "Page"}. Posts will not appear on your personal profile. Please make sure you have a{" "}
+                    {account.platform === "instagram" ? "Business/Creator Account" : "Page"} created before connecting.
+                  </p>
+                </div>
+              )}
+              </div>
             );
           })}
         </div>
