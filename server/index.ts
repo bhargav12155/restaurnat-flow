@@ -127,11 +127,11 @@ app.use((req, res, next) => {
   server.listen(
     {
       port,
-      host: "localhost",
+      host: "0.0.0.0", // Must bind to 0.0.0.0 for Replit to detect the port
     },
     () => {
       log(
-        `🚀 RealtyFlow Multi-User Server running on http://localhost:${port}`
+        `🚀 RealtyFlow Multi-User Server running on http://0.0.0.0:${port}`
       );
       log(`📊 Database: Connected to Neon PostgreSQL`);
       log(`🔐 Authentication: JWT Multi-User System Active`);
@@ -142,7 +142,7 @@ app.use((req, res, next) => {
       log(`   • Public User Login: POST /api/auth/public/login`);
       log(`   • Check Auth: GET /api/auth/check`);
       log(`   • Dashboard: GET /api/dashboard/overview`);
-      log(`   • WebSocket: ws://localhost:${port}/ws`);
+      log(`   • WebSocket: ws://0.0.0.0:${port}/ws`);
     }
   );
 })();
