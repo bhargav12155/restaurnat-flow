@@ -87,6 +87,7 @@ export function APIKeyManager() {
   return (
     <div className="space-y-4" data-testid="api-key-manager">
       {/* Header Card with Overall Status */}
+      {false && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -149,9 +150,10 @@ export function APIKeyManager() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Key Details */}
-      {keyStatus?.keys && keyStatus.keys.length > 0 && (
+      {false && keyStatus?.keys && keyStatus.keys.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Active API Keys</CardTitle>
