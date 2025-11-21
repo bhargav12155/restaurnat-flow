@@ -454,18 +454,7 @@ export function VideoGenerator() {
     }
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-xl font-semibold text-foreground flex items-center">
-          <Camera className="mr-2 h-5 w-5" />
-          AI Video Generator
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Create professional real estate videos with AI avatars for YouTube
-        </p>
-      </CardHeader>
-      <CardContent>
+  return null;
         <div className="space-y-6">
           {/* Quick Navigation Buttons */}
           <div className="flex gap-2 flex-wrap">

@@ -142,17 +142,6 @@ export default function Dashboard() {
             <AISearchOptimizer />
 
             <ScheduledPostsManager />
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-              <div className="w-full min-w-0">
-                <SEOOptimizer />
-              </div>
-              <div className="w-full min-w-0">
-                <ContentCalendar />
-              </div>
-            </div>
-
-            <LocalMarketTools />
           </>
         );
     }
