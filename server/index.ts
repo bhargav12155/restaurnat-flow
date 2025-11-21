@@ -124,10 +124,14 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+  
+  // Must bind to 0.0.0.0 for both Replit and local dev to work
+  // Browser connects via the domain it's accessing (Replit URL or localhost:5000)
+  // not via the bind address
   server.listen(
     {
       port,
-      host: "0.0.0.0", // Must bind to 0.0.0.0 for Replit to detect the port
+      host: "0.0.0.0",
     },
     () => {
       log(
