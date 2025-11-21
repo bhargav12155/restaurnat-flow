@@ -1631,27 +1631,7 @@ ${agentName} | ${brokerageName}
           </div>
         </div>
 
-        {/* Upcoming Posts */}
-        <div>
-          <h3 className="text-sm font-medium text-foreground mb-3">
-            Scheduled Posts
-          </h3>
-          <div className="space-y-2">
-            {scheduledPosts.map((post) => (
-              <div
-                key={post.id}
-                className="p-3 bg-muted rounded-md"
-                data-testid={`scheduled-post-${post.id}`}
-              >
-                <p className="text-sm text-foreground">"{post.content}"</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {post.date} • {post.platforms}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </CardContent>
+        </CardContent>
 
       {/* Video Upload Dialog for YouTube */}
       <Dialog open={showVideoUpload} onOpenChange={setShowVideoUpload}>
