@@ -1316,6 +1316,50 @@ export function PhotoAvatarManager() {
               </>
             )}
 
+            {/* Group Name Dialog */}
+            <Dialog open={showGroupNameDialog} onOpenChange={setShowGroupNameDialog}>
+              <DialogContent data-testid="dialog-group-name">
+                <DialogHeader>
+                  <DialogTitle>Name Your Avatar Group</DialogTitle>
+                  <DialogDescription>
+                    Enter a name for your new avatar group
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="e.g., Professional Avatar, Business Headshot"
+                    value={groupNameInput}
+                    onChange={(e) => setGroupNameInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleConfirmGroupName();
+                      }
+                    }}
+                    data-testid="input-group-name"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowGroupNameDialog(false);
+                        setGroupNameInput("");
+                      }}
+                      data-testid="button-cancel-group"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleConfirmGroupName}
+                      disabled={!groupNameInput.trim()}
+                      data-testid="button-confirm-group"
+                    >
+                      Create Avatar Group
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             {/* Upload History - Grid Layout */}
             {avatarGroups && avatarGroups.length > 0 && (
               <div className="mt-6 border-t pt-4">
