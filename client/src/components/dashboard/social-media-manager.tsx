@@ -1327,21 +1327,6 @@ ${agentName} | ${brokerageName}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-foreground">Quick Post</h3>
-            <Button
-              onClick={handleOptimizeContent}
-              disabled={
-                optimizeContentMutation.isPending || !postContent.trim()
-              }
-              variant="ghost"
-              size="sm"
-              className="text-primary hover:text-primary/80"
-              data-testid="button-optimize-content"
-            >
-              <Sparkles className="mr-1 h-3 w-3" />
-              {optimizeContentMutation.isPending
-                ? "Optimizing..."
-                : "AI Optimize"}
-            </Button>
           </div>
 
           {/* Property Selector */}
@@ -1528,6 +1513,21 @@ ${agentName} | ${brokerageName}
           )}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
+              <Button
+                onClick={handleOptimizeContent}
+                disabled={
+                  optimizeContentMutation.isPending || !postContent.trim()
+                }
+                variant="ghost"
+                size="sm"
+                className="text-primary hover:text-primary/80"
+                data-testid="button-optimize-content"
+              >
+                <Sparkles className="mr-1 h-3 w-3" />
+                {optimizeContentMutation.isPending
+                  ? "Optimizing..."
+                  : "AI Optimize"}
+              </Button>
               <Dialog open={showPreview} onOpenChange={setShowPreview}>
                 <DialogTrigger asChild>
                   <Button
