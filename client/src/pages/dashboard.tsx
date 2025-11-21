@@ -137,8 +137,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <VideoGenerator />
-
             <AISearchOptimizer />
 
             <ScheduledPostsManager />
