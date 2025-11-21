@@ -400,18 +400,6 @@ export function StreamingAvatarComponent() {
             </div>
           )}
 
-          {/* Connection Status */}
-          <div className="flex items-center gap-2">
-            <Badge variant={isConnected ? "default" : "secondary"} data-testid="connection-status">
-              {isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Disconnected'}
-            </Badge>
-            {isSpeaking && (
-              <Badge variant="outline" className="animate-pulse" data-testid="speaking-indicator">
-                🗣️ Speaking
-              </Badge>
-            )}
-          </div>
-
           {/* Connection Controls */}
           <div className="flex gap-2">
             {!isConnected ? (
