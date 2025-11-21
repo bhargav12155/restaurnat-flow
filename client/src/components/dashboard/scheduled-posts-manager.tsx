@@ -88,12 +88,11 @@ export function ScheduledPostsManager() {
   const [previewPost, setPreviewPost] = useState<ScheduledPost | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   
-  // Get user's display name with proper formatting (safe)
-  const emailName = user?.email ? user.email.split('@')[0] : "";
-  const rawName = (user?.name || emailName || "").trim();
-  const userName = rawName
-    ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
-    : "Agent";
+  // Get user's display name with proper formatting
+  const rawName = user?.name || user?.email?.split('@')[0];
+  const userName = rawName 
+    ? rawName.charAt(0).toUpperCase() + rawName.slice(1) // Capitalize first letter
+    : "Real Estate Agent";
   const [isEditingWithAI, setIsEditingWithAI] = useState(false);
   const [aiEditContent, setAiEditContent] = useState("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);

@@ -407,12 +407,12 @@ export function ContentCalendar() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const { toast } = useToast();
   
-  // Get user's display name with proper formatting (safe)
-  const emailName = user?.email ? user.email.split('@')[0] : "";
-  const rawName = (user?.name || emailName || "").trim();
-  const userName = rawName
-    ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
+  // Get user's display name with proper formatting
+  const rawName = user?.name || user?.email?.split('@')[0];
+  const userName = rawName 
+    ? rawName.charAt(0).toUpperCase() + rawName.slice(1) // Capitalize first letter
     : "Agent";
+  const hasRealName = !!rawName; // Flag to check if we have a real name vs fallback
 
   const { data: apiScheduledPosts = [], isLoading } = useQuery<ScheduledPost[]>({
     queryKey: ["/api/scheduled-posts", statusFilter],
