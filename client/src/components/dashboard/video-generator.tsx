@@ -455,7 +455,7 @@ export function VideoGenerator() {
   };
 
   return null;
-        <div className="space-y-6">
+}
           {/* Quick Navigation Buttons */}
           <div className="flex gap-2 flex-wrap">
             <Button
