@@ -13,6 +13,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { friendlyError, messages } from "@/lib/messages";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1173,108 +1179,109 @@ ${agentName} | ${brokerageName}
             const PlatformIcon = platformInfo.icon;
 
             return (
-              <div
-                key={account.id}
-                className="flex items-center justify-between"
-              >
-                <div className="flex items-center space-x-3">
-                  <Checkbox
-                    checked={selectedPlatforms.includes(account.platform)}
-                    onCheckedChange={(checked) =>
-                      handlePlatformToggle(
-                        account.platform,
-                        account.isConnected,
-                      )
-                    }
-                    disabled={!account.isConnected}
-                    className="h-5 w-5 bg-[#2d4450] text-[#304652]"
-                    data-testid={`checkbox-${account.platform}`}
-                  />
-                  <PlatformIcon className={`h-4 w-4 ${platformInfo.color}`} />
-                  <span className="text-sm font-medium capitalize">
-                    {account.platform}
-                  </span>
-                </div>
+              <>
                 <div
-                  className="flex items-center gap-2"
-                  data-testid={`status-${account.platform}`}
-                  title={account.isConnected ? "Connected" : "Disconnected"}
+                  key={account.id}
+                  className="flex items-center justify-between"
                 >
-                  {account.isConnected ? (
-                    <>
-                      <Plug className="h-5 w-5 text-green-600" />
-                      <Button
-                        onClick={() =>
-                          disconnectMutation.mutate(
-                            account.platform.toLowerCase(),
-                          )
-                        }
-                        disabled={disconnectMutation.isPending}
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
-                        data-testid={`button-disconnect-${account.platform}`}
-                      >
-                        {disconnectMutation.isPending ? (
-                          <>
-                            <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                            Disconnecting...
-                          </>
-                        ) : (
-                          <>
-                            <PlugZap className="mr-1 h-3 w-3" />
-                            Disconnect
-                          </>
-                        )}
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <PlugZap className="h-5 w-5 text-red-600" />
-                      {oauthPlatforms.includes(
-                        account.platform.toLowerCase(),
-                      ) && (
+                  <div className="flex items-center space-x-3">
+                    <Checkbox
+                      checked={selectedPlatforms.includes(account.platform)}
+                      onCheckedChange={(checked) =>
+                        handlePlatformToggle(
+                          account.platform,
+                          account.isConnected,
+                        )
+                      }
+                      disabled={!account.isConnected}
+                      className="h-5 w-5 bg-[#2d4450] text-[#304652]"
+                      data-testid={`checkbox-${account.platform}`}
+                    />
+                    <PlatformIcon className={`h-4 w-4 ${platformInfo.color}`} />
+                    <span className="text-sm font-medium capitalize">
+                      {account.platform}
+                    </span>
+                  </div>
+                  <div
+                    className="flex items-center gap-2"
+                    data-testid={`status-${account.platform}`}
+                    title={account.isConnected ? "Connected" : "Disconnected"}
+                  >
+                    {account.isConnected ? (
+                      <>
+                        <Plug className="h-5 w-5 text-green-600" />
                         <Button
                           onClick={() =>
-                            handleOAuthConnect(account.platform.toLowerCase())
+                            disconnectMutation.mutate(
+                              account.platform.toLowerCase(),
+                            )
                           }
-                          disabled={
-                            connectingPlatform ===
-                            account.platform.toLowerCase()
-                          }
+                          disabled={disconnectMutation.isPending}
                           size="sm"
                           variant="outline"
-                          className="h-7 px-2 text-xs border-green-200 text-green-600 hover:bg-green-50 hover:border-green-300"
-                          data-testid={`button-connect-${account.platform}`}
+                          className="h-7 px-2 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                          data-testid={`button-disconnect-${account.platform}`}
                         >
-                          {connectingPlatform ===
-                          account.platform.toLowerCase() ? (
+                          {disconnectMutation.isPending ? (
                             <>
                               <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
-                              Connecting...
+                              Disconnecting...
                             </>
                           ) : (
                             <>
-                              <Plug className="mr-1 h-3 w-3" />
-                              Reconnect
+                              <PlugZap className="mr-1 h-3 w-3" />
+                              Disconnect
                             </>
                           )}
                         </Button>
-                      )}
-                    </>
-                  )}
+                      </>
+                    ) : (
+                      <>
+                        <PlugZap className="h-5 w-5 text-red-600" />
+                        {oauthPlatforms.includes(
+                          account.platform.toLowerCase(),
+                        ) && (
+                          <Button
+                            onClick={() =>
+                              handleOAuthConnect(account.platform.toLowerCase())
+                            }
+                            disabled={
+                              connectingPlatform ===
+                              account.platform.toLowerCase()
+                            }
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs border-green-200 text-green-600 hover:bg-green-50 hover:border-green-300"
+                            data-testid={`button-connect-${account.platform}`}
+                          >
+                            {connectingPlatform ===
+                            account.platform.toLowerCase() ? (
+                              <>
+                                <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                                Connecting...
+                              </>
+                            ) : (
+                              <>
+                                <Plug className="mr-1 h-3 w-3" />
+                                Reconnect
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-              {!account.isConnected && (account.platform === "facebook" || account.platform === "facebook_page" || account.platform === "instagram") && (
-                <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md w-full">
-                  <p className="text-xs text-blue-900 dark:text-blue-100">
-                    <strong>Note:</strong> {account.platform === "instagram" ? "Instagram" : "Facebook"} posts require a{" "}
-                    {account.platform === "instagram" ? "Business or Creator Account" : "Page"}. Posts will not appear on your personal profile. Please make sure you have a{" "}
-                    {account.platform === "instagram" ? "Business/Creator Account" : "Page"} created before connecting.
-                  </p>
-                </div>
-              )}
-              </div>
+                {!account.isConnected && (account.platform === "facebook" || account.platform === "facebook_page" || account.platform === "instagram") && (
+                  <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md w-full">
+                    <p className="text-xs text-blue-900 dark:text-blue-100">
+                      <strong>Note:</strong> {account.platform === "instagram" ? "Instagram" : "Facebook"} posts require a{" "}
+                      {account.platform === "instagram" ? "Business or Creator Account" : "Page"}. Posts will not appear on your personal profile. Please make sure you have a{" "}
+                      {account.platform === "instagram" ? "Business/Creator Account" : "Page"} created before connecting.
+                    </p>
+                  </div>
+                )}
+              </>
             );
           })}
         </div>
@@ -1604,21 +1611,30 @@ ${agentName} | ${brokerageName}
               </Button>
             </div>
             <div className="flex items-center space-x-2">
-              <Button
-                onClick={handleOptimizeContent}
-                disabled={
-                  optimizeContentMutation.isPending || !postContent.trim()
-                }
-                variant="ghost"
-                size="sm"
-                className="text-primary hover:text-primary/80"
-                data-testid="button-optimize-content"
-              >
-                <Sparkles className="mr-1 h-3 w-3" />
-                {optimizeContentMutation.isPending
-                  ? "Optimizing..."
-                  : "AI Optimize"}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleOptimizeContent}
+                      disabled={
+                        optimizeContentMutation.isPending || !postContent.trim()
+                      }
+                      variant="ghost"
+                      size="sm"
+                      className="text-primary hover:text-primary/80"
+                      data-testid="button-optimize-content"
+                    >
+                      <Sparkles className="mr-1 h-3 w-3" />
+                      {optimizeContentMutation.isPending
+                        ? "Optimizing..."
+                        : "AI Optimize"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs">
+                    <p>AI Optimize enhances your post content with better engagement and professional messaging. It analyzes your text and suggests improvements for clarity, tone, and real estate marketing best practices to help get more visibility and responses from your audience.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Button
                 onClick={handlePost}
                 disabled={
