@@ -1792,10 +1792,12 @@ export function PhotoAvatarManager() {
                         {/* Compact Header */}
                         <div className="flex items-center justify-between">
                           <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-600 mb-1">
+                              {group.name}
+                            </p>
                             <div className="flex items-center gap-1.5">
-                              <h4 className="text-sm font-medium text-gray-800 truncate">
-                                {group.name}
-                              </h4>
+                              <h4 className="text-sm font-medium text-gray-800 truncate" />
+                          </div>
                               {group.status === "ready" && (
                                 <div
                                   className={`flex items-center gap-1 px-2 py-0.5 rounded-full ${
