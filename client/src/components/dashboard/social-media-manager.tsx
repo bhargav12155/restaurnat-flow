@@ -1630,8 +1630,7 @@ ${agentName} | ${brokerageName}
             </Button>
           </div>
         </div>
-
-        </CardContent>
+      </CardContent>
 
       {/* Video Upload Dialog for YouTube */}
       <Dialog open={showVideoUpload} onOpenChange={setShowVideoUpload}>
