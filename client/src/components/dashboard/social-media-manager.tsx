@@ -1147,19 +1147,9 @@ ${agentName} | ${brokerageName}
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-foreground">
-            Social Media Manager
-          </CardTitle>
-          <Button
-            onClick={() => setShowPostComposer(true)}
-            className="bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-            data-testid="button-create-post"
-          >
-            <Sparkles className="mr-2 h-4 w-4" />
-            Create Post
-          </Button>
-        </div>
+        <CardTitle className="text-lg font-semibold text-foreground">
+          Social Media Manager
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Platform Selection */}
