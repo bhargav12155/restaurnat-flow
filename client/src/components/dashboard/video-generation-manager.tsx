@@ -678,7 +678,7 @@ export function VideoGenerationManager() {
 
       {/* Video Generation Status Dialog */}
       <Dialog open={showVideoDialog} onOpenChange={setShowVideoDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Video Generation Status</DialogTitle>
             <DialogDescription>
@@ -872,7 +872,7 @@ export function VideoGenerationManager() {
 
     {/* Library Video Player Dialog */}
     <Dialog open={showLibraryVideoDialog} onOpenChange={setShowLibraryVideoDialog}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-playfair text-2xl">
             {selectedLibraryVideo?.title || 'Video Preview'}
