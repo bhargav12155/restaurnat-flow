@@ -324,6 +324,27 @@ export function StreamingAvatarComponent() {
             </p>
           </div>
 
+          {/* Custom Avatar Creation Info */}
+          <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-blue-900 dark:text-blue-100">
+              <div className="space-y-2">
+                <div>
+                  <strong>Creating a Custom Interactive Avatar</strong>
+                </div>
+                <div className="text-sm">
+                  You can create your own Interactive Avatar on HeyGen and use it with the Streaming API! Go to <a href="https://www.heygen.com/labs" target="_blank" rel="noopener noreferrer" className="underline font-semibold hover:text-blue-700 dark:hover:text-blue-300">HeyGen Labs</a> and click "Create Interactive Avatar" to get started.
+                </div>
+                <div className="text-sm">
+                  <a href="https://www.youtube.com/watch?v=your-video-id" target="_blank" rel="noopener noreferrer" className="underline font-semibold hover:text-blue-700 dark:hover:text-blue-300">Here is an instructions video for filming the footage!</a>
+                </div>
+                <div className="text-sm border-t border-blue-200 dark:border-blue-800 pt-2 mt-2">
+                  Need help? <strong>Contact admin (Mike)</strong> for additional assistance.
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+
           {/* Gesture Controls - Only show for gesture-enabled avatars */}
           {allAvatars.find(a => a.avatar_id === selectedAvatar)?.supportsGestures && (
             <div className="space-y-3 border rounded-lg p-4 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
