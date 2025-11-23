@@ -171,7 +171,7 @@ function SidebarContent({
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6 overflow-y-auto">
         <div className="space-y-1">
-          {navigationItems.filter((item) => item.key !== "brand-settings").map((item) => {
+          {navigationItems.map((item) => {
             const isActive = activeView === item.key;
             const isAdvancedAdvertising = item.key === "advertising";
 
