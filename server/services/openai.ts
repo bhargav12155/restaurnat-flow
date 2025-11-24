@@ -611,11 +611,64 @@ export class OpenAIService {
       const agentName = companyProfile?.agentName || "your local real estate agent";
       const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "our brokerage";
       
-      const prompt = `Create a ${platform} post about "${topic}" for ${
+      let prompt = `Create a ${platform} post about "${topic}" for ${
         neighborhood || "Omaha"
       } real estate. 
-      Make it engaging and include relevant hashtags. Keep it appropriate for ${platform}'s format and audience.
-      Include ${agentName} as the real estate agent and reference ${businessName}.`;
+      Include ${agentName} as the real estate agent and reference ${businessName}.
+      
+Platform-specific requirements for ${platform}:`;
+
+      // Add platform-specific guidelines
+      switch (platform.toLowerCase()) {
+        case "linkedin":
+          prompt += `
+- Professional tone appropriate for business network - this is where industry professionals connect
+- Write compelling 2-3 sentence introduction that delivers value immediately
+- Longer form content acceptable (300-600 characters for maximum engagement)
+- Focus on industry insights, market data, and professional expertise
+- Use first-person perspective from ${agentName} to build personal connection
+- Add value for other real estate professionals and potential clients
+- Include professional hashtags (2-3 maximum, e.g., #RealEstate #OmahaHomes)
+- Structure: Strong opening hook → Value/insight → Call-to-action
+- Assume this will accompany a professional graphic/image
+- End with clear, professional CTA (e.g., "Learn more", "Contact us", "Subscribe")
+- Reference data, market trends, or industry expertise to establish authority
+- Keep paragraphs short for mobile readability`;
+          break;
+        case "facebook":
+          prompt += `
+- Conversational and friendly tone
+- Keep length between 100-300 characters for best reach
+- Include 1-2 relevant hashtags (Facebook users prefer fewer)
+- Add engaging questions or calls-to-action
+- Use emojis sparingly`;
+          break;
+        case "instagram":
+          prompt += `
+- Visual-first approach with engaging caption
+- Keep text concise but engaging (150-300 characters)
+- Include 3-5 relevant hashtags
+- Use line breaks for readability
+- Assume this will accompany a photo/video`;
+          break;
+        case "x":
+        case "twitter":
+          prompt += `
+- Keep under 280 characters
+- Include 2-3 relevant hashtags
+- Make it shareable and quotable
+- Use engaging hooks
+- Include clear call-to-action`;
+          break;
+        default:
+          prompt += `
+- Optimize for general social media engagement
+- Keep content concise and engaging
+- Include relevant hashtags
+- Add clear call-to-action`;
+      }
+      
+      prompt += `\n\nMake it engaging and appropriate for ${platform}'s format and audience.`;
 
       const response = await multiOpenAI.makeRequest(
         "social",
@@ -626,11 +679,11 @@ export class OpenAIService {
               {
                 role: "system",
                 content:
-                  "You are a social media content creator for real estate. Create engaging posts optimized for each platform.",
+                  "You are a social media content creator for real estate. Create engaging posts optimized for each platform with platform-specific best practices.",
               },
               { role: "user", content: prompt },
             ],
-            max_completion_tokens: 300,
+            max_completion_tokens: 400,
           });
         }
       );
