@@ -29,16 +29,21 @@ export class AIContentCalendarGenerator {
     });
   }
 
-  async generate30DayPlan(
+  /**
+   * Generate content plan for specified number of weeks
+   */
+  async generateContentPlan(
     serviceAreas: string[],
     marketData: MarketData[],
     targetAudience?: string,
-    specialties?: string[]
+    specialties?: string[],
+    weeks: number = 4
   ): Promise<GeneratedContentPlan> {
     if (!this.openai) {
       await this.initialize();
     }
 
+    const days = weeks * 7;
     const areasText = serviceAreas.length > 0 ? serviceAreas.join(', ') : 'Omaha metro area';
     const audienceText = targetAudience || 'home buyers and sellers';
     const specialtiesText = specialties && specialties.length > 0 
@@ -50,7 +55,7 @@ export class AIContentCalendarGenerator {
       `${m.neighborhood}: avg $${Math.round((m.avgPrice || 0) / 1000)}K, ${m.daysOnMarket} days on market, ${m.trend} market`
     ).join('; ');
 
-    const prompt = `You are a social media content strategist for real estate agents. Create a 30-day content calendar for a real estate agent in Omaha, Nebraska.
+    const prompt = `You are a social media content strategist for real estate agents. Create a ${weeks}-week (${days}-day) content calendar for a real estate agent in Omaha, Nebraska.
 
 **Agent Profile:**
 - Service Areas: ${areasText}
@@ -58,7 +63,7 @@ export class AIContentCalendarGenerator {
 - Current Market Data: ${marketInsights || 'Strong Omaha market'}
 
 **Content Strategy:**
-Create exactly 30 social media posts (one per day) that:
+Create exactly ${days} social media posts (one per day) that:
 1. Mix content types: 40% local market updates, 30% neighborhood spotlights, 20% buyer/seller tips, 10% community engagement
 2. Rotate platforms: Facebook, Instagram, LinkedIn, X (Twitter)
 3. Vary posting times: mornings (9-10am), afternoons (2-3pm), evenings (6-7pm)
@@ -73,7 +78,7 @@ Create exactly 30 social media posts (one per day) that:
 - "seller_tips": Staging, pricing strategy, market timing
 - "community": Local events, businesses, Omaha lifestyle
 
-Return ONLY a valid JSON array with exactly 30 posts in this structure:
+Return ONLY a valid JSON array with exactly ${days} posts in this structure:
 [
   {
     "platform": "facebook|instagram|linkedin|x",
@@ -81,7 +86,7 @@ Return ONLY a valid JSON array with exactly 30 posts in this structure:
     "content": "engaging post text (concise, platform-appropriate)",
     "hashtags": ["tag1", "tag2"] (only for Instagram, empty array for others),
     "neighborhood": "neighborhood name or null",
-    "dayOffset": day_number (0-29, where 0 = tomorrow)
+    "dayOffset": day_number (0-${days-1}, where 0 = tomorrow)
   }
 ]`;
 
@@ -112,9 +117,12 @@ Return ONLY a valid JSON array with exactly 30 posts in this structure:
         throw new Error('Invalid response structure: expected array of posts');
       }
 
-      if (posts.length < 20) {
-        console.warn(`AI generated only ${posts.length} posts, expected 30. Using fallback data.`);
-        return this.getFallbackContentPlan(serviceAreas, marketData);
+      const expectedPosts = weeks * 7;
+      const minPosts = Math.max(5, Math.floor(expectedPosts * 0.6)); // At least 60% of expected posts
+      
+      if (posts.length < minPosts) {
+        console.warn(`AI generated only ${posts.length} posts, expected ${expectedPosts}. Using fallback data.`);
+        return this.getFallbackContentPlan(serviceAreas, marketData, weeks);
       }
 
       const today = new Date();
@@ -166,28 +174,40 @@ Return ONLY a valid JSON array with exactly 30 posts in this structure:
         };
       });
 
-      console.log(`✅ AI generated ${validatedPosts.length}-day content calendar for user ${this.userId}`);
+      console.log(`✅ AI generated ${weeks}-week content calendar with ${validatedPosts.length} posts for user ${this.userId}`);
 
       return {
         posts: validatedPosts,
         metadata: {
           generatedAt: new Date().toISOString(),
           model: 'gpt-4o-mini',
-          planDuration: `${validatedPosts.length} days`,
+          planDuration: `${weeks} weeks (${days} days)`,
           userContext: `Service areas: ${areasText}, Audience: ${audienceText}`,
         },
       };
     } catch (error) {
       console.error('❌ AI content calendar generation failed:', error);
       console.log('🔄 Using fallback content plan...');
-      return this.getFallbackContentPlan(serviceAreas, marketData);
+      return this.getFallbackContentPlan(serviceAreas, marketData, weeks);
     }
+  }
+
+  /**
+   * Legacy method - calls generateContentPlan with 4 weeks (30 days)
+   */
+  async generate30DayPlan(
+    serviceAreas: string[],
+    marketData: MarketData[],
+    targetAudience?: string,
+    specialties?: string[]
+  ): Promise<GeneratedContentPlan> {
+    return this.generateContentPlan(serviceAreas, marketData, targetAudience, specialties, 4);
   }
 
   /**
    * Generate fallback content plan if AI fails
    */
-  getFallbackContentPlan(serviceAreas: string[], marketData: MarketData[]): GeneratedContentPlan {
+  getFallbackContentPlan(serviceAreas: string[], marketData: MarketData[], weeks: number = 4): GeneratedContentPlan {
     const areas = serviceAreas.length > 0 ? serviceAreas : ['Omaha'];
     const platforms = ['facebook', 'instagram', 'linkedin', 'x'];
     const today = new Date();
@@ -201,8 +221,9 @@ Return ONLY a valid JSON array with exactly 30 posts in this structure:
     ];
 
     const fallbackPosts: InsertScheduledPost[] = [];
+    const days = weeks * 7;
 
-    for (let day = 0; day < 30; day++) {
+    for (let day = 0; day < days; day++) {
       const scheduleDate = new Date(today);
       scheduleDate.setDate(today.getDate() + day + 1);
       scheduleDate.setHours(9 + (day % 8), 0, 0, 0);
@@ -235,7 +256,7 @@ Return ONLY a valid JSON array with exactly 30 posts in this structure:
       metadata: {
         generatedAt: new Date().toISOString(),
         model: 'fallback',
-        planDuration: '30 days',
+        planDuration: `${weeks} weeks (${days} days)`,
         userContext: `Service areas: ${areas.join(', ')}`,
       },
     };

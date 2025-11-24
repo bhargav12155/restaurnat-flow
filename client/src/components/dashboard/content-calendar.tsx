@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, Check, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, Check, X, ChevronDown } from "lucide-react";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
@@ -457,18 +458,20 @@ export function ContentCalendar() {
   });
 
   const generateContentPlanMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (weeks: number = 4) => {
       const response = await apiRequest('POST', '/api/content/generate-plan', {
         targetAudience: 'home buyers and sellers',
         specialties: [],
+        weeks,
       });
       return await response.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      const weeks = data.weeks || (data.posts?.length ? Math.ceil(data.posts.length / 7) : 4);
       toast({
         title: "Content Plan Generated!",
-        description: `Successfully created ${data.posts?.length || 30}-day content calendar`,
+        description: `Successfully created ${weeks}-week content calendar with ${data.posts?.length || 0} posts`,
       });
     },
     onError: (error) => {
@@ -867,24 +870,48 @@ export function ContentCalendar() {
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg font-semibold text-foreground">Content Calendar</CardTitle>
           <div className="flex items-center gap-2">
-            <Button 
-              onClick={() => generateContentPlanMutation.mutate()}
-              disabled={generateContentPlanMutation.isPending}
-              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-md transition-all duration-200"
-              data-testid="button-generate-content-plan"
-            >
-              {generateContentPlanMutation.isPending ? (
-                <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <span className="mr-1 text-lg">📅</span>
-                  Generate 30-Day Plan
-                </>
-              )}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  disabled={generateContentPlanMutation.isPending}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-sm font-medium px-3 py-2 rounded-md transition-all duration-200"
+                  data-testid="button-generate-content-plan"
+                >
+                  {generateContentPlanMutation.isPending ? (
+                    <>
+                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <span className="mr-1 text-lg">📅</span>
+                      Generate Plan
+                      <ChevronDown className="ml-1 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem 
+                  onClick={() => generateContentPlanMutation.mutate(1)}
+                  data-testid="menu-1-week-plan"
+                >
+                  1 Week Plan
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => generateContentPlanMutation.mutate(2)}
+                  data-testid="menu-2-week-plan"
+                >
+                  2 Week Plan
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => generateContentPlanMutation.mutate(3)}
+                  data-testid="menu-3-week-plan"
+                >
+                  3 Week Plan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button 
               onClick={handleAIScheduling}
               disabled={isGenerating}
