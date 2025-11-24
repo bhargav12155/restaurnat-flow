@@ -31,9 +31,11 @@ import {
   Send,
   MoreHorizontal,
   Upload,
-  Image
+  Image,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth } from "date-fns";
 import { 
   Dialog,
   DialogContent,
@@ -42,6 +44,16 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ObjectUploader } from "@/components/ObjectUploader";
 
@@ -65,10 +77,10 @@ interface ScheduledPost {
 }
 
 const platformIcons = {
-  facebook: { icon: Facebook, color: "text-blue-600", name: "Facebook" },
-  instagram: { icon: Instagram, color: "text-pink-600", name: "Instagram" },
-  linkedin: { icon: Linkedin, color: "text-blue-700", name: "LinkedIn" },
-  x: { icon: XIcon, color: "text-blue-400", name: "X" },
+  facebook: { icon: Facebook, color: "text-blue-600", bgColor: "bg-blue-600", name: "Facebook" },
+  instagram: { icon: Instagram, color: "text-pink-600", bgColor: "bg-pink-600", name: "Instagram" },
+  linkedin: { icon: Linkedin, color: "text-blue-700", bgColor: "bg-blue-700", name: "LinkedIn" },
+  x: { icon: XIcon, color: "text-blue-400", bgColor: "bg-blue-400", name: "X" },
 };
 
 const postTypeLabels = {
@@ -82,7 +94,9 @@ const postTypeLabels = {
 
 export function ScheduledPostsManager() {
   const { user, isLoading: authLoading } = useAuth();
-  const [editingPost, setEditingPost] = useState<string | null>(null);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedPost, setSelectedPost] = useState<ScheduledPost | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [editScheduledFor, setEditScheduledFor] = useState("");
   const [previewPost, setPreviewPost] = useState<ScheduledPost | null>(null);
@@ -104,6 +118,8 @@ export function ScheduledPostsManager() {
   const [showPhotoDialog, setShowPhotoDialog] = useState(false);
   const [photoUploadMode, setPhotoUploadMode] = useState<"upload" | "mls">("upload");
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<string | null>(null);
 
   const { data: scheduledPosts = [], isLoading } = useQuery<ScheduledPost[]>({
     queryKey: ["/api/scheduled-posts"],
@@ -123,15 +139,16 @@ export function ScheduledPostsManager() {
     onSuccess: () => {
       toast({
         title: "Post Updated!",
-        description: "Scheduled post has been updated successfully",
+        description: "Your scheduled post has been updated successfully.",
       });
-      setEditingPost(null);
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      setShowEditDialog(false);
+      setSelectedPost(null);
     },
-    onError: (error: any) => {
+    onError: () => {
       toast({
-        title: "Update Failed",
-        description: error.message || "Failed to update scheduled post",
+        title: "Error",
+        description: "Failed to update post. Please try again.",
         variant: "destructive",
       });
     },
@@ -143,124 +160,110 @@ export function ScheduledPostsManager() {
     },
     onSuccess: () => {
       toast({
-        title: "Post Deleted!",
-        description: "Scheduled post has been deleted successfully",
+        title: "Post Deleted",
+        description: "Your scheduled post has been deleted.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      setShowEditDialog(false);
+      setSelectedPost(null);
     },
-    onError: (error: any) => {
+    onError: () => {
       toast({
-        title: "Delete Failed",
-        description: error.message || "Failed to delete scheduled post",
+        title: "Error",
+        description: "Failed to delete post. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        return "Invalid date";
-      }
-      return format(date, "MMM d, h:mm a");
-    } catch (error) {
-      return "Invalid date";
-    }
-  };
-
-  const handleEdit = (post: ScheduledPost) => {
-    setEditingPost(post.id);
-    setEditContent(post.content);
-    
-    try {
-      const date = new Date(post.scheduledFor);
-      if (!isNaN(date.getTime())) {
-        setEditScheduledFor(date.toISOString().slice(0, 16));
-      } else {
-        setEditScheduledFor("");
-      }
-    } catch (error) {
-      setEditScheduledFor("");
-    }
-  };
-
-  const handleUploadPhoto = (post: ScheduledPost) => {
-    setUploadingPostId(post.id);
-    setSelectedPhoto(post.metadata?.imageUrl || null);
-    setShowPhotoDialog(true);
-  };
-
-  const handlePhotoUploadComplete = async (imageUrl: string) => {
-    if (!uploadingPostId) return;
-
-    try {
-      const response = await apiRequest('POST', '/api/scheduled-posts/update-image', {
-        postId: uploadingPostId,
-        imageUrl: imageUrl,
+  const attachPhotoMutation = useMutation({
+    mutationFn: async ({ id, imageUrl }: { id: string; imageUrl: string }) => {
+      const response = await apiRequest("PUT", `/api/scheduled-posts/${id}`, {
+        metadata: { imageUrl }
       });
-
+      return response.json();
+    },
+    onSuccess: () => {
       toast({
-        title: "Photo Added!",
-        description: "Photo has been attached to the scheduled post",
+        title: "Photo Attached!",
+        description: "Photo has been attached to your post.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
       setShowPhotoDialog(false);
       setSelectedPhoto(null);
-    } catch (error: any) {
-      toast({
-        title: "Failed to Attach Photo",
-        description: error.message || "Failed to attach photo to post",
-        variant: "destructive",
-      });
-    } finally {
       setUploadingPostId(null);
-    }
-  };
-
-  const handleSelectMLSPhoto = async (mlsPhotoUrl: string) => {
-    setSelectedPhoto(mlsPhotoUrl);
-    await handlePhotoUploadComplete(mlsPhotoUrl);
-  };
-
-  const handleSave = (id: string) => {
-    if (!editContent.trim()) {
+    },
+    onError: () => {
       toast({
-        title: "Content Required",
-        description: "Post content cannot be empty",
+        title: "Error",
+        description: "Failed to attach photo. Please try again.",
         variant: "destructive",
       });
-      return;
-    }
+    },
+  });
 
-    if (!editScheduledFor) {
-      toast({
-        title: "Schedule Required",
-        description: "Please select a scheduled date and time",
-        variant: "destructive",
-      });
-      return;
+  const handlePhotoUploadComplete = (imageUrl: string) => {
+    if (uploadingPostId) {
+      attachPhotoMutation.mutate({ id: uploadingPostId, imageUrl });
     }
-
-    updatePostMutation.mutate({
-      id,
-      content: editContent,
-      scheduledFor: editScheduledFor,
-    });
   };
 
-  const handleCancel = () => {
-    setEditingPost(null);
-    setEditContent("");
-    setEditScheduledFor("");
+  const handleSelectMLSPhoto = (imageUrl: string) => {
+    setSelectedPhoto(imageUrl);
+  };
+
+  const handleUploadPhoto = (post: ScheduledPost) => {
+    setUploadingPostId(post.id);
+    setSelectedPhoto(null);
+    setShowPhotoDialog(true);
+  };
+
+  const handleEditPost = (post: ScheduledPost) => {
+    setSelectedPost(post);
+    setEditContent(post.content);
+    setEditScheduledFor(format(new Date(post.scheduledFor), "yyyy-MM-dd'T'HH:mm"));
     setEditMode("manual");
-    setAiEditContent("");
-    setShowPromptEditor(false);
+    setAiEditContent(post.content);
+    setShowEditDialog(true);
+  };
+
+  const handleSave = () => {
+    if (!selectedPost) return;
+    updatePostMutation.mutate({
+      id: selectedPost.id,
+      content: editContent,
+      scheduledFor: new Date(editScheduledFor).toISOString(),
+    });
   };
 
   const handlePreview = (post: ScheduledPost) => {
     setPreviewPost(post);
     setShowPreview(true);
+  };
+
+  // Calendar functions
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const calendarStart = startOfWeek(monthStart);
+  const calendarEnd = endOfWeek(monthEnd);
+  const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
+
+  const getPostsForDay = (day: Date) => {
+    return scheduledPosts.filter(post => 
+      isSameDay(new Date(post.scheduledFor), day)
+    );
+  };
+
+  const previousMonth = () => {
+    setCurrentMonth(prev => subMonths(prev, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(prev => addMonths(prev, 1));
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date());
   };
 
   if (isLoading) {
@@ -277,291 +280,356 @@ export function ScheduledPostsManager() {
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Calendar className="h-5 w-5" />
-          Scheduled Posts Manager
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Scheduled Posts Calendar
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={previousMonth}
+              data-testid="button-previous-month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={goToToday}
+              data-testid="button-today"
+            >
+              Today
+            </Button>
+            <span className="font-semibold text-sm min-w-[140px] text-center">
+              {format(currentMonth, 'MMMM yyyy')}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={nextMonth}
+              data-testid="button-next-month"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
-        {scheduledPosts.length === 0 ? (
-          <div className="text-center py-8">
+        {/* Calendar Grid */}
+        <div className="border rounded-lg overflow-hidden">
+          {/* Day Headers */}
+          <div className="grid grid-cols-7 bg-muted">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="p-2 text-center text-sm font-semibold border-r last:border-r-0">
+                {day}
+              </div>
+            ))}
+          </div>
+          
+          {/* Calendar Days */}
+          <div className="grid grid-cols-7">
+            {calendarDays.map((day, index) => {
+              const postsForDay = getPostsForDay(day);
+              const isCurrentMonth = isSameMonth(day, currentMonth);
+              const isToday = isSameDay(day, new Date());
+              
+              return (
+                <div
+                  key={index}
+                  className={`min-h-[120px] p-2 border-r border-b last:border-r-0 ${
+                    !isCurrentMonth ? 'bg-muted/30' : 'bg-background'
+                  } ${isToday ? 'bg-golden-accent/10' : ''}`}
+                  data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
+                >
+                  <div className={`text-sm font-medium mb-2 ${
+                    !isCurrentMonth ? 'text-muted-foreground' : isToday ? 'text-golden-accent font-bold' : 'text-foreground'
+                  }`}>
+                    {format(day, 'd')}
+                  </div>
+                  
+                  {/* Platform Icons for Posts */}
+                  <div className="space-y-1">
+                    {postsForDay.map((post) => {
+                      const platform = platformIcons[post.platform as keyof typeof platformIcons];
+                      const Icon = platform?.icon || Home;
+                      
+                      return (
+                        <button
+                          key={post.id}
+                          onClick={() => handleEditPost(post)}
+                          className={`w-full flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 transition-colors group text-left`}
+                          data-testid={`post-${post.id}`}
+                          title={`${platform?.name || post.platform} - ${format(new Date(post.scheduledFor), 'h:mm a')}`}
+                        >
+                          <div className={`shrink-0 w-6 h-6 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
+                            <Icon className="h-3.5 w-3.5 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium truncate">
+                              {format(new Date(post.scheduledFor), 'h:mm a')}
+                            </div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {post.content.substring(0, 20)}...
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {scheduledPosts.length === 0 && (
+          <div className="text-center py-8 mt-4">
             <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No Scheduled Posts</h3>
             <p className="text-muted-foreground">
               Create your first scheduled post using the Social Media Manager
             </p>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {scheduledPosts.map((post: ScheduledPost) => {
-              const isEditing = editingPost === post.id;
-              const postTypeInfo = postTypeLabels[post.postType as keyof typeof postTypeLabels];
-
-              return (
-                <div
-                  key={post.id}
-                  className="border rounded-lg p-4 bg-card hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      {(() => {
-                        const platform = platformIcons[post.platform as keyof typeof platformIcons];
-                        return platform ? (
-                          <>
-                            <platform.icon className={`h-4 w-4 ${platform.color}`} />
-                            <span className="font-medium text-sm text-foreground">{platform.name}</span>
-                          </>
-                        ) : (
-                          <span className="font-medium text-sm text-foreground">{post.platform}</span>
-                        );
-                      })()}
-                      
-                      <span className="text-xs text-muted-foreground">•</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(post.scheduledFor)}</span>
-                      
-                      {postTypeInfo && (
-                        <>
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <Badge className={`text-xs ${postTypeInfo.color}`}>
-                            {postTypeInfo.label}
-                          </Badge>
-                        </>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handlePreview(post)}
-                        className="h-7 w-7 p-0"
-                      >
-                        <Eye className="h-3 w-3" />
-                      </Button>
-                      
-                      {!isEditing && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(post)}
-                            className="h-7 w-7 p-0"
-                            data-testid={`button-edit-post-${post.id}`}
-                          >
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                          
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleUploadPhoto(post)}
-                            className="h-7 w-7 p-0"
-                            data-testid={`button-upload-photo-${post.id}`}
-                            title="Upload Photo"
-                          >
-                            <Upload className="h-3 w-3" />
-                          </Button>
-                          
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deletePostMutation.mutate(post.id)}
-                            className="h-7 w-7 p-0 text-red-600 hover:text-red-700"
-                            data-testid={`button-delete-post-${post.id}`}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {isEditing ? (
-                    <div className="space-y-4">
-                      {/* Edit Mode Toggle */}
-                      <div className="flex gap-2 p-1 bg-muted rounded-lg">
-                        <Button
-                          variant={editMode === "manual" ? "default" : "ghost"}
-                          size="sm"
-                          onClick={() => setEditMode("manual")}
-                          className="flex-1 h-8"
-                        >
-                          <Edit2 className="h-3 w-3 mr-1" />
-                          Manual Edit
-                        </Button>
-                        <Button
-                          variant={editMode === "ai" ? "default" : "ghost"}
-                          size="sm"
-                          onClick={() => {
-                            setEditMode("ai");
-                            if (!aiEditContent) {
-                              setAiEditContent(editContent);
-                            }
-                          }}
-                          className="flex-1 h-8"
-                        >
-                          <Sparkles className="h-3 w-3 mr-1" />
-                          AI Assistant
-                        </Button>
-                      </div>
-
-                      <div>
-                        <Label htmlFor={`edit-content-${post.id}`} className="text-sm font-medium">
-                          Content
-                        </Label>
-                        {editMode === "manual" ? (
-                          <Textarea
-                            id={`edit-content-${post.id}`}
-                            value={editContent}
-                            onChange={(e) => setEditContent(e.target.value)}
-                            className="mt-1"
-                            rows={4}
-                          />
-                        ) : (
-                          <div className="space-y-3 mt-1">
-                            <Textarea
-                              value={aiEditContent}
-                              onChange={(e) => setAiEditContent(e.target.value)}
-                              placeholder="Content will be enhanced with AI..."
-                              rows={4}
-                              className="resize-none"
-                            />
-                            
-                            {showPromptEditor && (
-                              <div className="space-y-2">
-                                <Label className="text-xs font-medium">AI Enhancement Instructions</Label>
-                                <Textarea
-                                  value={aiPrompt}
-                                  onChange={(e) => setAiPrompt(e.target.value)}
-                                  placeholder="Tell AI how to optimize your content..."
-                                  rows={2}
-                                  className="resize-none text-xs"
-                                />
-                              </div>
-                            )}
-                            
-                            <div className="flex gap-2">
-                              <Button 
-                                size="sm" 
-                                className="flex-1"
-                                onClick={async () => {
-                                  if (!aiEditContent.trim()) return;
-                                  setIsEnhancingInEdit(true);
-                                  try {
-                                    const response = await apiRequest('POST', '/api/content/enhance', {
-                                      content: aiEditContent,
-                                      prompt: aiPrompt,
-                                      platform: post.platform,
-                                      postType: post.postType
-                                    });
-                                    const data = await response.json();
-                                    setAiEditContent(data.enhancedContent || aiEditContent);
-                                    setEditContent(data.enhancedContent || aiEditContent);
-                                    toast({
-                                      title: "Content Enhanced",
-                                      description: "AI has optimized your content for better engagement."
-                                    });
-                                  } catch (error) {
-                                    toast({
-                                      title: "Enhancement Failed", 
-                                      description: "Unable to enhance content. Please try again.",
-                                      variant: "destructive"
-                                    });
-                                  }
-                                  setIsEnhancingInEdit(false);
-                                }}
-                                disabled={isEnhancingInEdit || !aiEditContent.trim()}
-                              >
-                                <Sparkles className="h-3 w-3 mr-1" />
-                                {isEnhancingInEdit ? "Enhancing..." : "Enhance with AI"}
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                onClick={() => setShowPromptEditor(!showPromptEditor)}
-                                className="shrink-0"
-                              >
-                                Prompt
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <Label htmlFor={`edit-scheduled-${post.id}`} className="text-sm font-medium">
-                          Schedule For
-                        </Label>
-                        <Input
-                          id={`edit-scheduled-${post.id}`}
-                          type="datetime-local"
-                          value={editScheduledFor}
-                          onChange={(e) => setEditScheduledFor(e.target.value)}
-                          className="mt-1"
-                        />
-                      </div>
-
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleSave(post.id)}
-                          disabled={updatePostMutation.isPending}
-                        >
-                          <Check className="h-3 w-3 mr-1" />
-                          {updatePostMutation.isPending ? "Saving..." : "Save"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleCancel}
-                          disabled={updatePostMutation.isPending}
-                        >
-                          <X className="h-3 w-3 mr-1" />
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-sm text-foreground">{post.content}</p>
-                      
-                      {post.metadata?.imageUrl && (
-                        <div className="mt-2 mb-2">
-                          <img 
-                            src={post.metadata.imageUrl} 
-                            alt="Post attachment" 
-                            className="rounded-md max-h-32 max-w-full object-cover"
-                            data-testid={`img-post-${post.id}`}
-                          />
-                        </div>
-                      )}
-                      
-                      {post.hashtags && post.hashtags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {post.hashtags.map((hashtag, i) => (
-                            <span key={i} className="text-xs text-blue-600">#{hashtag}</span>
-                          ))}
-                        </div>
-                      )}
-                      {post.neighborhood && (
-                        <div className="text-xs text-muted-foreground flex items-center">
-                          <MapPin className="mr-1 h-3 w-3" />
-                          {post.neighborhood}
-                        </div>
-                      )}
-                      {post.isEdited && (
-                        <span className="text-xs text-orange-600 font-medium">✏️ Edited</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         )}
       </CardContent>
+      
+      {/* Edit Post Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Scheduled Post</DialogTitle>
+            <DialogDescription>
+              Modify your post content and schedule
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedPost && (
+            <div className="space-y-4">
+              {/* Platform Badge */}
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const platform = platformIcons[selectedPost.platform as keyof typeof platformIcons];
+                  const Icon = platform?.icon || Home;
+                  return (
+                    <>
+                      <div className={`w-8 h-8 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
+                        <Icon className="h-4 w-4 text-white" />
+                      </div>
+                      <span className="font-semibold">{platform?.name || selectedPost.platform}</span>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Edit Mode Toggle */}
+              <div className="flex gap-2 p-1 bg-muted rounded-lg">
+                <Button
+                  variant={editMode === "manual" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setEditMode("manual")}
+                  className="flex-1 h-8"
+                  data-testid="button-manual-edit"
+                >
+                  <Edit2 className="h-3 w-3 mr-1" />
+                  Manual Edit
+                </Button>
+                <Button
+                  variant={editMode === "ai" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => {
+                    setEditMode("ai");
+                    if (!aiEditContent) {
+                      setAiEditContent(editContent);
+                    }
+                  }}
+                  className="flex-1 h-8"
+                  data-testid="button-ai-edit"
+                >
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  AI Assistant
+                </Button>
+              </div>
+
+              {/* Content Editor */}
+              <div>
+                <Label htmlFor="edit-content" className="text-sm font-medium">
+                  Content
+                </Label>
+                {editMode === "manual" ? (
+                  <Textarea
+                    id="edit-content"
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="mt-1"
+                    rows={6}
+                    data-testid="textarea-content"
+                  />
+                ) : (
+                  <div className="space-y-3 mt-1">
+                    <Textarea
+                      value={aiEditContent}
+                      onChange={(e) => setAiEditContent(e.target.value)}
+                      placeholder="Content will be enhanced with AI..."
+                      rows={6}
+                      className="resize-none"
+                      data-testid="textarea-ai-content"
+                    />
+                    
+                    {showPromptEditor && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium">AI Enhancement Instructions</Label>
+                        <Textarea
+                          value={aiPrompt}
+                          onChange={(e) => setAiPrompt(e.target.value)}
+                          placeholder="Tell AI how to optimize your content..."
+                          rows={2}
+                          className="resize-none text-xs"
+                          data-testid="textarea-ai-prompt"
+                        />
+                      </div>
+                    )}
+                    
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        className="flex-1"
+                        onClick={async () => {
+                          if (!aiEditContent.trim()) return;
+                          setIsEnhancingInEdit(true);
+                          try {
+                            const response = await apiRequest('POST', '/api/content/enhance', {
+                              content: aiEditContent,
+                              prompt: aiPrompt,
+                              platform: selectedPost.platform,
+                              postType: selectedPost.postType
+                            });
+                            const data = await response.json();
+                            setAiEditContent(data.enhancedContent || aiEditContent);
+                            setEditContent(data.enhancedContent || aiEditContent);
+                            toast({
+                              title: "Content Enhanced",
+                              description: "AI has optimized your content for better engagement."
+                            });
+                          } catch (error) {
+                            toast({
+                              title: "Enhancement Failed", 
+                              description: "Unable to enhance content. Please try again.",
+                              variant: "destructive"
+                            });
+                          }
+                          setIsEnhancingInEdit(false);
+                        }}
+                        disabled={isEnhancingInEdit || !aiEditContent.trim()}
+                        data-testid="button-enhance-ai"
+                      >
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        {isEnhancingInEdit ? "Enhancing..." : "Enhance with AI"}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setShowPromptEditor(!showPromptEditor)}
+                        className="shrink-0"
+                        data-testid="button-toggle-prompt"
+                      >
+                        Prompt
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Schedule Date/Time */}
+              <div>
+                <Label htmlFor="edit-scheduled" className="text-sm font-medium">
+                  Schedule For
+                </Label>
+                <Input
+                  id="edit-scheduled"
+                  type="datetime-local"
+                  value={editScheduledFor}
+                  onChange={(e) => setEditScheduledFor(e.target.value)}
+                  className="mt-1"
+                  data-testid="input-scheduled-time"
+                />
+              </div>
+
+              {/* Post Metadata */}
+              {selectedPost.metadata?.imageUrl && (
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Attached Image</Label>
+                  <img 
+                    src={selectedPost.metadata.imageUrl} 
+                    alt="Post attachment" 
+                    className="rounded-md max-h-48 max-w-full object-cover"
+                    data-testid="img-attached"
+                  />
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  onClick={() => handlePreview(selectedPost)}
+                  variant="outline"
+                  className="flex-1"
+                  data-testid="button-preview"
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  Preview
+                </Button>
+                <Button
+                  onClick={() => handleUploadPhoto(selectedPost)}
+                  variant="outline"
+                  className="flex-1"
+                  data-testid="button-upload-photo"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Photo
+                </Button>
+                <Button
+                  onClick={() => {
+                    setPostToDelete(selectedPost.id);
+                    setShowDeleteConfirm(true);
+                  }}
+                  variant="outline"
+                  className="flex-1 text-red-600 hover:text-red-700"
+                  data-testid="button-delete"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSave}
+                  disabled={updatePostMutation.isPending}
+                  className="flex-1"
+                  data-testid="button-save"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  {updatePostMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEditDialog(false)}
+                  disabled={updatePostMutation.isPending}
+                  data-testid="button-cancel"
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       
       {/* Enhanced Preview Dialog */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
@@ -622,14 +690,17 @@ export function ScheduledPostsManager() {
                           });
                           const data = await response.json();
                           setAiEditContent(data.enhancedContent || aiEditContent);
+                          if (selectedPost) {
+                            setEditContent(data.enhancedContent || aiEditContent);
+                          }
                           toast({
                             title: "Content Enhanced",
-                            description: "AI has optimized your content for better engagement."
+                            description: "AI has optimized your content."
                           });
                         } catch (error) {
                           toast({
-                            title: "Enhancement Failed", 
-                            description: "Unable to enhance content. Please try again.",
+                            title: "Enhancement Failed",
+                            description: "Unable to enhance content.",
                             variant: "destructive"
                           });
                         }
@@ -638,58 +709,14 @@ export function ScheduledPostsManager() {
                       disabled={isEnhancing || !aiEditContent.trim()}
                     >
                       <Sparkles className="h-3 w-3 mr-1" />
-                      {isEnhancing ? "Enhancing..." : "Enhance with AI"}
+                      {isEnhancing ? "Enhancing..." : "Enhance"}
                     </Button>
                     <Button 
                       variant="outline" 
                       size="sm" 
                       onClick={() => setShowPromptEditor(!showPromptEditor)}
-                      className="shrink-0"
                     >
-                      Prompt Editor
-                    </Button>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex-1"
-                      onClick={async () => {
-                        if (!previewPost || !aiEditContent.trim()) return;
-                        try {
-                          await updatePostMutation.mutateAsync({
-                            id: previewPost.id,
-                            content: aiEditContent,
-                            scheduledFor: previewPost.scheduledFor
-                          });
-                          setIsEditingWithAI(false);
-                          setShowPreview(false);
-                          toast({
-                            title: "Post Updated",
-                            description: "Your enhanced content has been saved."
-                          });
-                        } catch (error) {
-                          toast({
-                            title: "Update Failed",
-                            description: "Unable to save changes. Please try again.",
-                            variant: "destructive"
-                          });
-                        }
-                      }}
-                      disabled={updatePostMutation.isPending}
-                    >
-                      Save Changes
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="flex-1"
-                      onClick={() => {
-                        setIsEditingWithAI(false);
-                        setAiEditContent("");
-                      }}
-                    >
-                      Cancel
+                      Prompt
                     </Button>
                   </div>
                 </div>
@@ -700,42 +727,35 @@ export function ScheduledPostsManager() {
                     <div className="bg-white text-black">
                       {/* Instagram Header */}
                       <div className="flex items-center justify-between p-3 border-b">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-gradient-to-tr from-purple-500 via-pink-500 to-orange-400 rounded-full p-[2px]">
-                            <div className="w-full h-full bg-white rounded-full flex items-center justify-center">
-                              <span className="text-xs font-bold text-golden-accent">MB</span>
-                            </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-gradient-to-br from-golden-accent to-golden-muted rounded-full flex items-center justify-center">
+                            <span className="text-xs font-bold text-golden-foreground">MB</span>
                           </div>
-                          <div>
-                            <div className="font-semibold text-sm">mikebjork_realtor</div>
-                            <div className="text-xs text-gray-500">Omaha, Nebraska</div>
-                          </div>
+                          <span className="font-semibold text-sm">{userName}</span>
                         </div>
-                        <MoreHorizontal className="h-4 w-4" />
+                        <MoreHorizontal className="h-5 w-5" />
                       </div>
                       
                       {/* Instagram Image */}
                       {previewPost.metadata?.imageUrl ? (
-                        <div className="aspect-square bg-black">
-                          <img 
-                            src={previewPost.metadata.imageUrl} 
-                            alt="Post attachment" 
-                            className="w-full h-full object-cover"
-                            data-testid="preview-img-instagram"
-                          />
-                        </div>
+                        <img 
+                          src={previewPost.metadata.imageUrl} 
+                          alt="Post" 
+                          className="w-full aspect-square object-cover"
+                          data-testid="preview-img-instagram"
+                        />
                       ) : (
-                        <div className="aspect-square bg-gradient-to-br from-golden-accent/20 to-golden-muted/40 flex items-center justify-center">
+                        <div className="w-full aspect-square bg-gradient-to-br from-golden-accent/20 to-golden-muted/40 flex items-center justify-center">
                           <div className="text-center text-gray-600">
-                            <Image className="h-12 w-12 mx-auto mb-2" />
-                            <div className="text-sm">No Image Attached</div>
+                            <Image className="h-16 w-16 mx-auto mb-2" />
+                            <div className="text-sm">No Image</div>
                           </div>
                         </div>
                       )}
                       
                       {/* Instagram Actions */}
                       <div className="p-3">
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-4">
                             <Heart className="h-6 w-6" />
                             <MessageCircle className="h-6 w-6" />
@@ -743,21 +763,20 @@ export function ScheduledPostsManager() {
                           </div>
                           <Bookmark className="h-6 w-6" />
                         </div>
-                        <div className="text-sm font-semibold mb-1">847 likes</div>
+                        <div className="text-sm font-semibold mb-2">245 likes</div>
                         <div className="text-sm">
-                          <span className="font-semibold">mikebjork_realtor</span>
-                          <span className="ml-1">{previewPost.content}</span>
+                          <span className="font-semibold mr-2">{userName}</span>
+                          {previewPost.content}
                         </div>
                         {previewPost.hashtags && previewPost.hashtags.length > 0 && (
                           <div className="text-sm text-blue-600 mt-1">
                             {previewPost.hashtags.map((hashtag, i) => (
-                              <span key={i}>#{hashtag} </span>
+                              <span key={i} className="mr-1">#{hashtag}</span>
                             ))}
                           </div>
                         )}
-                        <div className="text-xs text-gray-500 mt-2">View all 12 comments</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {format(new Date(previewPost.scheduledFor), "MMMM d")}
+                        <div className="text-xs text-gray-500 mt-2">
+                          {format(new Date(previewPost.scheduledFor), "MMMM d 'at' h:mm a")}
                         </div>
                       </div>
                     </div>
@@ -766,16 +785,18 @@ export function ScheduledPostsManager() {
                   {previewPost.platform === 'facebook' && (
                     <div className="bg-white text-black">
                       {/* Facebook Header */}
-                      <div className="flex items-center gap-3 p-3">
-                        <div className="w-10 h-10 bg-golden-accent rounded-full flex items-center justify-center">
-                          <span className="text-sm font-bold text-golden-foreground">MB</span>
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-semibold text-sm">{userName}</div>
-                          <div className="text-xs text-gray-500 flex items-center gap-1">
-                            <span>{format(new Date(previewPost.scheduledFor), "MMM d 'at' h:mm a")}</span>
-                            <span>·</span>
-                            <span>🌎</span>
+                      <div className="flex items-center justify-between p-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 bg-golden-accent rounded-full flex items-center justify-center">
+                            <span className="text-sm font-bold text-golden-foreground">MB</span>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-sm">{userName}</div>
+                            <div className="text-xs text-gray-500 flex items-center gap-1">
+                              <span>{format(new Date(previewPost.scheduledFor), "MMM d 'at' h:mm a")}</span>
+                              <span>·</span>
+                              <span>🌎</span>
+                            </div>
                           </div>
                         </div>
                         <MoreHorizontal className="h-5 w-5 text-gray-500" />
@@ -1027,5 +1048,34 @@ export function ScheduledPostsManager() {
         </DialogContent>
       </Dialog>
     </Card>
+    
+    {/* Delete Confirmation Dialog */}
+    <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Scheduled Post?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete this scheduled post? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (postToDelete) {
+                deletePostMutation.mutate(postToDelete);
+              }
+              setShowDeleteConfirm(false);
+              setPostToDelete(null);
+            }}
+            className="bg-red-600 hover:bg-red-700"
+            data-testid="button-confirm-delete"
+          >
+            Delete Post
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
