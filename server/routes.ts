@@ -4470,11 +4470,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  // Generate 30-day content calendar
+  // Generate content calendar (1, 2, or 3 weeks)
   app.post("/api/content/generate-plan", requireAuth, async (req: any, res) => {
     try {
       const userId = String(req.user.id);
-      console.log(`🗓️  Generating 30-day content plan for user ${userId}...`);
+      const weeks = req.body.weeks || 4; // Default to 4 weeks (30 days) if not specified
+      console.log(`🗓️  Generating ${weeks}-week content plan for user ${userId}...`);
 
       // Get user's market data for service areas
       const marketData = await storage.getMarketData(userId);
@@ -4494,11 +4495,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       let generatedPlan;
       try {
-        generatedPlan = await generator.generate30DayPlan(
+        generatedPlan = await generator.generateContentPlan(
           serviceAreas,
           marketData,
           req.body.targetAudience,
-          req.body.specialties
+          req.body.specialties,
+          weeks
         );
       } catch (aiError) {
         console.warn(
@@ -4507,7 +4509,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         );
         generatedPlan = generator.getFallbackContentPlan(
           serviceAreas,
-          marketData
+          marketData,
+          weeks
         );
       }
 
@@ -4519,12 +4522,13 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
 
       console.log(
-        `✅ Generated ${createdPosts.length}-day content plan for user ${userId}`
+        `✅ Generated ${weeks}-week content plan with ${createdPosts.length} posts for user ${userId}`
       );
 
       res.json({
         success: true,
         posts: createdPosts,
+        weeks,
         metadata: generatedPlan.metadata,
       });
     } catch (error) {
