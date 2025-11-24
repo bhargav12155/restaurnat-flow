@@ -1154,7 +1154,7 @@ ${agentName} | ${brokerageName}
     <Card>
       <CardHeader>
         <CardTitle className="text-lg font-semibold text-foreground">
-          Social Media Manager
+          Quick Posts
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">

@@ -23,7 +23,7 @@ export const messages = {
     }),
     notConnected: (platform: string) => ({
       title: `Connect your ${platform} account first`,
-      description: `To post to ${platform}, please connect your account from the Social Media Manager`,
+      description: `To post to ${platform}, please connect your account from Quick Posts`,
     }),
     disconnectSuccess: (platform: string) => ({
       title: "Account disconnected",

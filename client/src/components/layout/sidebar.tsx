@@ -42,7 +42,7 @@ const navigationItems = [
   },
   {
     icon: Share2,
-    label: "Social Media Manager",
+    label: "Quick Posts",
     href: "#social",
     key: "social",
   },

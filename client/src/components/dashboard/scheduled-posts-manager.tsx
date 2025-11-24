@@ -392,7 +392,7 @@ export function ScheduledPostsManager() {
             <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No Scheduled Posts</h3>
             <p className="text-muted-foreground">
-              Create your first scheduled post using the Social Media Manager
+              Create your first scheduled post using Quick Posts
             </p>
           </div>
         )}
