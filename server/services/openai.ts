@@ -784,12 +784,18 @@ Platform-specific requirements:`;
           break;
         case "linkedin":
           prompt += `
-- Professional tone appropriate for business network
-- Longer form content acceptable (300-500 characters)
-- Focus on industry insights and expertise
-- Include professional hashtags
-- Add value for other real estate professionals
-- Use first-person perspective from Mike Bjork`;
+- Professional tone appropriate for business network - this is where industry professionals connect
+- Write compelling 2-3 sentence introduction that delivers value immediately
+- Longer form content acceptable (300-600 characters for maximum engagement)
+- Focus on industry insights, market data, and professional expertise
+- Use first-person perspective from Mike Bjork to build personal connection
+- Add value for other real estate professionals and potential clients
+- Include professional hashtags (2-3 maximum, e.g., #RealEstate #OmahaHomes)
+- Structure: Strong opening hook → Value/insight → Call-to-action
+- Assume this will accompany a professional graphic/image
+- End with clear, professional CTA (e.g., "Learn more", "Contact us", "Subscribe")
+- Reference data, market trends, or industry expertise to establish authority
+- Keep paragraphs short for mobile readability`;
           break;
         case "x":
         case "twitter":
