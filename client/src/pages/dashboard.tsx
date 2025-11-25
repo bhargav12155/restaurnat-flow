@@ -127,11 +127,6 @@ export default function Dashboard() {
         return (
           <>
             <OverviewCards />
-
-            <div className="w-full min-w-0 space-y-4 sm:space-y-6">
-              <SocialMediaManager />
-            </div>
-
             <ScheduledPostsManager />
           </>
         );
