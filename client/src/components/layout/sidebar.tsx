@@ -15,6 +15,7 @@ import {
   Bot,
   Calendar,
   Camera,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Home,
@@ -62,28 +63,37 @@ const navigationItems = [
   },
   { icon: BarChart3, label: "Analytics", href: "#analytics", key: "analytics" },
   {
-    icon: Camera,
-    label: "Photo Avatars",
-    href: "#photo-avatars",
-    key: "photo-avatars",
-  },
-  {
     icon: Video,
-    label: "Video Avatars",
-    href: "#video-avatars",
-    key: "video-avatars",
-  },
-  {
-    icon: Video,
-    label: "Video Generation",
-    href: "#video-generation",
-    key: "video-generation",
-  },
-  {
-    icon: Radio,
-    label: "Streaming Avatar",
-    href: "#streaming-avatar",
-    key: "streaming-avatar",
+    label: "Avatar & Video",
+    key: "avatar-video",
+    isCollapsible: true,
+    subItems: [
+      {
+        icon: Camera,
+        label: "Photo Avatars",
+        href: "#photo-avatars",
+        key: "photo-avatars",
+      },
+      {
+        icon: Video,
+        label: "Video Avatars",
+        href: "#video-avatars",
+        key: "video-avatars",
+        badge: "ENTERPRISE",
+      },
+      {
+        icon: Video,
+        label: "Video Generation",
+        href: "#video-generation",
+        key: "video-generation",
+      },
+      {
+        icon: Radio,
+        label: "Streaming Avatar",
+        href: "#streaming-avatar",
+        key: "streaming-avatar",
+      },
+    ],
   },
   {
     icon: Target,
@@ -118,6 +128,7 @@ function SidebarContent({
 }: SidebarContentProps) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(["avatar-video"]);
 
   const handleAdvancedAdvertisingClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -132,6 +143,19 @@ function SidebarContent({
     if (isMobile && onClose) {
       onClose();
     }
+  };
+
+  const toggleMenu = (key: string) => {
+    setExpandedMenus((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
+
+  const isMenuExpanded = (key: string) => expandedMenus.includes(key);
+
+  const isSubItemActive = (item: any) => {
+    if (!item.subItems) return false;
+    return item.subItems.some((sub: any) => sub.key === activeView);
   };
 
   return (
@@ -171,9 +195,82 @@ function SidebarContent({
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6 overflow-y-auto">
         <div className="space-y-1">
-          {navigationItems.map((item) => {
+          {navigationItems.map((item: any) => {
             const isActive = activeView === item.key;
             const isAdvancedAdvertising = item.key === "advertising";
+            const hasSubItems = item.isCollapsible && item.subItems;
+            const isExpanded = isMenuExpanded(item.key);
+            const hasActiveSubItem = isSubItemActive(item);
+
+            if (hasSubItems) {
+              return (
+                <div key={item.label}>
+                  <Button
+                    variant={hasActiveSubItem ? "default" : "ghost"}
+                    className={cn(
+                      "w-full text-sm font-medium transition-all",
+                      isCollapsed ? "justify-center px-2" : "justify-between",
+                      hasActiveSubItem
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    )}
+                    data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                    onClick={() => toggleMenu(item.key)}
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <span className="flex items-center">
+                      <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
+                      {!isCollapsed && item.label}
+                    </span>
+                    {!isCollapsed && (
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform",
+                          isExpanded && "rotate-180"
+                        )}
+                      />
+                    )}
+                  </Button>
+                  {!isCollapsed && isExpanded && (
+                    <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
+                      {item.subItems.map((subItem: any) => {
+                        const isSubActive = activeView === subItem.key;
+                        return (
+                          <Button
+                            key={subItem.label}
+                            variant={isSubActive ? "default" : "ghost"}
+                            className={cn(
+                              "w-full text-sm font-medium transition-all justify-start",
+                              isSubActive
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                            )}
+                            data-testid={`nav-${subItem.label.toLowerCase().replace(/\s+/g, "-")}`}
+                            onClick={handleNavClick}
+                            asChild
+                          >
+                            <a href={subItem.href} className="flex items-center flex-1">
+                              <subItem.icon className="h-4 w-4 mr-3" />
+                              <span className="flex items-center gap-2 flex-1">
+                                {subItem.label}
+                                {subItem.badge && (
+                                  <Badge
+                                    variant="secondary"
+                                    className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                                  >
+                                    {subItem.badge}
+                                  </Badge>
+                                )}
+                              </span>
+                            </a>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
 
             return (
               <Button
@@ -217,14 +314,6 @@ function SidebarContent({
                     {!isCollapsed && (
                       <span className="flex items-center gap-2 flex-1">
                         {item.label}
-                        {item.label === "Video Avatars" && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                          >
-                            ENTERPRISE
-                          </Badge>
-                        )}
                       </span>
                     )}
                   </a>
