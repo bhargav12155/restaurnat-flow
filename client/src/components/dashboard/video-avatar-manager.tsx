@@ -305,15 +305,6 @@ export default function VideoAvatarManager() {
         Create high-fidelity video avatars from training footage
       </p>
 
-      <Alert className="bg-amber-50 border-amber-200">
-        <AlertCircle className="h-4 w-4 text-amber-600" />
-        <AlertDescription className="text-amber-900">
-          <strong>Enterprise Feature:</strong> This feature requires HeyGen
-          Enterprise API access. Contact HeyGen support to enable Video Avatar
-          API for your account.
-        </AlertDescription>
-      </Alert>
-
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
