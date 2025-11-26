@@ -1094,30 +1094,80 @@ export function AvatarStudio() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="script">Script</Label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => generateScriptMutation.mutate()}
-                    disabled={generateScriptMutation.isPending}
-                    className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10"
-                    data-testid="button-ai-assist"
-                  >
-                    {generateScriptMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Wand2 className="h-4 w-4 mr-2" />
-                    )}
-                    AI Assist
-                  </Button>
+              <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Wand2 className="h-5 w-5 text-[#D4AF37]" />
+                  <h4 className="font-medium">AI Script Generator</h4>
                 </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="platform-select">Platform</Label>
+                    <Select value={selectedPlatform} onValueChange={setSelectedPlatform}>
+                      <SelectTrigger id="platform-select" data-testid="select-platform">
+                        <SelectValue placeholder="Select platform" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PLATFORM_OPTIONS.map((platform) => (
+                          <SelectItem key={platform.id} value={platform.id}>
+                            <div className="flex flex-col">
+                              <span>{platform.name}</span>
+                              <span className="text-xs text-gray-500">{platform.description}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label className="text-gray-500">Target Duration</Label>
+                    <div className="h-10 flex items-center px-3 border rounded-md bg-white dark:bg-gray-700 text-sm">
+                      {PLATFORM_OPTIONS.find(p => p.id === selectedPlatform)?.duration || 30} seconds
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="custom-prompt">Custom Instructions (optional)</Label>
+                  <Textarea
+                    id="custom-prompt"
+                    value={customPrompt}
+                    onChange={(e) => setCustomPrompt(e.target.value)}
+                    placeholder="e.g., Focus on luxury homes in West Omaha, mention our 20 years of experience..."
+                    rows={2}
+                    className="resize-none"
+                    data-testid="input-custom-prompt"
+                  />
+                </div>
+                
+                <Button
+                  onClick={() => generateScriptMutation.mutate()}
+                  disabled={generateScriptMutation.isPending}
+                  className="w-full bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                  data-testid="button-ai-assist"
+                >
+                  {generateScriptMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating Script...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="h-4 w-4 mr-2" />
+                      Generate Script with AI
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="script">Script</Label>
                 <Textarea
                   id="script"
                   value={script}
                   onChange={(e) => setScript(e.target.value)}
-                  placeholder="Enter what your avatar will say..."
+                  placeholder="Enter what your avatar will say, or use AI to generate a script above..."
                   rows={6}
                   className="resize-none"
                   data-testid="textarea-script"
