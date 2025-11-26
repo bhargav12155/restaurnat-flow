@@ -128,3 +128,23 @@ The platform includes a comprehensive engagement tracking system that monitors a
 **SEO Tools**: Google PageSpeed Insights API integration for performance monitoring and SEO analysis
 
 **Development Tools**: Vite for development server and build process, TypeScript for type safety, Drizzle Kit for database migrations
+
+### Video Studio (Unified Video Generation)
+**Added November 2025**: Simplified 3-step video creation flow that consolidates multiple fragmented HeyGen services into a single, easy-to-use interface.
+
+**Architecture**:
+- `server/services/video-studio.ts`: Unified service consolidating HeyGen video generation capabilities
+- `client/src/components/dashboard/video-studio.tsx`: 3-step UI component following "Upload → Ask → Get It" pattern
+- New API endpoints: `/api/studio/avatars`, `/api/studio/script`, `/api/studio/generate`, `/api/studio/status`
+
+**3-Step Flow**:
+1. **Upload**: Upload a photo to create a custom talking photo avatar, or select from existing avatars (tabbed interface)
+2. **Ask**: Enter a topic and AI generates a professional marketing script, with editing capability
+3. **Get It**: Generate the video with progress tracking and download when complete
+
+**Technical Details**:
+- File uploads use multer with disk storage; files read via `fs.readFileSync` and cleaned up in `finally` blocks
+- Avatar creation delegates to HeyGen's talking photo API
+- Script generation uses OpenAI GPT
+- Video generation supports both preset avatars and photo avatars with configurable aspect ratios
+- Status polling every 5 seconds until video completion

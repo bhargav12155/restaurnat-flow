@@ -28,6 +28,7 @@ import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
 import { HeyGenStreamingService } from "./services/heygen-streaming";
 import { HeyGenTemplateService } from "./services/heygen-template";
 import { HeyGenVideoAvatarService } from "./services/heygen-video-avatar";
+import { VideoStudioService } from "./services/video-studio";
 import { IDXService } from "./services/idx";
 import { MLSService } from "./services/mls";
 import { getAPIKeyStatus, openaiService } from "./services/openai";
@@ -5832,6 +5833,246 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     } catch (error) {
       console.error("Upload to YouTube error:", error);
       res.status(500).json({ error: "Failed to upload to YouTube" });
+    }
+  });
+
+  // ==================== UNIFIED VIDEO STUDIO ====================
+  // Simple 3-step flow: Upload → Ask → Get It
+
+  let videoStudioInstance: VideoStudioService | null = null;
+  function getVideoStudio(): VideoStudioService {
+    if (!videoStudioInstance) {
+      videoStudioInstance = new VideoStudioService();
+    }
+    return videoStudioInstance;
+  }
+
+  // List available avatars (preset + custom)
+  app.get("/api/studio/avatars", requireAuth, async (req, res) => {
+    try {
+      const studio = getVideoStudio();
+      const avatars = await studio.listAvatars();
+      res.json({ avatars });
+    } catch (error) {
+      console.error("Failed to list avatars:", error);
+      res.status(500).json({ error: "Failed to list avatars" });
+    }
+  });
+
+  // List available voices
+  app.get("/api/studio/voices", requireAuth, async (req, res) => {
+    try {
+      const studio = getVideoStudio();
+      const voices = await studio.listVoices();
+      res.json({ voices });
+    } catch (error) {
+      console.error("Failed to list voices:", error);
+      res.status(500).json({ error: "Failed to list voices" });
+    }
+  });
+
+  // STEP 1: Upload - Create avatar from image
+  app.post("/api/studio/avatars", requireAuth, upload.single("image"), async (req: any, res) => {
+    const tempFilePath = req.file?.path;
+    
+    try {
+      const studio = getVideoStudio();
+      const { name, imageUrl } = req.body;
+
+      let finalImageUrl = imageUrl;
+
+      // If a file was uploaded, read from disk (multer uses disk storage)
+      if (req.file && tempFilePath) {
+        const fileBuffer = fs.readFileSync(tempFilePath);
+        const imageBlob = new Blob([fileBuffer], { type: req.file.mimetype });
+        finalImageUrl = await studio.uploadImage(imageBlob);
+      }
+
+      if (!finalImageUrl) {
+        return res.status(400).json({ error: "Image URL or file is required" });
+      }
+
+      const avatar = await studio.createAvatarFromImage(
+        finalImageUrl,
+        name || "My Avatar"
+      );
+
+      res.json({ avatar });
+    } catch (error) {
+      console.error("Failed to create avatar:", error);
+      res.status(500).json({ 
+        error: "Failed to create avatar",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    } finally {
+      // Always clean up temp file, whether success or failure
+      if (tempFilePath) {
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch (cleanupError) {
+          console.warn("Failed to clean up temp file:", cleanupError);
+        }
+      }
+    }
+  });
+
+  // STEP 2: Ask - Generate script from topic
+  app.post("/api/studio/script", requireAuth, async (req: any, res) => {
+    try {
+      const studio = getVideoStudio();
+      const { topic, type = "marketing", duration = 60 } = req.body;
+
+      if (!topic) {
+        return res.status(400).json({ error: "Topic is required" });
+      }
+
+      const script = await studio.generateScript(topic, type, duration);
+      res.json({ script });
+    } catch (error) {
+      console.error("Failed to generate script:", error);
+      res.status(500).json({ error: "Failed to generate script" });
+    }
+  });
+
+  // STEP 3: Get It - Generate video
+  app.post("/api/studio/generate", requireAuth, async (req: any, res) => {
+    try {
+      const studio = getVideoStudio();
+      const userId = String(req.user?.id);
+      const { 
+        avatarId, 
+        avatarType = "avatar",
+        script, 
+        title,
+        voiceId,
+        aspectRatio = "16:9",
+        quality = "720p",
+        gestureIntensity = 0
+      } = req.body;
+
+      if (!avatarId) {
+        return res.status(400).json({ error: "Avatar ID is required" });
+      }
+
+      if (!script) {
+        return res.status(400).json({ error: "Script is required" });
+      }
+
+      const result = await studio.generateVideo({
+        avatarId,
+        avatarType,
+        script,
+        title,
+        voiceId,
+        aspectRatio,
+        quality,
+        gestureIntensity,
+      });
+
+      // Save to database for history tracking
+      const videoRecord = await storage.createVideoContent({
+        userId,
+        title: title || "Video Studio Generation",
+        script,
+        avatarId,
+        status: "generating",
+        platform: aspectRatio === "9:16" ? "reels" : "youtube",
+        metadata: {
+          heygenVideoId: result.id,
+          studioGeneration: true,
+        }
+      });
+
+      res.json({ 
+        success: true,
+        videoId: result.id,
+        recordId: videoRecord.id,
+        status: result.status,
+        message: "Video generation started! Check status for updates."
+      });
+    } catch (error) {
+      console.error("Failed to generate video:", error);
+      res.status(500).json({ 
+        error: "Failed to generate video",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // ALL-IN-ONE: Quick generate (Upload → Ask → Get It in one call)
+  app.post("/api/studio/quick-generate", requireAuth, async (req: any, res) => {
+    try {
+      const studio = getVideoStudio();
+      const userId = String(req.user?.id);
+      const { 
+        imageUrl,
+        avatarId,
+        topic,
+        script,
+        title,
+        voiceId,
+        aspectRatio = "16:9"
+      } = req.body;
+
+      if (!imageUrl && !avatarId) {
+        return res.status(400).json({ error: "Either imageUrl or avatarId is required" });
+      }
+
+      if (!topic && !script) {
+        return res.status(400).json({ error: "Either topic or script is required" });
+      }
+
+      const result = await studio.quickGenerate({
+        imageUrl,
+        avatarId,
+        topic,
+        script,
+        title,
+        voiceId,
+        aspectRatio,
+      });
+
+      // Save to database
+      const videoRecord = await storage.createVideoContent({
+        userId,
+        title: title || topic || "Quick Video",
+        script: script || topic || "",
+        avatarId: avatarId || result.id,
+        status: "generating",
+        platform: aspectRatio === "9:16" ? "reels" : "youtube",
+        metadata: {
+          heygenVideoId: result.id,
+          quickGeneration: true,
+        }
+      });
+
+      res.json({ 
+        success: true,
+        videoId: result.id,
+        recordId: videoRecord.id,
+        status: result.status,
+        message: "Quick video generation started!"
+      });
+    } catch (error) {
+      console.error("Quick generate failed:", error);
+      res.status(500).json({ 
+        error: "Quick generation failed",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Check video status
+  app.get("/api/studio/status/:videoId", requireAuth, async (req, res) => {
+    try {
+      const { videoId } = req.params;
+      const studio = getVideoStudio();
+      
+      const status = await studio.getVideoStatus(videoId);
+      res.json(status);
+    } catch (error) {
+      console.error("Failed to get video status:", error);
+      res.status(500).json({ error: "Failed to get video status" });
     }
   });
 
