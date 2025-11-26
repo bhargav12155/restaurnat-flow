@@ -157,9 +157,8 @@ export function AvatarStudio() {
     queryKey: ["/api/custom-voices"],
   });
 
-  const customVoices = customVoicesData.filter(
-    (voice) => !voice.status || voice.status === "ready"
-  );
+  // Show all user's voices - they can still use audio_url even if HeyGen upload failed
+  const customVoices = customVoicesData;
 
   useEffect(() => {
     if (customVoices.length === 0) return;
@@ -795,6 +794,12 @@ export function AvatarStudio() {
                               <Mic className="h-5 w-5 text-[#D4AF37]" />
                               <span className="font-medium">{voice.name}</span>
                               <Badge variant="outline" className="text-xs">Custom</Badge>
+                              {voice.status === "ready" && voice.heygenAudioAssetId && (
+                                <Badge className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">Ready</Badge>
+                              )}
+                              {voice.status === "failed" && (
+                                <Badge variant="outline" className="text-xs border-orange-300 text-orange-600">Audio Only</Badge>
+                              )}
                             </div>
                             {voiceAudioUrls[voice.id] && (
                               <Button
