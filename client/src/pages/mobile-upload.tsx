@@ -184,7 +184,6 @@ export default function MobileUploadPage() {
             ref={fileInputRef}
             type="file"
             accept="video/*"
-            capture="environment"
             onChange={handleFileChange}
             className="hidden"
             data-testid="input-file"
