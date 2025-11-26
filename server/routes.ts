@@ -4922,32 +4922,29 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           const fileBuffer = fs.readFileSync(filePath);
           const blob = new Blob([fileBuffer], { type: req.file.mimetype });
 
-          // Upload image to HeyGen to get a public URL
-          const heygenImageUrl = await heygenService.uploadImage(blob);
-          console.log("Image uploaded to HeyGen:", heygenImageUrl);
-
-          // Create HeyGen avatar with the uploaded image
-          const heygenResponse = await heygenService.createTalkingPhotoAvatar(
-            heygenImageUrl,
-            req.body.name,
-            req.body.voiceId
+          // Use the simpler talking photo upload (works with Pro/Scale plans)
+          console.log("📤 Uploading talking photo directly to HeyGen...");
+          const heygenResponse = await heygenService.uploadTalkingPhoto(
+            fileBuffer,
+            req.file.mimetype
           );
 
           console.log("Full HeyGen response:", JSON.stringify(heygenResponse));
           if (
+            heygenResponse.data?.talking_photo_id ||
             heygenResponse.data?.avatar_id ||
             heygenResponse.data?.avatar_group_id ||
             heygenResponse.data?.group_id ||
             heygenResponse.data?.id
           ) {
             // Different HeyGen endpoints return different ID fields
-            // Photo avatars return group_id or just id
             heygenAvatarId =
+              heygenResponse.data.talking_photo_id ||
               heygenResponse.data.avatar_id ||
               heygenResponse.data.avatar_group_id ||
               heygenResponse.data.group_id ||
               heygenResponse.data.id;
-            console.log("HeyGen avatar created successfully:", heygenAvatarId);
+            console.log("HeyGen talking photo created successfully:", heygenAvatarId);
           } else {
             console.log(
               "HeyGen response missing avatar IDs - data:",
@@ -5035,14 +5032,11 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             const fileBuffer = fs.readFileSync(filePath);
             const blob = new Blob([fileBuffer], { type: photoFile.mimetype });
 
-            const heygenImageUrl = await heygenService.uploadImage(blob);
-            console.log("Image uploaded to HeyGen:", heygenImageUrl);
-
-            // Create HeyGen avatar (whether updating existing or creating new)
-            const heygenResponse = await heygenService.createTalkingPhotoAvatar(
-              heygenImageUrl,
-              updates.name || existingAvatar.name,
-              updates.voiceId || existingAvatar.voiceId
+            // Use the simpler talking photo upload (works with Pro/Scale plans)
+            console.log("📤 Uploading talking photo directly to HeyGen...");
+            const heygenResponse = await heygenService.uploadTalkingPhoto(
+              fileBuffer,
+              photoFile.mimetype
             );
 
             console.log(
@@ -5050,14 +5044,15 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
               JSON.stringify(heygenResponse)
             );
             if (
+              heygenResponse.data?.talking_photo_id ||
               heygenResponse.data?.avatar_id ||
               heygenResponse.data?.avatar_group_id ||
               heygenResponse.data?.group_id ||
               heygenResponse.data?.id
             ) {
               // Different HeyGen endpoints return different ID fields
-              // Photo avatars return group_id or just id
               const avatarId =
+                heygenResponse.data.talking_photo_id ||
                 heygenResponse.data.avatar_id ||
                 heygenResponse.data.avatar_group_id ||
                 heygenResponse.data.group_id ||
