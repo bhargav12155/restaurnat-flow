@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -29,11 +29,17 @@ export default function MobileUploadPage() {
   });
 
   const handleFileSelect = () => {
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.click();
+    }
   };
 
   const handleRecordVideo = () => {
-    recordInputRef.current?.click();
+    if (recordInputRef.current) {
+      recordInputRef.current.value = "";
+      recordInputRef.current.click();
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,6 +50,41 @@ export default function MobileUploadPage() {
       setErrorMessage("");
     }
   };
+
+  const checkForFile = (inputRef: React.RefObject<HTMLInputElement | null>) => {
+    const file = inputRef.current?.files?.[0];
+    if (file && !selectedFile) {
+      setSelectedFile(file);
+      setUploadStatus("idle");
+      setErrorMessage("");
+    }
+  };
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setTimeout(() => {
+          checkForFile(recordInputRef);
+          checkForFile(fileInputRef);
+        }, 300);
+      }
+    };
+
+    const handleFocus = () => {
+      setTimeout(() => {
+        checkForFile(recordInputRef);
+        checkForFile(fileInputRef);
+      }, 300);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [selectedFile]);
 
   const handleUpload = async () => {
     if (!selectedFile || !sessionId) return;
@@ -190,6 +231,7 @@ export default function MobileUploadPage() {
             type="file"
             accept="video/*"
             onChange={handleFileChange}
+            onBlur={() => checkForFile(fileInputRef)}
             className="hidden"
             data-testid="input-file"
           />
@@ -199,6 +241,10 @@ export default function MobileUploadPage() {
             accept="video/*"
             capture="environment"
             onChange={handleFileChange}
+            onBlur={() => checkForFile(recordInputRef)}
+            onClick={() => {
+              setTimeout(() => checkForFile(recordInputRef), 500);
+            }}
             className="hidden"
             data-testid="input-record"
           />
