@@ -977,72 +977,102 @@ Respond with JSON in this format:
     platform = "youtube",
     duration,
     companyProfile,
+    customPrompt,
   }: {
     topic: string;
-    neighborhood: string;
+    neighborhood?: string;
     videoType: string;
     platform?: string;
     duration: number;
     companyProfile?: CompanyProfileData;
+    customPrompt?: string;
   }): Promise<string> {
     try {
       // Use company profile data or fallback to defaults
       const agentName = companyProfile?.agentName || "Mike Bjork";
+      const locationText = neighborhood ? `${neighborhood}, Omaha` : "Omaha";
       
-      const platformOptimizations = {
-        youtube: {
-          style: "Educational and detailed",
-          structure: "Hook → Problem/Value → Solution → CTA",
-          tone: "Professional yet conversational",
-          focus: "SEO-friendly content with valuable insights",
-        },
-        reels: {
-          style: "Fast-paced and visually engaging",
-          structure: "Immediate hook → Quick tips → Strong CTA",
+      const platformOptimizations: Record<string, { style: string; structure: string; tone: string; focus: string; tips: string }> = {
+        "Instagram Reel": {
+          style: "Fast-paced, punchy, and visually engaging",
+          structure: "Hook (0-3s) → Quick Value → CTA",
           tone: "Energetic and trendy",
           focus: "Quick tips, trending topics, bite-sized value",
+          tips: "- Start with immediate attention-grabbing hook within first 3 seconds\n- Keep sentences short and punchy\n- Use power words and action verbs\n- End with clear CTA"
         },
-        story: {
-          style: "Personal and behind-the-scenes",
-          structure: "Quick update → Personal insight → Light CTA",
-          tone: "Casual and authentic",
+        "Facebook Story": {
+          style: "Personal and authentic",
+          structure: "Quick hook → Behind-the-scenes insight → Soft CTA",
+          tone: "Casual and friendly",
           focus: "Quick updates, personal moments, day-in-the-life content",
+          tips: "- Keep it conversational like talking to a friend\n- Show personality and authenticity\n- Focus on personal insights or quick updates"
+        },
+        "Facebook Post": {
+          style: "Informative and engaging",
+          structure: "Hook → Educational content → Community value → CTA",
+          tone: "Professional yet approachable",
+          focus: "Community-focused content with educational value",
+          tips: "- Provide genuine value to the community\n- Use storytelling to connect emotionally\n- Include relevant local details"
+        },
+        "Twitter/X": {
+          style: "Concise and impactful",
+          structure: "Bold statement → Supporting point → CTA",
+          tone: "Direct and confident",
+          focus: "Hot takes, quick insights, conversation starters",
+          tips: "- Get straight to the point\n- Make bold but authentic statements\n- Create shareable, memorable content"
+        },
+        "YouTube Short": {
+          style: "Educational and value-packed",
+          structure: "Hook → Rapid value delivery → Subscribe CTA",
+          tone: "Professional yet conversational",
+          focus: "Quick tips, market insights, how-to snippets",
+          tips: "- Pack maximum value in minimal time\n- Include educational insights\n- End with channel subscription reminder"
+        },
+        "TikTok": {
+          style: "Trendy, authentic, and entertaining",
+          structure: "Pattern interrupt → Value/Entertainment → Engagement hook",
+          tone: "Casual, fun, and relatable",
+          focus: "Trending formats, entertainment-first, viral potential",
+          tips: "- Use trending sounds and formats when possible\n- Be authentic and unpolished\n- Create content that encourages engagement"
+        },
+        "LinkedIn": {
+          style: "Professional and thought-leadership focused",
+          structure: "Insight/Hook → Professional value → Authority CTA",
+          tone: "Professional and authoritative",
+          focus: "Industry insights, professional achievements, networking value",
+          tips: "- Demonstrate expertise and authority\n- Share professional insights and lessons learned\n- Focus on business value and credibility"
         },
       };
 
-      const platformConfig =
-        platformOptimizations[platform as keyof typeof platformOptimizations] ||
-        platformOptimizations.youtube;
+      // Normalize platform name for lookup
+      const normalizedPlatform = platform || "Instagram Reel";
+      const platformConfig = platformOptimizations[normalizedPlatform] || platformOptimizations["Instagram Reel"];
 
-      const prompt = `Create a ${duration}-second video script for ${agentName} about ${topic} in ${neighborhood}, Omaha.
-      
-      Platform: ${platform.toUpperCase()}
-      Video type: ${videoType}
-      Duration: ${duration} seconds
-      Style: ${platformConfig.style}
-      Structure: ${platformConfig.structure}
-      Tone: ${platformConfig.tone}
-      Focus: ${platformConfig.focus}
-      Target: Potential home buyers/sellers in Omaha area
-      
-      Platform-specific requirements:
-      ${
-        platform === "reels"
-          ? "- Start with an immediate attention-grabbing hook within first 3 seconds\n- Use quick cuts and engaging transitions\n- Include trending real estate topics"
-          : ""
-      }
-      ${
-        platform === "story"
-          ? "- Keep it conversational and personal\n- Focus on behind-the-scenes or quick updates\n- Casual, friendly tone like talking to a friend"
-          : ""
-      }
-      ${
-        platform === "youtube"
-          ? "- Include educational value and detailed insights\n- SEO-friendly language\n- Professional introduction and strong call-to-action"
-          : ""
-      }
-      
-      Write this as a script that ${agentName} can read naturally while looking at the camera. Make it engaging and platform-appropriate without being too salesy.`;
+      let prompt = `Create a ${duration}-second video script for ${agentName}, a real estate agent in ${locationText}.
+
+CRITICAL: The script must be exactly ${duration} seconds when spoken at a natural pace (approximately ${Math.round(duration * 2.5)} words).
+
+Platform: ${normalizedPlatform}
+Video type: ${videoType}
+Duration: EXACTLY ${duration} seconds
+Style: ${platformConfig.style}
+Structure: ${platformConfig.structure}
+Tone: ${platformConfig.tone}
+Focus: ${platformConfig.focus}
+Target: Potential home buyers/sellers in the Omaha area
+
+Platform-specific requirements:
+${platformConfig.tips}
+
+${customPrompt ? `ADDITIONAL INSTRUCTIONS FROM USER:\n${customPrompt}\n` : ""}
+IMPORTANT GUIDELINES:
+- Write ONLY the spoken script text - no stage directions, no [brackets], no timestamps
+- Keep it natural and conversational - this will be read by an AI avatar
+- Do NOT include any parenthetical notes or instructions
+- Make every word count - no filler phrases
+- The script must sound authentic when spoken aloud
+
+Write the script that ${agentName} will read directly to camera:`;
 
       const response = await multiOpenAI.makeRequest(
         "content",
@@ -1052,12 +1082,18 @@ Respond with JSON in this format:
             messages: [
               {
                 role: "system",
-                content:
-                  "You are a professional video script writer specializing in real estate content. Create engaging, natural scripts that work well for AI avatar videos and YouTube content.",
+                content: `You are a professional video script writer specializing in real estate social media content. You create concise, engaging scripts optimized for specific platforms and durations.
+
+CRITICAL RULES:
+1. Output ONLY the script text - no stage directions, no brackets, no timestamps
+2. Match the exact duration requested - count words carefully
+3. Write in a natural, conversational tone suitable for AI avatar videos
+4. Never include [pause], [smile], or any other directions
+5. Focus on providing genuine value while being platform-appropriate`,
               },
               { role: "user", content: prompt },
             ],
-            max_completion_tokens: 1500,
+            max_completion_tokens: 800,
           });
         }
       );

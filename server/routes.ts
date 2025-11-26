@@ -5499,8 +5499,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         topic,
         neighborhood,
         videoType,
-        platform = "youtube",
-        duration = 60,
+        platform = "Instagram Reel",
+        duration = 30,
+        customPrompt,
       } = req.body;
 
       let script;
@@ -5512,6 +5513,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           videoType,
           platform,
           duration,
+          customPrompt,
         });
       } catch (error: any) {
         console.error("OpenAI API error:", error);
@@ -5552,8 +5554,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         topic,
         neighborhood,
         videoType,
-        platform = "youtube",
-        duration = 60,
+        platform = "Instagram Reel",
+        duration = 30,
+        customPrompt,
       } = req.body;
 
       // Ownership check - only allow users to generate scripts for their own videos
@@ -5571,6 +5574,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           videoType,
           platform,
           duration,
+          customPrompt,
         });
       } catch (error: any) {
         console.error("OpenAI API error:", error);
