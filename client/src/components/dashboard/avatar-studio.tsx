@@ -76,6 +76,7 @@ interface CustomVoice {
   audioUrl: string;
   status?: string;
   duration?: number;
+  heygenAudioAssetId?: string | null;
 }
 
 interface VideoGeneration {
