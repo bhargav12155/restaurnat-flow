@@ -28,6 +28,7 @@ import {
   type InsertVideoContent,
   type MarketData,
   type MediaAsset,
+  type MobileUploadSession,
   type PhotoAvatar,
   type PhotoAvatarGroup,
   photoAvatarGroups,
@@ -244,6 +245,11 @@ export interface IStorage {
   // Post Media (junction table for post attachments)
   createPostMedia(postMedias: InsertPostMedia[]): Promise<PostMedia[]>;
   getPostMedia(postId: string): Promise<PostMedia[]>;
+
+  // Mobile Upload Sessions (for QR code-based mobile uploads)
+  createMobileUploadSession(userId: string, type: string): Promise<{ sessionId: string }>;
+  getMobileUploadSession(sessionId: string): Promise<MobileUploadSession | null>;
+  updateMobileUploadSession(sessionId: string, uploadedUrl: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -261,6 +267,7 @@ export class MemStorage implements IStorage {
     new Map();
   private mediaAssets: Map<string, MediaAsset> = new Map();
   private postMedia: Map<string, PostMedia> = new Map();
+  private mobileUploadSessions: Map<string, MobileUploadSession> = new Map();
 
   constructor() {
     this.seedData();
@@ -1649,6 +1656,46 @@ export class MemStorage implements IStorage {
     return Array.from(this.postMedia.values())
       .filter((pm) => pm.postId === postId)
       .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+  }
+
+  async createMobileUploadSession(userId: string, type: string): Promise<{ sessionId: string }> {
+    const { nanoid } = await import("nanoid");
+    const sessionId = nanoid();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes
+
+    const session: MobileUploadSession = {
+      id: sessionId,
+      userId,
+      type: type as "training" | "consent",
+      createdAt: now,
+      expiresAt,
+      uploadedUrl: null,
+    };
+
+    this.mobileUploadSessions.set(sessionId, session);
+    return { sessionId };
+  }
+
+  async getMobileUploadSession(sessionId: string): Promise<MobileUploadSession | null> {
+    const session = this.mobileUploadSessions.get(sessionId);
+    if (!session) return null;
+
+    // Check if session is expired
+    if (new Date() > session.expiresAt) {
+      this.mobileUploadSessions.delete(sessionId);
+      return null;
+    }
+
+    return session;
+  }
+
+  async updateMobileUploadSession(sessionId: string, uploadedUrl: string): Promise<void> {
+    const session = this.mobileUploadSessions.get(sessionId);
+    if (session) {
+      session.uploadedUrl = uploadedUrl;
+      this.mobileUploadSessions.set(sessionId, session);
+    }
   }
 }
 
