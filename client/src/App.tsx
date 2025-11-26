@@ -11,6 +11,7 @@ import LoginPage from "@/pages/login";
 import IntegrationPage from "@/pages/integration";
 import VoiceLibrary from "@/pages/VoiceLibrary";
 import ProfilePage from "@/pages/profile";
+import MobileUploadPage from "@/pages/mobile-upload";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 
@@ -19,6 +20,7 @@ function Router() {
     <Switch>
       <Route path="/login" component={LoginPage} />
       <Route path="/integration" component={IntegrationPage} />
+      <Route path="/mobile-upload/:sessionId" component={MobileUploadPage} />
       <Route path="/">
         <ProtectedRoute>
           <Dashboard />
