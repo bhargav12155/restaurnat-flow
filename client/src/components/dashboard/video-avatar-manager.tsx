@@ -26,11 +26,13 @@ import {
   CheckCircle2,
   FileText,
   Loader2,
+  Smartphone,
   Trash2,
   Video,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
 interface VideoAvatar {
   id: string;
@@ -57,6 +59,12 @@ export default function VideoAvatarManager() {
   const [uploadingTraining, setUploadingTraining] = useState(false);
   const [uploadingConsent, setUploadingConsent] = useState(false);
   const [showConsentScript, setShowConsentScript] = useState(false);
+
+  // QR code state for mobile uploads
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrSessionId, setQrSessionId] = useState<string | null>(null);
+  const [qrUploadType, setQrUploadType] = useState<"training" | "consent">("training");
+  const [qrPolling, setQrPolling] = useState(false);
 
   // Fetch video avatars
   const { data: avatars = [], isLoading: isLoadingAvatars } = useQuery<
@@ -243,6 +251,69 @@ export default function VideoAvatarManager() {
     }
   };
 
+  // Create mobile upload session for QR code functionality
+  const createMobileSession = async (type: "training" | "consent") => {
+    const res = await fetch("/api/mobile-upload/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ type }),
+    });
+    if (!res.ok) throw new Error("Failed to create session");
+    const data = await res.json();
+    return data.sessionId;
+  };
+
+  // Handle "Upload from Phone" button click
+  const handlePhoneUpload = async (type: "training" | "consent") => {
+    setQrUploadType(type);
+    try {
+      const sessionId = await createMobileSession(type);
+      setQrSessionId(sessionId);
+      setQrDialogOpen(true);
+      setQrPolling(true);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate QR code. Please try again.",
+      });
+    }
+  };
+
+  // Polling effect for mobile upload completion
+  useEffect(() => {
+    if (!qrPolling || !qrSessionId) return;
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/mobile-upload/${qrSessionId}/status`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        if (data.complete && data.url) {
+          if (qrUploadType === "training") {
+            setTrainingVideoUrl(data.url);
+          } else {
+            setConsentVideoUrl(data.url);
+          }
+          setQrPolling(false);
+          setQrDialogOpen(false);
+          toast({
+            title: "Upload Complete!",
+            description: `${qrUploadType === "training" ? "Training" : "Consent"} video uploaded from your phone.`,
+          });
+        }
+      } catch (error) {
+        console.error("Polling error:", error);
+      }
+    }, 2000);
+    
+    return () => clearInterval(pollInterval);
+  }, [qrPolling, qrSessionId, qrUploadType]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -375,6 +446,15 @@ export default function VideoAvatarManager() {
                   <p className="text-sm text-muted-foreground">
                     Under 2 minutes (ideal for capturing movements and voice), 720p or higher, clear speaking footage
                   </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handlePhoneUpload("training")}
+                    data-testid="button-phone-upload-training"
+                  >
+                    <Smartphone className="w-4 h-4 mr-2" />
+                    Upload from Phone
+                  </Button>
                 </div>
 
                 <div className="space-y-2">
@@ -413,6 +493,15 @@ export default function VideoAvatarManager() {
                   <p className="text-sm text-muted-foreground">
                     Record yourself reading the HeyGen consent statement
                   </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handlePhoneUpload("consent")}
+                    data-testid="button-phone-upload-consent"
+                  >
+                    <Smartphone className="w-4 h-4 mr-2" />
+                    Upload from Phone
+                  </Button>
                 </div>
 
                 <div className="space-y-2">
@@ -657,6 +746,41 @@ export default function VideoAvatarManager() {
                 Got it
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={qrDialogOpen} onOpenChange={(open) => {
+        setQrDialogOpen(open);
+        if (!open) setQrPolling(false);
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="w-5 h-5" />
+              Upload from Phone
+            </DialogTitle>
+            <DialogDescription>
+              Scan this QR code with your phone to upload your {qrUploadType} video
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            {qrSessionId && (
+              <div className="bg-white p-4 rounded-lg">
+                <QRCodeSVG 
+                  value={`${window.location.origin}/mobile-upload/${qrSessionId}`}
+                  size={200}
+                  level="H"
+                />
+              </div>
+            )}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Waiting for upload...
+            </div>
+            <p className="text-xs text-center text-muted-foreground max-w-xs">
+              The QR code expires in 15 minutes. This dialog will close automatically when upload completes.
+            </p>
           </div>
         </DialogContent>
       </Dialog>
