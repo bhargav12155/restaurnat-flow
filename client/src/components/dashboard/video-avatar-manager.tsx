@@ -134,6 +134,25 @@ export default function VideoAvatarManager() {
     },
   });
 
+  // Helper function to check video duration
+  const checkVideoDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        resolve(video.duration);
+      };
+      
+      video.onerror = () => {
+        reject(new Error("Could not load video metadata"));
+      };
+      
+      video.src = URL.createObjectURL(file);
+    });
+  };
+
   // Handle file upload to S3 (you'll need to implement this endpoint)
   const handleFileUpload = async (file: File, type: "training" | "consent") => {
     const setUploading =
@@ -144,19 +163,40 @@ export default function VideoAvatarManager() {
     try {
       setUploading(true);
 
-      // Validate file
+      // Validate file type
       if (!file.type.startsWith("video/")) {
         throw new Error("Please upload a video file");
       }
 
-      if (type === "training" && file.size < 10 * 1024 * 1024) {
-        // Less than 10MB
-        toast({
-          variant: "destructive",
-          title: "Video Too Short",
-          description:
-            "Training footage should be at least 2 minutes long (typically 10MB+)",
-        });
+      // Check video duration for training footage (max 2 minutes)
+      if (type === "training") {
+        try {
+          const duration = await checkVideoDuration(file);
+          const maxDuration = 120; // 2 minutes in seconds
+          
+          if (duration > maxDuration) {
+            toast({
+              variant: "destructive",
+              title: "Video Too Long",
+              description: `Training footage must be under 2 minutes. Your video is ${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')} long.`,
+            });
+            setUploading(false);
+            return;
+          }
+          
+          if (duration < 30) {
+            toast({
+              variant: "destructive", 
+              title: "Video Too Short",
+              description: "Training footage should be at least 30 seconds to capture enough movements and voice.",
+            });
+            setUploading(false);
+            return;
+          }
+        } catch (durationError) {
+          console.warn("Could not check video duration:", durationError);
+          // Continue with upload anyway if duration check fails
+        }
       }
 
       const formData = new FormData();
@@ -268,7 +308,8 @@ export default function VideoAvatarManager() {
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          <strong>Requirements:</strong> Training footage must be 2+ minutes,
+          <strong>Requirements:</strong> Training footage must be under 2 minutes
+          (30 seconds to 2 minutes is ideal for capturing movements and voice),
           720p or higher, MP4 format. You must also provide a consent video with
           the required statement.
         </AlertDescription>
@@ -332,7 +373,7 @@ export default function VideoAvatarManager() {
                     </p>
                   )}
                   <p className="text-sm text-muted-foreground">
-                    2+ minutes, 720p or higher, clear speaking footage
+                    Under 2 minutes (ideal for capturing movements and voice), 720p or higher, clear speaking footage
                   </p>
                 </div>
 
