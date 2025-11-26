@@ -16,6 +16,7 @@ import { TemplateManager } from "@/components/dashboard/template-manager";
 import VideoAvatarManager from "@/components/dashboard/video-avatar-manager";
 import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
 import { VideoGenerator } from "@/components/dashboard/video-generator";
+import { VideoStudio } from "@/components/dashboard/video-studio";
 import { VideoTemplates } from "@/components/dashboard/video-templates";
 import { Sidebar } from "@/components/layout/sidebar";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
@@ -94,7 +95,7 @@ export default function Dashboard() {
       case "video-avatars":
         return <VideoAvatarManager />;
       case "video-generation":
-        return <AvatarStudio />;
+        return <VideoStudio />;
       case "templates":
         return <TemplateManager />;
       case "video-templates":
