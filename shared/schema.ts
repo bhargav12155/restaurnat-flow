@@ -1029,3 +1029,15 @@ export const insertPKCESchema = createInsertSchema(pkceStore).omit({
 
 export type PKCEStore = typeof pkceStore.$inferSelect;
 export type InsertPKCE = z.infer<typeof insertPKCESchema>;
+
+// =====================================================
+// MOBILE UPLOAD SESSION (for QR code-based mobile uploads)
+// =====================================================
+export interface MobileUploadSession {
+  id: string;
+  userId: string;
+  type: "training" | "consent";
+  createdAt: Date;
+  expiresAt: Date;
+  uploadedUrl: string | null;
+}
