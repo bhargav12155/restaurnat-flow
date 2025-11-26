@@ -8,6 +8,7 @@ interface CreateAvatarResponse extends HeyGenAPIResponse {
   data?: {
     avatar_id?: string;
     avatar_group_id?: string; // For talking photo avatars
+    talking_photo_id?: string; // For simple talking photos
     avatar_name?: string;
     name?: string;
     status?: string;
@@ -67,7 +68,42 @@ export class HeyGenService {
     return await response.json();
   }
 
+  // Create a simple talking photo by uploading an image directly
+  // This endpoint works with Pro/Scale plans (doesn't require Enterprise)
+  async uploadTalkingPhoto(imageData: Buffer | ArrayBuffer, contentType: string = "image/jpeg"): Promise<CreateAvatarResponse> {
+    const uploadUrl = "https://upload.heygen.com/v1/talking_photo";
+    
+    console.log("📤 Uploading talking photo directly to HeyGen...");
+    console.log(`📤 Content type: ${contentType}`);
+    console.log(`📤 Image size: ${imageData instanceof Buffer ? imageData.length : imageData.byteLength} bytes`);
+    
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        "X-Api-Key": this.apiKey,
+        "Content-Type": contentType,
+      },
+      body: imageData,
+    });
+    
+    console.log(`📤 Upload response status: ${response.status} ${response.statusText}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("❌ Talking photo upload failed:", response.status, errorText);
+      throw new Error(`Failed to upload talking photo: ${response.status} - ${errorText}`);
+    }
+    
+    const result = await response.json();
+    console.log("✅ Talking photo uploaded:", JSON.stringify(result, null, 2));
+    
+    // Response format: { data: { talking_photo_id: "...", talking_photo_url: "..." } }
+    return result;
+  }
+
   // Create a talking photo avatar from an uploaded image
+  // Note: This uses the Enterprise-only avatar_group/create endpoint
+  // For non-Enterprise users, use uploadTalkingPhoto instead
   async createTalkingPhotoAvatar(
     imageUrl: string,
     avatarName: string,

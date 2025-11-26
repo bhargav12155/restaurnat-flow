@@ -68,34 +68,85 @@ export class VideoStudioService {
 
   /**
    * STEP 1: UPLOAD
-   * Create an avatar from an uploaded image
+   * Create a talking photo avatar from an uploaded image
+   * Uses the simpler /v1/talking_photo endpoint that works with Pro/Scale plans
    */
   async createAvatarFromImage(
     imageUrl: string,
     name: string
   ): Promise<StudioAvatar> {
-    console.log("🎭 Video Studio: Creating avatar from image...");
+    console.log("🎭 Video Studio: Creating talking photo from image...");
 
-    const response = await this.heygenService.createTalkingPhotoAvatar(
-      imageUrl,
-      name
+    // First, download the image from the URL
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+    }
+    
+    const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+    const imageBuffer = await imageResponse.arrayBuffer();
+    
+    console.log(`🎭 Video Studio: Downloaded image, size: ${imageBuffer.byteLength} bytes, type: ${contentType}`);
+    
+    // Use the simpler talking photo upload (works with Pro/Scale plans)
+    const response = await this.heygenService.uploadTalkingPhoto(
+      Buffer.from(imageBuffer),
+      contentType
     );
 
     const data = response.data as any;
     const avatarId =
-      data?.avatar_group_id ||
+      data?.talking_photo_id ||
       data?.avatar_id ||
+      data?.avatar_group_id ||
       data?.group_id;
 
     if (!avatarId) {
-      throw new Error("Failed to create avatar - no ID returned");
+      console.error("🎭 Video Studio: Response data:", JSON.stringify(response, null, 2));
+      throw new Error("Failed to create talking photo - no ID returned");
     }
+
+    console.log(`🎭 Video Studio: Talking photo created with ID: ${avatarId}`);
 
     return {
       id: avatarId,
       name: name,
       type: "photo",
-      previewUrl: imageUrl,
+      previewUrl: data?.talking_photo_url || imageUrl,
+    };
+  }
+
+  /**
+   * STEP 1 (Alternative): Create avatar directly from image buffer
+   * This avoids the need to upload to HeyGen first and then download
+   */
+  async createAvatarFromBuffer(
+    imageBuffer: Buffer,
+    name: string,
+    contentType: string = "image/jpeg"
+  ): Promise<StudioAvatar> {
+    console.log("🎭 Video Studio: Creating talking photo from buffer...");
+    
+    const response = await this.heygenService.uploadTalkingPhoto(imageBuffer, contentType);
+
+    const data = response.data as any;
+    const avatarId =
+      data?.talking_photo_id ||
+      data?.avatar_id ||
+      data?.avatar_group_id;
+
+    if (!avatarId) {
+      console.error("🎭 Video Studio: Response data:", JSON.stringify(response, null, 2));
+      throw new Error("Failed to create talking photo - no ID returned");
+    }
+
+    console.log(`🎭 Video Studio: Talking photo created with ID: ${avatarId}`);
+
+    return {
+      id: avatarId,
+      name: name,
+      type: "photo",
+      previewUrl: data?.talking_photo_url,
     };
   }
 
