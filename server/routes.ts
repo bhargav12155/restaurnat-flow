@@ -10135,6 +10135,128 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // =====================================================
+  // MOBILE UPLOAD SESSION ROUTES (for QR code-based uploads)
+  // =====================================================
+
+  // Create a new mobile upload session
+  app.post("/api/mobile-upload/session", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { type } = req.body;
+      if (!type || !["training", "consent"].includes(type)) {
+        return res.status(400).json({ error: "Invalid type. Must be 'training' or 'consent'" });
+      }
+
+      const { sessionId } = await storage.createMobileUploadSession(String(userId), type);
+      
+      console.log(`📱 Mobile upload session created: ${sessionId} for user ${userId}`);
+
+      res.json({
+        sessionId,
+        uploadUrl: `/mobile-upload/${sessionId}`,
+      });
+    } catch (error: any) {
+      console.error("Failed to create mobile upload session:", error);
+      res.status(500).json({
+        error: "Failed to create upload session",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Handle mobile file upload (no auth required - session ID is the secret)
+  app.post(
+    "/api/mobile-upload/:sessionId/upload",
+    videoUpload.single("video"),
+    async (req, res) => {
+      try {
+        const { sessionId } = req.params;
+
+        // Validate session exists and not expired
+        const session = await storage.getMobileUploadSession(sessionId);
+        if (!session) {
+          return res.status(404).json({ error: "Upload session not found or expired" });
+        }
+
+        if (!req.file) {
+          return res.status(400).json({ error: "No video file uploaded" });
+        }
+
+        console.log(`📹 Mobile upload received for session ${sessionId}:`, {
+          filename: req.file.originalname,
+          size: req.file.size,
+          mimetype: req.file.mimetype,
+          type: session.type,
+        });
+
+        // Read the file and upload to S3
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const s3Service = new S3UploadService();
+        
+        const uploadedUrl = await s3Service.uploadFile(
+          0, // Use 0 for mobile uploads since we have session-based auth
+          fileBuffer,
+          `mobile-uploads/${session.type}/${sessionId}_${nanoid()}_${req.file.originalname}`,
+          req.file.mimetype
+        );
+
+        // Clean up temporary file
+        fs.unlinkSync(req.file.path);
+
+        // Update session with uploaded URL
+        await storage.updateMobileUploadSession(sessionId, uploadedUrl);
+
+        console.log(`✅ Mobile upload completed for session ${sessionId}: ${uploadedUrl}`);
+
+        res.json({
+          success: true,
+          url: uploadedUrl,
+        });
+      } catch (error: any) {
+        console.error("Failed to handle mobile upload:", error);
+        res.status(500).json({
+          error: "Failed to upload video",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
+  // Check mobile upload session status
+  app.get("/api/mobile-upload/:sessionId/status", requireAuth, async (req: any, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      const session = await storage.getMobileUploadSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Upload session not found or expired" });
+      }
+
+      // Optional: verify the requesting user owns this session
+      const userId = req.user?.id;
+      if (String(session.userId) !== String(userId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      res.json({
+        complete: session.uploadedUrl !== null,
+        url: session.uploadedUrl || undefined,
+        type: session.type,
+      });
+    } catch (error: any) {
+      console.error("Failed to get mobile upload status:", error);
+      res.status(500).json({
+        error: "Failed to get upload status",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
