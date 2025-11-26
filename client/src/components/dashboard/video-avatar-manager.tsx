@@ -391,13 +391,11 @@ export default function VideoAvatarManager() {
                     <Label htmlFor="consentVideo">Consent Video *</Label>
                     <Button
                       type="button"
-                      variant="outline"
-                      size="sm"
                       onClick={() => setShowConsentScript(true)}
-                      className="h-7 text-xs"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all"
                       data-testid="button-read-consent-script"
                     >
-                      <FileText className="w-3 h-3 mr-1" />
+                      <FileText className="w-4 h-4 mr-2" />
                       Read Script
                     </Button>
                   </div>
