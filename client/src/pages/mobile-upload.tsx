@@ -22,7 +22,7 @@ export default function MobileUploadPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const { data: sessionStatus, isLoading, error } = useQuery<SessionStatus>({
-    queryKey: ["/api/mobile-upload", sessionId, "status"],
+    queryKey: [`/api/mobile-upload/${sessionId}`],
     enabled: !!sessionId,
     retry: false,
   });
@@ -96,9 +96,38 @@ export default function MobileUploadPage() {
     );
   }
 
-  if (error || !sessionStatus?.valid) {
+  // Handle network errors separately from expired sessions
+  if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-muted p-4" data-testid="error-container">
+        <Card className="w-full max-w-md border-destructive">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="h-10 w-10 text-destructive" />
+            </div>
+            <CardTitle className="text-destructive" data-testid="text-error-title">Connection Error</CardTitle>
+            <CardDescription className="text-base" data-testid="text-error-description">
+              Unable to connect to the server. Please check your internet connection and try again.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center">
+            <Button 
+              onClick={() => window.location.reload()} 
+              variant="outline"
+              data-testid="button-retry"
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Handle expired or invalid sessions
+  if (!sessionStatus?.valid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-muted p-4" data-testid="expired-container">
         <Card className="w-full max-w-md border-destructive">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
