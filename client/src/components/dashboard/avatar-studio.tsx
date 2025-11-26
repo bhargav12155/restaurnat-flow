@@ -808,10 +808,10 @@ export function AvatarStudio() {
                       <p className="text-sm text-gray-500">Your saved custom voices</p>
                       <div className="grid gap-2">
                         {customVoices.map((voice) => (
-                          <button
+                          <div
                             key={voice.id}
                             onClick={() => setSelectedVoiceId(`voice_library_${voice.id}`)}
-                            className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
+                            className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all cursor-pointer ${
                               selectedVoiceId === `voice_library_${voice.id}`
                                 ? "border-[#D4AF37] bg-[#D4AF37]/5"
                                 : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
@@ -867,7 +867,7 @@ export function AvatarStudio() {
                                 <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </>
