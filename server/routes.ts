@@ -5347,7 +5347,16 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       console.log(`📥 Fetching file from S3: ${voice.audioUrl}`);
       const s3Service = new S3UploadService();
-      const audioBuffer = await s3Service.getFile(voice.audioUrl);
+      
+      // Extract the key from the full S3 URL
+      // URL format: https://bucket-name.s3.region.amazonaws.com/key
+      let s3Key = voice.audioUrl;
+      if (voice.audioUrl.includes('amazonaws.com/')) {
+        s3Key = voice.audioUrl.split('amazonaws.com/')[1];
+      }
+      console.log(`🔑 S3 Key extracted: ${s3Key}`);
+      
+      const audioBuffer = await s3Service.getFile(s3Key);
       console.log(
         `✅ Audio file retrieved from S3, size: ${audioBuffer.length} bytes`
       );
@@ -5359,6 +5368,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           ? "audio/wav"
           : ext === ".mp3"
           ? "audio/mpeg"
+          : ext === ".webm"
+          ? "audio/webm"
           : "audio/mpeg";
 
       res.set("Content-Type", contentType);
