@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +37,8 @@ import {
   Wand2,
   Volume2,
   X,
+  Square,
+  Hash,
 } from "lucide-react";
 
 const PROFESSIONAL_VOICES = [
@@ -107,6 +110,20 @@ export function AvatarStudio() {
   const [uploadName, setUploadName] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [voiceAudioUrls, setVoiceAudioUrls] = useState<Record<string, string>>({});
+  
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedUrl, setRecordedUrl] = useState<string>("");
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [voiceName, setVoiceName] = useState("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // HeyGen voice ID state
+  const [heygenVoiceId, setHeygenVoiceId] = useState("");
+  const [voiceTab, setVoiceTab] = useState("professional");
 
   const { data: avatarGroupsResponse, isLoading: groupsLoading } = useQuery<{
     avatar_group_list?: PhotoAvatarGroup[];
@@ -296,6 +313,109 @@ export function AvatarStudio() {
       });
     },
   });
+
+  const uploadVoiceMutation = useMutation({
+    mutationFn: async ({ blob, name }: { blob: Blob; name: string }) => {
+      const formData = new FormData();
+      formData.append("audio", blob, "recording.webm");
+      formData.append("name", name);
+
+      const response = await fetch("/api/custom-voices", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to upload voice");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Voice Uploaded!",
+        description: "Your custom voice has been saved.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/custom-voices"] });
+      setSelectedVoiceId(`voice_library_${data.id}`);
+      setRecordedBlob(null);
+      setRecordedUrl("");
+      setVoiceName("");
+      setVoiceTab("custom");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Upload Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        setRecordedBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setRecordedUrl(url);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch (error) {
+      toast({
+        title: "Microphone Access Denied",
+        description: "Please allow microphone access to record your voice.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const handleUseHeygenVoice = () => {
+    if (heygenVoiceId.trim()) {
+      setSelectedVoiceId(heygenVoiceId.trim());
+      toast({
+        title: "HeyGen Voice Selected",
+        description: `Using voice ID: ${heygenVoiceId.trim()}`,
+      });
+    }
+  };
 
   useEffect(() => {
     if (showVideoDialog && currentVideo?.video_id) {
@@ -604,85 +724,270 @@ export function AvatarStudio() {
             <div className="space-y-6" data-testid="step-2-content">
               <h3 className="text-lg font-semibold">Choose Your Voice</h3>
 
-              {customVoices.length > 0 && (
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium text-[#D4AF37] flex items-center gap-2">
-                    <Mic className="h-4 w-4" />
-                    My Custom Voices
-                  </Label>
+              <Tabs value={voiceTab} onValueChange={setVoiceTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="professional" className="text-xs sm:text-sm" data-testid="tab-professional">
+                    <Volume2 className="h-4 w-4 mr-1 hidden sm:inline" />
+                    Professional
+                  </TabsTrigger>
+                  <TabsTrigger value="custom" className="text-xs sm:text-sm" data-testid="tab-custom">
+                    <Mic className="h-4 w-4 mr-1 hidden sm:inline" />
+                    My Voices
+                  </TabsTrigger>
+                  <TabsTrigger value="record" className="text-xs sm:text-sm" data-testid="tab-record">
+                    <Mic className="h-4 w-4 mr-1 hidden sm:inline" />
+                    Record
+                  </TabsTrigger>
+                  <TabsTrigger value="heygen" className="text-xs sm:text-sm" data-testid="tab-heygen">
+                    <Hash className="h-4 w-4 mr-1 hidden sm:inline" />
+                    Voice ID
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="professional" className="space-y-3 mt-4">
+                  <p className="text-sm text-gray-500">Select from our professional voice library</p>
                   <div className="grid gap-2">
-                    {customVoices.map((voice) => (
+                    {PROFESSIONAL_VOICES.map((voice) => (
                       <button
                         key={voice.id}
-                        onClick={() => setSelectedVoiceId(`voice_library_${voice.id}`)}
-                        className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
-                          selectedVoiceId === `voice_library_${voice.id}`
+                        onClick={() => setSelectedVoiceId(voice.id)}
+                        className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all text-left ${
+                          selectedVoiceId === voice.id
                             ? "border-[#D4AF37] bg-[#D4AF37]/5"
                             : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
                         }`}
-                        data-testid={`voice-custom-${voice.id}`}
+                        data-testid={`voice-professional-${voice.id}`}
                       >
-                        <div className="flex items-center gap-3">
-                          {selectedVoiceId === `voice_library_${voice.id}` && (
-                            <div className="w-5 h-5 bg-[#D4AF37] rounded-full flex items-center justify-center">
-                              <Check className="h-3 w-3 text-white" />
-                            </div>
-                          )}
-                          <Mic className="h-5 w-5 text-[#D4AF37]" />
-                          <span className="font-medium">{voice.name}</span>
-                          <Badge variant="outline" className="text-xs">Custom</Badge>
-                        </div>
-                        {voiceAudioUrls[voice.id] && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePlayVoice(voice.id, voiceAudioUrls[voice.id]);
-                            }}
-                            data-testid={`button-play-custom-voice-${voice.id}`}
-                          >
-                            {playingVoiceId === voice.id ? (
-                              <Pause className="h-4 w-4" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                          </Button>
+                        {selectedVoiceId === voice.id && (
+                          <div className="w-5 h-5 bg-[#D4AF37] rounded-full flex items-center justify-center">
+                            <Check className="h-3 w-3 text-white" />
+                          </div>
                         )}
+                        <Volume2 className="h-5 w-5 text-gray-500" />
+                        <span className="font-medium">{voice.name}</span>
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                </TabsContent>
 
-              <div className="space-y-3">
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <Volume2 className="h-4 w-4" />
-                  Professional Voices
-                </Label>
-                <div className="grid gap-2">
-                  {PROFESSIONAL_VOICES.map((voice) => (
-                    <button
-                      key={voice.id}
-                      onClick={() => setSelectedVoiceId(voice.id)}
-                      className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all text-left ${
-                        selectedVoiceId === voice.id
-                          ? "border-[#D4AF37] bg-[#D4AF37]/5"
-                          : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
-                      }`}
-                      data-testid={`voice-professional-${voice.id}`}
-                    >
-                      {selectedVoiceId === voice.id && (
-                        <div className="w-5 h-5 bg-[#D4AF37] rounded-full flex items-center justify-center">
-                          <Check className="h-3 w-3 text-white" />
+                <TabsContent value="custom" className="space-y-3 mt-4">
+                  {customVoices.length > 0 ? (
+                    <>
+                      <p className="text-sm text-gray-500">Your saved custom voices</p>
+                      <div className="grid gap-2">
+                        {customVoices.map((voice) => (
+                          <button
+                            key={voice.id}
+                            onClick={() => setSelectedVoiceId(`voice_library_${voice.id}`)}
+                            className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
+                              selectedVoiceId === `voice_library_${voice.id}`
+                                ? "border-[#D4AF37] bg-[#D4AF37]/5"
+                                : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
+                            }`}
+                            data-testid={`voice-custom-${voice.id}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {selectedVoiceId === `voice_library_${voice.id}` && (
+                                <div className="w-5 h-5 bg-[#D4AF37] rounded-full flex items-center justify-center">
+                                  <Check className="h-3 w-3 text-white" />
+                                </div>
+                              )}
+                              <Mic className="h-5 w-5 text-[#D4AF37]" />
+                              <span className="font-medium">{voice.name}</span>
+                              <Badge variant="outline" className="text-xs">Custom</Badge>
+                            </div>
+                            {voiceAudioUrls[voice.id] && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlayVoice(voice.id, voiceAudioUrls[voice.id]);
+                                }}
+                                data-testid={`button-play-custom-voice-${voice.id}`}
+                              >
+                                {playingVoiceId === voice.id ? (
+                                  <Pause className="h-4 w-4" />
+                                ) : (
+                                  <Play className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                      <Mic className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-500 mb-2">No custom voices yet</p>
+                      <p className="text-sm text-gray-400">Record a voice in the "Record" tab to create one</p>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="record" className="space-y-4 mt-4">
+                  <p className="text-sm text-gray-500">Record your own voice for the avatar</p>
+                  
+                  <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg space-y-4">
+                    {!recordedBlob ? (
+                      <>
+                        <div className={`w-24 h-24 rounded-full flex items-center justify-center transition-all ${
+                          isRecording 
+                            ? "bg-red-500 animate-pulse" 
+                            : "bg-gray-100 dark:bg-gray-800"
+                        }`}>
+                          <Mic className={`h-10 w-10 ${isRecording ? "text-white" : "text-gray-400"}`} />
                         </div>
-                      )}
-                      <Volume2 className="h-5 w-5 text-gray-500" />
-                      <span className="font-medium">{voice.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                        
+                        {isRecording && (
+                          <div className="text-2xl font-mono text-red-500">
+                            {formatTime(recordingTime)}
+                          </div>
+                        )}
+                        
+                        <Button
+                          size="lg"
+                          onClick={isRecording ? stopRecording : startRecording}
+                          className={isRecording 
+                            ? "bg-red-500 hover:bg-red-600" 
+                            : "bg-[#D4AF37] hover:bg-[#D4AF37]/90"
+                          }
+                          data-testid={isRecording ? "button-stop-recording" : "button-start-recording"}
+                        >
+                          {isRecording ? (
+                            <>
+                              <Square className="h-5 w-5 mr-2" />
+                              Stop Recording
+                            </>
+                          ) : (
+                            <>
+                              <Mic className="h-5 w-5 mr-2" />
+                              Start Recording
+                            </>
+                          )}
+                        </Button>
+                        
+                        <p className="text-xs text-gray-500">
+                          Record at least 30 seconds of clear speech for best results
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-full space-y-4">
+                          <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => {
+                                const audio = new Audio(recordedUrl);
+                                audio.play();
+                              }}
+                              data-testid="button-play-recording"
+                            >
+                              <Play className="h-4 w-4" />
+                            </Button>
+                            <div className="flex-1">
+                              <p className="font-medium">Recording Complete</p>
+                              <p className="text-sm text-gray-500">{formatTime(recordingTime)} recorded</p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setRecordedBlob(null);
+                                setRecordedUrl("");
+                                setRecordingTime(0);
+                              }}
+                              data-testid="button-discard-recording"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          
+                          <div className="space-y-2">
+                            <Label htmlFor="voice-name">Voice Name</Label>
+                            <Input
+                              id="voice-name"
+                              value={voiceName}
+                              onChange={(e) => setVoiceName(e.target.value)}
+                              placeholder="e.g., My Professional Voice"
+                              data-testid="input-voice-name"
+                            />
+                          </div>
+                          
+                          <Button
+                            className="w-full bg-[#D4AF37] hover:bg-[#D4AF37]/90"
+                            disabled={!voiceName.trim() || uploadVoiceMutation.isPending}
+                            onClick={() => {
+                              if (recordedBlob && voiceName.trim()) {
+                                uploadVoiceMutation.mutate({
+                                  blob: recordedBlob,
+                                  name: voiceName.trim(),
+                                });
+                              }
+                            }}
+                            data-testid="button-save-voice"
+                          >
+                            {uploadVoiceMutation.isPending ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="h-4 w-4 mr-2" />
+                                Save Voice
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="heygen" className="space-y-4 mt-4">
+                  <p className="text-sm text-gray-500">Enter a HeyGen voice ID to use a specific voice</p>
+                  
+                  <div className="space-y-4 p-4 border rounded-lg">
+                    <div className="space-y-2">
+                      <Label htmlFor="heygen-voice-id">HeyGen Voice ID</Label>
+                      <Input
+                        id="heygen-voice-id"
+                        value={heygenVoiceId}
+                        onChange={(e) => setHeygenVoiceId(e.target.value)}
+                        placeholder="e.g., 1bd001e7e50f421d891986aad5158bc8"
+                        className="font-mono text-sm"
+                        data-testid="input-heygen-voice-id"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Find voice IDs in your HeyGen dashboard under Voices
+                      </p>
+                    </div>
+                    
+                    <Button
+                      onClick={handleUseHeygenVoice}
+                      disabled={!heygenVoiceId.trim()}
+                      className="w-full bg-[#D4AF37] hover:bg-[#D4AF37]/90"
+                      data-testid="button-use-heygen-voice"
+                    >
+                      <Check className="h-4 w-4 mr-2" />
+                      Use This Voice
+                    </Button>
+                    
+                    {selectedVoiceId && !selectedVoiceId.startsWith("voice_library_") && 
+                     !PROFESSIONAL_VOICES.find(v => v.id === selectedVoiceId) && (
+                      <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span className="text-sm text-green-700 dark:text-green-400">
+                          Using voice ID: {selectedVoiceId}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 
