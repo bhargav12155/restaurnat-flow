@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -93,6 +94,17 @@ const STEPS = [
   { id: 3, title: "Create Video", icon: Video },
 ];
 
+const PLATFORM_OPTIONS = [
+  { id: "instagram_reel", name: "Instagram Reel", duration: 30, description: "15-30 sec optimal" },
+  { id: "facebook_story", name: "Facebook Story", duration: 20, description: "15-20 sec optimal" },
+  { id: "facebook_post", name: "Facebook Post", duration: 90, description: "1-2 min optimal" },
+  { id: "twitter", name: "Twitter/X", duration: 45, description: "30-60 sec optimal" },
+  { id: "youtube_short", name: "YouTube Short", duration: 30, description: "15-30 sec optimal" },
+  { id: "tiktok", name: "TikTok", duration: 30, description: "21-34 sec optimal" },
+  { id: "linkedin", name: "LinkedIn", duration: 90, description: "1-2 min optimal" },
+  { id: "custom", name: "Custom Length", duration: 60, description: "Set your own duration" },
+];
+
 export function AvatarStudio() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -125,6 +137,10 @@ export function AvatarStudio() {
   // HeyGen voice ID state
   const [heygenVoiceId, setHeygenVoiceId] = useState("");
   const [voiceTab, setVoiceTab] = useState("professional");
+  
+  // AI script generation settings
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [selectedPlatform, setSelectedPlatform] = useState("instagram_reel");
 
   const { data: avatarGroupsResponse, isLoading: groupsLoading } = useQuery<{
     avatar_group_list?: PhotoAvatarGroup[];
