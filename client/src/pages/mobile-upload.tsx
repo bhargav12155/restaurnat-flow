@@ -16,6 +16,7 @@ interface SessionStatus {
 export default function MobileUploadPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recordInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
@@ -29,6 +30,10 @@ export default function MobileUploadPage() {
 
   const handleFileSelect = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleRecordVideo = () => {
+    recordInputRef.current?.click();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -188,20 +193,45 @@ export default function MobileUploadPage() {
             className="hidden"
             data-testid="input-file"
           />
+          <input
+            ref={recordInputRef}
+            type="file"
+            accept="video/*"
+            capture="environment"
+            onChange={handleFileChange}
+            className="hidden"
+            data-testid="input-record"
+          />
 
           {!selectedFile ? (
-            <Button
-              onClick={handleFileSelect}
-              variant="outline"
-              className="w-full h-32 flex flex-col gap-3 border-2 border-dashed hover:border-primary hover:bg-primary/5 transition-all"
-              data-testid="button-select-video"
-            >
-              <div className="flex gap-4">
-                <Camera className="h-10 w-10 text-muted-foreground" />
-                <Video className="h-10 w-10 text-muted-foreground" />
+            <div className="space-y-4">
+              <Button
+                onClick={handleRecordVideo}
+                variant="default"
+                className="w-full h-20 flex items-center justify-center gap-3 text-lg"
+                data-testid="button-record-video"
+              >
+                <Camera className="h-8 w-8" />
+                <span className="font-medium">Record New Video</span>
+              </Button>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">or</span>
+                </div>
               </div>
-              <span className="text-lg font-medium">Tap to Record or Select Video</span>
-            </Button>
+              <Button
+                onClick={handleFileSelect}
+                variant="outline"
+                className="w-full h-20 flex items-center justify-center gap-3 text-lg border-2 border-dashed hover:border-primary hover:bg-primary/5 transition-all"
+                data-testid="button-select-video"
+              >
+                <Video className="h-8 w-8 text-muted-foreground" />
+                <span className="font-medium text-muted-foreground">Choose from Gallery</span>
+              </Button>
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-4 bg-muted rounded-lg" data-testid="selected-file-info">
