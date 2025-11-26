@@ -306,11 +306,13 @@ export function AvatarStudio() {
 
   const generateScriptMutation = useMutation({
     mutationFn: async () => {
+      const platform = PLATFORM_OPTIONS.find(p => p.id === selectedPlatform);
       const response = await apiRequest("POST", "/api/generate-script", {
-        topic: videoTitle || "professional introduction",
+        topic: videoTitle || "professional real estate introduction",
         videoType: "introduction",
-        platform: "youtube",
-        duration: 60,
+        platform: platform?.name || "Instagram Reel",
+        duration: platform?.duration || 30,
+        customPrompt: customPrompt || undefined,
       });
       return response.json();
     },
@@ -318,7 +320,7 @@ export function AvatarStudio() {
       setScript(data.script || "");
       toast({
         title: "Script Generated!",
-        description: "AI has created a script for you.",
+        description: `Created a ${PLATFORM_OPTIONS.find(p => p.id === selectedPlatform)?.duration || 30}-second script for ${PLATFORM_OPTIONS.find(p => p.id === selectedPlatform)?.name || 'your video'}.`,
       });
     },
     onError: (error: any) => {
