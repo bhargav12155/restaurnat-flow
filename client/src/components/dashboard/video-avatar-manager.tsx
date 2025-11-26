@@ -8,6 +8,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -17,6 +24,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle2,
+  FileText,
   Loader2,
   Trash2,
   Video,
@@ -48,6 +56,7 @@ export default function VideoAvatarManager() {
   const [voiceId, setVoiceId] = useState("");
   const [uploadingTraining, setUploadingTraining] = useState(false);
   const [uploadingConsent, setUploadingConsent] = useState(false);
+  const [showConsentScript, setShowConsentScript] = useState(false);
 
   // Fetch video avatars
   const { data: avatars = [], isLoading: isLoadingAvatars } = useQuery<
@@ -378,7 +387,20 @@ export default function VideoAvatarManager() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="consentVideo">Consent Video *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="consentVideo">Consent Video *</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowConsentScript(true)}
+                      className="h-7 text-xs"
+                      data-testid="button-read-consent-script"
+                    >
+                      <FileText className="w-3 h-3 mr-1" />
+                      Read Script
+                    </Button>
+                  </div>
                   <div className="flex gap-2">
                     <Input
                       id="consentVideo"
@@ -613,6 +635,42 @@ export default function VideoAvatarManager() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={showConsentScript} onOpenChange={setShowConsentScript}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              HeyGen Consent Statement
+            </DialogTitle>
+            <DialogDescription>
+              Record yourself reading this statement clearly while looking at the camera
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-muted p-6 rounded-lg border-2 border-dashed">
+              <p className="text-lg leading-relaxed font-medium text-center">
+                "I, <span className="text-primary underline">[state your full name]</span>, am aware that my voice and likeness will be used to create an AI-generated avatar. I authorize HeyGen to use this recording to train and generate synthetic videos featuring my digital likeness and voice."
+              </p>
+            </div>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">Recording Tips:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Look directly at the camera while speaking</li>
+                <li>Speak clearly and at a natural pace</li>
+                <li>Ensure good lighting on your face</li>
+                <li>Record in a quiet environment</li>
+                <li>Say your actual full legal name where indicated</li>
+              </ul>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={() => setShowConsentScript(false)}>
+                Got it
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
