@@ -190,6 +190,7 @@ export class HeyGenService {
     title,
     voiceId,
     audioAssetId,
+    audioUrl,
     aspectRatio = "16:9",
     quality = "720p",
     isTalkingPhoto = false,
@@ -201,6 +202,7 @@ export class HeyGenService {
     title: string;
     voiceId?: string;
     audioAssetId?: string;
+    audioUrl?: string;
     aspectRatio?: "16:9" | "9:16" | "1:1";
     quality?: "1080p" | "720p" | "480p";
     isTalkingPhoto?: boolean;
@@ -225,18 +227,29 @@ export class HeyGenService {
           }),
         };
 
-    // Build voice object - use audio if audioAssetId is provided, otherwise use text
-    const voice = audioAssetId
-      ? {
-          type: "audio" as const,
-          audio_asset_id: audioAssetId,
-        }
-      : {
-          type: "text" as const,
-          input_text: script.substring(0, 1500), // Limit to 1500 characters as per docs
-          voice_id: voiceId || "119caed25533477ba63822d5d1552d25", // Default voice from docs
-          speed: speed,
-        };
+    // Build voice object - priority: audioAssetId > audioUrl > text-to-speech
+    let voice: any;
+    if (audioAssetId) {
+      // Use HeyGen audio asset ID (best quality)
+      voice = {
+        type: "audio" as const,
+        audio_asset_id: audioAssetId,
+      };
+    } else if (audioUrl) {
+      // Use direct audio URL (for user recordings stored in S3)
+      voice = {
+        type: "audio" as const,
+        audio_url: audioUrl,
+      };
+    } else {
+      // Use text-to-speech
+      voice = {
+        type: "text" as const,
+        input_text: script.substring(0, 1500), // Limit to 1500 characters as per docs
+        voice_id: voiceId || "119caed25533477ba63822d5d1552d25", // Default voice from docs
+        speed: speed,
+      };
+    }
 
     // Follow the exact structure from the official documentation
     const payload = {

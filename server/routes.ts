@@ -7893,27 +7893,34 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       let finalVoiceId = voiceId;
       let audioAssetId: string | undefined;
 
+      // Track if we have an audio URL to use (for voices without HeyGen asset ID)
+      let audioUrl: string | undefined;
+
       // Handle Voice Library voices
       if (voiceId === "voice_library" && voiceLibraryId) {
         const user = (req as any).user;
         const voices = await storage.listCustomVoices(user.id);
         const voiceLibraryVoice = voices.find((v) => v.id === voiceLibraryId);
 
-        if (
-          voiceLibraryVoice?.heygenAudioAssetId &&
-          voiceLibraryVoice.status === "ready"
-        ) {
+        if (voiceLibraryVoice) {
           console.log("🎤 Backend: Voice Library voice detected!");
-          console.log(
-            "🎤 Backend: Audio Asset ID:",
-            voiceLibraryVoice.heygenAudioAssetId
-          );
-          audioAssetId = voiceLibraryVoice.heygenAudioAssetId;
-          finalVoiceId = undefined; // Don't use text voice when using audio
+          
+          if (voiceLibraryVoice.heygenAudioAssetId && voiceLibraryVoice.status === "ready") {
+            // Use HeyGen audio asset ID (best quality)
+            console.log("🎤 Backend: Using HeyGen Audio Asset ID:", voiceLibraryVoice.heygenAudioAssetId);
+            audioAssetId = voiceLibraryVoice.heygenAudioAssetId;
+            finalVoiceId = undefined;
+          } else if (voiceLibraryVoice.audioUrl) {
+            // Fall back to using the S3 audio URL directly
+            console.log("🎤 Backend: Using Audio URL (HeyGen upload failed):", voiceLibraryVoice.audioUrl);
+            audioUrl = voiceLibraryVoice.audioUrl;
+            finalVoiceId = undefined;
+          } else {
+            console.log("⚠️ Backend: Voice Library voice has no audio source, using fallback");
+            finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
+          }
         } else {
-          console.log(
-            "⚠️ Backend: Voice Library voice not ready or missing asset ID, using fallback"
-          );
+          console.log("⚠️ Backend: Voice Library voice not found, using fallback");
           finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
         }
       } else if (voiceId === "custom_voice" && customVoiceAvatarId) {
@@ -7980,6 +7987,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         speed: voiceSpeed || 1.0,
         voiceId: finalVoiceId,
         audioAssetId,
+        audioUrl,
       });
 
       console.log("✅ Backend: Video generation result:", result);
