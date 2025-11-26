@@ -10169,6 +10169,36 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Get session info for mobile page (no auth required - session ID is the secret)
+  app.get("/api/mobile-upload/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      const session = await storage.getMobileUploadSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ 
+          valid: false,
+          error: "Upload session not found or expired" 
+        });
+      }
+
+      const uploadTypeLabel = session.type === "training" ? "Training Video" : "Consent Video";
+
+      res.json({
+        valid: true,
+        uploadType: session.type,
+        uploadTypeLabel,
+        expiresAt: session.expiresAt.toISOString(),
+      });
+    } catch (error: any) {
+      console.error("Failed to get mobile session info:", error);
+      res.status(500).json({
+        valid: false,
+        error: "Failed to get session info",
+      });
+    }
+  });
+
   // Handle mobile file upload (no auth required - session ID is the secret)
   app.post(
     "/api/mobile-upload/:sessionId/upload",
