@@ -39,6 +39,7 @@ import {
   X,
   Square,
   Hash,
+  Trash2,
 } from "lucide-react";
 
 const PROFESSIONAL_VOICES = [
@@ -346,6 +347,38 @@ export function AvatarStudio() {
     onError: (error: Error) => {
       toast({
         title: "Upload Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteVoiceMutation = useMutation({
+    mutationFn: async (voiceId: string) => {
+      const response = await fetch(`/api/custom-voices/${voiceId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete voice");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Voice Deleted",
+        description: "Your custom voice has been removed.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/custom-voices"] });
+      if (selectedVoiceId.startsWith("voice_library_")) {
+        setSelectedVoiceId("119caed25533477ba63822d5d1552d25");
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Deletion Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -801,23 +834,39 @@ export function AvatarStudio() {
                                 <Badge variant="outline" className="text-xs border-orange-300 text-orange-600">Audio Only</Badge>
                               )}
                             </div>
-                            {voiceAudioUrls[voice.id] && (
+                            <div className="flex items-center gap-2">
+                              {voiceAudioUrls[voice.id] && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePlayVoice(voice.id, voiceAudioUrls[voice.id]);
+                                  }}
+                                  data-testid={`button-play-custom-voice-${voice.id}`}
+                                >
+                                  {playingVoiceId === voice.id ? (
+                                    <Pause className="h-4 w-4" />
+                                  ) : (
+                                    <Play className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              )}
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handlePlayVoice(voice.id, voiceAudioUrls[voice.id]);
+                                  if (confirm(`Delete "${voice.name}"? This cannot be undone.`)) {
+                                    deleteVoiceMutation.mutate(voice.id);
+                                  }
                                 }}
-                                data-testid={`button-play-custom-voice-${voice.id}`}
+                                disabled={deleteVoiceMutation.isPending}
+                                data-testid={`button-delete-custom-voice-${voice.id}`}
                               >
-                                {playingVoiceId === voice.id ? (
-                                  <Pause className="h-4 w-4" />
-                                ) : (
-                                  <Play className="h-4 w-4" />
-                                )}
+                                <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
-                            )}
+                            </div>
                           </button>
                         ))}
                       </div>
