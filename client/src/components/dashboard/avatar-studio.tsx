@@ -230,12 +230,14 @@ export function AvatarStudio() {
       script: string;
       title: string;
       voiceId: string;
+      voiceLibraryId?: string;
     }) => {
       const response = await apiRequest("POST", "/api/videos/generate", {
         avatarId: data.avatarId,
         script: data.script,
         title: data.title,
-        voiceId: data.voiceId,
+        voiceId: data.voiceLibraryId ? "voice_library" : data.voiceId,
+        voiceLibraryId: data.voiceLibraryId,
         isTalkingPhoto: true,
         test: false,
         voiceSpeed: 1.0,
@@ -347,11 +349,21 @@ export function AvatarStudio() {
       return;
     }
 
+    // Extract voice library ID if using a custom voice
+    let voiceLibraryId: string | undefined;
+    let finalVoiceId = selectedVoiceId;
+    
+    if (selectedVoiceId.startsWith("voice_library_")) {
+      voiceLibraryId = selectedVoiceId.replace("voice_library_", "");
+      finalVoiceId = "voice_library";
+    }
+
     generateVideoMutation.mutate({
       avatarId: selectedAvatarLook,
       script: script.trim(),
       title: videoTitle.trim() || "AI Avatar Video",
-      voiceId: selectedVoiceId,
+      voiceId: finalVoiceId,
+      voiceLibraryId,
     });
   };
 

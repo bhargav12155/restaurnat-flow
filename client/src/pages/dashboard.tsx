@@ -1,6 +1,7 @@
 import { AIContentGenerator } from "@/components/dashboard/ai-content-generator";
 import { AISearchOptimizer } from "@/components/dashboard/ai-search-optimizer";
 import { APIKeyManager } from "@/components/dashboard/api-key-manager";
+import { AvatarStudio } from "@/components/dashboard/avatar-studio";
 import { BrandSettings } from "@/components/dashboard/brand-settings";
 import { ContentCalendar } from "@/components/dashboard/content-calendar";
 import { LocalMarketTools } from "@/components/dashboard/local-market-tools";
@@ -89,11 +90,11 @@ export default function Dashboard() {
       case "streaming-avatar":
         return <StreamingAvatarComponent />;
       case "photo-avatars":
-        return <PhotoAvatarManager />;
+        return <AvatarStudio />;
       case "video-avatars":
         return <VideoAvatarManager />;
       case "video-generation":
-        return <VideoGenerationManager />;
+        return <AvatarStudio />;
       case "templates":
         return <TemplateManager />;
       case "video-templates":
