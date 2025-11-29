@@ -7817,19 +7817,17 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const videoAvatarService = new HeyGenVideoAvatarService();
       const heygenResponse = await videoAvatarService.listVideoAvatars();
       
-      console.log("📋 HeyGen API response:", JSON.stringify(heygenResponse, null, 2));
-      
       // Transform HeyGen API response to match our expected format
-      const heygenAvatars = (heygenResponse.data?.video_avatars || []).map((avatar: any) => ({
+      // Uses 'avatars' array from the /avatars endpoint (filtered for instant_avatar type)
+      const heygenAvatars = (heygenResponse.data?.avatars || []).map((avatar: any) => ({
         id: avatar.avatar_id,
         heygenAvatarId: avatar.avatar_id,
         avatarName: avatar.avatar_name,
-        status: avatar.status === 'complete' ? 'complete' : 
-                avatar.status === 'failed' ? 'failed' : 'in_progress',
-        thumbnailUrl: avatar.thumbnail_url,
+        status: 'complete' as const, // Instant avatars from the list are always complete
+        thumbnailUrl: avatar.preview_image_url,
         previewVideoUrl: avatar.preview_video_url,
-        createdAt: avatar.created_at ? new Date(avatar.created_at) : new Date(),
-        completedAt: avatar.status === 'complete' ? new Date() : null,
+        createdAt: new Date(),
+        completedAt: new Date(),
         errorMessage: null,
         trainingVideoUrl: '',
         consentVideoUrl: '',
@@ -7837,7 +7835,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         source: 'heygen' as const,
       }));
 
-      console.log("✅ Video avatars retrieved from HeyGen:", heygenAvatars.length);
+      console.log("✅ Instant avatars retrieved from HeyGen:", heygenAvatars.length);
       res.json(heygenAvatars);
     } catch (error: any) {
       console.error("❌ Failed to list video avatars:", error);
