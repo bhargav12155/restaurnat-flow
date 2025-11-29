@@ -50,15 +50,16 @@ interface VideoAvatarStatusResponse {
 interface VideoAvatarListResponse {
   code: number;
   data: {
-    video_avatars: Array<{
+    avatars: Array<{
       avatar_id: string;
       avatar_name: string;
-      status: string;
-      thumbnail_url?: string;
-      created_at: string;
+      avatar_type: string; // 'instant_avatar', 'public', 'talking_photo'
+      gender?: string;
+      preview_image_url?: string;
+      preview_video_url?: string;
     }>;
-    total: number;
   };
+  message?: string;
 }
 
 export class HeyGenVideoAvatarService {
@@ -199,16 +200,34 @@ export class HeyGenVideoAvatarService {
   }
 
   /**
-   * List All Video Avatars
+   * List All Video Avatars (Instant Avatars)
    *
-   * Retrieve all video avatars created in your account
+   * Retrieve all avatars from your account and filter for instant avatars
+   * Uses the /avatars endpoint which returns all avatar types
    *
    * @returns List of video avatars with their status
    */
   async listVideoAvatars(): Promise<VideoAvatarListResponse> {
-    console.log("📋 Listing all video avatars");
+    console.log("📋 Listing all avatars from HeyGen");
 
-    const response = await this.makeRequest("/video_avatar/list");
+    const response = await this.makeRequest("/avatars");
+    
+    console.log("📋 Full avatars response:", JSON.stringify(response, null, 2));
+
+    // Filter for instant_avatar type (custom video avatars)
+    if (response.data?.avatars) {
+      const instantAvatars = response.data.avatars.filter(
+        (avatar: any) => avatar.avatar_type === 'instant_avatar'
+      );
+      console.log(`📋 Found ${instantAvatars.length} instant avatars out of ${response.data.avatars.length} total`);
+      
+      return {
+        ...response,
+        data: {
+          avatars: instantAvatars
+        }
+      };
+    }
 
     return response;
   }
