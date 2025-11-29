@@ -18,6 +18,8 @@ export interface StudioAvatar {
   type: "preset" | "photo" | "custom";
   previewUrl?: string;
   thumbnailUrl?: string;
+  groupId?: string; // For avatars that belong to a group
+  avatarType?: "avatar" | "talking_photo"; // HeyGen character type for video generation
 }
 
 export interface VideoGenerationRequest {
@@ -158,8 +160,35 @@ export class VideoStudioService {
   }
 
   /**
+   * Fetch avatars within a specific group
+   */
+  private async fetchAvatarsInGroup(groupId: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/v2/avatar_group/${groupId}/avatars`, {
+        method: "GET",
+        headers: {
+          "x-api-key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.warn(`🎭 Video Studio: Failed to fetch avatars in group ${groupId}:`, response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      return data.data?.avatars || [];
+    } catch (error) {
+      console.warn(`🎭 Video Studio: Error fetching avatars in group ${groupId}:`, error);
+      return [];
+    }
+  }
+
+  /**
    * List only custom avatars (user-created, not HeyGen's stock library)
    * Filters for PRIVATE groups (instant avatars) and trained PHOTO groups
+   * IMPORTANT: Returns actual avatar IDs that can be used for video generation, not group IDs
    */
   async listAvatars(): Promise<StudioAvatar[]> {
     console.log("🎭 Video Studio: Fetching custom avatars only...");
@@ -190,14 +219,37 @@ export class VideoStudioService {
       const privateGroups = groups.filter((group: any) => group.group_type === "PRIVATE");
       console.log(`🎭 Video Studio: Found ${privateGroups.length} PRIVATE (instant avatar) groups`);
 
+      // For PRIVATE groups, fetch the actual avatar IDs within the group
       for (const group of privateGroups) {
-        avatars.push({
-          id: group.id,
-          name: group.name || "Custom Avatar",
-          type: "custom",
-          thumbnailUrl: group.preview_image,
-          previewUrl: group.preview_video,
-        });
+        const groupAvatars = await this.fetchAvatarsInGroup(group.id);
+        console.log(`🎭 Video Studio: Group ${group.name} has ${groupAvatars.length} avatars`);
+        
+        if (groupAvatars.length > 0) {
+          // Use the first avatar from the group (the default one)
+          const defaultAvatar = groupAvatars[0];
+          avatars.push({
+            id: defaultAvatar.avatar_id,
+            name: group.name || defaultAvatar.avatar_name || "Custom Avatar",
+            type: "custom",
+            thumbnailUrl: defaultAvatar.preview_image_url || group.preview_image,
+            previewUrl: defaultAvatar.preview_video_url || group.preview_video,
+            groupId: group.id,
+            avatarType: "avatar", // Instant avatars use type "avatar"
+          });
+        } else {
+          // Fallback: try using the group ID with a specific look format
+          // Some instant avatars use format like "groupId@lookIndex"
+          console.log(`🎭 Video Studio: No avatars found in group, using group ID as fallback`);
+          avatars.push({
+            id: group.id,
+            name: group.name || "Custom Avatar",
+            type: "custom",
+            thumbnailUrl: group.preview_image,
+            previewUrl: group.preview_video,
+            groupId: group.id,
+            avatarType: "avatar",
+          });
+        }
       }
 
       // Filter for trained PHOTO groups (photo avatars that are ready to use)
@@ -206,17 +258,37 @@ export class VideoStudioService {
       );
       console.log(`🎭 Video Studio: Found ${trainedPhotoGroups.length} trained PHOTO avatar groups`);
 
+      // For PHOTO groups, also fetch actual avatar IDs
       for (const group of trainedPhotoGroups) {
-        avatars.push({
-          id: group.id,
-          name: group.name || "Photo Avatar",
-          type: "photo",
-          thumbnailUrl: group.preview_image,
-          previewUrl: group.preview_video,
-        });
+        const groupAvatars = await this.fetchAvatarsInGroup(group.id);
+        console.log(`🎭 Video Studio: Photo group ${group.name} has ${groupAvatars.length} avatars`);
+        
+        if (groupAvatars.length > 0) {
+          const defaultAvatar = groupAvatars[0];
+          avatars.push({
+            id: defaultAvatar.avatar_id,
+            name: group.name || defaultAvatar.avatar_name || "Photo Avatar",
+            type: "photo",
+            thumbnailUrl: defaultAvatar.preview_image_url || group.preview_image,
+            previewUrl: defaultAvatar.preview_video_url || group.preview_video,
+            groupId: group.id,
+            avatarType: "avatar", // Trained photo avatars also use type "avatar"
+          });
+        } else {
+          avatars.push({
+            id: group.id,
+            name: group.name || "Photo Avatar",
+            type: "photo",
+            thumbnailUrl: group.preview_image,
+            previewUrl: group.preview_video,
+            groupId: group.id,
+            avatarType: "avatar",
+          });
+        }
       }
 
       // Also fetch user's talking photos (simple photo uploads)
+      // These use type "talking_photo" for video generation
       try {
         const talkingPhotosResponse = await fetch(`${this.baseUrl}/v1/talking_photo.list`, {
           method: "GET",
@@ -238,6 +310,7 @@ export class VideoStudioService {
               type: "photo",
               thumbnailUrl: photo.preview_image_url || photo.image_url,
               previewUrl: photo.preview_video_url,
+              avatarType: "talking_photo", // Simple photo uploads use type "talking_photo"
             });
           }
         }
