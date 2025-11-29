@@ -59,6 +59,7 @@ export default function VideoAvatarManager() {
   const [trainingVideoUrl, setTrainingVideoUrl] = useState("");
   const [consentVideoUrl, setConsentVideoUrl] = useState("");
   const [voiceId, setVoiceId] = useState("");
+  const [audioAssetId, setAudioAssetId] = useState<string | null>(null);
   const [uploadingTraining, setUploadingTraining] = useState(false);
   const [uploadingConsent, setUploadingConsent] = useState(false);
   const [showConsentScript, setShowConsentScript] = useState(false);
@@ -91,6 +92,7 @@ export default function VideoAvatarManager() {
       trainingVideoUrl: string;
       consentVideoUrl: string;
       voiceId?: string;
+      audioAssetId?: string;
     }) => {
       const res = await fetch("/api/video-avatars", {
         method: "POST",
@@ -118,6 +120,7 @@ export default function VideoAvatarManager() {
       setTrainingVideoUrl("");
       setConsentVideoUrl("");
       setVoiceId("");
+      setAudioAssetId(null);
     },
     onError: (error: Error) => {
       toast({
@@ -234,15 +237,24 @@ export default function VideoAvatarManager() {
         throw new Error(error.details || "Upload failed");
       }
 
-      const { url } = await res.json();
-      setUrl(url);
-
-      toast({
-        title: "Upload Successful",
-        description: `${
-          type === "training" ? "Training" : "Consent"
-        } video uploaded`,
-      });
+      const data = await res.json();
+      setUrl(data.url);
+      
+      // If training footage, capture the audio asset ID for voice
+      if (type === "training" && data.audioAssetId) {
+        setAudioAssetId(data.audioAssetId);
+        toast({
+          title: "Upload Successful",
+          description: "Training video uploaded and voice extracted successfully!",
+        });
+      } else {
+        toast({
+          title: "Upload Successful",
+          description: `${
+            type === "training" ? "Training" : "Consent"
+          } video uploaded`,
+        });
+      }
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -334,6 +346,7 @@ export default function VideoAvatarManager() {
       trainingVideoUrl,
       consentVideoUrl,
       voiceId: voiceId || undefined,
+      audioAssetId: audioAssetId || undefined,
     });
   };
 

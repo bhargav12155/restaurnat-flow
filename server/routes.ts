@@ -7451,13 +7451,65 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
         console.log("✅ Video uploaded to S3:", s3VideoUrl);
 
-        // Clean up temporary file
+        // For training footage, extract audio and upload to HeyGen for voice cloning
+        let audioAssetId: string | null = null;
+        let audioUrl: string | null = null;
+        
+        if (type === "training") {
+          try {
+            console.log("🎤 Extracting audio from training footage...");
+            
+            // Extract audio using ffmpeg
+            const { exec } = await import("child_process");
+            const { promisify } = await import("util");
+            const execAsync = promisify(exec);
+            
+            const audioPath = `${req.file.path}_audio.mp3`;
+            
+            // Extract audio as MP3 (HeyGen supports MP3 and WAV)
+            await execAsync(`ffmpeg -i "${req.file.path}" -vn -acodec libmp3lame -ab 192k -ar 44100 "${audioPath}" -y`);
+            
+            console.log("✅ Audio extracted successfully");
+            
+            // Read the extracted audio
+            const audioBuffer = fs.readFileSync(audioPath);
+            
+            // Upload audio to S3 for backup
+            const s3AudioUrl = await s3Service.uploadFile(
+              userId,
+              audioBuffer,
+              `video-avatar-footage/audio/${nanoid()}_voice.mp3`,
+              "audio/mpeg"
+            );
+            audioUrl = s3AudioUrl;
+            console.log("✅ Audio uploaded to S3:", s3AudioUrl);
+            
+            // Upload audio to HeyGen to get an audio asset ID
+            try {
+              const heygenService = new HeyGenService();
+              audioAssetId = await heygenService.uploadAudio(audioBuffer, "audio/mpeg");
+              console.log("✅ Audio uploaded to HeyGen, asset ID:", audioAssetId);
+            } catch (heygenError: any) {
+              console.warn("⚠️ Failed to upload audio to HeyGen (voice will need manual setup):", heygenError.message);
+            }
+            
+            // Clean up audio file
+            fs.unlinkSync(audioPath);
+          } catch (audioError: any) {
+            console.warn("⚠️ Failed to extract audio from video:", audioError.message);
+            // Continue without audio - not a critical failure
+          }
+        }
+
+        // Clean up temporary video file
         fs.unlinkSync(req.file.path);
 
         res.json({
           url: s3VideoUrl,
           type,
           size: req.file.size,
+          audioAssetId,
+          audioUrl,
         });
       } catch (error: any) {
         console.error("❌ Failed to upload video avatar footage:", error);
@@ -7676,7 +7728,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   // Create video avatar from training footage
   app.post("/api/video-avatars", requireAuth, async (req, res) => {
     try {
-      const { name, trainingVideoUrl, consentVideoUrl, voiceId } = req.body;
+      const { name, trainingVideoUrl, consentVideoUrl, voiceId, audioAssetId } = req.body;
       const userId = req.user?.id;
 
       console.log("🎥 Backend: Create video avatar request received");
@@ -7684,6 +7736,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       console.log("🎥 Backend: Training video URL:", trainingVideoUrl);
       console.log("🎥 Backend: Consent video URL:", consentVideoUrl);
       console.log("🎥 Backend: Voice ID:", voiceId);
+      console.log("🎥 Backend: Audio Asset ID (for voice):", audioAssetId);
 
       if (!name || !trainingVideoUrl || !consentVideoUrl) {
         return res.status(400).json({
@@ -7733,9 +7786,13 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
             trainingVideoUrl,
             consentVideoUrl,
             voiceId: voiceId || null,
+            audioAssetId: audioAssetId || null,
             status: "in_progress",
           });
           console.log("💾 Video avatar metadata saved to database");
+          if (audioAssetId) {
+            console.log("🎤 Voice audio asset ID saved:", audioAssetId);
+          }
         } catch (dbError) {
           console.error("⚠️ Failed to save video avatar metadata:", dbError);
         }
@@ -7967,9 +8024,21 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       // Track if we have an audio URL to use (for voices without HeyGen asset ID)
       let audioUrl: string | undefined;
 
+      // Check if this is a video avatar and use its extracted voice
+      const user = (req as any).user;
+      const userVideoAvatars = await storage.listVideoAvatars(user.id);
+      const videoAvatar = userVideoAvatars.find((va) => va.heygenAvatarId === avatarId);
+      
+      if (videoAvatar?.audioAssetId && (!voiceId || voiceId === "avatar_voice")) {
+        // Use the video avatar's own extracted voice
+        console.log("🎤 Backend: Video Avatar detected with extracted voice!");
+        console.log("🎤 Backend: Using Video Avatar Audio Asset ID:", videoAvatar.audioAssetId);
+        audioAssetId = videoAvatar.audioAssetId;
+        finalVoiceId = undefined; // Don't use text voice when using audio
+      }
+
       // Handle Voice Library voices
-      if (voiceId === "voice_library" && voiceLibraryId) {
-        const user = (req as any).user;
+      if (!audioAssetId && voiceId === "voice_library" && voiceLibraryId) {
         const voices = await storage.listCustomVoices(user.id);
         const voiceLibraryVoice = voices.find((v) => v.id === voiceLibraryId);
 
@@ -7994,9 +8063,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           console.log("⚠️ Backend: Voice Library voice not found, using fallback");
           finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
         }
-      } else if (voiceId === "custom_voice" && customVoiceAvatarId) {
+      } else if (!audioAssetId && voiceId === "custom_voice" && customVoiceAvatarId) {
         // Look up the photo avatar group voice for this avatar
-        const user = (req as any).user;
         const customAvatar = await storage.getAvatarById(customVoiceAvatarId);
 
         if (customAvatar?.groupId) {
@@ -8025,9 +8093,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           console.log("⚠️ Backend: Avatar has no groupId, using fallback");
           finalVoiceId = "119caed25533477ba63822d5d1552d25"; // Neutral - Balanced
         }
-      } else if (voiceId) {
+      } else if (!audioAssetId && voiceId) {
         // Check if voiceId is actually a custom voice audio asset ID from a photo avatar group
-        const user = (req as any).user;
         const allPhotoAvatarGroupVoices =
           await storage.listPhotoAvatarGroupVoices(user.id);
         const matchingGroupVoice = allPhotoAvatarGroupVoices.find(
@@ -8072,7 +8139,6 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
 
       // Save video to database
-      const user = (req as any).user;
       const videoRecord = await storage.createVideoContent({
         userId: String(user.id),
         avatarId,
