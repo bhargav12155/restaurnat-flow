@@ -26,6 +26,7 @@ import {
   CheckCircle2,
   FileText,
   Loader2,
+  RefreshCw,
   Smartphone,
   Trash2,
   Video,
@@ -544,6 +545,24 @@ export default function VideoAvatarManager() {
         </TabsContent>
 
         <TabsContent value="library">
+          <div className="flex justify-end mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ["/api/video-avatars"] });
+                toast({
+                  title: "Syncing Avatars",
+                  description: "Refreshing avatars from HeyGen...",
+                });
+              }}
+              disabled={isLoadingAvatars}
+              data-testid="button-sync-avatars"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingAvatars ? 'animate-spin' : ''}`} />
+              Sync from HeyGen
+            </Button>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {isLoadingAvatars ? (
               <div className="col-span-full text-center py-12">
