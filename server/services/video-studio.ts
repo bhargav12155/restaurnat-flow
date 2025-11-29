@@ -20,6 +20,7 @@ export interface StudioAvatar {
   thumbnailUrl?: string;
   groupId?: string; // For avatars that belong to a group
   avatarType?: "avatar" | "talking_photo"; // HeyGen character type for video generation
+  defaultVoiceId?: string; // Default voice for this avatar (from group or avatar)
 }
 
 export interface VideoGenerationRequest {
@@ -160,11 +161,13 @@ export class VideoStudioService {
   }
 
   /**
-   * Fetch avatars within a specific group
+   * Fetch all avatars from HeyGen and find ones matching a group ID
+   * Instant avatars appear in the main /v2/avatars list
    */
-  private async fetchAvatarsInGroup(groupId: string): Promise<any[]> {
+  private async fetchAvatarIdForGroup(groupId: string, groupName: string): Promise<string | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/v2/avatar_group/${groupId}/avatars`, {
+      // Instant avatars appear in /v2/avatars with avatar_id matching or containing group info
+      const response = await fetch(`${this.baseUrl}/v2/avatars`, {
         method: "GET",
         headers: {
           "x-api-key": this.apiKey,
@@ -173,22 +176,38 @@ export class VideoStudioService {
       });
 
       if (!response.ok) {
-        console.warn(`🎭 Video Studio: Failed to fetch avatars in group ${groupId}:`, response.status);
-        return [];
+        console.warn(`🎭 Video Studio: Failed to fetch avatars list:`, response.status);
+        return null;
       }
 
       const data = await response.json();
-      return data.data?.avatars || [];
+      const allAvatars = data.data?.avatars || [];
+      
+      // Look for avatar that matches the group ID or name
+      // Instant avatars often have avatar_id that relates to the group
+      const matchingAvatar = allAvatars.find((avatar: any) => 
+        avatar.avatar_id === groupId ||
+        avatar.avatar_group_id === groupId ||
+        avatar.group_id === groupId ||
+        (avatar.avatar_name && avatar.avatar_name.toLowerCase() === groupName.toLowerCase())
+      );
+
+      if (matchingAvatar) {
+        console.log(`🎭 Video Studio: Found matching avatar: ${matchingAvatar.avatar_id} for group ${groupName}`);
+        return matchingAvatar.avatar_id;
+      }
+
+      return null;
     } catch (error) {
-      console.warn(`🎭 Video Studio: Error fetching avatars in group ${groupId}:`, error);
-      return [];
+      console.warn(`🎭 Video Studio: Error finding avatar for group ${groupId}:`, error);
+      return null;
     }
   }
 
   /**
    * List only custom avatars (user-created, not HeyGen's stock library)
    * Filters for PRIVATE groups (instant avatars) and trained PHOTO groups
-   * IMPORTANT: Returns actual avatar IDs that can be used for video generation, not group IDs
+   * IMPORTANT: Returns actual avatar IDs that can be used for video generation
    */
   async listAvatars(): Promise<StudioAvatar[]> {
     console.log("🎭 Video Studio: Fetching custom avatars only...");
@@ -196,8 +215,8 @@ export class VideoStudioService {
     const avatars: StudioAvatar[] = [];
 
     try {
-      // Use the avatar_group.list API to get user's custom avatars
-      const response = await fetch(`${this.baseUrl}/v2/avatar_group.list`, {
+      // First, get all avatar groups to identify user's custom avatars
+      const groupsResponse = await fetch(`${this.baseUrl}/v2/avatar_group.list`, {
         method: "GET",
         headers: {
           "x-api-key": this.apiKey,
@@ -205,41 +224,77 @@ export class VideoStudioService {
         },
       });
 
-      if (!response.ok) {
-        console.error("🎭 Video Studio: Failed to fetch avatar groups:", response.status);
+      if (!groupsResponse.ok) {
+        console.error("🎭 Video Studio: Failed to fetch avatar groups:", groupsResponse.status);
         return avatars;
       }
 
-      const data = await response.json();
-      const groups = data.data?.avatar_group_list || data.data?.avatar_groups || [];
+      const groupsData = await groupsResponse.json();
+      const groups = groupsData.data?.avatar_group_list || groupsData.data?.avatar_groups || [];
 
       console.log(`🎭 Video Studio: Found ${groups.length} total avatar groups`);
+
+      // Get the full avatars list to find actual avatar IDs
+      const avatarsResponse = await fetch(`${this.baseUrl}/v2/avatars`, {
+        method: "GET",
+        headers: {
+          "x-api-key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      let allAvatars: any[] = [];
+      if (avatarsResponse.ok) {
+        const avatarsData = await avatarsResponse.json();
+        allAvatars = avatarsData.data?.avatars || [];
+        console.log(`🎭 Video Studio: Found ${allAvatars.length} total avatars in HeyGen account`);
+        
+        // Log first few avatars to understand the structure
+        const sampleAvatars = allAvatars.slice(0, 5);
+        for (const avatar of sampleAvatars) {
+          console.log(`🎭 Sample avatar: id=${avatar.avatar_id}, name=${avatar.avatar_name}, type=${avatar.avatar_type}, group_id=${avatar.avatar_group_id || avatar.group_id || 'none'}`);
+        }
+      }
 
       // Filter for PRIVATE groups (instant avatars from video training)
       const privateGroups = groups.filter((group: any) => group.group_type === "PRIVATE");
       console.log(`🎭 Video Studio: Found ${privateGroups.length} PRIVATE (instant avatar) groups`);
 
-      // For PRIVATE groups, fetch the actual avatar IDs within the group
+      // For PRIVATE groups, find the matching avatar in the avatars list
+      // According to HeyGen docs, instant avatars are found by NAME in the avatars list
       for (const group of privateGroups) {
-        const groupAvatars = await this.fetchAvatarsInGroup(group.id);
-        console.log(`🎭 Video Studio: Group ${group.name} has ${groupAvatars.length} avatars`);
-        
-        if (groupAvatars.length > 0) {
-          // Use the first avatar from the group (the default one)
-          const defaultAvatar = groupAvatars[0];
+        // Try multiple matching strategies
+        const matchingAvatar = allAvatars.find((avatar: any) => {
+          // Match by group ID
+          if (avatar.avatar_group_id === group.id || avatar.group_id === group.id) return true;
+          // Match by avatar_id containing group ID
+          if (avatar.avatar_id?.includes(group.id)) return true;
+          // Match by name (case-insensitive)
+          if (avatar.avatar_name?.toLowerCase() === group.name?.toLowerCase()) return true;
+          // Match by avatar_type being instant_avatar with similar name
+          if (avatar.avatar_type === 'instant_avatar' && avatar.avatar_name?.includes(group.name?.split(' ')[0])) return true;
+          return false;
+        });
+
+        if (matchingAvatar) {
+          console.log(`🎭 Video Studio: Found matching avatar for "${group.name}": id=${matchingAvatar.avatar_id}, type=${matchingAvatar.avatar_type}`);
           avatars.push({
-            id: defaultAvatar.avatar_id,
-            name: group.name || defaultAvatar.avatar_name || "Custom Avatar",
+            id: matchingAvatar.avatar_id,
+            name: group.name || matchingAvatar.avatar_name || "Custom Avatar",
             type: "custom",
-            thumbnailUrl: defaultAvatar.preview_image_url || group.preview_image,
-            previewUrl: defaultAvatar.preview_video_url || group.preview_video,
+            thumbnailUrl: matchingAvatar.preview_image_url || group.preview_image,
+            previewUrl: matchingAvatar.preview_video_url || group.preview_video,
             groupId: group.id,
-            avatarType: "avatar", // Instant avatars use type "avatar"
+            avatarType: "avatar",
+            defaultVoiceId: group.default_voice_id, // Include the default voice for this avatar
           });
         } else {
-          // Fallback: try using the group ID with a specific look format
-          // Some instant avatars use format like "groupId@lookIndex"
-          console.log(`🎭 Video Studio: No avatars found in group, using group ID as fallback`);
+          // Log all instant_avatar type avatars for debugging
+          const instantAvatars = allAvatars.filter((a: any) => a.avatar_type === 'instant_avatar');
+          console.log(`🎭 Video Studio: No match found for "${group.name}". Instant avatars available: ${instantAvatars.map((a: any) => `${a.avatar_name}(${a.avatar_id})`).join(', ') || 'none'}`);
+          
+          // Still add the group, using group ID as fallback
+          console.log(`🎭 Video Studio: Using group ID ${group.id} as avatar ID for ${group.name}`);
           avatars.push({
             id: group.id,
             name: group.name || "Custom Avatar",
@@ -248,6 +303,7 @@ export class VideoStudioService {
             previewUrl: group.preview_video,
             groupId: group.id,
             avatarType: "avatar",
+            defaultVoiceId: group.default_voice_id,
           });
         }
       }
@@ -258,23 +314,25 @@ export class VideoStudioService {
       );
       console.log(`🎭 Video Studio: Found ${trainedPhotoGroups.length} trained PHOTO avatar groups`);
 
-      // For PHOTO groups, also fetch actual avatar IDs
+      // For PHOTO groups, find the matching avatar
       for (const group of trainedPhotoGroups) {
-        const groupAvatars = await this.fetchAvatarsInGroup(group.id);
-        console.log(`🎭 Video Studio: Photo group ${group.name} has ${groupAvatars.length} avatars`);
-        
-        if (groupAvatars.length > 0) {
-          const defaultAvatar = groupAvatars[0];
+        const matchingAvatar = allAvatars.find((avatar: any) => 
+          avatar.avatar_group_id === group.id ||
+          avatar.group_id === group.id
+        );
+
+        if (matchingAvatar) {
           avatars.push({
-            id: defaultAvatar.avatar_id,
-            name: group.name || defaultAvatar.avatar_name || "Photo Avatar",
+            id: matchingAvatar.avatar_id,
+            name: group.name || matchingAvatar.avatar_name || "Photo Avatar",
             type: "photo",
-            thumbnailUrl: defaultAvatar.preview_image_url || group.preview_image,
-            previewUrl: defaultAvatar.preview_video_url || group.preview_video,
+            thumbnailUrl: matchingAvatar.preview_image_url || group.preview_image,
+            previewUrl: matchingAvatar.preview_video_url || group.preview_video,
             groupId: group.id,
-            avatarType: "avatar", // Trained photo avatars also use type "avatar"
+            avatarType: "avatar",
           });
         } else {
+          // For trained photo avatars, use the group ID
           avatars.push({
             id: group.id,
             name: group.name || "Photo Avatar",
@@ -282,13 +340,12 @@ export class VideoStudioService {
             thumbnailUrl: group.preview_image,
             previewUrl: group.preview_video,
             groupId: group.id,
-            avatarType: "avatar",
+            avatarType: "talking_photo", // Photo avatars use talking_photo type
           });
         }
       }
 
       // Also fetch user's talking photos (simple photo uploads)
-      // These use type "talking_photo" for video generation
       try {
         const talkingPhotosResponse = await fetch(`${this.baseUrl}/v1/talking_photo.list`, {
           method: "GET",
@@ -310,7 +367,7 @@ export class VideoStudioService {
               type: "photo",
               thumbnailUrl: photo.preview_image_url || photo.image_url,
               previewUrl: photo.preview_video_url,
-              avatarType: "talking_photo", // Simple photo uploads use type "talking_photo"
+              avatarType: "talking_photo",
             });
           }
         }
