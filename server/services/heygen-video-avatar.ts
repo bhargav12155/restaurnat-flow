@@ -217,12 +217,14 @@ export class HeyGenVideoAvatarService {
     try {
       const groupsResponse = await this.listAvatarGroups();
       
-      if (groupsResponse.data?.avatar_groups && Array.isArray(groupsResponse.data.avatar_groups)) {
-        const groups = groupsResponse.data.avatar_groups;
-        console.log(`📋 Found ${groups.length} avatar groups`);
+      // HeyGen API returns avatar_group_list (not avatar_groups)
+      const groups = groupsResponse.data?.avatar_group_list || groupsResponse.data?.avatar_groups || [];
+      
+      if (Array.isArray(groups) && groups.length > 0) {
+        console.log(`📋 Found ${groups.length} total avatar groups`);
         
-        // Filter for PRIVATE groups only (user-created avatars)
-        // group_type: "PRIVATE" = instant avatars (video-based)
+        // Filter for PRIVATE groups only (user-created instant avatars from video)
+        // group_type: "PRIVATE" = instant avatars (video-based, these are the custom ones!)
         // group_type: "PHOTO" = photo avatars (photo-based)
         const privateGroups = groups.filter((group: any) => 
           group.group_type === 'PRIVATE'
@@ -244,7 +246,7 @@ export class HeyGenVideoAvatarService {
           });
         }
         
-        // Also include user's PHOTO avatar groups (these are usable for video generation)
+        // Also include user's PHOTO avatar groups that are trained (usable for video generation)
         const photoGroups = groups.filter((group: any) => 
           group.group_type === 'PHOTO' && group.train_status === 'ready'
         );
@@ -264,6 +266,8 @@ export class HeyGenVideoAvatarService {
             train_status: group.train_status,
           });
         }
+      } else {
+        console.log("📋 No avatar groups found in response");
       }
     } catch (groupError) {
       console.error("📋 Could not fetch avatar groups:", groupError);
