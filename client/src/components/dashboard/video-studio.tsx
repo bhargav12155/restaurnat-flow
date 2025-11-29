@@ -18,8 +18,10 @@ import {
   CheckCircle,
   Clock,
   Download,
+  Film,
   Image,
   Loader2,
+  Play,
   Plus,
   Sparkles,
   Upload,
@@ -28,6 +30,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 
 interface StudioAvatar {
   id: string;
@@ -46,10 +49,24 @@ interface VideoStatus {
   error?: string;
 }
 
+interface SavedVideo {
+  id: string;
+  title: string;
+  script: string;
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  status: string;
+  platform?: string;
+  createdAt?: string;
+  metadata?: any;
+}
+
 type Step = 1 | 2 | 3;
+type View = "create" | "videos";
 
 export function VideoStudio() {
   const { toast } = useToast();
+  const [activeView, setActiveView] = useState<View>("create");
   const [step, setStep] = useState<Step>(1);
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
   const [avatarType, setAvatarType] = useState<"avatar" | "talking_photo">("avatar");
@@ -61,10 +78,15 @@ export function VideoStudio() {
   const [isPolling, setIsPolling] = useState(false);
   const [avatarName, setAvatarName] = useState("");
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [selectedVideoForPlay, setSelectedVideoForPlay] = useState<SavedVideo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: avatarsData, isLoading: avatarsLoading, refetch: refetchAvatars } = useQuery<{ avatars: StudioAvatar[] }>({
     queryKey: ["/api/studio/avatars"],
+  });
+
+  const { data: savedVideosData, isLoading: videosLoading, refetch: refetchVideos } = useQuery<{ videos: SavedVideo[] }>({
+    queryKey: ["/api/studio/videos"],
   });
 
   const uploadAvatarMutation = useMutation({
@@ -220,6 +242,34 @@ export function VideoStudio() {
     setTitle("");
     setVideoId(null);
     setIsPolling(false);
+    refetchVideos();
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "Unknown date";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "ready":
+      case "completed":
+        return <Badge className="bg-green-500" data-testid="badge-status-ready">Ready</Badge>;
+      case "generating":
+      case "processing":
+        return <Badge className="bg-yellow-500" data-testid="badge-status-processing">Processing</Badge>;
+      case "failed":
+        return <Badge className="bg-red-500" data-testid="badge-status-failed">Failed</Badge>;
+      default:
+        return <Badge variant="secondary" data-testid="badge-status-unknown">{status}</Badge>;
+    }
   };
 
   const avatars = avatarsData?.avatars || [];
@@ -231,45 +281,59 @@ export function VideoStudio() {
         <p className="text-muted-foreground">Create AI avatar videos in 3 simple steps</p>
       </div>
 
-      <div className="flex justify-center mb-8">
-        <div className="flex items-center gap-4">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex items-center">
-              <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-colors ${
-                  step >= s
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}
-                data-testid={`step-indicator-${s}`}
-              >
-                {s}
-              </div>
-              {s < 3 && (
-                <div
-                  className={`w-12 h-1 mx-2 ${
-                    step > s ? "bg-primary" : "bg-muted"
-                  }`}
-                />
-              )}
+      <Tabs value={activeView} onValueChange={(v) => setActiveView(v as View)} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsTrigger value="create" data-testid="tab-create">
+            <Plus className="w-4 h-4 mr-2" /> Create Video
+          </TabsTrigger>
+          <TabsTrigger value="videos" data-testid="tab-my-videos">
+            <Film className="w-4 h-4 mr-2" /> My Videos
+            {savedVideosData?.videos && savedVideosData.videos.length > 0 && (
+              <Badge variant="secondary" className="ml-2">{savedVideosData.videos.length}</Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="create" className="space-y-6">
+          <div className="flex justify-center mb-8">
+            <div className="flex items-center gap-4">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className="flex items-center">
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-colors ${
+                      step >= s
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                    data-testid={`step-indicator-${s}`}
+                  >
+                    {s}
+                  </div>
+                  {s < 3 && (
+                    <div
+                      className={`w-12 h-1 mx-2 ${
+                        step > s ? "bg-primary" : "bg-muted"
+                      }`}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+          </div>
 
-      <div className="flex justify-center gap-4 mb-6 text-sm text-muted-foreground">
-        <span className={step === 1 ? "text-primary font-medium" : ""}>
-          <Upload className="inline-block w-4 h-4 mr-1" /> Upload
-        </span>
-        <span className={step === 2 ? "text-primary font-medium" : ""}>
-          <Wand2 className="inline-block w-4 h-4 mr-1" /> Ask
-        </span>
-        <span className={step === 3 ? "text-primary font-medium" : ""}>
-          <Video className="inline-block w-4 h-4 mr-1" /> Get It
-        </span>
-      </div>
+          <div className="flex justify-center gap-4 mb-6 text-sm text-muted-foreground">
+            <span className={step === 1 ? "text-primary font-medium" : ""}>
+              <Upload className="inline-block w-4 h-4 mr-1" /> Upload
+            </span>
+            <span className={step === 2 ? "text-primary font-medium" : ""}>
+              <Wand2 className="inline-block w-4 h-4 mr-1" /> Ask
+            </span>
+            <span className={step === 3 ? "text-primary font-medium" : ""}>
+              <Video className="inline-block w-4 h-4 mr-1" /> Get It
+            </span>
+          </div>
 
-      {step === 1 && (
+          {step === 1 && (
         <Card data-testid="step-1-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -645,6 +709,113 @@ export function VideoStudio() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        <TabsContent value="videos" className="space-y-6">
+          <Card data-testid="my-videos-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Film className="w-5 h-5" />
+                My Videos
+              </CardTitle>
+              <CardDescription>
+                Your generated videos from Video Studio
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {videosLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : !savedVideosData?.videos || savedVideosData.videos.length === 0 ? (
+                <div className="text-center py-12 space-y-4">
+                  <Video className="w-12 h-12 mx-auto text-muted-foreground" />
+                  <p className="text-muted-foreground">No videos yet</p>
+                  <Button onClick={() => setActiveView("create")} data-testid="button-create-first-video">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Video
+                  </Button>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {savedVideosData.videos.map((video) => (
+                    <Card key={video.id} className="overflow-hidden" data-testid={`video-card-${video.id}`}>
+                      <div className="aspect-video bg-muted relative group">
+                        {video.videoUrl && video.status === "ready" ? (
+                          <>
+                            {selectedVideoForPlay?.id === video.id ? (
+                              <video
+                                src={video.videoUrl}
+                                controls
+                                autoPlay
+                                className="w-full h-full object-cover"
+                                data-testid={`video-player-${video.id}`}
+                              />
+                            ) : (
+                              <>
+                                {video.thumbnailUrl ? (
+                                  <img
+                                    src={video.thumbnailUrl}
+                                    alt={video.title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <Video className="w-12 h-12 text-muted-foreground" />
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => setSelectedVideoForPlay(video)}
+                                  className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  data-testid={`button-play-${video.id}`}
+                                >
+                                  <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center">
+                                    <Play className="w-6 h-6 text-black ml-1" />
+                                  </div>
+                                </button>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            {video.status === "generating" || video.status === "processing" ? (
+                              <div className="flex flex-col items-center gap-2">
+                                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                                <span className="text-sm text-muted-foreground">Processing...</span>
+                              </div>
+                            ) : (
+                              <Video className="w-12 h-12 text-muted-foreground" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-medium truncate" data-testid={`video-title-${video.id}`}>
+                            {video.title}
+                          </h3>
+                          {getStatusBadge(video.status)}
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-3" data-testid={`video-date-${video.id}`}>
+                          {formatDate(video.createdAt)}
+                        </p>
+                        {video.videoUrl && video.status === "ready" && (
+                          <Button asChild size="sm" className="w-full" data-testid={`button-download-${video.id}`}>
+                            <a href={video.videoUrl} download target="_blank" rel="noopener noreferrer">
+                              <Download className="w-4 h-4 mr-2" />
+                              Download
+                            </a>
+                          </Button>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
