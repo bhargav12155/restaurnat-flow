@@ -6086,6 +6086,39 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // List user's studio-generated videos (My Videos)
+  app.get("/api/studio/videos", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      
+      // Get all videos for this user
+      const allVideos = await storage.getVideoContent(userId);
+      
+      // Filter for studio-generated videos and sort by most recent
+      const studioVideos = allVideos
+        .filter((video: any) => 
+          video.metadata && 
+          typeof video.metadata === 'object' && 
+          ('studioGeneration' in video.metadata || 'quickGeneration' in video.metadata)
+        )
+        .sort((a: any, b: any) => {
+          const dateA = new Date(a.createdAt || 0);
+          const dateB = new Date(b.createdAt || 0);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+      console.log(`📹 Found ${studioVideos.length} studio videos for user ${userId}`);
+      
+      res.json({ 
+        videos: studioVideos,
+        count: studioVideos.length 
+      });
+    } catch (error) {
+      console.error("Failed to list studio videos:", error);
+      res.status(500).json({ error: "Failed to list videos" });
+    }
+  });
+
   // ==================== STREAMING AVATAR ENDPOINTS ====================
 
   // List available streaming avatars
