@@ -158,24 +158,97 @@ export class VideoStudioService {
   }
 
   /**
-   * List all available avatars (both preset and custom)
+   * List only custom avatars (user-created, not HeyGen's stock library)
+   * Filters for PRIVATE groups (instant avatars) and trained PHOTO groups
    */
   async listAvatars(): Promise<StudioAvatar[]> {
-    console.log("🎭 Video Studio: Fetching available avatars...");
+    console.log("🎭 Video Studio: Fetching custom avatars only...");
 
-    const response = await this.heygenService.listAvatars();
     const avatars: StudioAvatar[] = [];
 
-    if (response.data?.avatars) {
-      for (const avatar of response.data.avatars) {
+    try {
+      // Use the avatar_group.list API to get user's custom avatars
+      const response = await fetch(`${this.baseUrl}/v2/avatar_group.list`, {
+        method: "GET",
+        headers: {
+          "x-api-key": this.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error("🎭 Video Studio: Failed to fetch avatar groups:", response.status);
+        return avatars;
+      }
+
+      const data = await response.json();
+      const groups = data.data?.avatar_group_list || data.data?.avatar_groups || [];
+
+      console.log(`🎭 Video Studio: Found ${groups.length} total avatar groups`);
+
+      // Filter for PRIVATE groups (instant avatars from video training)
+      const privateGroups = groups.filter((group: any) => group.group_type === "PRIVATE");
+      console.log(`🎭 Video Studio: Found ${privateGroups.length} PRIVATE (instant avatar) groups`);
+
+      for (const group of privateGroups) {
         avatars.push({
-          id: avatar.avatar_id,
-          name: avatar.avatar_name || avatar.name || "Unnamed Avatar",
-          type: avatar.avatar_type === "talking_photo" ? "photo" : "preset",
-          thumbnailUrl: avatar.preview_image_url || avatar.thumbnail_url,
-          previewUrl: avatar.preview_video_url,
+          id: group.id,
+          name: group.name || "Custom Avatar",
+          type: "custom",
+          thumbnailUrl: group.preview_image,
+          previewUrl: group.preview_video,
         });
       }
+
+      // Filter for trained PHOTO groups (photo avatars that are ready to use)
+      const trainedPhotoGroups = groups.filter(
+        (group: any) => group.group_type === "PHOTO" && group.train_status === "ready"
+      );
+      console.log(`🎭 Video Studio: Found ${trainedPhotoGroups.length} trained PHOTO avatar groups`);
+
+      for (const group of trainedPhotoGroups) {
+        avatars.push({
+          id: group.id,
+          name: group.name || "Photo Avatar",
+          type: "photo",
+          thumbnailUrl: group.preview_image,
+          previewUrl: group.preview_video,
+        });
+      }
+
+      // Also fetch user's talking photos (simple photo uploads)
+      try {
+        const talkingPhotosResponse = await fetch(`${this.baseUrl}/v1/talking_photo.list`, {
+          method: "GET",
+          headers: {
+            "x-api-key": this.apiKey,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (talkingPhotosResponse.ok) {
+          const talkingPhotosData = await talkingPhotosResponse.json();
+          const talkingPhotos = talkingPhotosData.data?.talking_photos || [];
+          console.log(`🎭 Video Studio: Found ${talkingPhotos.length} talking photos`);
+
+          for (const photo of talkingPhotos) {
+            avatars.push({
+              id: photo.talking_photo_id,
+              name: photo.talking_photo_name || "Talking Photo",
+              type: "photo",
+              thumbnailUrl: photo.preview_image_url || photo.image_url,
+              previewUrl: photo.preview_video_url,
+            });
+          }
+        }
+      } catch (talkingPhotoError) {
+        console.warn("🎭 Video Studio: Could not fetch talking photos:", talkingPhotoError);
+      }
+
+      console.log(`🎭 Video Studio: Returning ${avatars.length} custom avatars total`);
+
+    } catch (error) {
+      console.error("🎭 Video Studio: Error fetching custom avatars:", error);
     }
 
     return avatars;
