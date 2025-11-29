@@ -329,7 +329,34 @@ export class HeyGenVideoAvatarService {
   }
 
   /**
-   * Delete Video Avatar
+   * Delete Avatar Group
+   *
+   * Permanently remove an avatar group (works for both photo and instant avatars)
+   *
+   * @param groupId The avatar group ID to delete
+   * @returns Success confirmation
+   */
+  async deleteAvatarGroup(groupId: string): Promise<{ success: boolean }> {
+    console.log("🗑️ Deleting avatar group:", groupId);
+
+    try {
+      const response = await this.makeRequest(
+        `/avatar_group/${groupId}`,
+        "DELETE"
+      );
+
+      console.log("✅ Avatar group deleted:", groupId);
+      return {
+        success: response.code === 100 || response.error === null,
+      };
+    } catch (error: any) {
+      console.error("❌ Failed to delete avatar group:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete Video Avatar (legacy - for instant avatars only)
    *
    * Permanently remove a video avatar
    *
@@ -339,14 +366,26 @@ export class HeyGenVideoAvatarService {
   async deleteVideoAvatar(avatarId: string): Promise<{ success: boolean }> {
     console.log("🗑️ Deleting video avatar:", avatarId);
 
-    const response = await this.makeRequest(
-      `/video_avatar/${avatarId}`,
-      "DELETE"
-    );
-
-    return {
-      success: response.code === 100,
-    };
+    // First try to delete as avatar group (works for both types)
+    try {
+      return await this.deleteAvatarGroup(avatarId);
+    } catch (groupError: any) {
+      console.log("⚠️ Avatar group delete failed, trying video_avatar endpoint...");
+      
+      // Fall back to video_avatar endpoint for legacy instant avatars
+      try {
+        const response = await this.makeRequest(
+          `/video_avatar/${avatarId}`,
+          "DELETE"
+        );
+        return {
+          success: response.code === 100,
+        };
+      } catch (videoError: any) {
+        console.error("❌ Both delete methods failed");
+        throw new Error(`Failed to delete avatar: ${groupError.message}`);
+      }
+    }
   }
 
   /**
