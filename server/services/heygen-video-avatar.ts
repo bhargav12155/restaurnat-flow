@@ -211,25 +211,44 @@ export class HeyGenVideoAvatarService {
     console.log("📋 Listing all avatars from HeyGen");
 
     const response = await this.makeRequest("/avatars");
-    
-    console.log("📋 Full avatars response:", JSON.stringify(response, null, 2));
 
-    // Filter for instant_avatar type (custom video avatars)
-    if (response.data?.avatars) {
+    // The /v2/avatars endpoint returns different arrays for different avatar types
+    // Check for 'avatars' array (which contains instant avatars with avatar_type field)
+    // Also check for talking_photos array (photo avatars)
+    
+    const allAvatars: any[] = [];
+    
+    // Check for avatars array with avatar_type field
+    if (response.data?.avatars && Array.isArray(response.data.avatars)) {
+      // Filter for instant_avatar type (custom video avatars created from video footage)
       const instantAvatars = response.data.avatars.filter(
         (avatar: any) => avatar.avatar_type === 'instant_avatar'
       );
-      console.log(`📋 Found ${instantAvatars.length} instant avatars out of ${response.data.avatars.length} total`);
-      
-      return {
-        ...response,
-        data: {
-          avatars: instantAvatars
-        }
-      };
+      console.log(`📋 Found ${instantAvatars.length} instant avatars in avatars array`);
+      allAvatars.push(...instantAvatars);
+    }
+    
+    // Check for talking_photos array (these are photo avatars, but we'll include custom ones)
+    if (response.data?.talking_photos && Array.isArray(response.data.talking_photos)) {
+      // For talking photos, we can identify custom ones by checking if they have user-specific identifiers
+      // For now, log the count but don't include them (they're shown in Photo Avatar Manager)
+      console.log(`📋 Found ${response.data.talking_photos.length} talking photos (not included in video avatars)`);
     }
 
-    return response;
+    console.log(`📋 Total instant avatars found: ${allAvatars.length}`);
+    
+    return {
+      ...response,
+      data: {
+        avatars: allAvatars.map((avatar: any) => ({
+          avatar_id: avatar.avatar_id || avatar.talking_photo_id,
+          avatar_name: avatar.avatar_name || avatar.talking_photo_name,
+          avatar_type: avatar.avatar_type || 'instant_avatar',
+          preview_image_url: avatar.preview_image_url,
+          preview_video_url: avatar.preview_video_url,
+        }))
+      }
+    };
   }
 
   /**
