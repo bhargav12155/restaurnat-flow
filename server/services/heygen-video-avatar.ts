@@ -212,43 +212,162 @@ export class HeyGenVideoAvatarService {
 
     const response = await this.makeRequest("/avatars");
 
-    // The /v2/avatars endpoint returns different arrays for different avatar types
-    // Check for 'avatars' array (which contains instant avatars with avatar_type field)
-    // Also check for talking_photos array (photo avatars)
+    // Log the full structure to understand what HeyGen returns
+    console.log("📋 HeyGen response data keys:", Object.keys(response.data || {}));
     
     const allAvatars: any[] = [];
     
-    // Check for avatars array with avatar_type field
+    // The /v2/avatars endpoint returns different arrays:
+    // - 'avatars': Contains standard avatars with avatar_id and avatar_type
+    // - 'talking_photos': Contains photo avatars with talking_photo_id
+    
+    // Check for avatars array (includes instant avatars, public avatars, etc.)
     if (response.data?.avatars && Array.isArray(response.data.avatars)) {
-      // Filter for instant_avatar type (custom video avatars created from video footage)
-      const instantAvatars = response.data.avatars.filter(
-        (avatar: any) => avatar.avatar_type === 'instant_avatar'
-      );
-      console.log(`📋 Found ${instantAvatars.length} instant avatars in avatars array`);
-      allAvatars.push(...instantAvatars);
+      console.log(`📋 Found ${response.data.avatars.length} items in 'avatars' array`);
+      
+      // Log first avatar to understand structure
+      if (response.data.avatars.length > 0) {
+        const sample = response.data.avatars[0];
+        console.log("📋 Sample avatar keys:", Object.keys(sample));
+        console.log("📋 Sample avatar_type values in first 10:", 
+          response.data.avatars.slice(0, 10).map((a: any) => a.avatar_type)
+        );
+      }
+      
+      // Filter for custom avatars only (not public/stock avatars)
+      // HeyGen returns avatars with various types: 'public', 'private', 'custom', 'instant_avatar'
+      const customAvatars = response.data.avatars.filter((avatar: any) => {
+        // Check multiple indicators that this is a user-created avatar
+        const isInstant = avatar.avatar_type === 'instant_avatar';
+        const isPrivate = avatar.avatar_type === 'private';
+        const isCustom = avatar.avatar_type === 'custom';
+        const notPublic = avatar.is_public === false;
+        const isCustomerAvatar = avatar.is_customer_avatar === true;
+        
+        const shouldInclude = isInstant || isPrivate || isCustom || notPublic || isCustomerAvatar;
+        
+        if (shouldInclude) {
+          console.log(`📋 Found custom avatar: ${avatar.avatar_name} (type: ${avatar.avatar_type}, is_public: ${avatar.is_public})`);
+        }
+        return shouldInclude;
+      });
+      
+      console.log(`📋 Found ${customAvatars.length} custom avatars out of ${response.data.avatars.length} total`);
+      allAvatars.push(...customAvatars);
     }
     
-    // Check for talking_photos array (these are photo avatars, but we'll include custom ones)
+    // Check for talking_photos array (photo avatars)
+    // These have talking_photo_id format instead of avatar_id
     if (response.data?.talking_photos && Array.isArray(response.data.talking_photos)) {
-      // For talking photos, we can identify custom ones by checking if they have user-specific identifiers
-      // For now, log the count but don't include them (they're shown in Photo Avatar Manager)
-      console.log(`📋 Found ${response.data.talking_photos.length} talking photos (not included in video avatars)`);
+      console.log(`📋 Found ${response.data.talking_photos.length} talking photos`);
+      
+      // Log sample talking photo structure
+      if (response.data.talking_photos.length > 0) {
+        const sample = response.data.talking_photos[0];
+        console.log("📋 Sample talking_photo keys:", Object.keys(sample));
+      }
+      
+      // Include talking photos as they can be used for video generation
+      // Transform them to match the avatar format
+      const talkingPhotoAvatars = response.data.talking_photos.map((tp: any) => ({
+        avatar_id: tp.talking_photo_id,
+        avatar_name: tp.talking_photo_name,
+        avatar_type: 'talking_photo',
+        preview_image_url: tp.preview_image_url,
+        preview_video_url: tp.preview_video_url,
+      }));
+      
+      // Add talking photos to the list - these ARE user-accessible avatars
+      allAvatars.push(...talkingPhotoAvatars);
+    }
+    
+    // Also check avatar groups for custom avatars
+    try {
+      const groupsResponse = await this.listAvatarGroups();
+      if (groupsResponse.data?.avatar_groups && Array.isArray(groupsResponse.data.avatar_groups)) {
+        console.log(`📋 Found ${groupsResponse.data.avatar_groups.length} avatar groups`);
+        
+        // Fetch avatars from each group
+        for (const group of groupsResponse.data.avatar_groups) {
+          console.log(`📋 Checking group: ${group.group_name || group.id}`);
+          const groupAvatars = await this.listAvatarsInGroup(group.id);
+          
+          if (groupAvatars.data?.avatars && Array.isArray(groupAvatars.data.avatars)) {
+            console.log(`📋 Found ${groupAvatars.data.avatars.length} avatars in group ${group.group_name || group.id}`);
+            
+            // Add these avatars with proper formatting
+            const formattedAvatars = groupAvatars.data.avatars.map((avatar: any) => ({
+              avatar_id: avatar.avatar_id,
+              avatar_name: avatar.avatar_name,
+              avatar_type: avatar.avatar_type || 'custom',
+              preview_image_url: avatar.preview_image_url,
+              preview_video_url: avatar.preview_video_url,
+              group_id: group.id,
+              group_name: group.group_name,
+            }));
+            
+            allAvatars.push(...formattedAvatars);
+          }
+        }
+      }
+    } catch (groupError) {
+      console.log("📋 Could not fetch avatar groups:", groupError);
     }
 
-    console.log(`📋 Total instant avatars found: ${allAvatars.length}`);
+    console.log(`📋 Total avatars for Video Avatar Manager: ${allAvatars.length}`);
     
     return {
       ...response,
       data: {
         avatars: allAvatars.map((avatar: any) => ({
-          avatar_id: avatar.avatar_id || avatar.talking_photo_id,
-          avatar_name: avatar.avatar_name || avatar.talking_photo_name,
+          avatar_id: avatar.avatar_id,
+          avatar_name: avatar.avatar_name,
           avatar_type: avatar.avatar_type || 'instant_avatar',
+          gender: avatar.gender,
           preview_image_url: avatar.preview_image_url,
           preview_video_url: avatar.preview_video_url,
+          is_public: avatar.is_public,
+          is_customer_avatar: avatar.is_customer_avatar,
         }))
       }
     };
+  }
+
+  /**
+   * List All Avatar Groups
+   * 
+   * Retrieves all avatar groups from the account
+   * Avatar groups contain custom avatars created by the user
+   */
+  async listAvatarGroups(): Promise<any> {
+    console.log("📋 Listing avatar groups from HeyGen");
+    
+    try {
+      const response = await this.makeRequest("/avatar_group.list");
+      console.log("📋 Avatar groups response:", JSON.stringify(response, null, 2));
+      return response;
+    } catch (error) {
+      console.error("❌ Failed to list avatar groups:", error);
+      return { data: { avatar_groups: [] } };
+    }
+  }
+
+  /**
+   * List Avatars in a Group
+   * 
+   * Retrieves all avatars in a specific avatar group
+   */
+  async listAvatarsInGroup(groupId: string): Promise<any> {
+    console.log(`📋 Listing avatars in group: ${groupId}`);
+    
+    try {
+      const response = await this.makeRequest(`/avatar_group/${groupId}/avatars`);
+      console.log(`📋 Avatars in group ${groupId}:`, JSON.stringify(response, null, 2));
+      return response;
+    } catch (error) {
+      console.error(`❌ Failed to list avatars in group ${groupId}:`, error);
+      return { data: { avatars: [] } };
+    }
   }
 
   /**

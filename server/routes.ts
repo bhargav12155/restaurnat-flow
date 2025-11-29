@@ -7859,6 +7859,30 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Sync/debug endpoint to see raw HeyGen API response
+  app.get("/api/video-avatars/debug", requireAuth, async (req, res) => {
+    try {
+      console.log("🔍 Debug: Fetching raw HeyGen avatar data");
+      
+      const videoAvatarService = new HeyGenVideoAvatarService();
+      const response = await videoAvatarService.listVideoAvatars();
+      
+      // Return the full response for debugging
+      res.json({
+        success: true,
+        avatars: response.data?.avatars || [],
+        avatarCount: response.data?.avatars?.length || 0,
+        rawResponse: response,
+      });
+    } catch (error: any) {
+      console.error("❌ Debug endpoint failed:", error);
+      res.status(500).json({
+        error: "Failed to fetch HeyGen data",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   // Delete video avatar
   app.delete("/api/video-avatars/:avatarId", requireAuth, async (req, res) => {
     try {
