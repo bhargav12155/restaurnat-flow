@@ -7813,13 +7813,47 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
       console.log("🎥 Backend: List video avatars for user:", userId);
 
-      // Get from database instead of HeyGen API
-      const avatars = await storage.listVideoAvatars(userId);
+      // Fetch avatars directly from HeyGen API to include avatars created on their website
+      const videoAvatarService = new HeyGenVideoAvatarService();
+      const heygenResponse = await videoAvatarService.listVideoAvatars();
+      
+      console.log("📋 HeyGen API response:", JSON.stringify(heygenResponse, null, 2));
+      
+      // Transform HeyGen API response to match our expected format
+      const heygenAvatars = (heygenResponse.data?.video_avatars || []).map((avatar: any) => ({
+        id: avatar.avatar_id,
+        heygenAvatarId: avatar.avatar_id,
+        avatarName: avatar.avatar_name,
+        status: avatar.status === 'complete' ? 'complete' : 
+                avatar.status === 'failed' ? 'failed' : 'in_progress',
+        thumbnailUrl: avatar.thumbnail_url,
+        previewVideoUrl: avatar.preview_video_url,
+        createdAt: avatar.created_at ? new Date(avatar.created_at) : new Date(),
+        completedAt: avatar.status === 'complete' ? new Date() : null,
+        errorMessage: null,
+        trainingVideoUrl: '',
+        consentVideoUrl: '',
+        voiceId: null,
+        source: 'heygen' as const,
+      }));
 
-      console.log("✅ Video avatars retrieved:", avatars.length);
-      res.json(avatars);
+      console.log("✅ Video avatars retrieved from HeyGen:", heygenAvatars.length);
+      res.json(heygenAvatars);
     } catch (error: any) {
       console.error("❌ Failed to list video avatars:", error);
+      
+      // If HeyGen API fails, try to get from local database as fallback
+      try {
+        const userId = req.user?.id;
+        if (userId) {
+          const localAvatars = await storage.listVideoAvatars(userId);
+          console.log("📦 Fallback: Retrieved from local database:", localAvatars.length);
+          return res.json(localAvatars);
+        }
+      } catch (dbError) {
+        console.error("❌ Database fallback also failed:", dbError);
+      }
+      
       res.status(500).json({
         error: "Failed to list video avatars",
         details: error?.message || String(error),
