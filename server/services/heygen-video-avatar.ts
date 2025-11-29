@@ -208,126 +208,80 @@ export class HeyGenVideoAvatarService {
    * @returns List of video avatars with their status
    */
   async listVideoAvatars(): Promise<VideoAvatarListResponse> {
-    console.log("📋 Listing all avatars from HeyGen");
+    console.log("📋 Listing custom avatars from HeyGen avatar groups");
 
-    const response = await this.makeRequest("/avatars");
-
-    // Log the full structure to understand what HeyGen returns
-    console.log("📋 HeyGen response data keys:", Object.keys(response.data || {}));
+    // Use avatar_group.list to get ONLY user's custom avatar groups
+    // This is the proper way to get custom avatars without the public library
+    const customAvatars: any[] = [];
     
-    const allAvatars: any[] = [];
-    
-    // The /v2/avatars endpoint returns different arrays:
-    // - 'avatars': Contains standard avatars with avatar_id and avatar_type
-    // - 'talking_photos': Contains photo avatars with talking_photo_id
-    
-    // Check for avatars array (includes instant avatars, public avatars, etc.)
-    if (response.data?.avatars && Array.isArray(response.data.avatars)) {
-      console.log(`📋 Found ${response.data.avatars.length} items in 'avatars' array`);
-      
-      // Log first avatar to understand structure
-      if (response.data.avatars.length > 0) {
-        const sample = response.data.avatars[0];
-        console.log("📋 Sample avatar keys:", Object.keys(sample));
-        console.log("📋 Sample avatar_type values in first 10:", 
-          response.data.avatars.slice(0, 10).map((a: any) => a.avatar_type)
-        );
-      }
-      
-      // Filter for custom avatars only (not public/stock avatars)
-      // HeyGen returns avatars with various types: 'public', 'private', 'custom', 'instant_avatar'
-      const customAvatars = response.data.avatars.filter((avatar: any) => {
-        // Check multiple indicators that this is a user-created avatar
-        const isInstant = avatar.avatar_type === 'instant_avatar';
-        const isPrivate = avatar.avatar_type === 'private';
-        const isCustom = avatar.avatar_type === 'custom';
-        const notPublic = avatar.is_public === false;
-        const isCustomerAvatar = avatar.is_customer_avatar === true;
-        
-        const shouldInclude = isInstant || isPrivate || isCustom || notPublic || isCustomerAvatar;
-        
-        if (shouldInclude) {
-          console.log(`📋 Found custom avatar: ${avatar.avatar_name} (type: ${avatar.avatar_type}, is_public: ${avatar.is_public})`);
-        }
-        return shouldInclude;
-      });
-      
-      console.log(`📋 Found ${customAvatars.length} custom avatars out of ${response.data.avatars.length} total`);
-      allAvatars.push(...customAvatars);
-    }
-    
-    // Check for talking_photos array (photo avatars)
-    // These have talking_photo_id format instead of avatar_id
-    if (response.data?.talking_photos && Array.isArray(response.data.talking_photos)) {
-      console.log(`📋 Found ${response.data.talking_photos.length} talking photos`);
-      
-      // Log sample talking photo structure
-      if (response.data.talking_photos.length > 0) {
-        const sample = response.data.talking_photos[0];
-        console.log("📋 Sample talking_photo keys:", Object.keys(sample));
-      }
-      
-      // Include talking photos as they can be used for video generation
-      // Transform them to match the avatar format
-      const talkingPhotoAvatars = response.data.talking_photos.map((tp: any) => ({
-        avatar_id: tp.talking_photo_id,
-        avatar_name: tp.talking_photo_name,
-        avatar_type: 'talking_photo',
-        preview_image_url: tp.preview_image_url,
-        preview_video_url: tp.preview_video_url,
-      }));
-      
-      // Add talking photos to the list - these ARE user-accessible avatars
-      allAvatars.push(...talkingPhotoAvatars);
-    }
-    
-    // Also check avatar groups for custom avatars
     try {
       const groupsResponse = await this.listAvatarGroups();
+      
       if (groupsResponse.data?.avatar_groups && Array.isArray(groupsResponse.data.avatar_groups)) {
-        console.log(`📋 Found ${groupsResponse.data.avatar_groups.length} avatar groups`);
+        const groups = groupsResponse.data.avatar_groups;
+        console.log(`📋 Found ${groups.length} avatar groups`);
         
-        // Fetch avatars from each group
-        for (const group of groupsResponse.data.avatar_groups) {
-          console.log(`📋 Checking group: ${group.group_name || group.id}`);
-          const groupAvatars = await this.listAvatarsInGroup(group.id);
-          
-          if (groupAvatars.data?.avatars && Array.isArray(groupAvatars.data.avatars)) {
-            console.log(`📋 Found ${groupAvatars.data.avatars.length} avatars in group ${group.group_name || group.id}`);
-            
-            // Add these avatars with proper formatting
-            const formattedAvatars = groupAvatars.data.avatars.map((avatar: any) => ({
-              avatar_id: avatar.avatar_id,
-              avatar_name: avatar.avatar_name,
-              avatar_type: avatar.avatar_type || 'custom',
-              preview_image_url: avatar.preview_image_url,
-              preview_video_url: avatar.preview_video_url,
-              group_id: group.id,
-              group_name: group.group_name,
-            }));
-            
-            allAvatars.push(...formattedAvatars);
-          }
+        // Filter for PRIVATE groups only (user-created avatars)
+        // group_type: "PRIVATE" = instant avatars (video-based)
+        // group_type: "PHOTO" = photo avatars (photo-based)
+        const privateGroups = groups.filter((group: any) => 
+          group.group_type === 'PRIVATE'
+        );
+        
+        console.log(`📋 Found ${privateGroups.length} PRIVATE (instant avatar) groups`);
+        
+        // Add instant avatars from PRIVATE groups directly
+        for (const group of privateGroups) {
+          console.log(`📋 Adding instant avatar: ${group.name} (ID: ${group.id})`);
+          customAvatars.push({
+            avatar_id: group.id,
+            avatar_name: group.name,
+            avatar_type: 'instant_avatar',
+            preview_image_url: group.preview_image,
+            preview_video_url: null,
+            created_at: group.created_at,
+            default_voice_id: group.default_voice_id,
+          });
+        }
+        
+        // Also include user's PHOTO avatar groups (these are usable for video generation)
+        const photoGroups = groups.filter((group: any) => 
+          group.group_type === 'PHOTO' && group.train_status === 'ready'
+        );
+        
+        console.log(`📋 Found ${photoGroups.length} trained PHOTO avatar groups`);
+        
+        for (const group of photoGroups) {
+          console.log(`📋 Adding photo avatar group: ${group.name} (ID: ${group.id})`);
+          customAvatars.push({
+            avatar_id: group.id,
+            avatar_name: group.name,
+            avatar_type: 'photo_avatar',
+            preview_image_url: group.preview_image,
+            preview_video_url: null,
+            created_at: group.created_at,
+            default_voice_id: group.default_voice_id,
+            train_status: group.train_status,
+          });
         }
       }
     } catch (groupError) {
-      console.log("📋 Could not fetch avatar groups:", groupError);
+      console.error("📋 Could not fetch avatar groups:", groupError);
     }
 
-    console.log(`📋 Total avatars for Video Avatar Manager: ${allAvatars.length}`);
+    console.log(`📋 Total custom avatars for Video Avatar Manager: ${customAvatars.length}`);
     
     return {
-      ...response,
+      code: 100,
       data: {
-        avatars: allAvatars.map((avatar: any) => ({
+        avatars: customAvatars.map((avatar: any) => ({
           avatar_id: avatar.avatar_id,
           avatar_name: avatar.avatar_name,
           avatar_type: avatar.avatar_type || 'instant_avatar',
           gender: avatar.gender,
           preview_image_url: avatar.preview_image_url,
           preview_video_url: avatar.preview_video_url,
-          is_public: avatar.is_public,
-          is_customer_avatar: avatar.is_customer_avatar,
+          default_voice_id: avatar.default_voice_id,
         }))
       }
     };
