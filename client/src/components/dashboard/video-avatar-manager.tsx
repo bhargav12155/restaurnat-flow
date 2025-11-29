@@ -46,6 +46,8 @@ interface VideoAvatar {
   errorMessage: string | null;
   createdAt: Date;
   completedAt: Date | null;
+  thumbnailUrl?: string;
+  previewVideoUrl?: string;
 }
 
 export default function VideoAvatarManager() {
@@ -581,8 +583,32 @@ export default function VideoAvatarManager() {
               </div>
             ) : (
               completeAvatars.map((avatar) => (
-                <Card key={avatar.id}>
-                  <CardHeader>
+                <Card key={avatar.id} className="overflow-hidden" data-testid={`card-avatar-${avatar.id}`}>
+                  <div className="aspect-square relative bg-muted">
+                    {avatar.thumbnailUrl ? (
+                      <img
+                        src={avatar.thumbnailUrl}
+                        alt={avatar.avatarName}
+                        className="w-full h-full object-cover"
+                        data-testid={`img-avatar-${avatar.id}`}
+                        onError={(e) => {
+                          const parent = e.currentTarget.parentElement;
+                          if (parent) {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = parent.querySelector('.fallback-icon');
+                            if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                          }
+                        }}
+                      />
+                    ) : null}
+                    <div 
+                      className="fallback-icon absolute inset-0 flex items-center justify-center bg-muted" 
+                      style={{ display: avatar.thumbnailUrl ? 'none' : 'flex' }}
+                    >
+                      <Video className="w-16 h-16 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <CardHeader className="pb-2">
                     <div className="flex items-start justify-between">
                       <div>
                         <CardTitle className="text-lg">
@@ -595,7 +621,7 @@ export default function VideoAvatarManager() {
                       {getStatusBadge(avatar.status)}
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="pt-2">
                     <div className="space-y-2 text-sm">
                       <div>
                         <span className="text-muted-foreground">
@@ -612,16 +638,6 @@ export default function VideoAvatarManager() {
                           </span>
                           <p className="font-mono text-xs truncate">
                             {avatar.voiceId}
-                          </p>
-                        </div>
-                      )}
-                      {avatar.completedAt && (
-                        <div>
-                          <span className="text-muted-foreground">
-                            Completed:
-                          </span>
-                          <p className="text-xs">
-                            {new Date(avatar.completedAt).toLocaleString()}
                           </p>
                         </div>
                       )}
