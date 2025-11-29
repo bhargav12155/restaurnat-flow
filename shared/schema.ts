@@ -206,6 +206,7 @@ export const videoAvatars = pgTable("video_avatars", {
   trainingVideoUrl: text("training_video_url").notNull(), // S3 URL to training footage
   consentVideoUrl: text("consent_video_url").notNull(), // S3 URL to consent video
   voiceId: text("voice_id"), // Optional voice ID for the avatar
+  audioAssetId: text("audio_asset_id"), // HeyGen audio asset ID for voice (extracted from training video)
   status: text("status").notNull().default("in_progress"), // in_progress, complete, failed
   errorMessage: text("error_message"), // Error details if status is failed
   createdAt: timestamp("created_at").defaultNow(),
