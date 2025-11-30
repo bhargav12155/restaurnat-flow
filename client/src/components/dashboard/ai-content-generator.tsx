@@ -28,6 +28,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Share2,
   ImagePlus,
@@ -46,6 +48,9 @@ import {
   Bath,
   Square,
   MapPin,
+  Check,
+  Wand2,
+  ArrowRight,
 } from "lucide-react";
 import {
   FaFacebook,
@@ -120,9 +125,34 @@ interface Property {
 }
 
 const contentTypes = [
-  { value: "blog", label: "Blog Post", icon: FileText },
-  { value: "social", label: "Social Post", icon: FileText },
-  { value: "property_feature", label: "Property Feature", icon: FileText },
+  { 
+    value: "blog", 
+    label: "Blog Post", 
+    icon: FileText,
+    description: "Long-form articles for your website",
+    color: "from-blue-500 to-blue-600"
+  },
+  { 
+    value: "social", 
+    label: "Social Post", 
+    icon: Share2,
+    description: "Quick posts for social media",
+    color: "from-purple-500 to-pink-500"
+  },
+  { 
+    value: "property_feature", 
+    label: "Property Feature", 
+    icon: Home,
+    description: "Showcase a specific listing",
+    color: "from-amber-500 to-orange-500"
+  },
+];
+
+const WIZARD_STEPS = [
+  { id: 1, label: "Choose Type", description: "Select content type" },
+  { id: 2, label: "Add Details", description: "Enter your topic" },
+  { id: 3, label: "Generate", description: "Create with AI" },
+  { id: 4, label: "Share", description: "Post to platforms" },
 ];
 
 const neighborhoods = [
@@ -185,6 +215,9 @@ const getPlatformSuggestions = (
 };
 
 export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
+  // Wizard step state
+  const [currentStep, setCurrentStep] = useState(1);
+  
   const [contentType, setContentType] = useState("blog");
   const [topic, setTopic] = useState("");
   const [aiPrompt, setAiPrompt] = useState(
@@ -1077,13 +1110,58 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     isPending: regenerateForPlatformMutation.isPending,
   });
 
+  // Navigate to next step
+  const goToNextStep = () => {
+    if (currentStep < 4) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  // Navigate to previous step
+  const goToPrevStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // Check if we can proceed to next step
+  const canProceedToStep2 = contentType !== "";
+  const canProceedToStep3 = contentType === "property_feature" 
+    ? selectedProperty !== null 
+    : topic.trim() !== "";
+  const canProceedToStep4 = lastGenerated !== null;
+
+  // Handle generate and auto-advance to step 4
+  const handleGenerateAndAdvance = () => {
+    handleGenerate();
+  };
+
+  // Auto-advance to step 4 when content is generated
+  const prevLastGenerated = useRef(lastGenerated);
+  useEffect(() => {
+    if (lastGenerated && !prevLastGenerated.current) {
+      setCurrentStep(4);
+    }
+    prevLastGenerated.current = lastGenerated;
+  }, [lastGenerated]);
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-foreground">
-            AI Content Generator
-          </CardTitle>
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-4 border-b bg-gradient-to-r from-primary/5 to-primary/10">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Wand2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-lg font-semibold text-foreground">
+                AI Content Generator
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Create professional content in 4 simple steps
+              </p>
+            </div>
+          </div>
           <Badge
             variant="secondary"
             className={
@@ -1092,113 +1170,206 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                 : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700"
             }
           >
-            {isActive ? "Active" : "Not Active"}
+            {isActive ? "Ready" : "Setup Required"}
           </Badge>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Content Type Selection */}
-        <div className="space-y-3">
-          <Label className="text-sm font-medium text-foreground mb-2 block">
-            Content Type
-          </Label>
-          <div className="grid grid-cols-3 gap-3">
-            {contentTypes.map((type) => (
-              <Button
-                key={type.value}
-                variant={contentType === type.value ? "default" : "secondary"}
-                className="w-full text-sm font-medium"
-                onClick={() => setContentType(type.value)}
-                data-testid={`content-type-${type.value}`}
-              >
-                <type.icon className="mr-2 h-4 w-4" />
-                {type.label}
-              </Button>
-            ))}
-          </div>
-          
-          {/* Single Style Dropdown */}
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">
-              Content Style
-            </Label>
-            <Select
-              value={contentStyles[contentType] || "None"}
-              onValueChange={(value) =>
-                setContentStyles((prev) => ({
-                  ...prev,
-                  [contentType]: value,
-                }))
-              }
-            >
-              <SelectTrigger className="w-full h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {styleOptions.map((style) => (
-                  <SelectItem key={style.value} value={style.value}>
-                    {style.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
 
-        {/* Property Selection (only for Property Feature) */}
-        {contentType === "property_feature" && (
-          <div className="space-y-4 p-4 bg-muted/30 rounded-lg border">
-            <div className="flex items-center space-x-2">
-              <Home className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-sm font-medium text-foreground">
-                Select Property from MLS
-              </Label>
+        {/* Step Indicator */}
+        <div className="flex items-center justify-between">
+          {WIZARD_STEPS.map((step, index) => (
+            <div key={step.id} className="flex items-center flex-1">
+              <button
+                onClick={() => {
+                  if (step.id === 1) setCurrentStep(1);
+                  else if (step.id === 2 && canProceedToStep2) setCurrentStep(2);
+                  else if (step.id === 3 && canProceedToStep3) setCurrentStep(3);
+                  else if (step.id === 4 && canProceedToStep4) setCurrentStep(4);
+                }}
+                className={`flex items-center gap-2 transition-all ${
+                  step.id <= currentStep ? "cursor-pointer" : "cursor-not-allowed opacity-50"
+                }`}
+                disabled={
+                  (step.id === 2 && !canProceedToStep2) ||
+                  (step.id === 3 && !canProceedToStep3) ||
+                  (step.id === 4 && !canProceedToStep4)
+                }
+                data-testid={`wizard-step-${step.id}`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                    currentStep === step.id
+                      ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2"
+                      : currentStep > step.id
+                      ? "bg-green-500 text-white"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {currentStep > step.id ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    step.id
+                  )}
+                </div>
+                <div className="hidden sm:block">
+                  <p className={`text-sm font-medium ${currentStep === step.id ? "text-primary" : "text-muted-foreground"}`}>
+                    {step.label}
+                  </p>
+                </div>
+              </button>
+              {index < WIZARD_STEPS.length - 1 && (
+                <div className={`flex-1 h-0.5 mx-3 ${currentStep > step.id ? "bg-green-500" : "bg-muted"}`} />
+              )}
+            </div>
+          ))}
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-6">
+        {/* Step 1: Choose Content Type */}
+        {currentStep === 1 && (
+          <div className="space-y-6" data-testid="wizard-step-1-content">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-semibold text-foreground mb-2">What would you like to create?</h3>
+              <p className="text-muted-foreground">Choose the type of content that fits your needs</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label
-                  htmlFor="mls-number"
-                  className="text-xs text-muted-foreground mb-1 block"
-                >
-                  MLS#
-                </Label>
-                <Input
-                  id="mls-number"
-                  placeholder="e.g., 22301234"
-                  value={propertySearchParams.mlsNumber}
-                  onChange={(e) =>
-                    setPropertySearchParams((prev) => ({
-                      ...prev,
-                      mlsNumber: e.target.value,
-                    }))
-                  }
-                  className="w-full"
-                  data-testid="input-mls-number"
-                />
-              </div>
-              <div className="relative">
-                <Label
-                  htmlFor="property-address"
-                  className="text-xs text-muted-foreground mb-1 block"
-                >
-                  Address{" "}
-                  {isLoadingDetails && (
-                    <span className="text-blue-600">
-                      (Loading property details...)
-                    </span>
-                  )}
-                </Label>
-                <Input
-                  ref={addressInputRef}
-                  id="property-address"
-                  placeholder="Start typing address..."
-                  value={propertySearchParams.address}
-                  onChange={(e) =>
-                    setPropertySearchParams((prev) => ({
-                      ...prev,
-                      address: e.target.value,
-                    }))
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {contentTypes.map((type) => {
+                const IconComponent = type.icon;
+                const isSelected = contentType === type.value;
+                return (
+                  <button
+                    key={type.value}
+                    onClick={() => {
+                      setContentType(type.value);
+                    }}
+                    className={`relative p-6 rounded-xl border-2 transition-all text-left group hover:shadow-lg ${
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-md"
+                        : "border-border hover:border-primary/50 bg-card"
+                    }`}
+                    data-testid={`content-type-card-${type.value}`}
+                  >
+                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${type.color} flex items-center justify-center mb-4`}>
+                      <IconComponent className="h-6 w-6 text-white" />
+                    </div>
+                    <h4 className="font-semibold text-foreground mb-1">{type.label}</h4>
+                    <p className="text-sm text-muted-foreground">{type.description}</p>
+                    {isSelected && (
+                      <div className="absolute top-3 right-3">
+                        <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                          <Check className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Style Selection */}
+            <div className="mt-6 p-4 bg-muted/30 rounded-lg border">
+              <Label className="text-sm font-medium text-foreground mb-3 block">
+                Content Style (Optional)
+              </Label>
+              <Select
+                value={contentStyles[contentType] || "None"}
+                onValueChange={(value) =>
+                  setContentStyles((prev) => ({
+                    ...prev,
+                    [contentType]: value,
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full" data-testid="select-content-style">
+                  <SelectValue placeholder="Choose a style..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {styleOptions.map((style) => (
+                    <SelectItem key={style.value} value={style.value}>
+                      {style.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Next Button */}
+            <div className="flex justify-end pt-4">
+              <Button
+                onClick={goToNextStep}
+                disabled={!canProceedToStep2}
+                className="px-6"
+                data-testid="button-next-step-1"
+              >
+                Continue
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Add Details */}
+        {currentStep === 2 && (
+          <div className="space-y-6" data-testid="wizard-step-2-content">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-semibold text-foreground mb-2">
+                {contentType === "property_feature" ? "Select a Property" : "What's your topic?"}
+              </h3>
+              <p className="text-muted-foreground">
+                {contentType === "property_feature" 
+                  ? "Search for a property to feature" 
+                  : "Enter keywords or a topic for your content"}
+              </p>
+            </div>
+
+            {/* Property Selection (only for Property Feature) */}
+            {contentType === "property_feature" ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-muted/30 rounded-lg border">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Home className="h-5 w-5 text-primary" />
+                    <Label className="text-sm font-medium text-foreground">
+                      Search Property from MLS
+                    </Label>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="mls-number" className="text-xs text-muted-foreground mb-1 block">
+                        MLS#
+                      </Label>
+                      <Input
+                        id="mls-number"
+                        placeholder="e.g., 22301234"
+                        value={propertySearchParams.mlsNumber}
+                        onChange={(e) =>
+                          setPropertySearchParams((prev) => ({
+                            ...prev,
+                            mlsNumber: e.target.value,
+                          }))
+                        }
+                        className="w-full"
+                        data-testid="input-mls-number"
+                      />
+                    </div>
+                    <div className="relative">
+                      <Label htmlFor="property-address" className="text-xs text-muted-foreground mb-1 block">
+                        Address{" "}
+                        {isLoadingDetails && (
+                          <span className="text-blue-600">(Loading...)</span>
+                        )}
+                      </Label>
+                      <Input
+                        ref={addressInputRef}
+                        id="property-address"
+                        placeholder="Start typing address..."
+                        value={propertySearchParams.address}
+                        onChange={(e) =>
+                          setPropertySearchParams((prev) => ({
+                            ...prev,
+                            address: e.target.value,
+                          }))
                   }
                   className="w-full"
                   data-testid="input-property-address"
@@ -1337,9 +1508,9 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                 <div className="flex gap-4">
                   {/* Property Image */}
                   <div className="w-28 h-28 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
-                    {selectedProperty.photoUrls?.[0] ? (
+                    {selectedProperty.photos?.[0] ? (
                       <img 
-                        src={selectedProperty.photoUrls[0]} 
+                        src={selectedProperty.photos[0]} 
                         alt={selectedProperty.address}
                         className="w-full h-full object-cover"
                       />
@@ -1360,13 +1531,6 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                         {selectedProperty.city}, {selectedProperty.state} {selectedProperty.zipCode}
                       </p>
                     </div>
-                    
-                    {selectedProperty.neighborhood && (
-                      <Badge variant="outline" className="text-xs">
-                        <MapPin className="h-3 w-3 mr-1" />
-                        {selectedProperty.neighborhood}
-                      </Badge>
-                    )}
                     
                     <div className="grid grid-cols-3 gap-2 pt-1">
                       <div className="flex items-center gap-1 text-sm">
@@ -1389,9 +1553,9 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                       <div className="text-xs text-muted-foreground">
                         MLS# {selectedProperty.mlsNumber}
                       </div>
-                      {selectedProperty.agent && (
+                      {selectedProperty.listingAgent && (
                         <div className="text-xs text-muted-foreground">
-                          Agent: {selectedProperty.agent}
+                          Agent: {selectedProperty.listingAgent}
                         </div>
                       )}
                     </div>
@@ -1399,128 +1563,200 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                 </div>
               </div>
             )}
+            </div>
+            </div>
+            ) : (
+              /* Topic Input for non-property content */
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="topic" className="text-sm font-medium text-foreground mb-2 block">
+                    Topic or Keywords
+                  </Label>
+                  <Input
+                    id="topic"
+                    placeholder="e.g., Dundee neighborhood guide, luxury homes Aksarben"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    className="w-full text-lg py-6"
+                    data-testid="input-topic"
+                  />
+                </div>
+
+                {/* Neighborhood Selection */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-foreground mb-2 block">
+                      Neighborhood Focus
+                    </Label>
+                    <Select value={neighborhood} onValueChange={setNeighborhood}>
+                      <SelectTrigger data-testid="select-neighborhood">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {neighborhoods.map((n) => (
+                          <SelectItem key={n} value={n}>
+                            {n}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-foreground mb-2 block">
+                      SEO Options
+                    </Label>
+                    <div className="flex items-center space-x-4 h-10">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="long-tail"
+                          checked={longTailKeywords}
+                          onCheckedChange={(checked) => setLongTailKeywords(checked === true)}
+                          data-testid="checkbox-long-tail"
+                        />
+                        <Label htmlFor="long-tail" className="text-sm text-muted-foreground">
+                          Long-tail
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="local-seo"
+                          checked={seoOptimized}
+                          onCheckedChange={(checked) => setSeoOptimized(checked === true)}
+                          data-testid="checkbox-local-seo"
+                        />
+                        <Label htmlFor="local-seo" className="text-sm text-muted-foreground">
+                          Local SEO
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Navigation Buttons */}
+            <div className="flex justify-between pt-6 border-t">
+              <Button variant="outline" onClick={goToPrevStep} data-testid="button-back-step-2">
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <Button
+                onClick={goToNextStep}
+                disabled={!canProceedToStep3}
+                className="px-6"
+                data-testid="button-next-step-2"
+              >
+                Continue
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
 
-        {/* Topic Input */}
-        <div>
-          <Label
-            htmlFor="topic"
-            className="text-sm font-medium text-foreground mb-2 block"
-          >
-            {contentType === "property_feature"
-              ? "Additional Keywords (Optional)"
-              : "Topic or Keywords"}
-          </Label>
-          <Input
-            id="topic"
-            placeholder={
-              contentType === "property_feature"
-                ? "e.g., luxury features, family-friendly"
-                : "e.g., Dundee neighborhood guide, luxury homes Aksarben"
-            }
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            className="w-full"
-            data-testid="input-topic"
-          />
-        </div>
-
-        {/* AI Prompt Input */}
-        <div>
-          <Label
-            htmlFor="ai-prompt"
-            className="text-sm font-medium text-foreground mb-2 block"
-          >
-            AI Instructions
-          </Label>
-          <Textarea
-            id="ai-prompt"
-            placeholder="Tell the AI exactly how to create your content..."
-            value={aiPrompt}
-            onChange={(e) => setAiPrompt(e.target.value)}
-            className="w-full resize-none"
-            rows={3}
-            data-testid="input-ai-prompt"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Customize how AI creates your content - specify tone, style,
-            call-to-actions, or any special requirements.
-          </p>
-        </div>
-
-        {/* Neighborhood Selection */}
-        <div>
-          <Label className="text-sm font-medium text-foreground mb-2 block">
-            Omaha Neighborhood Focus
-          </Label>
-          <Select value={neighborhood} onValueChange={setNeighborhood}>
-            <SelectTrigger data-testid="select-neighborhood">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {neighborhoods.map((n) => (
-                <SelectItem key={n} value={n}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* SEO Options */}
-        <div>
-          <Label className="text-sm font-medium text-foreground mb-2 block">
-            SEO Optimization
-          </Label>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="long-tail"
-                checked={longTailKeywords}
-                onCheckedChange={(checked) =>
-                  setLongTailKeywords(checked === true)
-                }
-                data-testid="checkbox-long-tail"
-              />
-              <Label
-                htmlFor="long-tail"
-                className="text-sm text-muted-foreground"
-              >
-                Long-tail keywords
-              </Label>
+        {/* Step 3: Generate */}
+        {currentStep === 3 && (
+          <div className="space-y-6" data-testid="wizard-step-3-content">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-semibold text-foreground mb-2">Ready to Generate</h3>
+              <p className="text-muted-foreground">Review your settings and create your content</p>
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="local-seo"
-                checked={seoOptimized}
-                onCheckedChange={(checked) => setSeoOptimized(checked === true)}
-                data-testid="checkbox-local-seo"
-              />
-              <Label
-                htmlFor="local-seo"
-                className="text-sm text-muted-foreground"
-              >
-                Local SEO focus
-              </Label>
+
+            {/* Summary Card */}
+            <div className="p-6 bg-muted/30 rounded-xl border space-y-4">
+              <h4 className="font-semibold text-foreground flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                Content Summary
+              </h4>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Type:</span>
+                  <span className="ml-2 font-medium">{contentTypes.find(t => t.value === contentType)?.label}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Style:</span>
+                  <span className="ml-2 font-medium">{contentStyles[contentType] || "None"}</span>
+                </div>
+                {topic && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Topic:</span>
+                    <span className="ml-2 font-medium">{topic}</span>
+                  </div>
+                )}
+                {contentType === "property_feature" && selectedProperty && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Property:</span>
+                    <span className="ml-2 font-medium">{selectedProperty.address}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-muted-foreground">Neighborhood:</span>
+                  <span className="ml-2 font-medium">{neighborhood}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Instructions (collapsed by default) */}
+            <details className="p-4 bg-muted/20 rounded-lg border">
+              <summary className="cursor-pointer text-sm font-medium text-foreground flex items-center gap-2">
+                <Wand2 className="h-4 w-4" />
+                AI Instructions (Advanced)
+              </summary>
+              <div className="mt-4">
+                <Textarea
+                  id="ai-prompt"
+                  placeholder="Tell the AI exactly how to create your content..."
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  className="w-full resize-none"
+                  rows={3}
+                  data-testid="input-ai-prompt"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Customize tone, style, call-to-actions, or any special requirements.
+                </p>
+              </div>
+            </details>
+
+            {/* Generate Button */}
+            <Button
+              onClick={handleGenerate}
+              disabled={isGenerating || generateContentMutation.isPending}
+              className="w-full py-6 text-lg font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
+              data-testid="button-generate-ai-content"
+            >
+              {isGenerating || generateContentMutation.isPending ? (
+                <>
+                  <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
+                  Generating Your Content...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-5 w-5" />
+                  Generate Content with AI
+                </>
+              )}
+            </Button>
+
+            {/* Navigation */}
+            <div className="flex justify-between pt-4">
+              <Button variant="outline" onClick={goToPrevStep} data-testid="button-back-step-3">
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              {lastGenerated && (
+                <Button onClick={() => setCurrentStep(4)} data-testid="button-view-results">
+                  View Results
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
-        </div>
+        )}
 
-        <Button
-          onClick={handleGenerate}
-          disabled={isGenerating || generateContentMutation.isPending}
-          className="w-full bg-primary text-primary-foreground py-3 font-medium hover:bg-primary/90"
-          data-testid="button-generate-ai-content"
-        >
-          <Sparkles className="mr-2 h-4 w-4" />
-          {isGenerating || generateContentMutation.isPending
-            ? "Generating..."
-            : "Generate Content with AI"}
-        </Button>
-
-        {/* Generated Content Preview */}
-        {lastGenerated && (
+        {/* Step 4: Share */}
+        {currentStep === 4 && lastGenerated && (
           <div
             className="mt-6 p-4 bg-muted rounded-lg"
             data-testid="content-preview"
