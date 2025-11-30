@@ -20,7 +20,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { apiRequest } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Play,
@@ -35,6 +45,7 @@ import {
   User,
   MessageSquare,
   Mic,
+  Trash2,
 } from "lucide-react";
 
 // Professional HeyGen Voices
@@ -82,9 +93,9 @@ export function VideoGenerationManager() {
   const [showVideoDialog, setShowVideoDialog] = useState(false);
   const [selectedLibraryVideo, setSelectedLibraryVideo] = useState<any | null>(null);
   const [showLibraryVideoDialog, setShowLibraryVideoDialog] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState<{ id: string; title: string } | null>(null);
 
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   // Fetch user's custom recorded voices from regular avatars
   const { data: customAvatarsData } = useQuery<any[]>({
@@ -173,8 +184,8 @@ export function VideoGenerationManager() {
     refetchInterval: selectedAvatarGroup ? 7000 : false,
   });
 
-  // Fetch user's completed videos
-  const { data: completedVideos = [] } = useQuery<Array<{
+  // Fetch ALL user videos (including processing ones)
+  const { data: allVideos = [] } = useQuery<Array<{
     id: string;
     title: string;
     videoUrl: string;
@@ -185,11 +196,38 @@ export function VideoGenerationManager() {
     duration?: number;
   }>>({
     queryKey: ["/api/videos"],
-    select: (data: any) => {
-      // Filter for ready videos - handle undefined/null data from cached responses
-      return (data ?? []).filter((v: any) => 
-        v.status === "ready" || v.status === "uploaded" || v.status === "completed"
-      );
+    refetchInterval: 10000, // Refresh to update processing status
+  });
+
+  // Separate ready and processing videos
+  const completedVideos = (allVideos ?? []).filter((v: any) => 
+    v.status === "ready" || v.status === "uploaded" || v.status === "completed"
+  );
+  const processingVideos = (allVideos ?? []).filter((v: any) => 
+    v.status === "processing" || v.status === "generating" || v.status === "pending"
+  );
+
+  // Delete video mutation
+  const deleteVideoMutation = useMutation({
+    mutationFn: async (videoId: string) => {
+      const response = await apiRequest("DELETE", `/api/videos/${videoId}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Video Deleted",
+        description: "The video has been removed from your library.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
+      setVideoToDelete(null);
+      setShowLibraryVideoDialog(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Delete Failed",
+        description: error?.message || "Failed to delete the video",
+        variant: "destructive",
+      });
     },
   });
 
@@ -790,6 +828,70 @@ export function VideoGenerationManager() {
       </Dialog>
     </Card>
 
+    {/* Processing Videos Section */}
+    {processingVideos.length > 0 && (
+      <Card className="mt-6 border-blue-200 dark:border-blue-800">
+        <CardHeader>
+          <CardTitle className="text-xl font-semibold text-foreground flex items-center">
+            <RefreshCw className="mr-2 h-5 w-5 text-blue-500 animate-spin" />
+            Processing Videos
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Videos currently being generated
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {processingVideos.map((video) => (
+              <div
+                key={video.id}
+                className="relative bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden border-2 border-blue-200 dark:border-blue-700"
+                data-testid={`video-processing-${video.id}`}
+              >
+                {/* Thumbnail Placeholder */}
+                <div className="relative aspect-video bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                  <div className="text-center">
+                    <RefreshCw className="w-12 h-12 text-blue-400 animate-spin mx-auto mb-2" />
+                    <p className="text-xs text-gray-400">Generating...</p>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="absolute top-2 right-2">
+                    <Badge className="bg-blue-100 text-blue-700 border-blue-300 text-xs">
+                      Processing
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Video Info */}
+                <div className="p-3 space-y-2">
+                  <h4 className="font-medium text-sm line-clamp-1 text-left">
+                    {video.title || 'Untitled Video'}
+                  </h4>
+                  {video.createdAt && (
+                    <p className="text-xs text-gray-500">
+                      Started: {new Date(video.createdAt).toLocaleString()}
+                    </p>
+                  )}
+                  {/* Delete Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                    onClick={() => setVideoToDelete({ id: video.id, title: video.title || 'Untitled Video' })}
+                    data-testid={`button-delete-processing-${video.id}`}
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    Cancel & Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )}
+
     {/* My Generated Videos Section */}
     {completedVideos.length > 0 && (
       <Card className="mt-6">
@@ -805,53 +907,72 @@ export function VideoGenerationManager() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {completedVideos.map((video) => (
-              <button
+              <div
                 key={video.id}
-                onClick={() => {
-                  setSelectedLibraryVideo(video);
-                  setShowLibraryVideoDialog(true);
-                }}
-                className="group relative bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-[#D4AF37] transition-all cursor-pointer"
+                className="group relative bg-gray-50 dark:bg-gray-900 rounded-lg overflow-hidden border-2 border-gray-200 dark:border-gray-700 hover:border-[#D4AF37] transition-all"
                 data-testid={`video-thumbnail-${video.id}`}
               >
-                {/* Thumbnail */}
-                <div className="relative aspect-video bg-black">
-                  {video.thumbnailUrl ? (
-                    <img
-                      src={video.thumbnailUrl}
-                      alt={video.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.src = 'https://ui-avatars.com/api/?name=Video&background=D4AF37&color=fff&size=400';
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
-                      <Video className="w-12 h-12 text-gray-600" />
-                    </div>
-                  )}
+                {/* Thumbnail - Clickable */}
+                <button
+                  onClick={() => {
+                    setSelectedLibraryVideo(video);
+                    setShowLibraryVideoDialog(true);
+                  }}
+                  className="w-full cursor-pointer"
+                >
+                  <div className="relative aspect-video bg-black">
+                    {video.thumbnailUrl ? (
+                      <img
+                        src={video.thumbnailUrl}
+                        alt={video.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'https://ui-avatars.com/api/?name=Video&background=D4AF37&color=fff&size=400';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                        <Video className="w-12 h-12 text-gray-600" />
+                      </div>
+                    )}
 
-                  {/* Play Overlay */}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <div className="bg-[#D4AF37] rounded-full p-3">
-                      <Play className="w-6 h-6 text-white fill-white" />
+                    {/* Play Overlay */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="bg-[#D4AF37] rounded-full p-3">
+                        <Play className="w-6 h-6 text-white fill-white" />
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div className="absolute top-2 right-2">
+                      <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
+                        Ready
+                      </Badge>
                     </div>
                   </div>
-
-                  {/* Status Badge */}
-                  <div className="absolute top-2 right-2">
-                    <Badge className="bg-green-100 text-green-700 border-green-300 text-xs">
-                      Ready
-                    </Badge>
-                  </div>
-                </div>
+                </button>
 
                 {/* Video Info */}
                 <div className="p-3 space-y-1">
-                  <h4 className="font-medium text-sm line-clamp-1 text-left">
-                    {video.title || 'Untitled Video'}
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm line-clamp-1 text-left flex-1">
+                      {video.title || 'Untitled Video'}
+                    </h4>
+                    {/* Delete Button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVideoToDelete({ id: video.id, title: video.title || 'Untitled Video' });
+                      }}
+                      data-testid={`button-delete-video-${video.id}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                   {video.createdAt && (
                     <p className="text-xs text-gray-500">
                       {new Date(video.createdAt).toLocaleDateString()}
@@ -863,7 +984,7 @@ export function VideoGenerationManager() {
                     </p>
                   )}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </CardContent>
@@ -907,33 +1028,75 @@ export function VideoGenerationManager() {
             )}
 
             {/* Actions */}
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 justify-between">
               <Button
                 variant="outline"
                 size="sm"
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
                 onClick={() => {
-                  if (selectedLibraryVideo?.videoUrl) {
-                    window.open(selectedLibraryVideo.videoUrl, '_blank');
+                  if (selectedLibraryVideo) {
+                    setVideoToDelete({ id: selectedLibraryVideo.id, title: selectedLibraryVideo.title || 'Untitled Video' });
                   }
                 }}
-                className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
-                data-testid="button-download-library-video"
+                data-testid="button-delete-library-video"
               >
-                <Download className="w-4 h-4 mr-2" />
-                Download
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Video
               </Button>
-              <Button
-                size="sm"
-                onClick={() => setShowLibraryVideoDialog(false)}
-                className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
-              >
-                Close
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (selectedLibraryVideo?.videoUrl) {
+                      window.open(selectedLibraryVideo.videoUrl, '_blank');
+                    }
+                  }}
+                  className="border-[#D4AF37]/30 hover:bg-[#D4AF37]/10"
+                  data-testid="button-download-library-video"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setShowLibraryVideoDialog(false)}
+                  className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         )}
       </DialogContent>
     </Dialog>
+
+    {/* Delete Confirmation Dialog */}
+    <AlertDialog open={!!videoToDelete} onOpenChange={(open) => !open && setVideoToDelete(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Video?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete "{videoToDelete?.title}"? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-red-600 hover:bg-red-700"
+            onClick={() => {
+              if (videoToDelete) {
+                deleteVideoMutation.mutate(videoToDelete.id);
+              }
+            }}
+            disabled={deleteVideoMutation.isPending}
+          >
+            {deleteVideoMutation.isPending ? "Deleting..." : "Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }

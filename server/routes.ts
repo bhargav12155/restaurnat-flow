@@ -8377,6 +8377,39 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Delete video (works for any status including processing)
+  app.delete("/api/videos/:videoId", requireAuth, async (req, res) => {
+    try {
+      const { videoId } = req.params;
+      const userId = req.user?.id;
+
+      console.log("🗑️ Backend: Deleting video:", videoId, "for user:", userId);
+
+      // Use the user-guarded delete to ensure ownership
+      const deleted = await storage.deleteVideoContentWithUserGuard(
+        videoId,
+        String(userId)
+      );
+
+      if (!deleted) {
+        console.log("⚠️ Backend: Video not found or not owned by user");
+        return res.status(404).json({
+          error: "Video not found or you don't have permission to delete it",
+        });
+      }
+
+      console.log("✅ Backend: Video deleted successfully");
+      res.json({ success: true, message: "Video deleted successfully" });
+    } catch (error: any) {
+      console.error("❌ Backend: Failed to delete video");
+      console.error("❌ Backend: Error message:", error?.message);
+      res.status(500).json({
+        error: "Failed to delete video",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   // ==================== TEMPLATE ENDPOINTS ====================
 
   // List templates
