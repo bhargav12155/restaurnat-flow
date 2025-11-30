@@ -3792,46 +3792,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { location, businessType } = req.body;
 
-      // Fetch live market data to provide real-time context to AI
+      // Try to fetch market data but don't require it
       let marketData;
       try {
         marketData = await storage.getMarketData();
         if (!marketData || marketData.length === 0) {
-          console.warn(
-            "⚠️  No market data available for AI keyword generation"
-          );
-          return res.status(502).json({
-            error: "Market data unavailable",
-            message:
-              "Unable to fetch real-time market data. Please try again later or contact support.",
-          });
+          console.log("ℹ️  No market data available - generating keywords without market context");
+          marketData = undefined;
         }
       } catch (marketError) {
-        console.error(
-          "Failed to fetch market data for keyword generation:",
-          marketError
-        );
-        return res.status(502).json({
-          error: "Market data service error",
-          message:
-            "Could not retrieve market intelligence data. Keyword generation requires live market data.",
-        });
+        console.warn("⚠️  Could not fetch market data, proceeding without it:", marketError);
+        marketData = undefined;
       }
 
-      // Generate keywords with real market intelligence
+      // Generate keywords (works with or without market data)
       const keywords = await seoService.generateTopKeywordsWithAI(
         location || "Omaha, Nebraska",
         businessType || "real estate agent",
         marketData
       );
 
+      console.log(`✅ Generated ${keywords.length} AI keywords`);
       res.json(keywords);
     } catch (error) {
       console.error("❌ AI keyword generation error:", error);
-      res.status(502).json({
+      res.status(500).json({
         error: "AI keyword generation failed",
-        message:
-          "Unable to generate fresh, market-driven keywords. Please try again or contact support.",
+        message: "Unable to generate keywords. Please try again.",
         details: (error as Error).message,
       });
     }
