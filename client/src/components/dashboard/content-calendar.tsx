@@ -2,10 +2,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, Check, X, ChevronDown } from "lucide-react";
+import { Plus, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, Check, X, ChevronDown, Trash2 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
@@ -406,6 +416,8 @@ export function ContentCalendar() {
   const [savedPhotoUrl, setSavedPhotoUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<string | null>(null);
   const { toast } = useToast();
   
   // Get user's display name with proper formatting
@@ -452,6 +464,28 @@ export function ContentCalendar() {
       toast({
         title: "Update Failed",
         description: "Could not save changes. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deletePostMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/scheduled-posts/${id}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Post Deleted",
+        description: "Your scheduled post has been deleted.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      setShowPreview(false);
+      setPreviewContent(null);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete post. Please try again.",
         variant: "destructive",
       });
     },
@@ -1065,15 +1099,34 @@ export function ContentCalendar() {
                       {content.type} • {format(content.date, "MMM d")} {content.time}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => handlePreview(content)}
-                    data-testid={`button-preview-${content.id}`}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => handlePreview(content)}
+                      data-testid={`button-preview-${content.id}`}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    {/* Delete button for API posts */}
+                    {String(content.id).startsWith('api-') && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const apiPostId = String(content.id).replace('api-', '');
+                          setPostToDelete(apiPostId);
+                          setShowDeleteConfirm(true);
+                        }}
+                        data-testid={`button-delete-${content.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1520,25 +1573,41 @@ export function ContentCalendar() {
                     Edit
                   </Button>
                   
-                  {/* Show Duplicate button only for API posts (actual scheduled posts) */}
+                  {/* Show Duplicate and Delete buttons only for API posts (actual scheduled posts) */}
                   {String(previewContent.id).startsWith('api-') && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => {
-                        const apiPostId = String(previewContent.id).replace('api-', '');
-                        const originalPost = apiScheduledPosts.find(p => p.id === apiPostId);
-                        if (originalPost) {
-                          duplicatePostMutation.mutate(originalPost);
-                        }
-                      }}
-                      disabled={duplicatePostMutation.isPending}
-                      className="flex items-center gap-2"
-                      data-testid="button-duplicate-post"
-                    >
-                      <Plus className="h-4 w-4" />
-                      {duplicatePostMutation.isPending ? 'Duplicating...' : 'Duplicate'}
-                    </Button>
+                    <>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          const apiPostId = String(previewContent.id).replace('api-', '');
+                          const originalPost = apiScheduledPosts.find(p => p.id === apiPostId);
+                          if (originalPost) {
+                            duplicatePostMutation.mutate(originalPost);
+                          }
+                        }}
+                        disabled={duplicatePostMutation.isPending}
+                        className="flex items-center gap-2"
+                        data-testid="button-duplicate-post"
+                      >
+                        <Plus className="h-4 w-4" />
+                        {duplicatePostMutation.isPending ? 'Duplicating...' : 'Duplicate'}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          const apiPostId = String(previewContent.id).replace('api-', '');
+                          setPostToDelete(apiPostId);
+                          setShowDeleteConfirm(true);
+                        }}
+                        className="flex items-center gap-2 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        data-testid="button-delete-post"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </Button>
+                    </>
                   )}
                 </div>
               ) : (
@@ -1570,6 +1639,34 @@ export function ContentCalendar() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Scheduled Post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this scheduled post? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (postToDelete) {
+                  deletePostMutation.mutate(postToDelete);
+                }
+                setShowDeleteConfirm(false);
+                setPostToDelete(null);
+              }}
+              className="bg-red-600 hover:bg-red-700"
+              data-testid="button-confirm-delete"
+            >
+              Delete Post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }
