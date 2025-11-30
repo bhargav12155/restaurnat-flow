@@ -3734,51 +3734,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.id;
       let keywords = await storage.getSeoKeywords(userId);
 
-      // Auto-generate keywords on first login if user has none
+      // If user has no keywords, return fast fallback and generate in background
       if (!keywords || keywords.length === 0) {
-        console.log(
-          `📊 No keywords found for user ${userId}, generating AI keywords...`
-        );
+        console.log(`📊 No keywords for user ${userId} - returning instant fallback`);
 
-        // Get user's service areas from market data
-        const marketData = await storage.getMarketData(userId);
-        const serviceAreas = marketData
-          .map((m) => m.neighborhood)
-          .filter(Boolean);
+        // Return instant fallback keywords for fast page load
+        const fallbackKeywords = [
+          { id: "fb-1", userId, keyword: "Omaha homes for sale", searchVolume: 2400, currentRank: 5, difficulty: 50, neighborhood: null },
+          { id: "fb-2", userId, keyword: "real estate agent Omaha", searchVolume: 1800, currentRank: 8, difficulty: 45, neighborhood: null },
+          { id: "fb-3", userId, keyword: "houses for sale Omaha NE", searchVolume: 1500, currentRank: 12, difficulty: 40, neighborhood: null },
+          { id: "fb-4", userId, keyword: "Dundee homes for sale", searchVolume: 880, currentRank: 3, difficulty: 35, neighborhood: "Dundee" },
+          { id: "fb-5", userId, keyword: "West Omaha real estate", searchVolume: 720, currentRank: 6, difficulty: 42, neighborhood: "West Omaha" },
+          { id: "fb-6", userId, keyword: "Aksarben condos for sale", searchVolume: 480, currentRank: 4, difficulty: 38, neighborhood: "Aksarben" },
+        ];
 
-        if (serviceAreas.length === 0) {
-          serviceAreas.push("Omaha"); // Default to Omaha
-        }
-
-        try {
-          const { AIKeywordGenerator } = await import(
-            "./services/ai-keyword-generator"
-          );
-          const generator = new AIKeywordGenerator(userId);
-
-          let generatedData;
+        // Trigger background AI generation (non-blocking)
+        setImmediate(async () => {
           try {
-            generatedData = await generator.generateKeywords(serviceAreas);
-          } catch (aiError) {
-            console.warn(
-              "⚠️  AI keyword generation failed, using fallback:",
-              aiError
-            );
-            generatedData = generator.getFallbackKeywords(serviceAreas);
-          }
+            console.log(`🔄 Background: Generating AI keywords for user ${userId}...`);
+            const marketData = await storage.getMarketData(userId);
+            const serviceAreas = marketData.map((m) => m.neighborhood).filter(Boolean);
+            if (serviceAreas.length === 0) serviceAreas.push("Omaha");
 
-          // Save generated keywords to storage
-          for (const keyword of generatedData.keywords) {
-            await storage.createSeoKeyword(keyword);
-          }
+            const { AIKeywordGenerator } = await import("./services/ai-keyword-generator");
+            const generator = new AIKeywordGenerator(userId);
+            
+            let generatedData;
+            try {
+              generatedData = await generator.generateKeywords(serviceAreas);
+            } catch (aiError) {
+              console.warn("⚠️  Background AI generation failed, using fallback:", aiError);
+              generatedData = generator.getFallbackKeywords(serviceAreas);
+            }
 
-          keywords = await storage.getSeoKeywords(userId);
-          console.log(
-            `✅ Auto-generated ${keywords.length} keywords for new user`
-          );
-        } catch (error) {
-          console.error("❌ Keyword generation error:", error);
-        }
+            for (const keyword of generatedData.keywords) {
+              await storage.createSeoKeyword(keyword);
+            }
+            console.log(`✅ Background: Generated ${generatedData.keywords.length} keywords for user ${userId}`);
+          } catch (error) {
+            console.error("❌ Background keyword generation error:", error);
+          }
+        });
+
+        return res.json(fallbackKeywords);
       }
 
       res.json(keywords);
