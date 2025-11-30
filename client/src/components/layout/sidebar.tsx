@@ -47,21 +47,12 @@ const navigationItems = [
     href: "#social",
     key: "social",
   },
-  { icon: Search, label: "SEO Optimizer", href: "#seo", key: "seo" },
   {
     icon: Calendar,
     label: "Content Calendar",
     href: "#calendar",
     key: "calendar",
   },
-  { icon: MapPin, label: "Local Market Tools", href: "#market", key: "market" },
-  {
-    icon: Palette,
-    label: "Brand Settings",
-    href: "#brand-settings",
-    key: "brand-settings",
-  },
-  { icon: BarChart3, label: "Analytics", href: "#analytics", key: "analytics" },
   {
     icon: Video,
     label: "Avatar & Video",
@@ -95,6 +86,15 @@ const navigationItems = [
       },
     ],
   },
+  { icon: Search, label: "SEO Optimizer", href: "#seo", key: "seo" },
+  { icon: MapPin, label: "Local Market Tools", href: "#market", key: "market" },
+  {
+    icon: Palette,
+    label: "Brand Settings",
+    href: "#brand-settings",
+    key: "brand-settings",
+  },
+  { icon: BarChart3, label: "Analytics", href: "#analytics", key: "analytics" },
   {
     icon: Target,
     label: "Advanced Advertising",
