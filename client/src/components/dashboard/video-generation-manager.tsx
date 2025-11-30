@@ -87,6 +87,7 @@ export function VideoGenerationManager() {
   const [isTestMode, setIsTestMode] = useState(false);
   const [voiceSpeed, setVoiceSpeed] = useState<string>("1.0"); // Store as string for Select
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("119caed25533477ba63822d5d1552d25"); // Default: Neutral - Balanced
+  const [manualVoiceId, setManualVoiceId] = useState<string>(""); // Manual Voice ID override
   const [currentVideo, setCurrentVideo] = useState<VideoGeneration | null>(
     null
   );
@@ -176,12 +177,13 @@ export function VideoGenerationManager() {
   });
 
   // Fetch looks for the selected group
-  const { data: selectedGroupLooks } = useQuery<{
+  const { data: selectedGroupLooks, isLoading: looksLoading, isFetching: looksFetching } = useQuery<{
     avatar_list?: Array<{ id: string; image_url: string; status: string }>;
   }>({
     queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "looks"],
     enabled: !!selectedAvatarGroup,
     refetchInterval: selectedAvatarGroup ? 7000 : false,
+    staleTime: 5000, // Consider fresh for 5 seconds to reduce flicker
   });
 
   // Fetch ALL user videos (including processing ones)
@@ -312,27 +314,38 @@ export function VideoGenerationManager() {
       return;
     }
 
-    // Check if using a custom voice
-    const isCustomVoice = selectedVoiceId.startsWith('custom_') || selectedVoiceId.startsWith('voice_library_');
-    const customVoice = isCustomVoice 
-      ? customVoices.find((v: any) => v.id === selectedVoiceId)
-      : null;
-
-    // Determine the voice ID to use
-    let finalVoiceId = selectedVoiceId;
+    // Check if using manual Voice ID override first
+    let finalVoiceId: string;
     let voiceLibraryId: string | undefined;
+    let customVoiceAvatarId: string | undefined;
 
-    if (customVoice) {
-      if (customVoice.type === 'voice_library') {
-        // Voice Library voice - use special marker and pass library ID
-        finalVoiceId = 'voice_library';
-        voiceLibraryId = customVoice.voiceLibraryId;
-      } else if (customVoice.type === 'photo_group') {
-        // Use the group's default voice ID directly
-        finalVoiceId = customVoice.voiceId;
-      } else {
-        // Regular avatar custom voice - use 'custom_voice' marker
-        finalVoiceId = 'custom_voice';
+    if (manualVoiceId.trim()) {
+      // Manual Voice ID takes priority
+      finalVoiceId = manualVoiceId.trim();
+      console.log("🎤 Using manual Voice ID:", finalVoiceId);
+    } else {
+      // Check if using a custom voice from dropdown
+      const isCustomVoice = selectedVoiceId.startsWith('custom_') || selectedVoiceId.startsWith('voice_library_');
+      const customVoice = isCustomVoice 
+        ? customVoices.find((v: any) => v.id === selectedVoiceId)
+        : null;
+
+      // Determine the voice ID to use
+      finalVoiceId = selectedVoiceId;
+
+      if (customVoice) {
+        if (customVoice.type === 'voice_library') {
+          // Voice Library voice - use special marker and pass library ID
+          finalVoiceId = 'voice_library';
+          voiceLibraryId = customVoice.voiceLibraryId;
+        } else if (customVoice.type === 'photo_group') {
+          // Use the group's default voice ID directly
+          finalVoiceId = customVoice.voiceId;
+        } else {
+          // Regular avatar custom voice - use 'custom_voice' marker
+          finalVoiceId = 'custom_voice';
+        }
+        customVoiceAvatarId = customVoice?.avatarId;
       }
     }
 
@@ -345,7 +358,7 @@ export function VideoGenerationManager() {
       isTalkingPhoto: true,
       voiceSpeed: parseFloat(voiceSpeed),
       voiceId: finalVoiceId,
-      customVoiceAvatarId: customVoice?.avatarId,
+      customVoiceAvatarId,
       voiceLibraryId,
     });
   };
@@ -476,35 +489,50 @@ export function VideoGenerationManager() {
             <Label htmlFor="avatar-look-select" className="text-sm font-medium">
               Select Avatar Look
             </Label>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-2">
-              {availableLooks.map((look) => {
-                const lookId = (look as any).avatar_id || (look as any).id;
-                const imageUrl =
-                  (look as any).image_url || (look as any).image || "";
-                return (
+            {looksLoading ? (
+              /* Loading skeletons for avatar looks */
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-2">
+                {[1, 2, 3, 4].map((i) => (
                   <div
-                    key={lookId}
-                    data-testid={`avatar-look-${lookId}`}
-                    className={`border-2 rounded-lg p-2 cursor-pointer transition-all ${
-                      selectedAvatarLook === lookId
-                        ? "border-primary bg-primary/5"
-                        : "border-muted hover:border-primary/50"
-                    }`}
-                    onClick={() => setSelectedAvatarLook(lookId)}
+                    key={i}
+                    className="border-2 rounded-lg p-2 border-muted animate-pulse"
                   >
-                    <img
-                      src={imageUrl}
-                      alt={`Avatar look ${lookId}`}
-                      className="w-full h-20 object-cover rounded mb-2"
-                    />
-                    <p className="text-xs text-center text-muted-foreground">
-                      Look {String(lookId).slice(-4)}
-                    </p>
+                    <div className="w-full h-20 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-16 mx-auto" />
                   </div>
-                );
-              })}
-            </div>
-            {availableLooks.length === 0 && (
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-2">
+                {availableLooks.map((look) => {
+                  const lookId = (look as any).avatar_id || (look as any).id;
+                  const imageUrl =
+                    (look as any).image_url || (look as any).image || "";
+                  return (
+                    <div
+                      key={lookId}
+                      data-testid={`avatar-look-${lookId}`}
+                      className={`border-2 rounded-lg p-2 cursor-pointer transition-all ${
+                        selectedAvatarLook === lookId
+                          ? "border-primary bg-primary/5"
+                          : "border-muted hover:border-primary/50"
+                      }`}
+                      onClick={() => setSelectedAvatarLook(lookId)}
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={`Avatar look ${lookId}`}
+                        className="w-full h-20 object-cover rounded mb-2"
+                      />
+                      <p className="text-xs text-center text-muted-foreground">
+                        Look {String(lookId).slice(-4)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {!looksLoading && availableLooks.length === 0 && (
               <p className="text-sm text-muted-foreground mt-2">
                 No completed avatar looks available. Training may still be in
                 progress.
@@ -585,6 +613,29 @@ export function VideoGenerationManager() {
               💡 Tip: Record your voice in the Avatar Creator to use your own voice!
             </p>
           )}
+        </div>
+
+        {/* Manual Voice ID Override */}
+        <div>
+          <Label htmlFor="manual-voice-id" className="text-sm font-medium flex items-center gap-2">
+            <Mic className="w-4 h-4 text-blue-500" />
+            Voice ID Override (Optional)
+          </Label>
+          <Input
+            id="manual-voice-id"
+            data-testid="input-manual-voice-id"
+            value={manualVoiceId}
+            onChange={(e) => setManualVoiceId(e.target.value)}
+            placeholder="e.g., 119caed25533477ba63822d5d1552d25"
+            className={`font-mono text-sm ${manualVoiceId.trim() && manualVoiceId.trim().length < 32 ? 'border-yellow-500' : ''}`}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            {manualVoiceId.trim() 
+              ? manualVoiceId.trim().length >= 32
+                ? "✓ Using manual Voice ID - dropdown selection will be ignored"
+                : "⚠️ HeyGen Voice IDs are typically 32 characters"
+              : "Leave empty to use dropdown selection above. Get Voice IDs from HeyGen dashboard."}
+          </p>
         </div>
 
         {/* Voice Speed Control */}
@@ -993,23 +1044,23 @@ export function VideoGenerationManager() {
 
     {/* Library Video Player Dialog */}
     <Dialog open={showLibraryVideoDialog} onOpenChange={setShowLibraryVideoDialog}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="font-playfair text-2xl">
+      <DialogContent className="max-w-3xl p-4 gap-3">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="font-playfair text-xl">
             {selectedLibraryVideo?.title || 'Video Preview'}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm">
             Generated on {selectedLibraryVideo?.createdAt ? new Date(selectedLibraryVideo.createdAt).toLocaleDateString() : 'N/A'}
           </DialogDescription>
         </DialogHeader>
 
         {selectedLibraryVideo && (
-          <div className="space-y-4">
-            {/* Video Player */}
-            <div className="border-2 border-[#D4AF37]/30 rounded-lg overflow-hidden bg-black">
+          <div className="space-y-3">
+            {/* Video Player - auto-sizing container */}
+            <div className="flex justify-center rounded-lg overflow-hidden bg-black">
               <video
                 controls
-                className="w-full aspect-video"
+                className="max-w-full max-h-[60vh] w-auto h-auto"
                 src={selectedLibraryVideo.videoUrl}
                 autoPlay
               >
@@ -1019,16 +1070,16 @@ export function VideoGenerationManager() {
 
             {/* Video Details */}
             {selectedLibraryVideo.script && (
-              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                <h4 className="text-sm font-semibold mb-2">Script</h4>
-                <p className="text-sm text-gray-700 dark:text-gray-300">
+              <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-xs font-semibold mb-1">Script</h4>
+                <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-3">
                   {selectedLibraryVideo.script}
                 </p>
               </div>
             )}
 
             {/* Actions */}
-            <div className="flex gap-2 justify-between">
+            <div className="flex gap-2 justify-between pt-1">
               <Button
                 variant="outline"
                 size="sm"
@@ -1041,7 +1092,7 @@ export function VideoGenerationManager() {
                 data-testid="button-delete-library-video"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
-                Delete Video
+                Delete
               </Button>
               <div className="flex gap-2">
                 <Button
