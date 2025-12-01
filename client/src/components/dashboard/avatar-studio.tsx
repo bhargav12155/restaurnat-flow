@@ -771,8 +771,22 @@ export function AvatarStudio() {
 
               {selectedAvatarGroup && availableLooks.length === 0 && (
                 <div className="text-center py-6 text-gray-500 border rounded-lg mt-4">
-                  <Clock className="h-8 w-8 mx-auto mb-2 animate-pulse" />
-                  <p>No looks available yet. Training may still be in progress.</p>
+                  {selectedGroup?.train_status === "ready" ? (
+                    <>
+                      <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+                      <p>No looks found for this avatar. Try refreshing or check HeyGen dashboard.</p>
+                    </>
+                  ) : selectedGroup?.train_status === "processing" || selectedGroup?.train_status === "training" ? (
+                    <>
+                      <Clock className="h-8 w-8 mx-auto mb-2 animate-pulse" />
+                      <p>Training in progress. Looks will appear when complete.</p>
+                    </>
+                  ) : (
+                    <>
+                      <Clock className="h-8 w-8 mx-auto mb-2" />
+                      <p>Loading looks...</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
