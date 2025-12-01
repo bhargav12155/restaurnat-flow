@@ -60,6 +60,7 @@ interface PhotoAvatarGroup {
   num_looks?: number;
   created_at: string;
   avatar_count?: number;
+  preview_image?: string;
 }
 
 interface AvatarLook {
@@ -708,7 +709,18 @@ export function AvatarStudio() {
                         </div>
                       )}
                       <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                        <User className="h-12 w-12 text-gray-400" />
+                        {group.preview_image ? (
+                          <img 
+                            src={group.preview_image} 
+                            alt={group.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                        ) : null}
+                        <User className={`h-12 w-12 text-gray-400 ${group.preview_image ? 'hidden' : ''}`} />
                       </div>
                       <p className="font-medium text-sm truncate" data-testid={`text-group-name-${group.group_id}`}>
                         {group.name}
