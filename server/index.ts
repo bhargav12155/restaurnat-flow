@@ -19,7 +19,16 @@ if (process.env.NODE_ENV === "production") {
 }
 
 // Increase payload limit to handle audio file uploads (avatar voice recordings)
-app.use(express.json({ limit: "10mb" }));
+// Capture raw body for webhook signature verification
+app.use(express.json({ 
+  limit: "10mb",
+  verify: (req: any, res, buf) => {
+    // Store raw body for webhook signature verification
+    if (req.url?.startsWith('/api/webhooks/')) {
+      req.rawBody = buf;
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 app.use(cookieParser());
 

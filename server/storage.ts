@@ -141,6 +141,7 @@ export interface IStorage {
     id: string,
     userId: string
   ): Promise<VideoContent | undefined>;
+  getVideoByHeygenId(heygenVideoId: string): Promise<VideoContent | undefined>;
   createVideoContent(video: InsertVideoContent): Promise<VideoContent>;
   updateVideoContent(
     id: string,
@@ -1206,6 +1207,15 @@ export class MemStorage implements IStorage {
       .where(
         and(eq(videoContentTable.id, id), eq(videoContentTable.userId, userId))
       )
+      .limit(1);
+    return video;
+  }
+
+  async getVideoByHeygenId(heygenVideoId: string): Promise<VideoContent | undefined> {
+    const [video] = await db
+      .select()
+      .from(videoContentTable)
+      .where(eq(videoContentTable.heygenVideoId, heygenVideoId))
       .limit(1);
     return video;
   }

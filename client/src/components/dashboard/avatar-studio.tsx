@@ -147,7 +147,14 @@ export function AvatarStudio() {
     avatar_group_list?: PhotoAvatarGroup[];
   }>({
     queryKey: ["/api/photo-avatars/groups"],
-    refetchInterval: 10000,
+    // Smart polling: only poll when there are groups in processing state
+    refetchInterval: (query) => {
+      const groups = query.state.data?.avatar_group_list ?? [];
+      const hasProcessing = groups.some((g: PhotoAvatarGroup) => 
+        g.status === 'processing' || g.train_status === 'processing'
+      );
+      return hasProcessing ? 5000 : false;
+    },
   });
 
   const avatarGroups: PhotoAvatarGroup[] = avatarGroupsResponse?.avatar_group_list ?? [];
