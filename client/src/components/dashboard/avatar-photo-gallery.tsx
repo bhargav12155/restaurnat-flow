@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ interface Photo {
   name?: string;
   type?: string;
   motion_preview_url?: string;
+  motion_status?: string; // 'pending' | 'processing' | 'completed' | 'failed'
 }
 
 interface PhotoGalleryData {
@@ -29,25 +30,58 @@ interface AvatarPhotoGalleryProps {
 
 export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [pendingMotion, setPendingMotion] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
-  // Fetch photos for this avatar group
+  // Track if any photos have pending motion animations
+  const hasPendingMotion = pendingMotion.size > 0;
+
+  // Fetch photos for this avatar group - with smart polling when motion is processing
   const { data: photoData, isLoading } = useQuery<PhotoGalleryData>({
     queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
     enabled: !!groupId,
+    refetchInterval: hasPendingMotion ? 5000 : false, // Poll every 5s only when motion is pending
   });
+
+  // Check for completed motion animations and notify
+  useEffect(() => {
+    if (photoData?.photos) {
+      const newPending = new Set<string>();
+      photoData.photos.forEach((photo) => {
+        if (photo.id && pendingMotion.has(photo.id)) {
+          if (photo.motion_preview_url) {
+            // Motion completed!
+            toast({
+              title: "Motion Complete!",
+              description: `Motion animation is ready for your avatar.`,
+            });
+          } else if (photo.motion_status === 'processing') {
+            // Still processing
+            newPending.add(photo.id);
+          }
+        }
+      });
+      
+      // Update pending set if changed
+      if (newPending.size !== pendingMotion.size) {
+        setPendingMotion(newPending);
+      }
+    }
+  }, [photoData?.photos]);
 
   const photos = photoData?.photos || [];
 
-  // Add motion mutation
+  // Add motion mutation with smart polling trigger
   const addMotionMutation = useMutation({
     mutationFn: (avatarId: string) =>
       apiRequest("POST", `/api/photo-avatars/${avatarId}/add-motion`, {}),
-    onSuccess: () => {
+    onSuccess: (_, avatarId) => {
       toast({
-        title: "Motion Added!",
-        description: "Dynamic motion is being added to your avatar. This may take a few moments.",
+        title: "Motion Processing",
+        description: "Dynamic motion is being added to your avatar. We'll notify you when it's ready.",
       });
+      // Add to pending set to trigger smart polling
+      setPendingMotion(prev => new Set([...prev, avatarId]));
       queryClient.invalidateQueries({
         queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
       });

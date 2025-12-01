@@ -3,7 +3,7 @@ import { Server } from "http";
 import type { IncomingMessage } from "http";
 
 export interface WebSocketMessage {
-  type: "content_published" | "social_post_scheduled" | "notification" | "status_update" | "photo_generated" | "video_created" | "avatar_group_created" | "motion_added" | "sound_effect_added" | "avatar_ready";
+  type: "content_published" | "social_post_scheduled" | "notification" | "status_update" | "photo_generated" | "video_created" | "avatar_group_created" | "motion_added" | "sound_effect_added" | "avatar_ready" | "training_status_update" | "video_generation_complete" | "video_generation_failed" | "motion_complete";
   data: any;
   timestamp: string;
   userId?: number;
@@ -235,6 +235,72 @@ export class RealtimeService {
         avatarId,
         avatarName,
         message: `Avatar "${avatarName}" is ready!`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "photo-avatars",
+    });
+  }
+
+  // Notify about training status change
+  notifyTrainingStatusUpdate(userId: number, groupId: string, groupName: string, status: string) {
+    this.sendToUser(userId.toString(), {
+      type: "training_status_update",
+      data: {
+        groupId,
+        groupName,
+        status,
+        message: status === "ready" 
+          ? `Avatar group "${groupName}" training is complete!` 
+          : `Avatar group "${groupName}" training status: ${status}`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "photo-avatars",
+    });
+  }
+
+  // Notify about video generation complete (from HeyGen webhook)
+  notifyVideoGenerationComplete(userId: number, videoId: string, videoUrl: string, title?: string) {
+    this.sendToUser(userId.toString(), {
+      type: "video_generation_complete",
+      data: {
+        videoId,
+        videoUrl,
+        title: title || "Your video",
+        message: `Video "${title || 'Your video'}" is ready to view!`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "ai-video",
+    });
+  }
+
+  // Notify about video generation failed (from HeyGen webhook)
+  notifyVideoGenerationFailed(userId: number, videoId: string, error: string, title?: string) {
+    this.sendToUser(userId.toString(), {
+      type: "video_generation_failed",
+      data: {
+        videoId,
+        title: title || "Your video",
+        error,
+        message: `Video "${title || 'Your video'}" generation failed: ${error}`,
+      },
+      timestamp: new Date().toISOString(),
+      userId,
+      link: "ai-video",
+    });
+  }
+
+  // Notify about motion animation complete
+  notifyMotionComplete(userId: number, avatarId: string, avatarName: string, motionPreviewUrl?: string) {
+    this.sendToUser(userId.toString(), {
+      type: "motion_complete",
+      data: {
+        avatarId,
+        avatarName,
+        motionPreviewUrl,
+        message: `Motion animation for "${avatarName}" is complete!`,
       },
       timestamp: new Date().toISOString(),
       userId,

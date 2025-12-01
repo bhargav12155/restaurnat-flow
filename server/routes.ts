@@ -7999,6 +7999,122 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
   // ==================== VIDEO GENERATION ENDPOINTS ====================
 
+  // ==================== HEYGEN WEBHOOK HANDLER ====================
+  // Handle HeyGen webhook events for video generation status updates
+  // This eliminates the need for polling for video generation status
+  app.post("/api/webhooks/heygen", async (req, res) => {
+    try {
+      const { event_type, event_data } = req.body;
+      
+      console.log("📨 HeyGen Webhook received:", event_type);
+
+      // SECURITY: Verify webhook signature using HMAC
+      const webhookSecret = process.env.HEYGEN_WEBHOOK_SECRET;
+      const signature = req.headers["signature"] as string;
+      
+      if (webhookSecret) {
+        // If webhook secret is configured, verify signature
+        if (!signature) {
+          console.warn("🔒 Webhook rejected: Missing signature header");
+          return res.status(401).json({ error: "Missing signature" });
+        }
+        
+        // Get raw body (stored by express middleware for webhook routes)
+        const rawBody = (req as any).rawBody;
+        if (!rawBody) {
+          console.warn("🔒 Webhook rejected: Raw body not available");
+          return res.status(500).json({ error: "Internal error" });
+        }
+        
+        // Compute HMAC signature using raw body bytes (crypto already imported at module level)
+        const computedSignature = crypto
+          .createHmac("sha256", webhookSecret)
+          .update(rawBody)
+          .digest("hex");
+        
+        // Use timing-safe comparison to prevent timing attacks
+        const signatureBuffer = Buffer.from(signature, 'hex');
+        const computedBuffer = Buffer.from(computedSignature, 'hex');
+        
+        if (signatureBuffer.length !== computedBuffer.length || 
+            !crypto.timingSafeEqual(signatureBuffer, computedBuffer)) {
+          console.warn("🔒 Webhook rejected: Invalid signature");
+          return res.status(401).json({ error: "Invalid signature" });
+        }
+        
+        console.log("✅ Webhook signature verified");
+      } else {
+        console.warn("⚠️ HEYGEN_WEBHOOK_SECRET not configured - webhook verification disabled");
+      }
+      
+      console.log("📨 Event data:", JSON.stringify(event_data, null, 2));
+      
+      if (event_type === "avatar_video.success") {
+        const { video_id, url, callback_id } = event_data;
+        
+        // Find the video by HeyGen video ID
+        const video = await storage.getVideoByHeygenId(video_id);
+        
+        if (video) {
+          // Update video status and URL
+          await storage.updateVideoContentWithUserGuard(video.id, video.userId, {
+            status: "completed",
+            videoUrl: url,
+          });
+          
+          // Send real-time notification via WebSocket
+          realtimeService.notifyVideoGenerationComplete(
+            parseInt(video.userId),
+            video.id,
+            url,
+            video.title
+          );
+          
+          console.log(`✅ Video ${video_id} marked as completed via webhook`);
+        } else {
+          console.warn(`⚠️ Video not found for HeyGen ID: ${video_id}`);
+        }
+      } else if (event_type === "avatar_video.fail") {
+        const { video_id, msg, callback_id } = event_data;
+        
+        // Find the video by HeyGen video ID
+        const video = await storage.getVideoByHeygenId(video_id);
+        
+        if (video) {
+          // Update video status with error
+          await storage.updateVideoContentWithUserGuard(video.id, video.userId, {
+            status: "failed",
+            errorMessage: msg,
+          });
+          
+          // Send real-time notification via WebSocket
+          realtimeService.notifyVideoGenerationFailed(
+            parseInt(video.userId),
+            video.id,
+            msg,
+            video.title
+          );
+          
+          console.log(`❌ Video ${video_id} marked as failed via webhook: ${msg}`);
+        } else {
+          console.warn(`⚠️ Video not found for HeyGen ID: ${video_id}`);
+        }
+      }
+      
+      // Always return 200 to acknowledge webhook receipt
+      res.status(200).json({ received: true });
+    } catch (error) {
+      console.error("❌ Webhook processing error:", error);
+      // Still return 200 to prevent retries
+      res.status(200).json({ received: true, error: "Processing failed" });
+    }
+  });
+
+  // Handle OPTIONS request for webhook endpoint (HeyGen validation)
+  app.options("/api/webhooks/heygen", (req, res) => {
+    res.status(200).send();
+  });
+
   // Generate video from avatar and script
   app.post("/api/videos/generate", requireAuth, async (req, res) => {
     try {

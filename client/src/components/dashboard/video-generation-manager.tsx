@@ -164,7 +164,14 @@ export function VideoGenerationManager() {
     avatar_group_list?: PhotoAvatarGroup[];
   }>({
     queryKey: ["/api/photo-avatars/groups"],
-    refetchInterval: 10000, // Refresh every 10 seconds to check training status
+    // Smart polling: only poll when there are groups in processing state
+    refetchInterval: (query) => {
+      const groups = query.state.data?.avatar_group_list ?? [];
+      const hasProcessing = groups.some((g: PhotoAvatarGroup) => 
+        g.status === 'processing' || g.train_status === 'processing'
+      );
+      return hasProcessing ? 5000 : false; // Poll every 5s only when needed
+    },
   });
   const avatarGroups: PhotoAvatarGroup[] =
     avatarGroupsResponse?.avatar_group_list ?? [];
@@ -198,7 +205,14 @@ export function VideoGenerationManager() {
     duration?: number;
   }>>({
     queryKey: ["/api/videos"],
-    refetchInterval: 10000, // Refresh to update processing status
+    // Smart polling: only poll when there are videos being processed
+    refetchInterval: (query) => {
+      const videos = query.state.data ?? [];
+      const hasProcessing = videos.some((v: any) => 
+        v.status === "processing" || v.status === "generating" || v.status === "pending"
+      );
+      return hasProcessing ? 5000 : false; // Poll every 5s only when needed
+    },
   });
 
   // Separate ready and processing videos
