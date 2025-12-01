@@ -126,6 +126,7 @@ export interface IStorage {
   // Avatars
   getAvatars(userId: string): Promise<Avatar[]>;
   getAvatarById(id: string): Promise<Avatar | undefined>;
+  getAvatarByIdAndUser(id: string, userId: string): Promise<Avatar | undefined>;
   createAvatar(avatar: InsertAvatar): Promise<Avatar>;
   updateAvatar(
     id: string,
@@ -155,7 +156,9 @@ export interface IStorage {
 
   // Custom Voices
   listCustomVoices(userId: string): Promise<CustomVoice[]>;
+  getCustomVoices(userId: string): Promise<CustomVoice[]>;
   getCustomVoice(id: string): Promise<CustomVoice | undefined>;
+  getCustomVoiceByIdAndUser(id: string, userId: string): Promise<CustomVoice | undefined>;
   createCustomVoice(voice: InsertCustomVoice): Promise<CustomVoice>;
   deleteCustomVoice(id: string, userId: string): Promise<boolean>;
 
@@ -1076,6 +1079,14 @@ export class MemStorage implements IStorage {
     return this.avatars.get(id);
   }
 
+  async getAvatarByIdAndUser(id: string, userId: string): Promise<Avatar | undefined> {
+    const avatar = this.avatars.get(id);
+    if (avatar && avatar.userId === userId) {
+      return avatar;
+    }
+    return undefined;
+  }
+
   async createAvatar(insertAvatar: InsertAvatar): Promise<Avatar> {
     const id = randomUUID();
     const avatar: Avatar = {
@@ -1234,11 +1245,24 @@ export class MemStorage implements IStorage {
       .where(eq(customVoices.userId, userId));
   }
 
+  async getCustomVoices(userId: string): Promise<CustomVoice[]> {
+    return this.listCustomVoices(userId);
+  }
+
   async getCustomVoice(id: string): Promise<CustomVoice | undefined> {
     const [voice] = await db
       .select()
       .from(customVoices)
       .where(eq(customVoices.id, id))
+      .limit(1);
+    return voice;
+  }
+
+  async getCustomVoiceByIdAndUser(id: string, userId: string): Promise<CustomVoice | undefined> {
+    const [voice] = await db
+      .select()
+      .from(customVoices)
+      .where(and(eq(customVoices.id, id), eq(customVoices.userId, userId)))
       .limit(1);
     return voice;
   }

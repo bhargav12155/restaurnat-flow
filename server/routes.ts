@@ -8881,8 +8881,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  // Serve private objects
-  app.get("/objects/:objectPath(*)", async (req, res) => {
+  // Serve private objects with user authentication - STRICT OWNERSHIP ENFORCEMENT
+  app.get("/objects/:objectPath(*)", requireAuth, async (req, res) => {
     try {
       // Check if private object directory is configured
       if (!objectStorageService.hasPrivateDir()) {
@@ -8893,9 +8893,30 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         });
       }
 
+      const userId = String(req.user?.id);
+      const objectPath = req.path;
+      
+      // STRICT: All private files MUST follow pattern /objects/user-{userId}/...
+      // This regex handles both numeric IDs and UUID-format IDs
+      const pathMatch = objectPath.match(/\/objects\/user-([a-zA-Z0-9-]+)\//);
+      
+      if (!pathMatch) {
+        // Path doesn't follow user-prefixed pattern - deny access
+        console.warn(`🔒 Access denied: Path ${objectPath} doesn't follow required user-prefixed pattern`);
+        return res.status(403).json({ error: "Access denied - invalid file path format" });
+      }
+      
+      const fileOwnerId = pathMatch[1];
+      if (fileOwnerId !== userId) {
+        console.warn(`🔒 Access denied: User ${userId} tried to access file owned by ${fileOwnerId}`);
+        return res.status(403).json({ error: "Access denied - you can only view your own files" });
+      }
+
       const objectFile = await objectStorageService.getObjectEntityFile(
-        req.path
+        objectPath
       );
+      
+      // Stream file directly to response (no redirect to prevent URL leakage)
       objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
       console.error("Error checking object access:", error);
@@ -8903,6 +8924,216 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.sendStatus(404);
       }
       return res.sendStatus(500);
+    }
+  });
+
+  // =====================================================
+  // SECURE PREVIEW ENDPOINTS - User ownership validation
+  // =====================================================
+  
+  // Allowed URL patterns for SSRF protection
+  const ALLOWED_URL_PATTERNS = [
+    /^https:\/\/[a-z0-9-]+\.s3\.[a-z0-9-]+\.amazonaws\.com\//i,  // S3 URLs
+    /^https:\/\/storage\.googleapis\.com\//i,  // Google Cloud Storage
+    /^https:\/\/files\.heygen\.ai\//i,  // HeyGen CDN
+    /^https:\/\/resource\.heygen\.ai\//i,  // HeyGen resources
+    /^https:\/\/images\.unsplash\.com\//i,  // Stock images
+  ];
+  
+  function isAllowedUrl(url: string): boolean {
+    return ALLOWED_URL_PATTERNS.some(pattern => pattern.test(url));
+  }
+  
+  // Secure video preview - validates user owns the video and proxies file
+  app.get("/api/storage/preview/video/:videoId", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { videoId } = req.params;
+      
+      // Get video from database and verify ownership
+      const video = await storage.getVideoByIdAndUser(videoId, userId);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found or access denied" });
+      }
+      
+      if (!video.videoUrl) {
+        return res.status(404).json({ error: "Video URL not available" });
+      }
+      
+      // SSRF protection: Only allow trusted storage URLs
+      if (!isAllowedUrl(video.videoUrl)) {
+        console.warn(`🔒 SSRF blocked: Untrusted URL ${video.videoUrl}`);
+        return res.status(403).json({ error: "Invalid video source" });
+      }
+      
+      // Proxy the file through the server to prevent URL leakage
+      try {
+        const response = await fetch(video.videoUrl);
+        if (!response.ok) {
+          return res.status(404).json({ error: "Video file not accessible" });
+        }
+        
+        // Set appropriate headers
+        res.set({
+          'Content-Type': response.headers.get('content-type') || 'video/mp4',
+          'Content-Length': response.headers.get('content-length') || '',
+          'Cache-Control': 'private, max-age=3600',
+        });
+        
+        // Stream the response
+        const buffer = await response.arrayBuffer();
+        res.send(Buffer.from(buffer));
+      } catch (fetchError) {
+        console.error("Error fetching video:", fetchError);
+        return res.status(500).json({ error: "Failed to stream video" });
+      }
+    } catch (error) {
+      console.error("Error serving video preview:", error);
+      return res.status(500).json({ error: "Failed to serve video" });
+    }
+  });
+
+  // Secure voice preview - validates user owns the voice and proxies file
+  app.get("/api/storage/preview/voice/:voiceId", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { voiceId } = req.params;
+      
+      // Get voice from database and verify ownership
+      const voice = await storage.getCustomVoiceByIdAndUser(voiceId, userId);
+      if (!voice) {
+        return res.status(404).json({ error: "Voice not found or access denied" });
+      }
+      
+      if (!voice.audioUrl) {
+        return res.status(404).json({ error: "Voice audio URL not available" });
+      }
+      
+      // SSRF protection: Only allow trusted storage URLs
+      if (!isAllowedUrl(voice.audioUrl)) {
+        console.warn(`🔒 SSRF blocked: Untrusted URL ${voice.audioUrl}`);
+        return res.status(403).json({ error: "Invalid audio source" });
+      }
+      
+      // Proxy the file through the server
+      try {
+        const response = await fetch(voice.audioUrl);
+        if (!response.ok) {
+          return res.status(404).json({ error: "Audio file not accessible" });
+        }
+        
+        res.set({
+          'Content-Type': response.headers.get('content-type') || 'audio/mpeg',
+          'Content-Length': response.headers.get('content-length') || '',
+          'Cache-Control': 'private, max-age=3600',
+        });
+        
+        const buffer = await response.arrayBuffer();
+        res.send(Buffer.from(buffer));
+      } catch (fetchError) {
+        console.error("Error fetching voice:", fetchError);
+        return res.status(500).json({ error: "Failed to stream audio" });
+      }
+    } catch (error) {
+      console.error("Error serving voice preview:", error);
+      return res.status(500).json({ error: "Failed to serve voice" });
+    }
+  });
+
+  // Secure avatar image preview - validates user owns the avatar and proxies file
+  app.get("/api/storage/preview/avatar/:avatarId", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { avatarId } = req.params;
+      
+      // Get avatar from database and verify ownership
+      const avatar = await storage.getAvatarByIdAndUser(avatarId, userId);
+      if (!avatar) {
+        return res.status(404).json({ error: "Avatar not found or access denied" });
+      }
+      
+      const imageUrl = avatar.previewImageUrl || avatar.photoUrl;
+      if (!imageUrl) {
+        return res.status(404).json({ error: "Avatar image URL not available" });
+      }
+      
+      // SSRF protection: Only allow trusted storage URLs
+      if (!isAllowedUrl(imageUrl)) {
+        console.warn(`🔒 SSRF blocked: Untrusted URL ${imageUrl}`);
+        return res.status(403).json({ error: "Invalid image source" });
+      }
+      
+      // Proxy the file through the server
+      try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          return res.status(404).json({ error: "Image file not accessible" });
+        }
+        
+        res.set({
+          'Content-Type': response.headers.get('content-type') || 'image/jpeg',
+          'Content-Length': response.headers.get('content-length') || '',
+          'Cache-Control': 'private, max-age=3600',
+        });
+        
+        const buffer = await response.arrayBuffer();
+        res.send(Buffer.from(buffer));
+      } catch (fetchError) {
+        console.error("Error fetching avatar image:", fetchError);
+        return res.status(500).json({ error: "Failed to stream image" });
+      }
+    } catch (error) {
+      console.error("Error serving avatar preview:", error);
+      return res.status(500).json({ error: "Failed to serve avatar" });
+    }
+  });
+
+  // List user's own files only
+  app.get("/api/storage/my-files", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { type } = req.query;
+      
+      let files: any[] = [];
+      
+      if (!type || type === "videos") {
+        const videos = await storage.getVideoContent(userId);
+        files.push(...videos.map(v => ({
+          id: v.id,
+          type: "video",
+          name: v.title,
+          url: `/api/storage/preview/video/${v.id}`,
+          status: v.status,
+          createdAt: v.createdAt
+        })));
+      }
+      
+      if (!type || type === "voices") {
+        const voices = await storage.getCustomVoices(userId);
+        files.push(...voices.map((v: any) => ({
+          id: v.id,
+          type: "voice",
+          name: v.name,
+          url: `/api/storage/preview/voice/${v.id}`,
+          createdAt: v.createdAt
+        })));
+      }
+      
+      if (!type || type === "avatars") {
+        const avatars = await storage.getAvatars(userId);
+        files.push(...avatars.map(a => ({
+          id: a.id,
+          type: "avatar",
+          name: a.name,
+          url: `/api/storage/preview/avatar/${a.id}`,
+          createdAt: a.createdAt
+        })));
+      }
+      
+      res.json({ files, userId });
+    } catch (error) {
+      console.error("Error listing user files:", error);
+      return res.status(500).json({ error: "Failed to list files" });
     }
   });
 
