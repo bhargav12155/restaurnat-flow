@@ -6071,7 +6071,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  // List user's studio-generated videos (My Videos)
+  // List user's videos (My Videos)
   app.get("/api/studio/videos", requireAuth, async (req: any, res) => {
     try {
       const userId = String(req.user?.id);
@@ -6079,27 +6079,22 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       // Get all videos for this user
       const allVideos = await storage.getVideoContent(userId);
       
-      // Filter for studio-generated videos and sort by most recent
-      const studioVideos = allVideos
-        .filter((video: any) => 
-          video.metadata && 
-          typeof video.metadata === 'object' && 
-          ('studioGeneration' in video.metadata || 'quickGeneration' in video.metadata)
-        )
+      // Sort all videos by most recent (show all user videos, not just studio ones)
+      const sortedVideos = allVideos
         .sort((a: any, b: any) => {
           const dateA = new Date(a.createdAt || 0);
           const dateB = new Date(b.createdAt || 0);
           return dateB.getTime() - dateA.getTime();
         });
 
-      console.log(`📹 Found ${studioVideos.length} studio videos for user ${userId}`);
+      console.log(`📹 Found ${sortedVideos.length} videos for user ${userId}`);
       
       res.json({ 
-        videos: studioVideos,
-        count: studioVideos.length 
+        videos: sortedVideos,
+        count: sortedVideos.length 
       });
     } catch (error) {
-      console.error("Failed to list studio videos:", error);
+      console.error("Failed to list videos:", error);
       res.status(500).json({ error: "Failed to list videos" });
     }
   });

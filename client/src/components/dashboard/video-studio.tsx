@@ -24,6 +24,7 @@ import {
   Play,
   Plus,
   Sparkles,
+  Trash2,
   Upload,
   Video,
   Wand2,
@@ -176,6 +177,36 @@ export function VideoStudio() {
       });
     },
   });
+
+  const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
+
+  const deleteVideoMutation = useMutation({
+    mutationFn: async (videoId: string) => {
+      const res = await apiRequest("DELETE", `/api/videos/${videoId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Video Deleted",
+        description: "The video has been removed from your library.",
+      });
+      refetchVideos();
+      setDeletingVideoId(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Delete Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      setDeletingVideoId(null);
+    },
+  });
+
+  const handleDeleteVideo = (videoId: string) => {
+    setDeletingVideoId(videoId);
+    deleteVideoMutation.mutate(videoId);
+  };
 
   const { data: videoStatus } = useQuery<VideoStatus>({
     queryKey: ["/api/studio/status", videoId],
@@ -799,14 +830,29 @@ export function VideoStudio() {
                         <p className="text-sm text-muted-foreground mb-3" data-testid={`video-date-${video.id}`}>
                           {formatDate(video.createdAt)}
                         </p>
-                        {video.videoUrl && video.status === "ready" && (
-                          <Button asChild size="sm" className="w-full" data-testid={`button-download-${video.id}`}>
-                            <a href={video.videoUrl} download target="_blank" rel="noopener noreferrer">
-                              <Download className="w-4 h-4 mr-2" />
-                              Download
-                            </a>
+                        <div className="flex gap-2">
+                          {video.videoUrl && video.status === "ready" && (
+                            <Button asChild size="sm" className="flex-1" data-testid={`button-download-${video.id}`}>
+                              <a href={video.videoUrl} download target="_blank" rel="noopener noreferrer">
+                                <Download className="w-4 h-4 mr-2" />
+                                Download
+                              </a>
+                            </Button>
+                          )}
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteVideo(video.id)}
+                            disabled={deletingVideoId === video.id}
+                            data-testid={`button-delete-${video.id}`}
+                          >
+                            {deletingVideoId === video.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
                           </Button>
-                        )}
+                        </div>
                       </div>
                     </Card>
                   ))}
