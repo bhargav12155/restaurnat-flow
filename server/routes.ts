@@ -6498,6 +6498,132 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // ==================== COMPLIANCE SETTINGS ENDPOINTS ====================
+
+  // Get user's compliance settings
+  app.get("/api/compliance/settings", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      let settings = await storage.getComplianceSettings(userId);
+      
+      if (!settings) {
+        const { ComplianceService } = await import('./services/compliance');
+        const defaults = ComplianceService.getDefaultSettings();
+        settings = await storage.createComplianceSettings({
+          userId,
+          ...defaults,
+        } as any);
+      }
+      
+      res.json({ settings });
+    } catch (error) {
+      console.error("Failed to get compliance settings:", error);
+      res.status(500).json({ error: "Failed to get compliance settings" });
+    }
+  });
+
+  // Update user's compliance settings
+  app.patch("/api/compliance/settings", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const updates = req.body;
+      
+      let settings = await storage.getComplianceSettings(userId);
+      
+      if (!settings) {
+        const { ComplianceService } = await import('./services/compliance');
+        const defaults = ComplianceService.getDefaultSettings();
+        settings = await storage.createComplianceSettings({
+          userId,
+          ...defaults,
+          ...updates,
+        } as any);
+      } else {
+        settings = await storage.updateComplianceSettings(userId, updates);
+      }
+      
+      res.json({ settings });
+    } catch (error) {
+      console.error("Failed to update compliance settings:", error);
+      res.status(500).json({ error: "Failed to update compliance settings" });
+    }
+  });
+
+  // Check content for compliance
+  app.post("/api/compliance/check", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { content, platform, postType, hasMedia, hasVideo } = req.body;
+      
+      if (!content) {
+        return res.status(400).json({ error: "Content is required" });
+      }
+      
+      const settings = await storage.getComplianceSettings(userId);
+      const { ComplianceService } = await import('./services/compliance');
+      const complianceService = new ComplianceService(settings || undefined);
+      
+      const result = complianceService.checkContent({
+        content,
+        platform: platform || 'general',
+        postType,
+        hasMedia: hasMedia || false,
+        hasVideo: hasVideo || false,
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to check compliance:", error);
+      res.status(500).json({ error: "Failed to check compliance" });
+    }
+  });
+
+  // Auto-fix content for compliance
+  app.post("/api/compliance/fix", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { content, platform } = req.body;
+      
+      if (!content) {
+        return res.status(400).json({ error: "Content is required" });
+      }
+      
+      const settings = await storage.getComplianceSettings(userId);
+      const { ComplianceService } = await import('./services/compliance');
+      const complianceService = new ComplianceService(settings || undefined);
+      
+      const fixedContent = complianceService.makeCompliant(content, platform || 'general');
+      
+      res.json({ 
+        original: content,
+        fixed: fixedContent,
+        wasModified: content !== fixedContent,
+      });
+    } catch (error) {
+      console.error("Failed to fix compliance:", error);
+      res.status(500).json({ error: "Failed to fix compliance" });
+    }
+  });
+
+  // Get compliance guidelines
+  app.get("/api/compliance/guidelines", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const settings = await storage.getComplianceSettings(userId);
+      const { ComplianceService } = await import('./services/compliance');
+      const complianceService = new ComplianceService(settings || undefined);
+      
+      res.json({
+        guidelines: complianceService.getComplianceGuidelines(),
+        quickQuestions: complianceService.getQuickComplianceQuestions(),
+        brokerageName: complianceService.getBrokerageName(),
+      });
+    } catch (error) {
+      console.error("Failed to get compliance guidelines:", error);
+      res.status(500).json({ error: "Failed to get compliance guidelines" });
+    }
+  });
+
   // ==================== STREAMING AVATAR ENDPOINTS ====================
 
   // List available streaming avatars

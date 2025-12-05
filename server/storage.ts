@@ -5,6 +5,8 @@ import {
   brandSettings as brandSettingsTable,
   type CompanyProfile,
   companyProfiles,
+  type ComplianceSettings,
+  complianceSettings as complianceSettingsTable,
   type ContentPiece,
   type CustomVoice,
   customVoices,
@@ -18,6 +20,7 @@ import {
   type InsertAvatar,
   type InsertBrandSettings,
   type InsertCompanyProfile,
+  type InsertComplianceSettings,
   type InsertContentPiece,
   type InsertCustomVoice,
   type InsertEvent,
@@ -290,6 +293,11 @@ export interface IStorage {
   createEventPostSuggestion(suggestion: InsertEventPostSuggestion): Promise<EventPostSuggestion>;
   updateEventPostSuggestion(id: string, updates: Partial<EventPostSuggestion>): Promise<EventPostSuggestion | undefined>;
   deleteEventPostSuggestion(id: string, userId: string): Promise<boolean>;
+
+  // Compliance Settings (Brokerage Compliance)
+  getComplianceSettings(userId: string): Promise<ComplianceSettings | undefined>;
+  createComplianceSettings(settings: InsertComplianceSettings): Promise<ComplianceSettings>;
+  updateComplianceSettings(userId: string, updates: Partial<ComplianceSettings>): Promise<ComplianceSettings | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -311,6 +319,7 @@ export class MemStorage implements IStorage {
   private eventSources: Map<string, EventSource> = new Map();
   private events: Map<string, Event> = new Map();
   private eventPostSuggestions: Map<string, EventPostSuggestion> = new Map();
+  private complianceSettings: Map<string, ComplianceSettings> = new Map();
 
   constructor() {
     this.seedData();
@@ -1944,6 +1953,32 @@ export class MemStorage implements IStorage {
         eq(eventPostSuggestionsTable.userId, userId)
       ));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Compliance Settings implementation
+  async getComplianceSettings(userId: string): Promise<ComplianceSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(complianceSettingsTable)
+      .where(eq(complianceSettingsTable.userId, userId));
+    return settings;
+  }
+
+  async createComplianceSettings(settings: InsertComplianceSettings): Promise<ComplianceSettings> {
+    const [created] = await db
+      .insert(complianceSettingsTable)
+      .values(settings)
+      .returning();
+    return created;
+  }
+
+  async updateComplianceSettings(userId: string, updates: Partial<ComplianceSettings>): Promise<ComplianceSettings | undefined> {
+    const [updated] = await db
+      .update(complianceSettingsTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(complianceSettingsTable.userId, userId))
+      .returning();
+    return updated;
   }
 }
 
