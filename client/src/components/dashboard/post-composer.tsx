@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { ComplianceChecker } from "@/components/shared/compliance-checker";
 import {
   Facebook,
   Instagram,
@@ -288,6 +289,17 @@ export function PostComposer({ open, onOpenChange }: PostComposerProps) {
                   </div>
                 )}
               </div>
+
+              {postText.trim().length > 10 && (
+                <ComplianceChecker
+                  content={postText}
+                  platform={selectedPlatforms[0] || "general"}
+                  hasMedia={!!selectedMedia.id}
+                  hasVideo={selectedMedia.type === "video"}
+                  onContentFix={(fixedContent) => setPostText(fixedContent)}
+                  showGuidelines={true}
+                />
+              )}
 
               <div>
                 <Label>Select Platforms</Label>
