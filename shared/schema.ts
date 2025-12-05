@@ -1134,6 +1134,42 @@ export type PKCEStore = typeof pkceStore.$inferSelect;
 export type InsertPKCE = z.infer<typeof insertPKCESchema>;
 
 // =====================================================
+// COMPLIANCE SETTINGS TABLE (Brokerage Compliance)
+// =====================================================
+export const complianceSettings = pgTable("compliance_settings", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  brokerageName: text("brokerage_name").notNull().default("BHHS Ambassador Real Estate"),
+  brokerageShortName: text("brokerage_short_name").default("BHHS Ambassador"),
+  agentName: text("agent_name"),
+  teamName: text("team_name"),
+  licenseType: text("license_type").default("agent"), // 'agent', 'broker', 'associate_broker'
+  requireBrokerageInFirstLine: boolean("require_brokerage_in_first_line").default(true),
+  requireBrokerageOnMedia: boolean("require_brokerage_on_media").default(true),
+  requireBrokerageInVideo: boolean("require_brokerage_in_video").default(true),
+  autoAddBrokerage: boolean("auto_add_brokerage").default(true),
+  complianceRules: jsonb("compliance_rules").$type<{
+    prohibitedTerms?: string[];
+    requiredDisclosures?: string[];
+    platformSpecificRules?: Record<string, any>;
+  }>(),
+  isEnabled: boolean("is_enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertComplianceSettingsSchema = createInsertSchema(complianceSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type ComplianceSettings = typeof complianceSettings.$inferSelect;
+export type InsertComplianceSettings = z.infer<typeof insertComplianceSettingsSchema>;
+
+// =====================================================
 // MOBILE UPLOAD SESSION (for QR code-based mobile uploads)
 // =====================================================
 export interface MobileUploadSession {
