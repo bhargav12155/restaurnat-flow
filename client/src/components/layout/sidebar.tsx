@@ -14,6 +14,7 @@ import {
   BarChart3,
   Bot,
   Calendar,
+  CalendarDays,
   Camera,
   ChevronDown,
   ChevronLeft,
@@ -52,6 +53,13 @@ const navigationItems = [
     label: "Content Calendar",
     href: "#calendar",
     key: "calendar",
+  },
+  {
+    icon: CalendarDays,
+    label: "Event Calendar",
+    href: "/events",
+    key: "events",
+    isPageLink: true,
   },
   {
     icon: Video,
@@ -272,6 +280,8 @@ function SidebarContent({
               );
             }
 
+            const isPageLink = item.isPageLink;
+
             return (
               <Button
                 key={item.label}
@@ -306,6 +316,17 @@ function SidebarContent({
                       </span>
                     )}
                   </>
+                ) : isPageLink ? (
+                  <Link href={item.href} className="flex items-center flex-1">
+                    <item.icon
+                      className={cn("h-4 w-4", !isCollapsed && "mr-3")}
+                    />
+                    {!isCollapsed && (
+                      <span className="flex items-center gap-2 flex-1">
+                        {item.label}
+                      </span>
+                    )}
+                  </Link>
                 ) : (
                   <a href={item.href} className="flex items-center flex-1">
                     <item.icon

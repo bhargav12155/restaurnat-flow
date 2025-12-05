@@ -6099,6 +6099,405 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // ==================== EVENT CALENDAR ENDPOINTS ====================
+
+  // List user's event sources
+  app.get("/api/events/sources", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const sources = await storage.getEventSources(userId);
+      res.json({ sources });
+    } catch (error) {
+      console.error("Failed to list event sources:", error);
+      res.status(500).json({ error: "Failed to list event sources" });
+    }
+  });
+
+  // Create a new event source
+  app.post("/api/events/sources", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { name, type, config } = req.body;
+
+      if (!name || !type) {
+        return res.status(400).json({ error: "Name and type are required" });
+      }
+
+      const validTypes = ['google_calendar_public', 'google_calendar_private', 'ical', 'manual', 'aggregator'];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
+      }
+
+      const source = await storage.createEventSource({
+        userId,
+        name,
+        type,
+        config: config || {},
+        status: 'active',
+      });
+
+      res.json({ source });
+    } catch (error) {
+      console.error("Failed to create event source:", error);
+      res.status(500).json({ error: "Failed to create event source" });
+    }
+  });
+
+  // Update an event source
+  app.patch("/api/events/sources/:id", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+      const updates = req.body;
+
+      const source = await storage.getEventSourceById(id);
+      if (!source || source.userId !== userId) {
+        return res.status(404).json({ error: "Event source not found" });
+      }
+
+      const updated = await storage.updateEventSource(id, updates);
+      res.json({ source: updated });
+    } catch (error) {
+      console.error("Failed to update event source:", error);
+      res.status(500).json({ error: "Failed to update event source" });
+    }
+  });
+
+  // Delete an event source
+  app.delete("/api/events/sources/:id", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+
+      await storage.deleteEventsBySource(id, userId);
+      const deleted = await storage.deleteEventSource(id, userId);
+      
+      if (!deleted) {
+        return res.status(404).json({ error: "Event source not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete event source:", error);
+      res.status(500).json({ error: "Failed to delete event source" });
+    }
+  });
+
+  // Sync an event source
+  app.post("/api/events/sources/:id/sync", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+
+      const source = await storage.getEventSourceById(id);
+      if (!source || source.userId !== userId) {
+        return res.status(404).json({ error: "Event source not found" });
+      }
+
+      const { eventIngestionService } = await import('./services/event-ingestion');
+      const result = await eventIngestionService.syncSource(source);
+      
+      res.json({ 
+        success: true,
+        added: result.added,
+        updated: result.updated,
+        errors: result.errors,
+      });
+    } catch (error) {
+      console.error("Failed to sync event source:", error);
+      res.status(500).json({ error: "Failed to sync event source" });
+    }
+  });
+
+  // Sync all event sources
+  app.post("/api/events/sync-all", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      
+      const { eventIngestionService } = await import('./services/event-ingestion');
+      const result = await eventIngestionService.syncAllSources(userId);
+      
+      res.json({ 
+        success: true,
+        sourcesProcessed: result.sourcesProcessed,
+        totalAdded: result.totalAdded,
+        totalUpdated: result.totalUpdated,
+        errors: result.errors,
+      });
+    } catch (error) {
+      console.error("Failed to sync all event sources:", error);
+      res.status(500).json({ error: "Failed to sync all event sources" });
+    }
+  });
+
+  // Get popular calendar templates
+  app.get("/api/events/templates", requireAuth, async (req: any, res) => {
+    try {
+      const { eventIngestionService } = await import('./services/event-ingestion');
+      const templates = eventIngestionService.getPopularOmahaCalendars();
+      res.json({ templates });
+    } catch (error) {
+      console.error("Failed to get calendar templates:", error);
+      res.status(500).json({ error: "Failed to get calendar templates" });
+    }
+  });
+
+  // List user's events
+  app.get("/api/events", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { startDate, endDate, sourceId, category } = req.query;
+
+      const options: any = {};
+      if (startDate) options.startDate = new Date(startDate as string);
+      if (endDate) options.endDate = new Date(endDate as string);
+      if (sourceId) options.sourceId = sourceId;
+      if (category) options.category = category;
+
+      const events = await storage.getEvents(userId, options);
+      res.json({ events });
+    } catch (error) {
+      console.error("Failed to list events:", error);
+      res.status(500).json({ error: "Failed to list events" });
+    }
+  });
+
+  // Get a single event
+  app.get("/api/events/:id", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+
+      const event = await storage.getEventById(id);
+      if (!event || event.userId !== userId) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      res.json({ event });
+    } catch (error) {
+      console.error("Failed to get event:", error);
+      res.status(500).json({ error: "Failed to get event" });
+    }
+  });
+
+  // Create a manual event
+  app.post("/api/events", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { title, description, startTime, endTime, location, category } = req.body;
+
+      if (!title || !startTime) {
+        return res.status(400).json({ error: "Title and start time are required" });
+      }
+
+      const { eventIngestionService } = await import('./services/event-ingestion');
+      const event = await eventIngestionService.addManualEvent(userId, {
+        title,
+        description,
+        startTime: new Date(startTime),
+        endTime: endTime ? new Date(endTime) : undefined,
+        location,
+        category,
+      });
+
+      res.json({ event });
+    } catch (error) {
+      console.error("Failed to create event:", error);
+      res.status(500).json({ error: "Failed to create event" });
+    }
+  });
+
+  // Update an event
+  app.patch("/api/events/:id", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+      const updates = req.body;
+
+      const event = await storage.getEventById(id);
+      if (!event || event.userId !== userId) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      const updated = await storage.updateEvent(id, updates);
+      res.json({ event: updated });
+    } catch (error) {
+      console.error("Failed to update event:", error);
+      res.status(500).json({ error: "Failed to update event" });
+    }
+  });
+
+  // Delete an event
+  app.delete("/api/events/:id", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+
+      const deleted = await storage.deleteEvent(id, userId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to delete event:", error);
+      res.status(500).json({ error: "Failed to delete event" });
+    }
+  });
+
+  // Generate AI post suggestions for an event
+  app.post("/api/events/:id/generate-posts", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+      const { platforms } = req.body;
+
+      const event = await storage.getEventById(id);
+      if (!event || event.userId !== userId) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      const targetPlatforms = platforms || ['facebook', 'instagram', 'linkedin', 'x'];
+      const suggestions: any[] = [];
+
+      const { UnifiedAIService } = await import('./services/unified-ai');
+      const aiService = new UnifiedAIService();
+
+      for (const platform of targetPlatforms) {
+        try {
+          const prompt = `Create a ${platform} post promoting this local event:
+
+Event: ${event.title}
+Date: ${event.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+Time: ${event.startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+${event.location ? `Location: ${event.location}` : ''}
+${event.description ? `Description: ${event.description}` : ''}
+Category: ${event.category || 'community'}
+
+Create an engaging post that:
+1. Highlights why this event is relevant to the local community
+2. Includes a call-to-action appropriate for ${platform}
+3. Uses appropriate hashtags for ${platform}
+4. Ties it to real estate/neighborhood value when natural
+
+Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"] }`;
+
+          const result = await aiService.generate(prompt, { jsonMode: true });
+          let parsed: any = {};
+          
+          try {
+            parsed = JSON.parse(result.content);
+          } catch {
+            parsed = { content: result.content, hashtags: [] };
+          }
+
+          const eventStart = new Date(event.startTime);
+          const suggestedTime = new Date(eventStart.getTime() - 24 * 60 * 60 * 1000);
+
+          const suggestion = await storage.createEventPostSuggestion({
+            userId,
+            eventId: id,
+            platform,
+            content: parsed.content || result.content,
+            hashtags: parsed.hashtags || [],
+            suggestedPostTime: suggestedTime,
+            status: 'suggested',
+            aiMetadata: { model: result.model, provider: result.provider },
+          });
+
+          suggestions.push(suggestion);
+        } catch (platformError: any) {
+          console.error(`Failed to generate post for ${platform}:`, platformError);
+        }
+      }
+
+      res.json({ suggestions });
+    } catch (error) {
+      console.error("Failed to generate event posts:", error);
+      res.status(500).json({ error: "Failed to generate event posts" });
+    }
+  });
+
+  // Get post suggestions for an event
+  app.get("/api/events/:id/suggestions", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+
+      const event = await storage.getEventById(id);
+      if (!event || event.userId !== userId) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      const suggestions = await storage.getEventPostSuggestions(userId, id);
+      res.json({ suggestions });
+    } catch (error) {
+      console.error("Failed to get event suggestions:", error);
+      res.status(500).json({ error: "Failed to get event suggestions" });
+    }
+  });
+
+  // Accept a post suggestion and schedule it
+  app.post("/api/events/suggestions/:id/accept", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+      const { scheduledFor, content } = req.body;
+
+      const suggestions = await storage.getEventPostSuggestions(userId);
+      const suggestion = suggestions.find(s => s.id === id);
+      
+      if (!suggestion) {
+        return res.status(404).json({ error: "Suggestion not found" });
+      }
+
+      const scheduledPost = await storage.createScheduledPost({
+        userId,
+        platform: suggestion.platform,
+        content: content || suggestion.content,
+        hashtags: suggestion.hashtags || [],
+        scheduledFor: scheduledFor ? new Date(scheduledFor) : suggestion.suggestedPostTime || new Date(),
+        status: 'pending',
+        isAiGenerated: true,
+        metadata: { 
+          eventId: suggestion.eventId,
+          suggestionId: suggestion.id,
+        },
+      });
+
+      await storage.updateEventPostSuggestion(id, {
+        status: 'scheduled',
+        scheduledPostId: scheduledPost.id,
+      });
+
+      res.json({ scheduledPost });
+    } catch (error) {
+      console.error("Failed to accept suggestion:", error);
+      res.status(500).json({ error: "Failed to accept suggestion" });
+    }
+  });
+
+  // Reject a post suggestion
+  app.post("/api/events/suggestions/:id/reject", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { id } = req.params;
+
+      const updated = await storage.updateEventPostSuggestion(id, {
+        status: 'rejected',
+      });
+
+      if (!updated) {
+        return res.status(404).json({ error: "Suggestion not found" });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Failed to reject suggestion:", error);
+      res.status(500).json({ error: "Failed to reject suggestion" });
+    }
+  });
+
   // ==================== STREAMING AVATAR ENDPOINTS ====================
 
   // List available streaming avatars
