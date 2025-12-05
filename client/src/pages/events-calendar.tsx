@@ -1,0 +1,1000 @@
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
+import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+interface EventSource {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  syncError: string | null;
+  createdAt: string;
+}
+
+interface Event {
+  id: string;
+  title: string;
+  description: string | null;
+  startTime: string;
+  endTime: string | null;
+  location: string | null;
+  category: string | null;
+  eventUrl: string | null;
+  isAllDay: boolean;
+}
+
+interface EventPostSuggestion {
+  id: string;
+  platform: string;
+  content: string;
+  hashtags: string[];
+  suggestedPostTime: string | null;
+  status: string;
+}
+
+const eventFormSchema = z.object({
+  title: z.string().min(1, "Event title is required").max(200, "Title is too long"),
+  date: z.string().min(1, "Date is required").refine((val) => {
+    const parsed = new Date(val);
+    return !isNaN(parsed.getTime());
+  }, "Please enter a valid date"),
+  startTime: z.string().optional(),
+  endTime: z.string().optional(),
+  isAllDay: z.boolean().default(false),
+  location: z.string().optional(),
+  description: z.string().max(2000, "Description is too long").optional(),
+  category: z.string().default("community"),
+}).refine(
+  (data) => {
+    if (!data.isAllDay && !data.startTime) {
+      return false;
+    }
+    return true;
+  },
+  { message: "Start time is required for non-all-day events", path: ["startTime"] }
+).refine(
+  (data) => {
+    if (data.startTime && data.endTime) {
+      return data.endTime > data.startTime;
+    }
+    return true;
+  },
+  { message: "End time must be after start time", path: ["endTime"] }
+);
+
+const sourceFormSchema = z.object({
+  name: z.string().min(1, "Source name is required").max(100, "Name is too long"),
+  type: z.enum(["ical", "google_calendar_public"], {
+    required_error: "Please select a source type",
+  }),
+  url: z.string().min(1, "URL is required").refine((url) => {
+    if (url.includes("calendar.google.com") || url.endsWith(".ics") || url.includes("webcal://")) {
+      return true;
+    }
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Please enter a valid calendar URL or Google Calendar ID"),
+});
+
+type EventFormData = z.infer<typeof eventFormSchema>;
+type SourceFormData = z.infer<typeof sourceFormSchema>;
+
+export default function EventsCalendarPage() {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("calendar");
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [showAddSourceDialog, setShowAddSourceDialog] = useState(false);
+  const [showAddEventDialog, setShowAddEventDialog] = useState(false);
+
+  const eventForm = useForm<EventFormData>({
+    resolver: zodResolver(eventFormSchema),
+    defaultValues: {
+      title: "",
+      date: "",
+      startTime: "",
+      endTime: "",
+      isAllDay: false,
+      location: "",
+      description: "",
+      category: "community",
+    },
+  });
+
+  const sourceForm = useForm<SourceFormData>({
+    resolver: zodResolver(sourceFormSchema),
+    defaultValues: {
+      name: "",
+      type: "ical",
+      url: "",
+    },
+  });
+
+  const { data: sourcesData, isLoading: sourcesLoading } = useQuery<{ sources: EventSource[] }>({
+    queryKey: ["/api/events/sources"],
+  });
+
+  const { data: eventsData, isLoading: eventsLoading } = useQuery<{ events: Event[] }>({
+    queryKey: ["/api/events"],
+  });
+
+  const { data: suggestionsData, refetch: refetchSuggestions } = useQuery<{ suggestions: EventPostSuggestion[] }>({
+    queryKey: ["/api/events", selectedEvent?.id, "suggestions"],
+    enabled: !!selectedEvent,
+  });
+
+  const { data: templatesData } = useQuery<{ templates: { name: string; type: string; calendarId?: string; icalUrl?: string }[] }>({
+    queryKey: ["/api/events/templates"],
+  });
+
+  const createSourceMutation = useMutation({
+    mutationFn: async (data: { name: string; type: string; config: any }) => {
+      const res = await apiRequest("POST", "/api/events/sources", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Source Added", description: "Calendar source added successfully." });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/sources"] });
+      setShowAddSourceDialog(false);
+      resetSourceForm();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteSourceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/events/sources/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Source Removed", description: "Calendar source removed." });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/sources"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    },
+  });
+
+  const syncSourceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/events/sources/${id}/sync`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ 
+        title: "Sync Complete", 
+        description: `Added ${data.added} events, updated ${data.updated}.` 
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/sources"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Sync Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const syncAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/events/sync-all");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ 
+        title: "All Sources Synced", 
+        description: `Processed ${data.sourcesProcessed} sources. Added ${data.totalAdded} events.` 
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/events/sources"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    },
+  });
+
+  const createEventMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/events", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Event Created", description: "Your event has been added." });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+      setShowAddEventDialog(false);
+      resetEventForm();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const generatePostsMutation = useMutation({
+    mutationFn: async (eventId: string) => {
+      const res = await apiRequest("POST", `/api/events/${eventId}/generate-posts`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Posts Generated", description: "AI has created post suggestions for this event." });
+      refetchSuggestions();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Generation Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const acceptSuggestionMutation = useMutation({
+    mutationFn: async (suggestionId: string) => {
+      const res = await apiRequest("POST", `/api/events/suggestions/${suggestionId}/accept`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Post Scheduled", description: "The post has been added to your schedule." });
+      refetchSuggestions();
+    },
+  });
+
+  const rejectSuggestionMutation = useMutation({
+    mutationFn: async (suggestionId: string) => {
+      const res = await apiRequest("POST", `/api/events/suggestions/${suggestionId}/reject`);
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchSuggestions();
+    },
+  });
+
+  const resetSourceForm = () => {
+    sourceForm.reset();
+  };
+
+  const resetEventForm = () => {
+    eventForm.reset();
+  };
+
+  const handleAddSource = (data: SourceFormData) => {
+    const config: Record<string, string> = {};
+    if (data.type === "ical") {
+      config.icalUrl = data.url;
+    } else if (data.type === "google_calendar_public") {
+      config.calendarId = data.url;
+    }
+    
+    createSourceMutation.mutate({
+      name: data.name,
+      type: data.type,
+      config,
+    });
+  };
+
+  const handleAddEvent = (data: EventFormData) => {
+    let startTime: Date;
+    let endTime: Date | undefined;
+    
+    if (data.isAllDay) {
+      startTime = new Date(`${data.date}T00:00:00`);
+      endTime = new Date(`${data.date}T23:59:59`);
+    } else {
+      startTime = new Date(`${data.date}T${data.startTime || "12:00"}`);
+      if (data.endTime) {
+        endTime = new Date(`${data.date}T${data.endTime}`);
+      }
+    }
+    
+    createEventMutation.mutate({
+      title: data.title,
+      description: data.description || undefined,
+      startTime: startTime.toISOString(),
+      endTime: endTime?.toISOString(),
+      location: data.location || undefined,
+      category: data.category,
+      isAllDay: data.isAllDay,
+    });
+  };
+
+  const handleAddTemplate = (template: { name: string; type: string; calendarId?: string; icalUrl?: string }) => {
+    createSourceMutation.mutate({
+      name: template.name,
+      type: template.type,
+      config: {
+        calendarId: template.calendarId,
+        icalUrl: template.icalUrl,
+      },
+    });
+  };
+
+  const sources = sourcesData?.sources || [];
+  const events = eventsData?.events || [];
+  const suggestions = suggestionsData?.suggestions || [];
+  const templates = templatesData?.templates || [];
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const getCategoryColor = (category: string | null) => {
+    switch (category) {
+      case "real_estate": return "bg-blue-500";
+      case "market": return "bg-green-500";
+      case "festival": return "bg-purple-500";
+      case "networking": return "bg-orange-500";
+      case "entertainment": return "bg-pink-500";
+      case "sports": return "bg-red-500";
+      case "education": return "bg-yellow-500";
+      default: return "bg-gray-500";
+    }
+  };
+
+  const getPlatformIcon = (platform: string) => {
+    switch (platform) {
+      case "facebook": return "FB";
+      case "instagram": return "IG";
+      case "linkedin": return "LI";
+      case "x": return "X";
+      default: return platform.charAt(0).toUpperCase();
+    }
+  };
+
+  const upcomingEvents = events
+    .filter(e => new Date(e.startTime) > new Date())
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+    .slice(0, 10);
+
+  return (
+    <div className="container mx-auto p-6 max-w-7xl">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="page-title">
+            <CalendarDays className="w-8 h-8" />
+            Event Calendar
+          </h1>
+          <p className="text-muted-foreground">
+            Track local events and generate timely social media posts
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => syncAllMutation.mutate()}
+            disabled={syncAllMutation.isPending}
+            data-testid="btn-sync-all"
+          >
+            {syncAllMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-2" />
+            )}
+            Sync All
+          </Button>
+          <Dialog open={showAddEventDialog} onOpenChange={(open) => {
+            setShowAddEventDialog(open);
+            if (!open) eventForm.reset();
+          }}>
+            <DialogTrigger asChild>
+              <Button data-testid="btn-add-event">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Event
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Manual Event</DialogTitle>
+                <DialogDescription>
+                  Add a local event to generate posts for
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...eventForm}>
+                <form onSubmit={eventForm.handleSubmit(handleAddEvent)} className="space-y-4">
+                  <FormField
+                    control={eventForm.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Event Title</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="Omaha Farmer's Market"
+                            data-testid="input-event-title"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={eventForm.control}
+                    name="isAllDay"
+                    render={({ field }) => (
+                      <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <FormLabel>All-Day Event</FormLabel>
+                          <FormDescription className="text-xs">
+                            Toggle if this event runs the entire day
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            data-testid="switch-all-day"
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={eventForm.control}
+                    name="date"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Date</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="date"
+                            data-testid="input-event-date"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {!eventForm.watch("isAllDay") && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={eventForm.control}
+                        name="startTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Start Time</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="time"
+                                data-testid="input-start-time"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={eventForm.control}
+                        name="endTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>End Time (optional)</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="time"
+                                data-testid="input-end-time"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
+
+                  <FormField
+                    control={eventForm.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location (optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="Old Market, Omaha"
+                            data-testid="input-event-location"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={eventForm.control}
+                    name="category"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Category</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-event-category">
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="community">Community</SelectItem>
+                            <SelectItem value="real_estate">Real Estate</SelectItem>
+                            <SelectItem value="market">Market</SelectItem>
+                            <SelectItem value="festival">Festival</SelectItem>
+                            <SelectItem value="networking">Networking</SelectItem>
+                            <SelectItem value="entertainment">Entertainment</SelectItem>
+                            <SelectItem value="sports">Sports</SelectItem>
+                            <SelectItem value="education">Education</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={eventForm.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description (optional)</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            {...field}
+                            placeholder="Brief description of the event..."
+                            data-testid="input-event-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button 
+                    type="submit"
+                    disabled={createEventMutation.isPending}
+                    className="w-full"
+                    data-testid="btn-create-event"
+                  >
+                    {createEventMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4 mr-2" />
+                    )}
+                    Create Event
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-6">
+          <TabsTrigger value="calendar" data-testid="tab-calendar">
+            <Calendar className="w-4 h-4 mr-2" />
+            Events
+          </TabsTrigger>
+          <TabsTrigger value="sources" data-testid="tab-sources">
+            <Settings className="w-4 h-4 mr-2" />
+            Sources
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="calendar">
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Upcoming Events</CardTitle>
+                  <CardDescription>
+                    {events.length} events from {sources.length} sources
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {eventsLoading ? (
+                    <div className="flex justify-center p-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : upcomingEvents.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No upcoming events</p>
+                      <p className="text-sm">Add a calendar source or create a manual event</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {upcomingEvents.map((event) => (
+                        <div
+                          key={event.id}
+                          className={`p-4 rounded-lg border cursor-pointer transition-colors hover:bg-accent ${
+                            selectedEvent?.id === event.id ? "border-primary bg-accent" : ""
+                          }`}
+                          onClick={() => setSelectedEvent(event)}
+                          data-testid={`event-card-${event.id}`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge className={getCategoryColor(event.category)} variant="secondary">
+                                  {event.category || "community"}
+                                </Badge>
+                                {event.isAllDay && (
+                                  <Badge variant="outline">All Day</Badge>
+                                )}
+                              </div>
+                              <h4 className="font-semibold" data-testid={`event-title-${event.id}`}>
+                                {event.title}
+                              </h4>
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {formatDate(event.startTime)} {!event.isAllDay && formatTime(event.startTime)}
+                                </span>
+                                {event.location && (
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="w-3 h-3" />
+                                    {event.location}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {event.eventUrl && (
+                              <a 
+                                href={event.eventUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-muted-foreground hover:text-primary"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5" />
+                    Generate Posts
+                  </CardTitle>
+                  <CardDescription>
+                    {selectedEvent ? "Create AI-powered posts for this event" : "Select an event to generate posts"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {selectedEvent ? (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-muted rounded-lg">
+                        <h4 className="font-medium">{selectedEvent.title}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {formatDate(selectedEvent.startTime)}
+                        </p>
+                      </div>
+
+                      <Button
+                        onClick={() => generatePostsMutation.mutate(selectedEvent.id)}
+                        disabled={generatePostsMutation.isPending}
+                        className="w-full"
+                        data-testid="btn-generate-posts"
+                      >
+                        {generatePostsMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 mr-2" />
+                        )}
+                        Generate Posts for All Platforms
+                      </Button>
+
+                      {suggestions.length > 0 && (
+                        <div className="space-y-3 mt-4">
+                          <h5 className="font-medium text-sm">Generated Suggestions</h5>
+                          {suggestions
+                            .filter(s => s.status === "suggested")
+                            .map((suggestion) => (
+                            <div key={suggestion.id} className="p-3 border rounded-lg">
+                              <div className="flex items-center justify-between mb-2">
+                                <Badge variant="outline">
+                                  {getPlatformIcon(suggestion.platform)}
+                                </Badge>
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => acceptSuggestionMutation.mutate(suggestion.id)}
+                                    disabled={acceptSuggestionMutation.isPending}
+                                    data-testid={`btn-accept-${suggestion.id}`}
+                                  >
+                                    <Check className="w-4 h-4 text-green-500" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => rejectSuggestionMutation.mutate(suggestion.id)}
+                                    disabled={rejectSuggestionMutation.isPending}
+                                    data-testid={`btn-reject-${suggestion.id}`}
+                                  >
+                                    <X className="w-4 h-4 text-red-500" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <p className="text-sm">{suggestion.content}</p>
+                              {suggestion.hashtags && suggestion.hashtags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {suggestion.hashtags.map((tag, i) => (
+                                    <span key={i} className="text-xs text-blue-500">
+                                      #{tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>Select an event from the list</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="sources">
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Connected Sources</CardTitle>
+                <CardDescription>
+                  Calendar feeds and event sources
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {sourcesLoading ? (
+                  <div className="flex justify-center p-8">
+                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : sources.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Link2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No sources connected</p>
+                    <p className="text-sm">Add a calendar source to start tracking events</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sources.map((source) => (
+                      <div
+                        key={source.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                        data-testid={`source-${source.id}`}
+                      >
+                        <div>
+                          <h4 className="font-medium">{source.name}</h4>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Badge variant="outline">{source.type}</Badge>
+                            {source.lastSyncAt && (
+                              <span>
+                                Last sync: {new Date(source.lastSyncAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          {source.syncError && (
+                            <p className="text-xs text-red-500 mt-1">{source.syncError}</p>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => syncSourceMutation.mutate(source.id)}
+                            disabled={syncSourceMutation.isPending}
+                            data-testid={`btn-sync-${source.id}`}
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteSourceMutation.mutate(source.id)}
+                            disabled={deleteSourceMutation.isPending}
+                            data-testid={`btn-delete-source-${source.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Dialog open={showAddSourceDialog} onOpenChange={(open) => {
+                  setShowAddSourceDialog(open);
+                  if (!open) sourceForm.reset();
+                }}>
+                  <DialogTrigger asChild>
+                    <Button className="w-full mt-4" variant="outline" data-testid="btn-add-source">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Calendar Source
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Calendar Source</DialogTitle>
+                      <DialogDescription>
+                        Connect a calendar to automatically pull events
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Form {...sourceForm}>
+                      <form onSubmit={sourceForm.handleSubmit(handleAddSource)} className="space-y-4">
+                        <FormField
+                          control={sourceForm.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Source Name</FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  placeholder="Omaha Events"
+                                  data-testid="input-source-name"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={sourceForm.control}
+                          name="type"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Source Type</FormLabel>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-source-type">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="ical">iCal Feed URL</SelectItem>
+                                  <SelectItem value="google_calendar_public">Google Public Calendar</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={sourceForm.control}
+                          name="url"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                {sourceForm.watch("type") === "ical" ? "iCal URL" : "Calendar ID"}
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  placeholder={
+                                    sourceForm.watch("type") === "ical"
+                                      ? "https://example.com/calendar.ics"
+                                      : "calendar-id@group.calendar.google.com"
+                                  }
+                                  data-testid="input-source-url"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <Button
+                          type="submit"
+                          disabled={createSourceMutation.isPending}
+                          className="w-full"
+                          data-testid="btn-create-source"
+                        >
+                          {createSourceMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Plus className="w-4 h-4 mr-2" />
+                          )}
+                          Add Source
+                        </Button>
+                      </form>
+                    </Form>
+                  </DialogContent>
+                </Dialog>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Quick Add Templates</CardTitle>
+                <CardDescription>
+                  Popular calendar sources for Omaha area
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {templates.map((template, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 border rounded-lg"
+                    >
+                      <div>
+                        <h4 className="font-medium">{template.name}</h4>
+                        <Badge variant="outline" className="text-xs">
+                          {template.type}
+                        </Badge>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAddTemplate(template)}
+                        disabled={sources.some(s => s.name === template.name)}
+                        data-testid={`btn-add-template-${idx}`}
+                      >
+                        {sources.some(s => s.name === template.name) ? (
+                          <Check className="w-4 h-4" />
+                        ) : (
+                          <Plus className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                  {templates.length === 0 && (
+                    <div className="text-center py-4 text-muted-foreground">
+                      <p className="text-sm">No templates available</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

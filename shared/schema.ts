@@ -1015,6 +1015,108 @@ export type InsertContentOpportunity = z.infer<
 >;
 
 // =====================================================
+// EVENT SOURCES TABLE (Calendar and Event Feed Sources)
+// =====================================================
+export const eventSources = pgTable("event_sources", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // 'google_calendar_public', 'google_calendar_private', 'ical', 'aggregator'
+  config: jsonb("config").$type<{
+    calendarId?: string;
+    icalUrl?: string;
+    apiKey?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    query?: string;
+    location?: string;
+  }>(),
+  status: text("status").notNull().default("active"), // 'active', 'paused', 'error'
+  lastSyncAt: timestamp("last_sync_at"),
+  lastSyncStatus: text("last_sync_status"), // 'success', 'failed', 'partial'
+  syncError: text("sync_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// =====================================================
+// EVENTS TABLE (Events from Various Sources)
+// =====================================================
+export const events = pgTable("events", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  sourceId: varchar("source_id").notNull(), // References eventSources.id
+  externalId: text("external_id").notNull(), // ID from the external source (for dedup)
+  title: text("title").notNull(),
+  description: text("description"),
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time"),
+  timezone: text("timezone").default("America/Chicago"),
+  location: text("location"),
+  locationAddress: text("location_address"),
+  eventUrl: text("event_url"),
+  imageUrl: text("image_url"),
+  isAllDay: boolean("is_all_day").default(false),
+  visibility: text("visibility").default("public"), // 'public', 'private'
+  category: text("category"), // 'real_estate', 'community', 'market', 'networking', etc.
+  tags: text("tags").array(),
+  rawData: jsonb("raw_data"), // Store original event data
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // Unique constraint to prevent duplicate events
+  uniqueUserSourceEvent: unique().on(table.userId, table.sourceId, table.externalId),
+}));
+
+// =====================================================
+// EVENT POST SUGGESTIONS TABLE (AI-Generated Post Ideas)
+// =====================================================
+export const eventPostSuggestions = pgTable("event_post_suggestions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  eventId: varchar("event_id").notNull(), // References events.id
+  platform: text("platform").notNull(), // 'facebook', 'instagram', 'linkedin', 'x'
+  content: text("content").notNull(),
+  hashtags: text("hashtags").array(),
+  suggestedPostTime: timestamp("suggested_post_time"), // When to post (e.g., 24h before event)
+  status: text("status").notNull().default("suggested"), // 'suggested', 'accepted', 'rejected', 'scheduled'
+  scheduledPostId: varchar("scheduled_post_id"), // References scheduledPosts.id if accepted
+  aiMetadata: jsonb("ai_metadata"), // Store AI generation details
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas and types for event tables
+export const insertEventSourceSchema = createInsertSchema(eventSources).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEventSchema = createInsertSchema(events).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEventPostSuggestionSchema = createInsertSchema(eventPostSuggestions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type EventSource = typeof eventSources.$inferSelect;
+export type InsertEventSource = z.infer<typeof insertEventSourceSchema>;
+export type Event = typeof events.$inferSelect;
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type EventPostSuggestion = typeof eventPostSuggestions.$inferSelect;
+export type InsertEventPostSuggestion = z.infer<typeof insertEventPostSuggestionSchema>;
+
+// =====================================================
 // PKCE CODE STORAGE (for OAuth 2.0 flows)
 // =====================================================
 export const pkceStore = pgTable("pkce_store", {

@@ -22,6 +22,7 @@ The backend uses Express.js with TypeScript (ESM) and Replit's OpenID Connect fo
 - **Engagement Tracking & Analytics**: A system monitors anonymous user behavior on agent websites, tracking sessions, property interactions (views, likes), and automatically generating leads based on engagement scores. A client-side JavaScript library (`engagement-tracker.ts`) handles real-time tracking and scoring.
 - **Video Studio**: A unified 3-step video creation flow (Upload → Ask → Get It) consolidates HeyGen services, allowing users to create talking photo avatars, generate scripts via AI, and produce videos.
 - **QR Code Mobile Upload**: Enables users to upload training and consent videos from their mobile devices by scanning a QR code, simplifying the video avatar creation process.
+- **Event Calendar**: Tracks local events from multiple calendar sources (iCal feeds, Google Calendar) and generates AI-powered social media posts timed to each event. Features include: event source management with sync capability, manual event creation with all-day toggle and category selection, AI post generation for multiple platforms (Facebook, Instagram, LinkedIn, X), and post scheduling suggestions (T-24h and T-2h before events). Located at `/events` route with form validation using Zod/react-hook-form.
 
 ### System Design Choices
 - **Database**: PostgreSQL with Drizzle ORM ensures type-safe operations. The schema supports main users (agents) and public users (clients) with multi-tenancy. Key tables include users, properties, AI content, social posts, and activity tracking.
