@@ -8,12 +8,21 @@ import {
   type ContentPiece,
   type CustomVoice,
   customVoices,
+  type Event,
+  type EventPostSuggestion,
+  type EventSource,
+  eventPostSuggestions as eventPostSuggestionsTable,
+  events as eventsTable,
+  eventSources as eventSourcesTable,
   type InsertAnalytics,
   type InsertAvatar,
   type InsertBrandSettings,
   type InsertCompanyProfile,
   type InsertContentPiece,
   type InsertCustomVoice,
+  type InsertEvent,
+  type InsertEventPostSuggestion,
+  type InsertEventSource,
   type InsertMarketData,
   type InsertMediaAsset,
   type InsertPhotoAvatar,
@@ -254,6 +263,33 @@ export interface IStorage {
   createMobileUploadSession(userId: string, type: string): Promise<{ sessionId: string }>;
   getMobileUploadSession(sessionId: string): Promise<MobileUploadSession | null>;
   updateMobileUploadSession(sessionId: string, uploadedUrl: string): Promise<void>;
+
+  // Event Sources (Calendar and Event Feed Sources)
+  getEventSources(userId: string): Promise<EventSource[]>;
+  getEventSourceById(id: string): Promise<EventSource | undefined>;
+  createEventSource(source: InsertEventSource): Promise<EventSource>;
+  updateEventSource(id: string, updates: Partial<EventSource>): Promise<EventSource | undefined>;
+  deleteEventSource(id: string, userId: string): Promise<boolean>;
+
+  // Events (from various sources)
+  getEvents(userId: string, options?: { 
+    startDate?: Date; 
+    endDate?: Date; 
+    sourceId?: string;
+    category?: string;
+  }): Promise<Event[]>;
+  getEventById(id: string): Promise<Event | undefined>;
+  getEventByExternalId(userId: string, sourceId: string, externalId: string): Promise<Event | undefined>;
+  createEvent(event: InsertEvent): Promise<Event>;
+  updateEvent(id: string, updates: Partial<Event>): Promise<Event | undefined>;
+  deleteEvent(id: string, userId: string): Promise<boolean>;
+  deleteEventsBySource(sourceId: string, userId: string): Promise<number>;
+
+  // Event Post Suggestions (AI-generated post ideas for events)
+  getEventPostSuggestions(userId: string, eventId?: string): Promise<EventPostSuggestion[]>;
+  createEventPostSuggestion(suggestion: InsertEventPostSuggestion): Promise<EventPostSuggestion>;
+  updateEventPostSuggestion(id: string, updates: Partial<EventPostSuggestion>): Promise<EventPostSuggestion | undefined>;
+  deleteEventPostSuggestion(id: string, userId: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -272,6 +308,9 @@ export class MemStorage implements IStorage {
   private mediaAssets: Map<string, MediaAsset> = new Map();
   private postMedia: Map<string, PostMedia> = new Map();
   private mobileUploadSessions: Map<string, MobileUploadSession> = new Map();
+  private eventSources: Map<string, EventSource> = new Map();
+  private events: Map<string, Event> = new Map();
+  private eventPostSuggestions: Map<string, EventPostSuggestion> = new Map();
 
   constructor() {
     this.seedData();
@@ -1730,6 +1769,181 @@ export class MemStorage implements IStorage {
       session.uploadedUrl = uploadedUrl;
       this.mobileUploadSessions.set(sessionId, session);
     }
+  }
+
+  // Event Sources implementation
+  async getEventSources(userId: string): Promise<EventSource[]> {
+    return db
+      .select()
+      .from(eventSourcesTable)
+      .where(eq(eventSourcesTable.userId, userId))
+      .orderBy(desc(eventSourcesTable.createdAt));
+  }
+
+  async getEventSourceById(id: string): Promise<EventSource | undefined> {
+    const [source] = await db
+      .select()
+      .from(eventSourcesTable)
+      .where(eq(eventSourcesTable.id, id));
+    return source;
+  }
+
+  async createEventSource(source: InsertEventSource): Promise<EventSource> {
+    const [created] = await db
+      .insert(eventSourcesTable)
+      .values(source)
+      .returning();
+    return created;
+  }
+
+  async updateEventSource(id: string, updates: Partial<EventSource>): Promise<EventSource | undefined> {
+    const [updated] = await db
+      .update(eventSourcesTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(eventSourcesTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEventSource(id: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(eventSourcesTable)
+      .where(and(eq(eventSourcesTable.id, id), eq(eventSourcesTable.userId, userId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Events implementation
+  async getEvents(userId: string, options?: { 
+    startDate?: Date; 
+    endDate?: Date; 
+    sourceId?: string;
+    category?: string;
+  }): Promise<Event[]> {
+    const { gte, lte } = await import("drizzle-orm");
+    
+    let query = db
+      .select()
+      .from(eventsTable)
+      .where(eq(eventsTable.userId, userId));
+
+    const conditions: any[] = [eq(eventsTable.userId, userId)];
+    
+    if (options?.startDate) {
+      conditions.push(gte(eventsTable.startTime, options.startDate));
+    }
+    if (options?.endDate) {
+      conditions.push(lte(eventsTable.startTime, options.endDate));
+    }
+    if (options?.sourceId) {
+      conditions.push(eq(eventsTable.sourceId, options.sourceId));
+    }
+    if (options?.category) {
+      conditions.push(eq(eventsTable.category, options.category));
+    }
+
+    return db
+      .select()
+      .from(eventsTable)
+      .where(and(...conditions))
+      .orderBy(eventsTable.startTime);
+  }
+
+  async getEventById(id: string): Promise<Event | undefined> {
+    const [event] = await db
+      .select()
+      .from(eventsTable)
+      .where(eq(eventsTable.id, id));
+    return event;
+  }
+
+  async getEventByExternalId(userId: string, sourceId: string, externalId: string): Promise<Event | undefined> {
+    const [event] = await db
+      .select()
+      .from(eventsTable)
+      .where(and(
+        eq(eventsTable.userId, userId),
+        eq(eventsTable.sourceId, sourceId),
+        eq(eventsTable.externalId, externalId)
+      ));
+    return event;
+  }
+
+  async createEvent(event: InsertEvent): Promise<Event> {
+    const [created] = await db
+      .insert(eventsTable)
+      .values(event)
+      .returning();
+    return created;
+  }
+
+  async updateEvent(id: string, updates: Partial<Event>): Promise<Event | undefined> {
+    const [updated] = await db
+      .update(eventsTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(eventsTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEvent(id: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(eventsTable)
+      .where(and(eq(eventsTable.id, id), eq(eventsTable.userId, userId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async deleteEventsBySource(sourceId: string, userId: string): Promise<number> {
+    const result = await db
+      .delete(eventsTable)
+      .where(and(eq(eventsTable.sourceId, sourceId), eq(eventsTable.userId, userId)));
+    return result.rowCount ?? 0;
+  }
+
+  // Event Post Suggestions implementation
+  async getEventPostSuggestions(userId: string, eventId?: string): Promise<EventPostSuggestion[]> {
+    if (eventId) {
+      return db
+        .select()
+        .from(eventPostSuggestionsTable)
+        .where(and(
+          eq(eventPostSuggestionsTable.userId, userId),
+          eq(eventPostSuggestionsTable.eventId, eventId)
+        ))
+        .orderBy(desc(eventPostSuggestionsTable.createdAt));
+    }
+    
+    return db
+      .select()
+      .from(eventPostSuggestionsTable)
+      .where(eq(eventPostSuggestionsTable.userId, userId))
+      .orderBy(desc(eventPostSuggestionsTable.createdAt));
+  }
+
+  async createEventPostSuggestion(suggestion: InsertEventPostSuggestion): Promise<EventPostSuggestion> {
+    const [created] = await db
+      .insert(eventPostSuggestionsTable)
+      .values(suggestion)
+      .returning();
+    return created;
+  }
+
+  async updateEventPostSuggestion(id: string, updates: Partial<EventPostSuggestion>): Promise<EventPostSuggestion | undefined> {
+    const [updated] = await db
+      .update(eventPostSuggestionsTable)
+      .set(updates)
+      .where(eq(eventPostSuggestionsTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEventPostSuggestion(id: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(eventPostSuggestionsTable)
+      .where(and(
+        eq(eventPostSuggestionsTable.id, id),
+        eq(eventPostSuggestionsTable.userId, userId)
+      ));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 
