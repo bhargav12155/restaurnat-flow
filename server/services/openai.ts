@@ -668,7 +668,13 @@ Platform-specific requirements for ${platform}:`;
 - Add clear call-to-action`;
       }
       
-      prompt += `\n\nMake it engaging and appropriate for ${platform}'s format and audience.`;
+      prompt += `\n\nMake it engaging and appropriate for ${platform}'s format and audience.
+
+IMPORTANT COMPLIANCE REQUIREMENT (BHHS Ambassador Real Estate):
+- The brokerage name "BHHS Ambassador Real Estate" MUST appear in the FIRST LINE of the post
+- The brokerage name must be equal to or more prominent than the agent name
+- For advertising content (property listings, agent services), brokerage visibility is mandatory
+- Format the first line as: "BHHS Ambassador Real Estate | [Your hook/content]" or similar prominent placement`;
 
       const response = await multiOpenAI.makeRequest(
         "social",
@@ -679,7 +685,7 @@ Platform-specific requirements for ${platform}:`;
               {
                 role: "system",
                 content:
-                  "You are a social media content creator for real estate. Create engaging posts optimized for each platform with platform-specific best practices.",
+                  "You are a social media content creator for BHHS Ambassador Real Estate. Create engaging posts optimized for each platform with platform-specific best practices. IMPORTANT: Always include 'BHHS Ambassador Real Estate' prominently in the first line of every post to meet brokerage compliance requirements.",
               },
               { role: "user", content: prompt },
             ],
@@ -699,15 +705,14 @@ Platform-specific requirements for ${platform}:`;
     } catch (error) {
       console.error("Social media post generation error:", error);
       
-      // Use company profile data in fallback or generic text
+      // Use company profile data in fallback or generic text with BHHS compliance
       const agentName = companyProfile?.agentName || "your real estate agent";
-      const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "our brokerage";
       const agentHashtag = companyProfile?.agentName ? agentName.replace(/\s+/g, '') : "RealEstate";
       
       return {
-        content: `Check out ${topic} in ${
+        content: `BHHS Ambassador Real Estate | ${topic} in ${
           neighborhood || "Omaha"
-        }! Contact ${agentName} at ${businessName} for expert guidance. #OmahaRealEstate #${agentHashtag}`,
+        }!\n\nContact ${agentName} for expert guidance. #OmahaRealEstate #BHHSAmbassador #${agentHashtag}`,
         platform,
         topic,
         neighborhood,
