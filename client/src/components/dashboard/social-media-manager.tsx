@@ -50,6 +50,7 @@ import { useEffect, useState } from "react";
 import { MediaLibrary } from "./media-library";
 import { PropertySelector } from "./property-selector";
 import { PostComposer } from "./post-composer";
+import { ComplianceChecker } from "@/components/shared/compliance-checker";
 
 interface SocialMediaAccount {
   id: string;
@@ -1519,6 +1520,17 @@ ${agentName} | ${brokerageName}
               tone preferences
             </p>
           </div>
+
+          {postContent.trim().length > 10 && (
+            <ComplianceChecker
+              content={postContent}
+              platform={selectedPlatforms[0] || "general"}
+              hasMedia={selectedMediaIds.length > 0}
+              hasVideo={false}
+              onContentFix={(fixedContent) => setPostContent(fixedContent)}
+              showGuidelines={true}
+            />
+          )}
 
           {selectedPlatforms.length > 0 && (
             <div className="text-xs text-muted-foreground">
