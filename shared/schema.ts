@@ -730,6 +730,9 @@ export const brandSettings = pgTable("brand_settings", {
   description: text("description"),
   socialConnections: jsonb("social_connections"),
   logoInfo: jsonb("logo_info"),
+  aiProvider: text("ai_provider").default("openai"),
+  aiApiKeyEncrypted: text("ai_api_key_encrypted"),
+  aiApiKeyLastFour: text("ai_api_key_last_four"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
