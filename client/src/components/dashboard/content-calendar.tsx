@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -418,6 +419,8 @@ export function ContentCalendar() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
+  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
+  const [isBulkDelete, setIsBulkDelete] = useState(false);
   const { toast } = useToast();
   
   // Get user's display name with proper formatting
@@ -486,6 +489,29 @@ export function ContentCalendar() {
       toast({
         title: "Error",
         description: "Failed to delete post. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map(id => apiRequest("DELETE", `/api/scheduled-posts/${id}`)));
+    },
+    onSuccess: () => {
+      const count = selectedPosts.size;
+      setSelectedPosts(new Set());
+      setIsBulkDelete(false);
+      toast({
+        title: "Posts Deleted",
+        description: `${count} scheduled posts have been deleted.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete some posts. Please try again.",
         variant: "destructive",
       });
     },
@@ -1085,50 +1111,116 @@ export function ContentCalendar() {
 
           {/* Upcoming Content */}
           <div className="mt-6">
-            <h3 className="text-sm font-medium text-foreground mb-3">This Week's Content</h3>
-            <div className="space-y-3">
-              {scheduledContent.map((content) => (
-                <div key={content.id} className="flex items-center space-x-3" data-testid={`content-item-${content.id}`}>
-                  <div className={`w-2 h-2 ${content.color} rounded-full`}></div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm text-foreground">{content.title}</p>
-                      {(content as any).isAiGenerated && <AiGeneratedBadge size="sm" />}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {content.type} • {format(content.date, "MMM d")} {content.time}
-                    </p>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-foreground">This Week's Content</h3>
+              <div className="flex items-center gap-2">
+                {scheduledContent.some(c => String(c.id).startsWith('api-')) && (
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="select-all"
+                      checked={
+                        scheduledContent.filter(c => String(c.id).startsWith('api-')).length > 0 &&
+                        scheduledContent.filter(c => String(c.id).startsWith('api-')).every(c => 
+                          selectedPosts.has(String(c.id).replace('api-', ''))
+                        )
+                      }
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          const apiPostIds = scheduledContent
+                            .filter(c => String(c.id).startsWith('api-'))
+                            .map(c => String(c.id).replace('api-', ''));
+                          setSelectedPosts(new Set(apiPostIds));
+                        } else {
+                          setSelectedPosts(new Set());
+                        }
+                      }}
+                      data-testid="checkbox-select-all"
+                    />
+                    <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">
+                      Select All
+                    </label>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => handlePreview(content)}
-                      data-testid={`button-preview-${content.id}`}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    {/* Delete button for API posts */}
-                    {String(content.id).startsWith('api-') && (
+                )}
+                {selectedPosts.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setIsBulkDelete(true);
+                      setShowDeleteConfirm(true);
+                    }}
+                    data-testid="button-delete-selected"
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Delete {selectedPosts.size} Selected
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="space-y-3">
+              {scheduledContent.map((content) => {
+                const isApiPost = String(content.id).startsWith('api-');
+                const apiPostId = isApiPost ? String(content.id).replace('api-', '') : null;
+                const isSelected = apiPostId ? selectedPosts.has(apiPostId) : false;
+                
+                return (
+                  <div key={content.id} className="flex items-center space-x-3" data-testid={`content-item-${content.id}`}>
+                    {isApiPost && (
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          const newSelected = new Set(selectedPosts);
+                          if (checked && apiPostId) {
+                            newSelected.add(apiPostId);
+                          } else if (apiPostId) {
+                            newSelected.delete(apiPostId);
+                          }
+                          setSelectedPosts(newSelected);
+                        }}
+                        data-testid={`checkbox-select-${content.id}`}
+                      />
+                    )}
+                    <div className={`w-2 h-2 ${content.color} rounded-full`}></div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-foreground">{content.title}</p>
+                        {(content as any).isAiGenerated && <AiGeneratedBadge size="sm" />}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {content.type} • {format(content.date, "MMM d")} {content.time}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const apiPostId = String(content.id).replace('api-', '');
-                          setPostToDelete(apiPostId);
-                          setShowDeleteConfirm(true);
-                        }}
-                        data-testid={`button-delete-${content.id}`}
+                        className="h-8 w-8 p-0"
+                        onClick={() => handlePreview(content)}
+                        data-testid={`button-preview-${content.id}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Eye className="h-4 w-4" />
                       </Button>
-                    )}
+                      {isApiPost && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPostToDelete(apiPostId);
+                            setIsBulkDelete(false);
+                            setShowDeleteConfirm(true);
+                          }}
+                          data-testid={`button-delete-${content.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1641,19 +1733,35 @@ export function ContentCalendar() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => {
+        setShowDeleteConfirm(open);
+        if (!open) {
+          setIsBulkDelete(false);
+          setPostToDelete(null);
+        }
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Scheduled Post?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {isBulkDelete 
+                ? `Delete ${selectedPosts.size} Scheduled Posts?`
+                : "Delete Scheduled Post?"
+              }
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this scheduled post? This action cannot be undone.
+              {isBulkDelete
+                ? `Are you sure you want to delete ${selectedPosts.size} scheduled posts? This action cannot be undone.`
+                : "Are you sure you want to delete this scheduled post? This action cannot be undone."
+              }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (postToDelete) {
+                if (isBulkDelete) {
+                  bulkDeleteMutation.mutate(Array.from(selectedPosts));
+                } else if (postToDelete) {
                   deletePostMutation.mutate(postToDelete);
                 }
                 setShowDeleteConfirm(false);
@@ -1662,7 +1770,10 @@ export function ContentCalendar() {
               className="bg-red-600 hover:bg-red-700"
               data-testid="button-confirm-delete"
             >
-              Delete Post
+              {isBulkDelete 
+                ? `Delete ${selectedPosts.size} Posts`
+                : "Delete Post"
+              }
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
