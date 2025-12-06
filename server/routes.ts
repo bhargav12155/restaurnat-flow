@@ -10127,7 +10127,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.json(defaultBrandSettings);
       }
 
-      // Return the saved settings
+      // Return the saved settings with AI preferences (masked key)
       res.json({
         assets: brandSettings.assets || [],
         colors: brandSettings.colors || {},
@@ -10135,10 +10135,141 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         description: brandSettings.description || "",
         socialConnections: brandSettings.socialConnections || {},
         logoInfo: brandSettings.logoInfo || null,
+        aiProvider: brandSettings.aiProvider || "openai",
+        hasCustomApiKey: !!brandSettings.aiApiKeyEncrypted,
+        aiApiKeyMasked: brandSettings.aiApiKeyLastFour 
+          ? `****...${brandSettings.aiApiKeyLastFour}` 
+          : null,
       });
     } catch (error) {
       console.error("Error fetching brand settings:", error);
       res.status(500).json({ error: "Failed to fetch brand settings" });
+    }
+  });
+
+  // ==================== AI PREFERENCES ENDPOINTS ====================
+  
+  // Update AI preferences (provider and optional API key)
+  app.put("/api/ai-preferences", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { aiProvider, apiKey } = req.body;
+
+      // Validate provider
+      const validProviders = ["openai", "anthropic", "google", "platform"];
+      if (aiProvider && !validProviders.includes(aiProvider)) {
+        return res.status(400).json({ 
+          error: "Invalid AI provider. Choose from: openai, anthropic, google, or platform (use platform default)" 
+        });
+      }
+
+      // Import encryption utilities
+      const { encryptApiKey, getLastFourChars, isValidApiKeyFormat } = await import("./services/encryption");
+
+      // Prepare update data
+      const updateData: any = {
+        userId: user.id,
+      };
+
+      if (aiProvider) {
+        updateData.aiProvider = aiProvider;
+      }
+
+      // Handle API key update
+      if (apiKey && apiKey !== "" && !apiKey.startsWith("****")) {
+        // Validate API key format based on provider
+        const provider = aiProvider || "openai";
+        if (!isValidApiKeyFormat(apiKey, provider)) {
+          return res.status(400).json({ 
+            error: `Invalid API key format for ${provider}. Please check your key.` 
+          });
+        }
+
+        // Encrypt and store the key
+        updateData.aiApiKeyEncrypted = encryptApiKey(apiKey);
+        updateData.aiApiKeyLastFour = getLastFourChars(apiKey);
+      } else if (apiKey === "") {
+        // Clear the API key if empty string sent
+        updateData.aiApiKeyEncrypted = null;
+        updateData.aiApiKeyLastFour = null;
+      }
+
+      // Update brand settings with AI preferences
+      const updatedSettings = await storage.upsertBrandSettings(updateData);
+
+      console.log(`✅ AI preferences updated for user ${user.id}: provider=${aiProvider || 'unchanged'}, hasKey=${!!updateData.aiApiKeyEncrypted}`);
+
+      res.json({
+        success: true,
+        message: "AI preferences saved successfully",
+        aiProvider: updatedSettings.aiProvider || "openai",
+        hasCustomApiKey: !!updatedSettings.aiApiKeyEncrypted,
+        aiApiKeyMasked: updatedSettings.aiApiKeyLastFour 
+          ? `****...${updatedSettings.aiApiKeyLastFour}` 
+          : null,
+      });
+    } catch (error) {
+      console.error("Error saving AI preferences:", error);
+      res.status(500).json({ error: "Failed to save AI preferences" });
+    }
+  });
+
+  // Get AI preferences
+  app.get("/api/ai-preferences", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const brandSettings = await storage.getBrandSettings(user.id);
+
+      res.json({
+        aiProvider: brandSettings?.aiProvider || "openai",
+        hasCustomApiKey: !!brandSettings?.aiApiKeyEncrypted,
+        aiApiKeyMasked: brandSettings?.aiApiKeyLastFour 
+          ? `****...${brandSettings.aiApiKeyLastFour}` 
+          : null,
+        availableProviders: [
+          { id: "platform", name: "Platform Default (OpenAI)", description: "Use the platform's AI service" },
+          { id: "openai", name: "OpenAI (GPT-4)", description: "Your own OpenAI API key" },
+          { id: "anthropic", name: "Anthropic (Claude)", description: "Your own Anthropic API key" },
+          { id: "google", name: "Google (Gemini)", description: "Your own Google AI API key" },
+        ],
+      });
+    } catch (error) {
+      console.error("Error fetching AI preferences:", error);
+      res.status(500).json({ error: "Failed to fetch AI preferences" });
+    }
+  });
+
+  // Delete custom API key
+  app.delete("/api/ai-preferences/api-key", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      await storage.upsertBrandSettings({
+        userId: user.id,
+        aiApiKeyEncrypted: null,
+        aiApiKeyLastFour: null,
+      });
+
+      console.log(`✅ Custom API key removed for user ${user.id}`);
+
+      res.json({
+        success: true,
+        message: "Custom API key removed successfully",
+      });
+    } catch (error) {
+      console.error("Error removing API key:", error);
+      res.status(500).json({ error: "Failed to remove API key" });
     }
   });
 
