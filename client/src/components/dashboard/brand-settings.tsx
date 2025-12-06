@@ -35,8 +35,13 @@ import {
   Check,
   Circle,
   AlertCircle,
-  Loader2
+  Loader2,
+  Brain,
+  Key,
+  Shield,
+  Trash2
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FaFacebook, FaInstagram, FaLinkedin, FaTwitter, FaTiktok, FaYoutube } from "react-icons/fa";
 
 interface BrandAsset {
@@ -119,8 +124,27 @@ export function BrandSettings() {
     youtube: { connected: false, accountName: '', profileUrl: '' },
   });
 
+  // AI Engine preferences state
+  const [selectedAiProvider, setSelectedAiProvider] = useState('platform');
+  const [aiApiKeyInput, setAiApiKeyInput] = useState('');
+  const [isSavingAiPrefs, setIsSavingAiPrefs] = useState(false);
+  const [isRemovingApiKey, setIsRemovingApiKey] = useState(false);
+
   const { data: brandSettingsData, isLoading } = useQuery<BrandSettingsData>({
     queryKey: ['/api/brand-settings'],
+    refetchOnWindowFocus: false,
+  });
+
+  // AI preferences query
+  interface AiPreferences {
+    aiProvider: string;
+    hasCustomApiKey: boolean;
+    aiApiKeyMasked: string | null;
+    availableProviders: { id: string; name: string; description: string }[];
+  }
+
+  const { data: aiPreferences, refetch: refetchAiPrefs } = useQuery<AiPreferences>({
+    queryKey: ['/api/ai-preferences'],
     refetchOnWindowFocus: false,
   });
 
@@ -133,6 +157,89 @@ export function BrandSettings() {
       if (brandSettingsData.socialConnections) setSocialConnections(brandSettingsData.socialConnections);
     }
   }, [brandSettingsData]);
+
+  // Sync AI preferences when loaded
+  useEffect(() => {
+    if (aiPreferences) {
+      setSelectedAiProvider(aiPreferences.aiProvider);
+    }
+  }, [aiPreferences]);
+
+  // Save AI preferences handler
+  const handleSaveAiPreferences = async () => {
+    setIsSavingAiPrefs(true);
+    try {
+      const response = await fetch('/api/ai-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          aiProvider: selectedAiProvider,
+          apiKey: aiApiKeyInput || undefined,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: "AI preferences saved",
+          description: result.message,
+        });
+        setAiApiKeyInput(''); // Clear input after save
+        refetchAiPrefs();
+      } else {
+        toast({
+          title: "Error saving preferences",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save AI preferences",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingAiPrefs(false);
+    }
+  };
+
+  // Remove API key handler
+  const handleRemoveApiKey = async () => {
+    setIsRemovingApiKey(true);
+    try {
+      const response = await fetch('/api/ai-preferences/api-key', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: "API key removed",
+          description: "Your custom API key has been removed",
+        });
+        refetchAiPrefs();
+      } else {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to remove API key",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRemovingApiKey(false);
+    }
+  };
 
   const handleGetUploadParameters = async () => {
     try {
@@ -595,6 +702,145 @@ export function BrandSettings() {
               <p className="text-xs text-gray-500 mt-2">
                 This will be used for AI-generated content to match your brand voice
               </p>
+            </CardContent>
+          </Card>
+
+          {/* AI Engine Preferences */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Brain className="w-5 h-5 text-amber-500" />
+                AI Engine
+                <Badge variant="outline" className="ml-2 text-xs">
+                  Advanced
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  AI Provider
+                </Label>
+                <Select 
+                  value={selectedAiProvider} 
+                  onValueChange={setSelectedAiProvider}
+                >
+                  <SelectTrigger className="w-full" data-testid="select-ai-provider">
+                    <SelectValue placeholder="Select AI provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="platform">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-green-500" />
+                        <span>Platform Default (OpenAI)</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="openai">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-blue-500" />
+                        <span>OpenAI (GPT-4) - Your API Key</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="anthropic">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-orange-500" />
+                        <span>Anthropic (Claude) - Your API Key</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="google">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-purple-500" />
+                        <span>Google (Gemini) - Your API Key</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  {selectedAiProvider === 'platform' 
+                    ? "Use the platform's built-in AI service - no API key required" 
+                    : "Use your own API key for more control and cost management"}
+                </p>
+              </div>
+
+              {selectedAiProvider !== 'platform' && (
+                <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      API Key
+                    </Label>
+                    {aiPreferences?.hasCustomApiKey && (
+                      <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Configured
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {aiPreferences?.hasCustomApiKey ? (
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-mono text-gray-600 dark:text-gray-400">
+                        {aiPreferences.aiApiKeyMasked || '****...****'}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRemoveApiKey}
+                        disabled={isRemovingApiKey}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        data-testid="remove-api-key"
+                      >
+                        {isRemovingApiKey ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Input
+                      type="password"
+                      value={aiApiKeyInput}
+                      onChange={(e) => setAiApiKeyInput(e.target.value)}
+                      placeholder={
+                        selectedAiProvider === 'openai' ? 'sk-...' :
+                        selectedAiProvider === 'anthropic' ? 'sk-ant-...' :
+                        'Enter your API key'
+                      }
+                      className="font-mono"
+                      data-testid="input-api-key"
+                    />
+                  )}
+                  
+                  <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+                    <Shield className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Your API key is encrypted and securely stored. We never expose or share your keys.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <Button
+                  onClick={handleSaveAiPreferences}
+                  disabled={isSavingAiPrefs}
+                  size="sm"
+                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                  data-testid="save-ai-preferences"
+                >
+                  {isSavingAiPrefs ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save AI Preferences
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
