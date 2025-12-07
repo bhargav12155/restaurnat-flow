@@ -245,10 +245,39 @@ export class KlingService {
     try {
       console.log("🎤 Kling: Starting lip-sync generation...");
       console.log("🎬 Video URL:", request.videoUrl);
+      console.log("📝 Text:", request.text.substring(0, 50) + (request.text.length > 50 ? "..." : ""));
       console.log("📝 Text length:", request.text.length, "chars");
-      console.log("🔊 Voice ID:", request.voiceId || "default");
+      console.log("🔊 Voice timbre:", request.voiceId || "female_calm");
 
       const token = this.getAuthToken();
+
+      const voiceTimbreMap: Record<string, string> = {
+        "female_calm": "The Reader",
+        "male_calm": "Businessman",
+        "female_professional": "Commercial Lady",
+        "male_professional": "Businessman",
+        "female_warm": "Sweet Girl",
+        "male_warm": "Rock",
+        "neutral": "The Reader",
+      };
+      const ttsTimbre = voiceTimbreMap[request.voiceId || "female_calm"] || "The Reader";
+
+      const truncatedText = request.text.length > 120 ? request.text.substring(0, 117) + "..." : request.text;
+
+      console.log("🎙️ Using TTS timbre:", ttsTimbre);
+      console.log("📝 Truncated text for TTS:", truncatedText);
+
+      const requestBody = {
+        input: {
+          video_url: request.videoUrl,
+          tts_text: truncatedText,
+          tts_timbre: ttsTimbre,
+          tts_speed: 1.0,
+          local_dubbing_url: "",
+        },
+      };
+
+      console.log("📤 Kling Lip-Sync request body:", JSON.stringify(requestBody, null, 2));
 
       const response = await fetch(`${this.baseUrl}/v1/videos/lip-sync`, {
         method: "POST",
@@ -256,25 +285,31 @@ export class KlingService {
           "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          video_url: request.videoUrl,
-          text: request.text,
-          voice_id: request.voiceId || "female_calm",
-          voice_speed: 1.0,
-          voice_language: "en",
-        }),
+        body: JSON.stringify(requestBody),
       });
 
+      const responseText = await response.text();
+      console.log("📡 Kling Lip-Sync API raw response:", response.status, responseText);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Kling Lip-Sync API error:", response.status, errorText);
+        console.error("❌ Kling Lip-Sync API error:", response.status, responseText);
         return {
           success: false,
-          error: `Kling Lip-Sync API error: ${response.status} - ${errorText}`,
+          error: `Kling Lip-Sync API error: ${response.status} - ${responseText}`,
         };
       }
 
-      const result: KlingApiResponse = await response.json();
+      let result: KlingApiResponse;
+      try {
+        result = JSON.parse(responseText);
+      } catch (e) {
+        console.error("❌ Failed to parse Kling response:", e);
+        return {
+          success: false,
+          error: "Failed to parse Kling API response",
+        };
+      }
+      
       console.log("✅ Kling Lip-Sync API response:", JSON.stringify(result, null, 2));
 
       if (result.code !== 0) {
