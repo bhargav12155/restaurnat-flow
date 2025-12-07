@@ -53,6 +53,15 @@ const PROFESSIONAL_VOICES = [
   { id: "9f2e8c4a7b5d4f6e8a1c3d5b7e9f2a4c", name: "Energetic - Enthusiastic" },
 ];
 
+const KLING_VOICES = [
+  { id: "female_calm", name: "Female - Calm (The Reader)" },
+  { id: "male_calm", name: "Male - Calm (Businessman)" },
+  { id: "female_professional", name: "Female - Professional (Commercial Lady)" },
+  { id: "male_professional", name: "Male - Professional (Businessman)" },
+  { id: "female_warm", name: "Female - Warm (Sweet Girl)" },
+  { id: "male_warm", name: "Male - Warm (Rock)" },
+];
+
 interface PhotoAvatarGroup {
   group_id: string;
   name: string;
@@ -146,8 +155,8 @@ export function AvatarStudio() {
   // Motion dialog step: "motion" -> "voice" -> "final"
   const [motionDialogStep, setMotionDialogStep] = useState<"motion" | "voice" | "final">("motion");
   const [motionVoiceScript, setMotionVoiceScript] = useState("");
-  const [selectedMotionVoice, setSelectedMotionVoice] = useState<string>("21m00Tcm4TlvDq8ikWAM");
-  const [voiceProvider, setVoiceProvider] = useState<"elevenlabs" | "kling">("elevenlabs");
+  const [selectedMotionVoice, setSelectedMotionVoice] = useState<string>("female_calm");
+  const [voiceProvider, setVoiceProvider] = useState<"elevenlabs" | "kling">("kling");
   const [isGeneratingLipSync, setIsGeneratingLipSync] = useState(false);
   const [lipSyncTaskId, setLipSyncTaskId] = useState<string | null>(null);
   const [lipSyncStatus, setLipSyncStatus] = useState<string>("");
@@ -2287,7 +2296,7 @@ export function AvatarStudio() {
                           size="sm"
                           onClick={() => {
                             setVoiceProvider("kling");
-                            setSelectedMotionVoice(PROFESSIONAL_VOICES[0].id);
+                            setSelectedMotionVoice(KLING_VOICES[0].id);
                           }}
                           data-testid="button-voice-kling"
                         >
@@ -2320,7 +2329,7 @@ export function AvatarStudio() {
                             </>
                           ) : (
                             <>
-                              {PROFESSIONAL_VOICES.map((voice) => (
+                              {KLING_VOICES.map((voice) => (
                                 <SelectItem key={voice.id} value={voice.id}>
                                   {voice.name}
                                 </SelectItem>
@@ -2788,7 +2797,7 @@ export function AvatarStudio() {
                         });
                       }
                     }}
-                    disabled={isGeneratingLipSync || !motionVoiceScript.trim()}
+                    disabled={isGeneratingLipSync || (voiceInputMode === "tts" && !motionVoiceScript.trim()) || (voiceInputMode === "record" && !motionRecordedBlob) || (voiceInputMode === "upload" && !uploadedAudioFile)}
                     data-testid="button-add-voice"
                   >
                     {isGeneratingLipSync ? (
