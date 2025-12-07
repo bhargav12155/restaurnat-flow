@@ -64,7 +64,7 @@ function generateJwtToken(accessKey: string, secretKey: string): string {
 export class KlingService {
   private accessKey: string;
   private secretKey: string;
-  private baseUrl = "https://api.klingai.com";
+  private baseUrl = "https://api-singapore.klingai.com";
 
   constructor(accessKey?: string, secretKey?: string) {
     this.accessKey = accessKey || process.env.KLING_ACCESS_KEY || "";
@@ -86,8 +86,10 @@ export class KlingService {
       console.log("📝 Prompt:", request.prompt);
       console.log("🎯 Model:", request.modelName || "kling-v1-6");
       console.log("⚡ Mode:", request.mode || "pro");
+      console.log("🔑 Access Key (first 8 chars):", this.accessKey.substring(0, 8) + "...");
 
       const token = this.getAuthToken();
+      console.log("🎫 JWT Token (first 50 chars):", token.substring(0, 50) + "...");
 
       const response = await fetch(`${this.baseUrl}/v1/videos/image2video`, {
         method: "POST",
