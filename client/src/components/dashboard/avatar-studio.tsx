@@ -749,7 +749,7 @@ export function AvatarStudio() {
               {selectedAvatarGroup && availableLooks.length > 0 && (
                 <div className="mt-6">
                   <Label className="text-sm font-medium mb-3 block">
-                    Select an Avatar Look
+                    Select an Avatar Look <span className="text-gray-400 font-normal">(click to preview, double-click to select)</span>
                   </Label>
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {availableLooks.map((look, index) => {
@@ -760,7 +760,17 @@ export function AvatarStudio() {
                           key={lookId}
                           onClick={() => {
                             setPopupLookIndex(index);
+                            setSelectedAvatarLook(lookId);
                             setShowLookPopup(true);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            setSelectedAvatarLook(lookId);
+                            setShowLookPopup(false);
+                            toast({
+                              title: "Avatar Selected",
+                              description: "Now proceed to choose a voice for your video.",
+                            });
                           }}
                           className={`relative rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-lg ${
                             selectedAvatarLook === lookId
@@ -1445,9 +1455,12 @@ export function AvatarStudio() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => setPopupLookIndex((prev) => 
-                      prev === 0 ? availableLooks.length - 1 : prev - 1
-                    )}
+                    onClick={() => {
+                      const newIndex = popupLookIndex === 0 ? availableLooks.length - 1 : popupLookIndex - 1;
+                      setPopupLookIndex(newIndex);
+                      const prevLook = availableLooks[newIndex];
+                      setSelectedAvatarLook(prevLook?.avatar_id || prevLook?.id || "");
+                    }}
                     className="absolute left-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
                     data-testid="button-prev-look"
                   >
@@ -1470,9 +1483,12 @@ export function AvatarStudio() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => setPopupLookIndex((prev) => 
-                      prev === availableLooks.length - 1 ? 0 : prev + 1
-                    )}
+                    onClick={() => {
+                      const newIndex = popupLookIndex === availableLooks.length - 1 ? 0 : popupLookIndex + 1;
+                      setPopupLookIndex(newIndex);
+                      const nextLook = availableLooks[newIndex];
+                      setSelectedAvatarLook(nextLook?.avatar_id || nextLook?.id || "");
+                    }}
                     className="absolute right-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
                     data-testid="button-next-look"
                   >
@@ -1513,9 +1529,6 @@ export function AvatarStudio() {
                 <Button
                   className="flex items-center gap-2 bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
                   onClick={() => {
-                    const currentLook = availableLooks[popupLookIndex];
-                    const lookId = currentLook?.avatar_id || currentLook?.id || "";
-                    setSelectedAvatarLook(lookId);
                     setShowLookPopup(false);
                     toast({
                       title: "Avatar Selected",
