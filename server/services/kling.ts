@@ -269,11 +269,11 @@ export class KlingService {
 
       const requestBody = {
         input: {
+          mode: "text2video",
           video_url: request.videoUrl,
           tts_text: truncatedText,
           tts_timbre: ttsTimbre,
           tts_speed: 1.0,
-          local_dubbing_url: "",
         },
       };
 
