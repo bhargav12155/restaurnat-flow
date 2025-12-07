@@ -141,7 +141,8 @@ export function AvatarStudio() {
   // Motion dialog step: "motion" -> "voice" -> "final"
   const [motionDialogStep, setMotionDialogStep] = useState<"motion" | "voice" | "final">("motion");
   const [motionVoiceScript, setMotionVoiceScript] = useState("");
-  const [selectedMotionVoice, setSelectedMotionVoice] = useState<string>("119caed25533477ba63822d5d1552d25");
+  const [selectedMotionVoice, setSelectedMotionVoice] = useState<string>("21m00Tcm4TlvDq8ikWAM");
+  const [voiceProvider, setVoiceProvider] = useState<"elevenlabs" | "kling">("elevenlabs");
   const [isGeneratingLipSync, setIsGeneratingLipSync] = useState(false);
   const [lipSyncTaskId, setLipSyncTaskId] = useState<string | null>(null);
   const [lipSyncStatus, setLipSyncStatus] = useState<string>("");
@@ -249,6 +250,23 @@ export function AvatarStudio() {
 
   // Show all user's voices - they can still use audio_url even if HeyGen upload failed
   const customVoices = customVoicesData;
+
+  // ElevenLabs voices query
+  interface ElevenLabsVoice {
+    id: string;
+    name: string;
+    category?: string;
+    description?: string;
+    previewUrl?: string;
+  }
+  const { data: elevenLabsData } = useQuery<{
+    configured: boolean;
+    voices: ElevenLabsVoice[];
+  }>({
+    queryKey: ["/api/elevenlabs/voices"],
+  });
+  const elevenLabsConfigured = elevenLabsData?.configured ?? false;
+  const elevenLabsVoices = elevenLabsData?.voices ?? [];
 
   useEffect(() => {
     if (customVoices.length === 0) return;
@@ -1975,6 +1993,45 @@ export function AvatarStudio() {
                   </div>
                 </div>
 
+                {/* Voice Provider Toggle */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Voice Provider</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={voiceProvider === "elevenlabs" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setVoiceProvider("elevenlabs");
+                        if (elevenLabsVoices.length > 0) {
+                          setSelectedMotionVoice(elevenLabsVoices[0].id);
+                        }
+                      }}
+                      className={voiceProvider === "elevenlabs" ? "bg-purple-600 hover:bg-purple-700" : ""}
+                      data-testid="button-voice-elevenlabs"
+                    >
+                      <Volume2 className="h-4 w-4 mr-1" />
+                      ElevenLabs {elevenLabsConfigured && "(Connected)"}
+                    </Button>
+                    <Button
+                      variant={voiceProvider === "kling" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        setVoiceProvider("kling");
+                        setSelectedMotionVoice(PROFESSIONAL_VOICES[0].id);
+                      }}
+                      data-testid="button-voice-kling"
+                    >
+                      <Mic className="h-4 w-4 mr-1" />
+                      Built-in
+                    </Button>
+                  </div>
+                  {voiceProvider === "elevenlabs" && !elevenLabsConfigured && (
+                    <p className="text-xs text-amber-600">
+                      ElevenLabs API key is being configured. Using default voices.
+                    </p>
+                  )}
+                </div>
+
                 {/* Voice Selection */}
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">Select Voice</Label>
@@ -1983,11 +2040,23 @@ export function AvatarStudio() {
                       <SelectValue placeholder="Choose a voice" />
                     </SelectTrigger>
                     <SelectContent>
-                      {PROFESSIONAL_VOICES.map((voice) => (
-                        <SelectItem key={voice.id} value={voice.id}>
-                          {voice.name}
-                        </SelectItem>
-                      ))}
+                      {voiceProvider === "elevenlabs" ? (
+                        <>
+                          {elevenLabsVoices.map((voice) => (
+                            <SelectItem key={voice.id} value={voice.id}>
+                              {voice.name} {voice.description ? `- ${voice.description}` : ""}
+                            </SelectItem>
+                          ))}
+                        </>
+                      ) : (
+                        <>
+                          {PROFESSIONAL_VOICES.map((voice) => (
+                            <SelectItem key={voice.id} value={voice.id}>
+                              {voice.name}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
                       {customVoices?.map((voice: CustomVoice) => (
                         <SelectItem key={voice.id} value={voice.heygenAudioAssetId || voice.id}>
                           {voice.name} (Custom)
@@ -2085,9 +2154,39 @@ export function AvatarStudio() {
                         videoUrl: typeof motionVideoUrl === 'string' ? motionVideoUrl.substring(0, 50) : motionVideoUrl,
                         text: motionVoiceScript?.substring(0, 50),
                         voiceId: selectedMotionVoice,
+                        voiceProvider,
                       });
                       
                       try {
+                        let audioUrl: string | undefined;
+                        
+                        // If using ElevenLabs, generate audio first
+                        if (voiceProvider === "elevenlabs") {
+                          console.log("🎙️ Generating ElevenLabs audio first...");
+                          setLipSyncProgress(15);
+                          
+                          const ttsResponse = await fetch("/api/elevenlabs/tts", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({
+                              text: motionVoiceScript,
+                              voiceId: selectedMotionVoice,
+                            }),
+                          });
+                          
+                          const ttsResult = await ttsResponse.json();
+                          console.log("🎙️ ElevenLabs TTS result:", ttsResult);
+                          
+                          if (!ttsResponse.ok || !ttsResult.audioUrl) {
+                            throw new Error(ttsResult.error || "Failed to generate audio with ElevenLabs");
+                          }
+                          
+                          audioUrl = ttsResult.audioUrl;
+                          setLipSyncProgress(30);
+                          console.log("✅ ElevenLabs audio generated:", audioUrl);
+                        }
+                        
                         console.log("🎤 Sending fetch request to /api/kling/lip-sync");
                         const response = await fetch("/api/kling/lip-sync", {
                           method: "POST",
@@ -2095,8 +2194,10 @@ export function AvatarStudio() {
                           credentials: "include",
                           body: JSON.stringify({
                             videoUrl: motionVideoUrl,
-                            text: motionVoiceScript,
-                            voiceId: selectedMotionVoice,
+                            text: voiceProvider === "kling" ? motionVoiceScript : undefined,
+                            voiceId: voiceProvider === "kling" ? selectedMotionVoice : undefined,
+                            mode: voiceProvider === "elevenlabs" ? "audio2video" : "text2video",
+                            audioUrl: audioUrl,
                           }),
                         });
                         

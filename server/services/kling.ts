@@ -248,34 +248,50 @@ export class KlingService {
       console.log("📝 Text:", request.text.substring(0, 50) + (request.text.length > 50 ? "..." : ""));
       console.log("📝 Text length:", request.text.length, "chars");
       console.log("🔊 Voice timbre:", request.voiceId || "female_calm");
+      console.log("🎤 Mode:", request.mode || "text2video");
+      console.log("🔗 Audio URL:", request.audioUrl ? request.audioUrl.substring(0, 50) + "..." : "N/A");
 
       const token = this.getAuthToken();
 
-      const voiceTimbreMap: Record<string, string> = {
-        "female_calm": "The Reader",
-        "male_calm": "Businessman",
-        "female_professional": "Commercial Lady",
-        "male_professional": "Businessman",
-        "female_warm": "Sweet Girl",
-        "male_warm": "Rock",
-        "neutral": "The Reader",
-      };
-      const ttsTimbre = voiceTimbreMap[request.voiceId || "female_calm"] || "The Reader";
+      let requestBody: { input: Record<string, unknown> };
 
-      const truncatedText = request.text.length > 120 ? request.text.substring(0, 117) + "..." : request.text;
+      if (request.mode === "audio2video" && request.audioUrl) {
+        console.log("🎵 Using audio2video mode with provided audio");
+        requestBody = {
+          input: {
+            mode: "audio2video",
+            video_url: request.videoUrl,
+            audio_type: "url",
+            audio_url: request.audioUrl,
+          },
+        };
+      } else {
+        const voiceTimbreMap: Record<string, string> = {
+          "female_calm": "The Reader",
+          "male_calm": "Businessman",
+          "female_professional": "Commercial Lady",
+          "male_professional": "Businessman",
+          "female_warm": "Sweet Girl",
+          "male_warm": "Rock",
+          "neutral": "The Reader",
+        };
+        const ttsTimbre = voiceTimbreMap[request.voiceId || "female_calm"] || "The Reader";
 
-      console.log("🎙️ Using TTS timbre:", ttsTimbre);
-      console.log("📝 Truncated text for TTS:", truncatedText);
+        const truncatedText = request.text.length > 120 ? request.text.substring(0, 117) + "..." : request.text;
 
-      const requestBody = {
-        input: {
-          mode: "text2video",
-          video_url: request.videoUrl,
-          tts_text: truncatedText,
-          tts_timbre: ttsTimbre,
-          tts_speed: 1.0,
-        },
-      };
+        console.log("🎙️ Using TTS timbre:", ttsTimbre);
+        console.log("📝 Truncated text for TTS:", truncatedText);
+
+        requestBody = {
+          input: {
+            mode: "text2video",
+            video_url: request.videoUrl,
+            tts_text: truncatedText,
+            tts_timbre: ttsTimbre,
+            tts_speed: 1.0,
+          },
+        };
+      }
 
       console.log("📤 Kling Lip-Sync request body:", JSON.stringify(requestBody, null, 2));
 
@@ -454,6 +470,8 @@ interface KlingLipSyncRequest {
   videoUrl: string;
   text: string;
   voiceId?: string;
+  mode?: "text2video" | "audio2video";
+  audioUrl?: string;
 }
 
 interface KlingLipSyncResult {
