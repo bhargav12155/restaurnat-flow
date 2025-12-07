@@ -138,6 +138,16 @@ export function AvatarStudio() {
   const [selectedMotionTemplate, setSelectedMotionTemplate] = useState<string>("talking_naturally");
   const [uploadName, setUploadName] = useState("");
   
+  // Motion dialog step: "motion" -> "voice" -> "final"
+  const [motionDialogStep, setMotionDialogStep] = useState<"motion" | "voice" | "final">("motion");
+  const [motionVoiceScript, setMotionVoiceScript] = useState("");
+  const [selectedMotionVoice, setSelectedMotionVoice] = useState<string>("119caed25533477ba63822d5d1552d25");
+  const [isGeneratingLipSync, setIsGeneratingLipSync] = useState(false);
+  const [lipSyncTaskId, setLipSyncTaskId] = useState<string | null>(null);
+  const [lipSyncStatus, setLipSyncStatus] = useState<string>("");
+  const [lipSyncProgress, setLipSyncProgress] = useState(0);
+  const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
+  
   // Motion templates based on HeyGen's offerings
   const MOTION_TEMPLATES = [
     { 
@@ -517,9 +527,10 @@ export function AvatarStudio() {
         setMotionVideoUrl(result.videoUrl);
         setMotionStatus("completed");
         setMotionProgress(100);
+        setMotionDialogStep("voice");
         toast({
           title: "Motion Video Ready!",
-          description: "Your animated avatar video is ready to view.",
+          description: "Now add your voice to make your avatar speak.",
         });
       } else if (result.taskId) {
         setMotionTaskId(result.taskId);
@@ -558,9 +569,10 @@ export function AvatarStudio() {
           setMotionVideoUrl(result.videoUrl);
           setMotionStatus("completed");
           setMotionProgress(100);
+          setMotionDialogStep("voice");
           toast({
             title: "Motion Video Ready!",
-            description: "Your animated avatar video is ready to view.",
+            description: "Now add your voice to make your avatar speak.",
           });
           return;
         }
@@ -1682,6 +1694,12 @@ export function AvatarStudio() {
                     setMotionStatus("");
                     setMotionVideoUrl(null);
                     setMotionProgress(0);
+                    setMotionDialogStep("motion");
+                    setMotionVoiceScript("");
+                    setSelectedMotionVoice("119caed25533477ba63822d5d1552d25");
+                    setLipSyncStatus("");
+                    setLipSyncProgress(0);
+                    setFinalVideoUrl(null);
                   }}
                   data-testid="button-add-motion"
                 >
@@ -1722,230 +1740,471 @@ export function AvatarStudio() {
         </DialogContent>
       </Dialog>
 
-      {/* Motion Generation Dialog */}
+      {/* Motion Generation Dialog - Multi-step: Motion → Voice → Final */}
       <Dialog open={showMotionDialog} onOpenChange={setShowMotionDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
-              Add Motion
+              {motionDialogStep === "motion" && "Step 1: Add Motion"}
+              {motionDialogStep === "voice" && "Step 2: Add Voice"}
+              {motionDialogStep === "final" && "Step 3: Preview Video"}
             </DialogTitle>
             <DialogDescription>
-              Transform your image into a 10-second video with full body and background motion.
+              {motionDialogStep === "motion" && "Transform your image into a video with natural motion."}
+              {motionDialogStep === "voice" && "Add your voice and script to bring your avatar to life."}
+              {motionDialogStep === "final" && "Your talking avatar video is ready!"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex gap-6 py-4">
-            {/* Left side: Avatar Preview */}
-            <div className="flex-shrink-0">
-              <div className="w-48 h-64 rounded-lg overflow-hidden border-2 border-cyan-400 shadow-lg bg-gradient-to-b from-cyan-50 to-white dark:from-cyan-950/30 dark:to-gray-900">
-                <img
-                  src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
-                  alt="Selected Avatar"
-                  className="w-full h-full object-cover"
-                  data-testid="img-motion-preview"
-                />
-              </div>
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-2 py-2">
+            <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${
+              motionDialogStep === "motion" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"
+            }`}>
+              {motionDialogStep !== "motion" ? <CheckCircle className="h-3 w-3" /> : <span className="w-4 h-4 rounded-full bg-purple-500 text-white flex items-center justify-center text-[10px]">1</span>}
+              Motion
             </div>
+            <ChevronRight className="h-4 w-4 text-gray-400" />
+            <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${
+              motionDialogStep === "voice" ? "bg-purple-100 text-purple-700" : 
+              motionDialogStep === "final" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+            }`}>
+              {motionDialogStep === "final" ? <CheckCircle className="h-3 w-3" /> : <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
+                motionDialogStep === "voice" ? "bg-purple-500 text-white" : "bg-gray-300 text-gray-600"
+              }`}>2</span>}
+              Voice
+            </div>
+            <ChevronRight className="h-4 w-4 text-gray-400" />
+            <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${
+              motionDialogStep === "final" ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-500"
+            }`}>
+              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
+                motionDialogStep === "final" ? "bg-purple-500 text-white" : "bg-gray-300 text-gray-600"
+              }`}>3</span>
+              Preview
+            </div>
+          </div>
 
-            {/* Right side: Options */}
-            <div className="flex-1 space-y-4">
-              {/* Motion Templates / Custom prompt tabs */}
-              <Tabs value={motionTab} onValueChange={(v) => setMotionTab(v as "templates" | "custom")} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger 
-                    value="templates" 
-                    className="data-[state=active]:text-cyan-600 data-[state=active]:border-b-2 data-[state=active]:border-cyan-500"
-                    data-testid="tab-motion-templates"
-                  >
-                    Motion Templates
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="custom"
-                    data-testid="tab-custom-prompt"
-                  >
-                    Custom prompt
-                  </TabsTrigger>
-                </TabsList>
+          {/* STEP 1: Motion Selection */}
+          {motionDialogStep === "motion" && (
+            <>
+              <div className="flex gap-6 py-4">
+                {/* Left side: Avatar Preview */}
+                <div className="flex-shrink-0">
+                  <div className="w-48 h-64 rounded-lg overflow-hidden border-2 border-cyan-400 shadow-lg bg-gradient-to-b from-cyan-50 to-white dark:from-cyan-950/30 dark:to-gray-900">
+                    <img
+                      src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
+                      alt="Selected Avatar"
+                      className="w-full h-full object-cover"
+                      data-testid="img-motion-preview"
+                    />
+                  </div>
+                </div>
 
-                <TabsContent value="templates" className="mt-0">
-                  <ScrollArea className="h-[200px] pr-4">
-                    <div className="space-y-2">
-                      {MOTION_TEMPLATES.map((template) => (
-                        <div
-                          key={template.id}
-                          className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${
-                            selectedMotionTemplate === template.id
-                              ? "bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800"
-                              : "hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent"
-                          }`}
-                          onClick={() => {
-                            setSelectedMotionTemplate(template.id);
-                            setMotionPrompt(template.prompt);
-                          }}
-                          data-testid={`template-${template.id}`}
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-sm">{template.name}</span>
-                              {template.id === "talking_naturally" && (
-                                <span className="text-xs text-gray-500">(Default)</span>
+                {/* Right side: Options */}
+                <div className="flex-1 space-y-4">
+                  <Tabs value={motionTab} onValueChange={(v) => setMotionTab(v as "templates" | "custom")} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                      <TabsTrigger 
+                        value="templates" 
+                        className="data-[state=active]:text-cyan-600 data-[state=active]:border-b-2 data-[state=active]:border-cyan-500"
+                        data-testid="tab-motion-templates"
+                      >
+                        Motion Templates
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="custom"
+                        data-testid="tab-custom-prompt"
+                      >
+                        Custom prompt
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="templates" className="mt-0">
+                      <ScrollArea className="h-[200px] pr-4">
+                        <div className="space-y-2">
+                          {MOTION_TEMPLATES.map((template) => (
+                            <div
+                              key={template.id}
+                              className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${
+                                selectedMotionTemplate === template.id
+                                  ? "bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800"
+                                  : "hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent"
+                              }`}
+                              onClick={() => {
+                                setSelectedMotionTemplate(template.id);
+                                setMotionPrompt(template.prompt);
+                              }}
+                              data-testid={`template-${template.id}`}
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-sm">{template.name}</span>
+                                  {template.id === "talking_naturally" && (
+                                    <span className="text-xs text-gray-500">(Default)</span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5">{template.description}</p>
+                              </div>
+                              {selectedMotionTemplate === template.id && (
+                                <CheckCircle className="h-5 w-5 text-cyan-500 flex-shrink-0" />
                               )}
                             </div>
-                            <p className="text-xs text-gray-500 mt-0.5">{template.description}</p>
-                          </div>
-                          {selectedMotionTemplate === template.id && (
-                            <CheckCircle className="h-5 w-5 text-cyan-500 flex-shrink-0" />
-                          )}
+                          ))}
                         </div>
-                      ))}
+                      </ScrollArea>
+                    </TabsContent>
+
+                    <TabsContent value="custom" className="mt-0">
+                      <Textarea
+                        id="motion-prompt"
+                        placeholder="Describe how you want your avatar to move..."
+                        value={motionPrompt}
+                        onChange={(e) => {
+                          setMotionPrompt(e.target.value);
+                          setSelectedMotionTemplate("");
+                        }}
+                        className="min-h-[180px]"
+                        disabled={isGeneratingMotion || motionStatus === "processing"}
+                        data-testid="input-motion-prompt"
+                      />
+                    </TabsContent>
+                  </Tabs>
+
+                  <div className="flex items-center gap-4 pt-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm text-gray-600">Duration</Label>
+                      <Select
+                        value={motionDuration}
+                        onValueChange={(value) => setMotionDuration(value as "5" | "10")}
+                        disabled={isGeneratingMotion || motionStatus === "processing"}
+                      >
+                        <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-motion-duration">
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5 sec</SelectItem>
+                          <SelectItem value="10">10 sec</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </ScrollArea>
-                </TabsContent>
-
-                <TabsContent value="custom" className="mt-0">
-                  <Textarea
-                    id="motion-prompt"
-                    placeholder="Describe how you want your avatar to move... 
-
-Examples:
-• Nodding head gently while smiling
-• Looking around the room curiously
-• Waving hello with a friendly expression
-• Slight breathing motion with subtle head movement"
-                    value={motionPrompt}
-                    onChange={(e) => {
-                      setMotionPrompt(e.target.value);
-                      setSelectedMotionTemplate("");
-                    }}
-                    className="min-h-[180px]"
-                    disabled={isGeneratingMotion || motionStatus === "processing"}
-                    data-testid="input-motion-prompt"
-                  />
-                </TabsContent>
-              </Tabs>
-
-              {/* Motion Engine and Duration */}
-              <div className="flex items-center gap-4 pt-2">
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm text-gray-600">Motion Engine</Label>
-                  <Select value="kling" disabled>
-                    <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-motion-engine">
-                      <SelectValue placeholder="Kling" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="kling">Kling</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm text-gray-600">Duration</Label>
-                  <Select
-                    value={motionDuration}
-                    onValueChange={(value) => setMotionDuration(value as "5" | "10")}
-                    disabled={isGeneratingMotion || motionStatus === "processing"}
-                  >
-                    <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-motion-duration">
-                      <SelectValue placeholder="Select" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5 sec</SelectItem>
-                      <SelectItem value="10">10 sec</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* Progress indicator */}
-          {(isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending") && (
-            <div className="space-y-2 px-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600 dark:text-gray-400">
-                  {motionStatus === "starting" && "Starting generation..."}
-                  {motionStatus === "pending" && "Queued for processing..."}
-                  {motionStatus === "processing" && "Creating motion video..."}
-                </span>
-                <span className="text-purple-600 font-medium">{motionProgress}%</span>
-              </div>
-              <Progress value={motionProgress} className="h-2" />
-              <p className="text-xs text-gray-500 text-center">
-                This may take 1-3 minutes. Please wait...
-              </p>
-            </div>
-          )}
+              {/* Progress indicator */}
+              {(isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending") && (
+                <div className="space-y-2 px-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">
+                      {motionStatus === "starting" && "Starting generation..."}
+                      {motionStatus === "pending" && "Queued for processing..."}
+                      {motionStatus === "processing" && "Creating motion video..."}
+                    </span>
+                    <span className="text-purple-600 font-medium">{motionProgress}%</span>
+                  </div>
+                  <Progress value={motionProgress} className="h-2" />
+                  <p className="text-xs text-gray-500 text-center">
+                    This may take 1-3 minutes. Please wait...
+                  </p>
+                </div>
+              )}
 
-          {/* Video result */}
-          {motionVideoUrl && motionStatus === "completed" && (
-            <div className="space-y-3 px-2">
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle className="h-4 w-4" />
-                <span className="text-sm font-medium">Motion video generated!</span>
-              </div>
-              <div className="rounded-lg overflow-hidden border shadow-md bg-black">
-                <video
-                  src={motionVideoUrl}
-                  controls
-                  autoPlay
-                  loop
-                  className="w-full max-h-64 object-contain"
-                  data-testid="video-motion-result"
-                />
-              </div>
-              <div className="flex justify-center">
+              {/* Error state */}
+              {motionStatus === "failed" && (
+                <div className="flex items-center gap-2 p-3 mx-2 bg-red-50 dark:bg-red-950/30 rounded-lg">
+                  <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                  <span className="text-sm text-red-700 dark:text-red-400">
+                    Video generation failed. Please try again with a different prompt.
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2 border-t">
                 <Button
                   variant="outline"
-                  size="sm"
-                  onClick={() => window.open(motionVideoUrl, "_blank")}
-                  data-testid="button-download-motion"
+                  onClick={() => setShowMotionDialog(false)}
+                  data-testid="button-cancel-motion"
                 >
-                  <Video className="h-4 w-4 mr-2" />
-                  Open in New Tab
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-purple-500 hover:bg-purple-600 text-white"
+                  onClick={handleGenerateMotion}
+                  disabled={isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending" || !motionPrompt.trim()}
+                  data-testid="button-generate-motion"
+                >
+                  {isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate Motion
+                    </>
+                  )}
                 </Button>
               </div>
-            </div>
+            </>
           )}
 
-          {/* Error state */}
-          {motionStatus === "failed" && (
-            <div className="flex items-center gap-2 p-3 mx-2 bg-red-50 dark:bg-red-950/30 rounded-lg">
-              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
-              <span className="text-sm text-red-700 dark:text-red-400">
-                Video generation failed. Please try again with a different prompt.
-              </span>
-            </div>
-          )}
+          {/* STEP 2: Voice Selection */}
+          {motionDialogStep === "voice" && (
+            <>
+              <div className="space-y-4 py-4">
+                {/* Motion video preview (small) */}
+                <div className="flex gap-4 items-start">
+                  <div className="w-32 h-20 rounded-lg overflow-hidden border bg-black flex-shrink-0">
+                    <video
+                      src={motionVideoUrl || ""}
+                      className="w-full h-full object-cover"
+                      muted
+                      loop
+                      autoPlay
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 text-green-600 text-sm">
+                      <CheckCircle className="h-4 w-4" />
+                      Motion video ready
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">Now add your voice to make your avatar speak.</p>
+                  </div>
+                </div>
 
-          <div className="flex justify-end gap-3 pt-2 border-t">
-            <Button
-              variant="outline"
-              onClick={() => setShowMotionDialog(false)}
-              data-testid="button-cancel-motion"
-            >
-              {motionVideoUrl ? "Close" : "Cancel"}
-            </Button>
-            {!motionVideoUrl && (
-              <Button
-                className="bg-purple-500 hover:bg-purple-600 text-white"
-                onClick={handleGenerateMotion}
-                disabled={isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending" || !motionPrompt.trim()}
-                data-testid="button-generate-motion"
-              >
-                {isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending" ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Generate Motion
-                  </>
+                {/* Voice Selection */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Select Voice</Label>
+                  <Select value={selectedMotionVoice} onValueChange={setSelectedMotionVoice}>
+                    <SelectTrigger data-testid="select-motion-voice">
+                      <SelectValue placeholder="Choose a voice" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROFESSIONAL_VOICES.map((voice) => (
+                        <SelectItem key={voice.id} value={voice.id}>
+                          {voice.name}
+                        </SelectItem>
+                      ))}
+                      {customVoices?.map((voice: CustomVoice) => (
+                        <SelectItem key={voice.id} value={voice.heygenAudioAssetId || voice.id}>
+                          {voice.name} (Custom)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Script Input */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">What should your avatar say?</Label>
+                  <Textarea
+                    placeholder="Enter the script for your avatar to speak... For best results, keep it under 100 words for a 5-10 second video."
+                    value={motionVoiceScript}
+                    onChange={(e) => setMotionVoiceScript(e.target.value)}
+                    className="min-h-[120px]"
+                    disabled={isGeneratingLipSync}
+                    data-testid="input-motion-script"
+                  />
+                  <p className="text-xs text-gray-500">
+                    {motionVoiceScript.split(/\s+/).filter(Boolean).length} words
+                  </p>
+                </div>
+
+                {/* Lip-sync progress */}
+                {(isGeneratingLipSync || lipSyncStatus === "processing" || lipSyncStatus === "pending") && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">
+                        Adding voice to video...
+                      </span>
+                      <span className="text-purple-600 font-medium">{lipSyncProgress}%</span>
+                    </div>
+                    <Progress value={lipSyncProgress} className="h-2" />
+                  </div>
                 )}
-              </Button>
-            )}
-          </div>
+
+                {lipSyncStatus === "failed" && (
+                  <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg">
+                    <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                    <span className="text-sm text-red-700 dark:text-red-400">
+                      Failed to add voice. Please try again.
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between gap-3 pt-2 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setMotionDialogStep("motion")}
+                  data-testid="button-back-to-motion"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Back
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setMotionDialogStep("final");
+                      setFinalVideoUrl(motionVideoUrl);
+                    }}
+                    data-testid="button-skip-voice"
+                  >
+                    Skip Voice
+                  </Button>
+                  <Button
+                    className="bg-purple-500 hover:bg-purple-600 text-white"
+                    onClick={async () => {
+                      if (!motionVoiceScript.trim()) {
+                        toast({
+                          title: "Enter a script",
+                          description: "Please write what you want your avatar to say.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      setIsGeneratingLipSync(true);
+                      setLipSyncStatus("processing");
+                      setLipSyncProgress(10);
+                      
+                      try {
+                        const response = await fetch("/api/kling/lip-sync", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          credentials: "include",
+                          body: JSON.stringify({
+                            videoUrl: motionVideoUrl,
+                            text: motionVoiceScript,
+                            voiceId: selectedMotionVoice,
+                          }),
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (!response.ok) {
+                          throw new Error(result.error || "Failed to add voice");
+                        }
+                        
+                        if (result.videoUrl) {
+                          setFinalVideoUrl(result.videoUrl);
+                          setLipSyncStatus("completed");
+                          setMotionDialogStep("final");
+                        } else if (result.taskId) {
+                          setLipSyncTaskId(result.taskId);
+                          // Poll for completion
+                          const pollInterval = setInterval(async () => {
+                            try {
+                              const statusRes = await fetch(`/api/kling/lip-sync/${result.taskId}`, {
+                                credentials: "include",
+                              });
+                              const statusData = await statusRes.json();
+                              
+                              if (statusData.status === "completed" && statusData.videoUrl) {
+                                clearInterval(pollInterval);
+                                setFinalVideoUrl(statusData.videoUrl);
+                                setLipSyncStatus("completed");
+                                setLipSyncProgress(100);
+                                setMotionDialogStep("final");
+                              } else if (statusData.status === "failed") {
+                                clearInterval(pollInterval);
+                                setLipSyncStatus("failed");
+                                setIsGeneratingLipSync(false);
+                              } else {
+                                setLipSyncProgress((prev) => Math.min(prev + 10, 90));
+                              }
+                            } catch (e) {
+                              console.error("Polling error:", e);
+                            }
+                          }, 3000);
+                        }
+                      } catch (error) {
+                        console.error("Lip sync error:", error);
+                        setLipSyncStatus("failed");
+                        toast({
+                          title: "Voice Generation Failed",
+                          description: error instanceof Error ? error.message : "Failed to add voice",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setIsGeneratingLipSync(false);
+                      }
+                    }}
+                    disabled={isGeneratingLipSync || !motionVoiceScript.trim()}
+                    data-testid="button-add-voice"
+                  >
+                    {isGeneratingLipSync ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Adding Voice...
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="h-4 w-4 mr-2" />
+                        Add Voice & Continue
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* STEP 3: Final Preview */}
+          {motionDialogStep === "final" && (
+            <>
+              <div className="space-y-4 py-4">
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle className="h-5 w-5" />
+                  <span className="font-medium">Your video is ready!</span>
+                </div>
+                
+                <div className="rounded-lg overflow-hidden border shadow-md bg-black">
+                  <video
+                    src={finalVideoUrl || motionVideoUrl || ""}
+                    controls
+                    autoPlay
+                    className="w-full max-h-80 object-contain"
+                    data-testid="video-final-result"
+                  />
+                </div>
+
+                <div className="flex justify-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(finalVideoUrl || motionVideoUrl || "", "_blank")}
+                    data-testid="button-download-final"
+                  >
+                    <Video className="h-4 w-4 mr-2" />
+                    Open in New Tab
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex justify-between gap-3 pt-2 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setMotionDialogStep("voice")}
+                  data-testid="button-back-to-voice"
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Back
+                </Button>
+                <Button
+                  onClick={() => setShowMotionDialog(false)}
+                  className="bg-green-500 hover:bg-green-600 text-white"
+                  data-testid="button-done"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Done
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
