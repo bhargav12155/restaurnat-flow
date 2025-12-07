@@ -10449,6 +10449,82 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // Kling Lip-Sync - Generate lip-synced video from motion video + text
+  app.post("/api/kling/lip-sync", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { videoUrl, text, voiceId } = req.body;
+
+      if (!videoUrl) {
+        return res.status(400).json({ error: "Video URL is required" });
+      }
+
+      if (!text || typeof text !== "string" || text.trim().length === 0) {
+        return res.status(400).json({ error: "Text script is required" });
+      }
+
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        return res.status(400).json({ error: "Kling API credentials not configured" });
+      }
+
+      console.log(`Starting Kling lip-sync for user ${user.id}`);
+
+      const { generateLipSyncVideo } = await import("./services/kling");
+      const result = await generateLipSyncVideo({
+        videoUrl,
+        text: text.trim(),
+        voiceId: voiceId || "female_calm",
+      });
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Failed to start lip-sync generation" });
+      }
+
+      res.json({
+        taskId: result.taskId,
+        status: result.status,
+        videoUrl: result.videoUrl,
+      });
+    } catch (error) {
+      console.error("Error starting Kling lip-sync:", error);
+      res.status(500).json({ error: "Failed to start lip-sync generation" });
+    }
+  });
+
+  // Kling Lip-Sync - Check status
+  app.get("/api/kling/lip-sync/:taskId", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { taskId } = req.params;
+
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        return res.status(400).json({ error: "Kling API credentials not configured" });
+      }
+
+      const { checkLipSyncStatus } = await import("./services/kling");
+      const status = await checkLipSyncStatus(taskId);
+
+      res.json({
+        taskId,
+        status: status.status,
+        progress: status.progress,
+        videoUrl: status.videoUrl,
+        error: status.error,
+      });
+    } catch (error) {
+      console.error("Error checking lip-sync status:", error);
+      res.status(500).json({ error: "Failed to check lip-sync status" });
+    }
+  });
+
   // ==================== TUTORIAL VIDEOS ENDPOINTS ====================
 
   // Get all tutorial videos or filter by category/subcategory

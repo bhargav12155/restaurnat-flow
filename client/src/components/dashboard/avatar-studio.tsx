@@ -2092,12 +2092,20 @@ export function AvatarStudio() {
                         if (result.videoUrl) {
                           setFinalVideoUrl(result.videoUrl);
                           setLipSyncStatus("completed");
+                          setIsGeneratingLipSync(false);
                           setMotionDialogStep("final");
+                          toast({
+                            title: "Video Ready!",
+                            description: "Your avatar is now speaking with your voice.",
+                          });
                         } else if (result.taskId) {
                           setLipSyncTaskId(result.taskId);
-                          // Poll for completion
+                          let pollCount = 0;
+                          const maxPolls = 60;
+                          
                           const pollInterval = setInterval(async () => {
                             try {
+                              pollCount++;
                               const statusRes = await fetch(`/api/kling/lip-sync/${result.taskId}`, {
                                 credentials: "include",
                               });
@@ -2108,29 +2116,57 @@ export function AvatarStudio() {
                                 setFinalVideoUrl(statusData.videoUrl);
                                 setLipSyncStatus("completed");
                                 setLipSyncProgress(100);
+                                setIsGeneratingLipSync(false);
                                 setMotionDialogStep("final");
+                                toast({
+                                  title: "Video Ready!",
+                                  description: "Your avatar is now speaking with your voice.",
+                                });
                               } else if (statusData.status === "failed") {
                                 clearInterval(pollInterval);
                                 setLipSyncStatus("failed");
                                 setIsGeneratingLipSync(false);
+                                toast({
+                                  title: "Voice Generation Failed",
+                                  description: statusData.error || "Failed to add voice to video.",
+                                  variant: "destructive",
+                                });
+                              } else if (pollCount >= maxPolls) {
+                                clearInterval(pollInterval);
+                                setLipSyncStatus("failed");
+                                setIsGeneratingLipSync(false);
+                                toast({
+                                  title: "Generation Timeout",
+                                  description: "Voice generation is taking too long. Please try again.",
+                                  variant: "destructive",
+                                });
                               } else {
-                                setLipSyncProgress((prev) => Math.min(prev + 10, 90));
+                                setLipSyncProgress((prev) => Math.min(prev + 5, 90));
                               }
                             } catch (e) {
                               console.error("Polling error:", e);
+                              clearInterval(pollInterval);
+                              setLipSyncStatus("failed");
+                              setIsGeneratingLipSync(false);
+                              toast({
+                                title: "Connection Error",
+                                description: "Lost connection while generating voice.",
+                                variant: "destructive",
+                              });
                             }
                           }, 3000);
+                        } else {
+                          setIsGeneratingLipSync(false);
                         }
                       } catch (error) {
                         console.error("Lip sync error:", error);
                         setLipSyncStatus("failed");
+                        setIsGeneratingLipSync(false);
                         toast({
                           title: "Voice Generation Failed",
                           description: error instanceof Error ? error.message : "Failed to add voice",
                           variant: "destructive",
                         });
-                      } finally {
-                        setIsGeneratingLipSync(false);
                       }
                     }}
                     disabled={isGeneratingLipSync || !motionVoiceScript.trim()}

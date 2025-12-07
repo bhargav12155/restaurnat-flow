@@ -234,6 +234,142 @@ export class KlingService {
       error: "Timeout waiting for video generation",
     };
   }
+
+  async generateLipSync(request: { videoUrl: string; text: string; voiceId?: string }): Promise<{
+    success: boolean;
+    videoUrl?: string;
+    taskId?: string;
+    status?: "pending" | "processing" | "completed" | "failed";
+    error?: string;
+  }> {
+    try {
+      console.log("🎤 Kling: Starting lip-sync generation...");
+      console.log("🎬 Video URL:", request.videoUrl);
+      console.log("📝 Text length:", request.text.length, "chars");
+      console.log("🔊 Voice ID:", request.voiceId || "default");
+
+      const token = this.getAuthToken();
+
+      const response = await fetch(`${this.baseUrl}/v1/videos/lip-sync`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          video_url: request.videoUrl,
+          text: request.text,
+          voice_id: request.voiceId || "female_calm",
+          voice_speed: 1.0,
+          voice_language: "en",
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Kling Lip-Sync API error:", response.status, errorText);
+        return {
+          success: false,
+          error: `Kling Lip-Sync API error: ${response.status} - ${errorText}`,
+        };
+      }
+
+      const result: KlingApiResponse = await response.json();
+      console.log("✅ Kling Lip-Sync API response:", JSON.stringify(result, null, 2));
+
+      if (result.code !== 0) {
+        return {
+          success: false,
+          error: result.message || "Unknown Kling API error",
+        };
+      }
+
+      const taskId = result.data?.task_id;
+      if (!taskId) {
+        return {
+          success: false,
+          error: "No task ID returned from Kling Lip-Sync API",
+        };
+      }
+
+      return {
+        success: true,
+        taskId: taskId,
+        status: "pending",
+      };
+    } catch (error) {
+      console.error("❌ Kling lip-sync generation error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  async checkLipSyncTaskStatus(taskId: string): Promise<KlingTaskStatus> {
+    try {
+      const token = this.getAuthToken();
+
+      const response = await fetch(`${this.baseUrl}/v1/videos/lip-sync/${taskId}`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Kling lip-sync status check error:", response.status, errorText);
+        return {
+          status: "failed",
+          error: `Failed to check lip-sync status: ${response.status} - ${errorText}`,
+        };
+      }
+
+      const result: KlingApiResponse = await response.json();
+      console.log("📊 Kling lip-sync task status:", taskId, result.data?.task_status);
+
+      if (result.code !== 0) {
+        return {
+          status: "failed",
+          error: result.message || "Lip-sync status check failed",
+        };
+      }
+
+      const taskStatus = result.data?.task_status;
+      const videos = result.data?.task_result?.videos;
+
+      if (taskStatus === "succeed" && videos && videos.length > 0) {
+        return {
+          status: "completed",
+          videoUrl: videos[0].url,
+        };
+      }
+
+      if (taskStatus === "failed") {
+        return {
+          status: "failed",
+          error: result.data?.task_status_msg || "Lip-sync generation failed",
+        };
+      }
+
+      const statusMap: Record<string, KlingTaskStatus["status"]> = {
+        "submitted": "pending",
+        "processing": "processing",
+      };
+
+      return {
+        status: statusMap[taskStatus || ""] || "processing",
+      };
+    } catch (error) {
+      console.error("❌ Error checking Kling lip-sync task status:", error);
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
 }
 
 export async function generateMotionVideo(
@@ -277,4 +413,28 @@ export async function generateMotionVideo(
 export async function checkMotionVideoStatus(taskId: string): Promise<KlingTaskStatus> {
   const service = new KlingService();
   return service.checkTaskStatus(taskId);
+}
+
+interface KlingLipSyncRequest {
+  videoUrl: string;
+  text: string;
+  voiceId?: string;
+}
+
+interface KlingLipSyncResult {
+  success: boolean;
+  videoUrl?: string;
+  taskId?: string;
+  status?: "pending" | "processing" | "completed" | "failed";
+  error?: string;
+}
+
+export async function generateLipSyncVideo(request: KlingLipSyncRequest): Promise<KlingLipSyncResult> {
+  const service = new KlingService();
+  return service.generateLipSync(request);
+}
+
+export async function checkLipSyncStatus(taskId: string): Promise<KlingTaskStatus> {
+  const service = new KlingService();
+  return service.checkLipSyncTaskStatus(taskId);
 }
