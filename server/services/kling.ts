@@ -4,7 +4,8 @@ interface KlingImageToVideoRequest {
   imageUrl: string;
   prompt: string;
   duration?: "5" | "10";
-  aspectRatio?: "16:9" | "9:16" | "1:1";
+  modelName?: string;
+  mode?: "std" | "pro";
   negativePrompt?: string;
   cfgScale?: number;
 }
@@ -24,9 +25,27 @@ interface KlingTaskStatus {
   error?: string;
 }
 
+interface KlingApiResponse {
+  code: number;
+  message: string;
+  request_id: string;
+  data?: {
+    task_id?: string;
+    task_status?: string;
+    task_status_msg?: string;
+    task_result?: {
+      videos?: Array<{
+        id: string;
+        url: string;
+        duration: string;
+      }>;
+    };
+  };
+}
+
 export class KlingService {
   private apiKey: string;
-  private baseUrl = "https://api.aimlapi.com/v2/generate/video/kling";
+  private baseUrl = "https://api-singapore.klingai.com";
 
   constructor(encryptedApiKey: string) {
     const decryptedKey = decryptApiKey(encryptedApiKey);
@@ -41,20 +60,23 @@ export class KlingService {
       console.log("🎬 Kling: Starting image-to-video generation...");
       console.log("📸 Image URL:", request.imageUrl);
       console.log("📝 Prompt:", request.prompt);
+      console.log("🎯 Model:", request.modelName || "kling-v1-6");
+      console.log("⚡ Mode:", request.mode || "pro");
 
-      const response = await fetch(`${this.baseUrl}/generation`, {
+      const response = await fetch(`${this.baseUrl}/v1/videos/image2video`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "kling-video/v1.6/pro/image-to-video",
-          image_url: request.imageUrl,
+          model_name: request.modelName || "kling-v1-6",
+          mode: request.mode || "pro",
+          duration: request.duration || "5",
+          image: request.imageUrl,
           prompt: request.prompt,
-          duration: parseInt(request.duration || "5"),
-          negative_prompt: request.negativePrompt || "blur, distort, low quality, pixelated",
-          cfg_scale: request.cfgScale || 0.5,
+          negative_prompt: request.negativePrompt || "blur, distort, low quality, pixelated, deformed",
+          cfg_scale: request.cfgScale ?? 0.5,
         }),
       });
 
@@ -67,22 +89,28 @@ export class KlingService {
         };
       }
 
-      const result = await response.json();
-      console.log("✅ Kling task submitted:", result);
+      const result: KlingApiResponse = await response.json();
+      console.log("✅ Kling API response:", JSON.stringify(result, null, 2));
 
-      if (result.status === "completed" && result.video?.url) {
+      if (result.code !== 0) {
         return {
-          success: true,
-          videoUrl: result.video.url,
-          taskId: result.id,
-          status: "completed",
+          success: false,
+          error: result.message || "Unknown Kling API error",
+        };
+      }
+
+      const taskId = result.data?.task_id;
+      if (!taskId) {
+        return {
+          success: false,
+          error: "No task ID returned from Kling API",
         };
       }
 
       return {
         success: true,
-        taskId: result.id,
-        status: result.status === "processing" ? "processing" : "pending",
+        taskId: taskId,
+        status: "pending",
       };
     } catch (error) {
       console.error("❌ Kling generation error:", error);
@@ -95,41 +123,57 @@ export class KlingService {
 
   async checkTaskStatus(taskId: string): Promise<KlingTaskStatus> {
     try {
-      const response = await fetch(`${this.baseUrl}/generation?generation_id=${taskId}`, {
+      const response = await fetch(`${this.baseUrl}/v1/videos/image2video/${taskId}`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error("❌ Kling status check error:", response.status, errorText);
         return {
           status: "failed",
           error: `Failed to check status: ${response.status} - ${errorText}`,
         };
       }
 
-      const result = await response.json();
-      console.log("📊 Kling task status:", result.id, result.status);
+      const result: KlingApiResponse = await response.json();
+      console.log("📊 Kling task status:", taskId, result.data?.task_status);
 
-      if (result.status === "completed" && result.video?.url) {
-        return {
-          status: "completed",
-          videoUrl: result.video.url,
-        };
-      }
-
-      if (result.status === "failed" || result.error) {
+      if (result.code !== 0) {
         return {
           status: "failed",
-          error: result.error || "Generation failed",
+          error: result.message || "Status check failed",
         };
       }
 
+      const taskStatus = result.data?.task_status;
+      const videos = result.data?.task_result?.videos;
+
+      if (taskStatus === "succeed" && videos && videos.length > 0) {
+        return {
+          status: "completed",
+          videoUrl: videos[0].url,
+        };
+      }
+
+      if (taskStatus === "failed") {
+        return {
+          status: "failed",
+          error: result.data?.task_status_msg || "Generation failed",
+        };
+      }
+
+      const statusMap: Record<string, KlingTaskStatus["status"]> = {
+        "submitted": "pending",
+        "processing": "processing",
+      };
+
       return {
-        status: result.status === "queued" ? "pending" : "processing",
-        progress: result.progress || undefined,
+        status: statusMap[taskStatus || ""] || "processing",
       };
     } catch (error) {
       console.error("❌ Error checking Kling task status:", error);
@@ -168,7 +212,8 @@ export async function generateMotionVideo(
   prompt: string,
   options?: {
     duration?: "5" | "10";
-    aspectRatio?: "16:9" | "9:16" | "1:1";
+    modelName?: string;
+    mode?: "std" | "pro";
     waitForCompletion?: boolean;
   }
 ): Promise<KlingGenerationResult> {
@@ -178,7 +223,8 @@ export async function generateMotionVideo(
     imageUrl,
     prompt,
     duration: options?.duration || "5",
-    aspectRatio: options?.aspectRatio,
+    modelName: options?.modelName || "kling-v1-6",
+    mode: options?.mode || "pro",
   });
 
   if (!result.success || !result.taskId) {
