@@ -10539,6 +10539,40 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // Kling Lip-Sync - Upload audio for lip-sync
+  app.post("/api/kling/upload-audio", requireAuth, upload.single("audio"), async (req, res) => {
+    console.log("🎤 Received audio upload for lip-sync");
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file provided" });
+      }
+
+      console.log(`🎤 Audio file received: ${req.file.originalname}, size: ${req.file.size} bytes`);
+
+      // Upload to S3 for persistent URL
+      const { S3Service } = await import("./services/s3");
+      const s3Service = new S3Service();
+      
+      const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${req.file.originalname}`;
+      const audioUrl = await s3Service.uploadFile(req.file.buffer, fileName, req.file.mimetype);
+      
+      console.log(`✅ Audio uploaded to S3: ${audioUrl}`);
+
+      res.json({
+        success: true,
+        audioUrl,
+      });
+    } catch (error) {
+      console.error("Error uploading audio for lip-sync:", error);
+      res.status(500).json({ error: "Failed to upload audio file" });
+    }
+  });
+
   // ==================== ELEVENLABS VOICE ENDPOINTS ====================
 
   // Check if ElevenLabs is configured

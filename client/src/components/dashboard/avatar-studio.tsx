@@ -139,7 +139,7 @@ export function AvatarStudio() {
   const [motionStatus, setMotionStatus] = useState<string>("");
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionProgress, setMotionProgress] = useState(0);
-  const [motionTab, setMotionTab] = useState<"templates" | "custom">("templates");
+  const [motionTab, setMotionTab] = useState<"templates" | "custom" | "upload">("templates");
   const [selectedMotionTemplate, setSelectedMotionTemplate] = useState<string>("talking_naturally");
   const [uploadName, setUploadName] = useState("");
   
@@ -153,6 +153,22 @@ export function AvatarStudio() {
   const [lipSyncStatus, setLipSyncStatus] = useState<string>("");
   const [lipSyncProgress, setLipSyncProgress] = useState(0);
   const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
+  
+  // Voice input mode for motion dialog: "tts" | "record" | "upload"
+  const [voiceInputMode, setVoiceInputMode] = useState<"tts" | "record" | "upload">("tts");
+  const [motionRecordedBlob, setMotionRecordedBlob] = useState<Blob | null>(null);
+  const [motionRecordedUrl, setMotionRecordedUrl] = useState<string>("");
+  const [motionRecordingTime, setMotionRecordingTime] = useState(0);
+  const [isMotionRecording, setIsMotionRecording] = useState(false);
+  const [uploadedAudioFile, setUploadedAudioFile] = useState<File | null>(null);
+  const [uploadedAudioUrl, setUploadedAudioUrl] = useState<string>("");
+  const motionMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const motionChunksRef = useRef<Blob[]>([]);
+  const motionRecordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Upload motion video state (skip to voice step)
+  const [uploadedMotionFile, setUploadedMotionFile] = useState<File | null>(null);
+  const [uploadedMotionUrl, setUploadedMotionUrl] = useState<string>("");
   
   // Motion templates based on HeyGen's offerings
   const MOTION_TEMPLATES = [
@@ -675,6 +691,104 @@ export function AvatarStudio() {
         clearInterval(recordingIntervalRef.current);
         recordingIntervalRef.current = null;
       }
+    }
+  };
+
+  const startMotionRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      motionMediaRecorderRef.current = mediaRecorder;
+      motionChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          motionChunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(motionChunksRef.current, { type: "audio/webm" });
+        setMotionRecordedBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setMotionRecordedUrl(url);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsMotionRecording(true);
+      setMotionRecordingTime(0);
+
+      motionRecordingIntervalRef.current = setInterval(() => {
+        setMotionRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch (error) {
+      toast({
+        title: "Microphone Access Denied",
+        description: "Please allow microphone access to record your voice.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopMotionRecording = () => {
+    if (motionMediaRecorderRef.current && isMotionRecording) {
+      motionMediaRecorderRef.current.stop();
+      setIsMotionRecording(false);
+      if (motionRecordingIntervalRef.current) {
+        clearInterval(motionRecordingIntervalRef.current);
+        motionRecordingIntervalRef.current = null;
+      }
+    }
+  };
+
+  const clearMotionRecording = () => {
+    setMotionRecordedBlob(null);
+    setMotionRecordedUrl("");
+    setMotionRecordingTime(0);
+  };
+
+  const handleUploadMotionVideo = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith("video/")) {
+        toast({
+          title: "Invalid File",
+          description: "Please upload a video file (MP4, WebM, etc.)",
+          variant: "destructive",
+        });
+        return;
+      }
+      setUploadedMotionFile(file);
+      const url = URL.createObjectURL(file);
+      setUploadedMotionUrl(url);
+      setMotionVideoUrl(url);
+      setMotionDialogStep("voice");
+      toast({
+        title: "Motion Video Uploaded",
+        description: "Now add your voice to make your avatar speak.",
+      });
+    }
+  };
+
+  const handleUploadAudio = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith("audio/")) {
+        toast({
+          title: "Invalid File",
+          description: "Please upload an audio file (MP3, WAV, etc.)",
+          variant: "destructive",
+        });
+        return;
+      }
+      setUploadedAudioFile(file);
+      const url = URL.createObjectURL(file);
+      setUploadedAudioUrl(url);
+      toast({
+        title: "Audio Uploaded",
+        description: "Your audio file is ready to use.",
+      });
     }
   };
 
@@ -1875,20 +1989,26 @@ export function AvatarStudio() {
 
                 {/* Right side: Options */}
                 <div className="flex-1 space-y-4">
-                  <Tabs value={motionTab} onValueChange={(v) => setMotionTab(v as "templates" | "custom")} className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <Tabs value={motionTab} onValueChange={(v) => setMotionTab(v as "templates" | "custom" | "upload")} className="w-full">
+                    <TabsList className="grid w-full grid-cols-3 mb-4">
                       <TabsTrigger 
                         value="templates" 
                         className="data-[state=active]:text-cyan-600 data-[state=active]:border-b-2 data-[state=active]:border-cyan-500"
                         data-testid="tab-motion-templates"
                       >
-                        Motion Templates
+                        Templates
                       </TabsTrigger>
                       <TabsTrigger 
                         value="custom"
                         data-testid="tab-custom-prompt"
                       >
-                        Custom prompt
+                        Custom
+                      </TabsTrigger>
+                      <TabsTrigger 
+                        value="upload"
+                        data-testid="tab-upload-motion"
+                      >
+                        Upload Video
                       </TabsTrigger>
                     </TabsList>
 
@@ -1940,6 +2060,63 @@ export function AvatarStudio() {
                         disabled={isGeneratingMotion || motionStatus === "processing"}
                         data-testid="input-motion-prompt"
                       />
+                    </TabsContent>
+
+                    <TabsContent value="upload" className="mt-0">
+                      <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-gray-50 dark:bg-gray-900 min-h-[180px]">
+                        {!uploadedMotionUrl ? (
+                          <>
+                            <Video className="h-12 w-12 text-gray-400 mb-4" />
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 text-center">
+                              Already have a motion video?
+                              <br />Upload it and skip directly to adding voice.
+                            </p>
+                            <Label 
+                              htmlFor="motion-video-upload" 
+                              className="cursor-pointer bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-md flex items-center gap-2"
+                            >
+                              <Upload className="h-4 w-4" />
+                              Choose Video File
+                            </Label>
+                            <input
+                              id="motion-video-upload"
+                              type="file"
+                              accept="video/*"
+                              onChange={handleUploadMotionVideo}
+                              className="hidden"
+                              data-testid="input-upload-motion-video"
+                            />
+                            <p className="text-xs text-gray-500 mt-3">
+                              Supports MP4, WebM, MOV formats
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2 text-green-600 mb-4">
+                              <CheckCircle className="h-5 w-5" />
+                              <span className="font-medium">Video uploaded: {uploadedMotionFile?.name}</span>
+                            </div>
+                            <video 
+                              src={uploadedMotionUrl} 
+                              controls 
+                              className="w-full max-w-xs rounded-lg mb-4"
+                              data-testid="video-uploaded-motion"
+                            />
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setUploadedMotionFile(null);
+                                setUploadedMotionUrl("");
+                                setMotionVideoUrl(null);
+                              }}
+                              data-testid="button-remove-motion-video"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remove & Choose Another
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TabsContent>
                   </Tabs>
 
@@ -2046,94 +2223,261 @@ export function AvatarStudio() {
                   </div>
                 </div>
 
-                {/* Voice Provider Toggle */}
+                {/* Voice Input Mode Toggle */}
                 <div className="space-y-3">
-                  <Label className="text-sm font-medium">Voice Provider</Label>
+                  <Label className="text-sm font-medium">How do you want to add voice?</Label>
                   <div className="flex gap-2">
                     <Button
-                      variant={voiceProvider === "elevenlabs" ? "default" : "outline"}
+                      variant={voiceInputMode === "tts" ? "default" : "outline"}
                       size="sm"
-                      onClick={() => {
-                        setVoiceProvider("elevenlabs");
-                        if (elevenLabsVoices.length > 0) {
-                          setSelectedMotionVoice(elevenLabsVoices[0].id);
-                        }
-                      }}
-                      className={voiceProvider === "elevenlabs" ? "bg-purple-600 hover:bg-purple-700" : ""}
-                      data-testid="button-voice-elevenlabs"
+                      onClick={() => setVoiceInputMode("tts")}
+                      className={voiceInputMode === "tts" ? "bg-purple-600 hover:bg-purple-700" : ""}
+                      data-testid="button-voice-mode-tts"
                     >
                       <Volume2 className="h-4 w-4 mr-1" />
-                      ElevenLabs {elevenLabsConfigured && "(Connected)"}
+                      Text to Speech
                     </Button>
                     <Button
-                      variant={voiceProvider === "kling" ? "default" : "outline"}
+                      variant={voiceInputMode === "record" ? "default" : "outline"}
                       size="sm"
-                      onClick={() => {
-                        setVoiceProvider("kling");
-                        setSelectedMotionVoice(PROFESSIONAL_VOICES[0].id);
-                      }}
-                      data-testid="button-voice-kling"
+                      onClick={() => setVoiceInputMode("record")}
+                      className={voiceInputMode === "record" ? "bg-purple-600 hover:bg-purple-700" : ""}
+                      data-testid="button-voice-mode-record"
                     >
                       <Mic className="h-4 w-4 mr-1" />
-                      Built-in
+                      Record Voice
+                    </Button>
+                    <Button
+                      variant={voiceInputMode === "upload" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setVoiceInputMode("upload")}
+                      className={voiceInputMode === "upload" ? "bg-purple-600 hover:bg-purple-700" : ""}
+                      data-testid="button-voice-mode-upload"
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      Upload Audio
                     </Button>
                   </div>
-                  {voiceProvider === "elevenlabs" && !elevenLabsConfigured && (
-                    <p className="text-xs text-amber-600">
-                      ElevenLabs API key is being configured. Using default voices.
-                    </p>
-                  )}
                 </div>
 
-                {/* Voice Selection */}
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">Select Voice</Label>
-                  <Select value={selectedMotionVoice} onValueChange={setSelectedMotionVoice}>
-                    <SelectTrigger data-testid="select-motion-voice">
-                      <SelectValue placeholder="Choose a voice" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {voiceProvider === "elevenlabs" ? (
-                        <>
-                          {elevenLabsVoices.map((voice) => (
-                            <SelectItem key={voice.id} value={voice.id}>
-                              {voice.name} {voice.description ? `- ${voice.description}` : ""}
+                {/* TTS Mode */}
+                {voiceInputMode === "tts" && (
+                  <>
+                    {/* Voice Provider Toggle */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Voice Provider</Label>
+                      <div className="flex gap-2">
+                        <Button
+                          variant={voiceProvider === "elevenlabs" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setVoiceProvider("elevenlabs");
+                            if (elevenLabsVoices.length > 0) {
+                              setSelectedMotionVoice(elevenLabsVoices[0].id);
+                            }
+                          }}
+                          className={voiceProvider === "elevenlabs" ? "bg-blue-600 hover:bg-blue-700" : ""}
+                          data-testid="button-voice-elevenlabs"
+                        >
+                          <Volume2 className="h-4 w-4 mr-1" />
+                          ElevenLabs {elevenLabsConfigured && "(Connected)"}
+                        </Button>
+                        <Button
+                          variant={voiceProvider === "kling" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setVoiceProvider("kling");
+                            setSelectedMotionVoice(PROFESSIONAL_VOICES[0].id);
+                          }}
+                          data-testid="button-voice-kling"
+                        >
+                          <Mic className="h-4 w-4 mr-1" />
+                          Built-in
+                        </Button>
+                      </div>
+                      {voiceProvider === "elevenlabs" && !elevenLabsConfigured && (
+                        <p className="text-xs text-amber-600">
+                          ElevenLabs API key is being configured. Using default voices.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Voice Selection */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Select Voice</Label>
+                      <Select value={selectedMotionVoice} onValueChange={setSelectedMotionVoice}>
+                        <SelectTrigger data-testid="select-motion-voice">
+                          <SelectValue placeholder="Choose a voice" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {voiceProvider === "elevenlabs" ? (
+                            <>
+                              {elevenLabsVoices.map((voice) => (
+                                <SelectItem key={voice.id} value={voice.id}>
+                                  {voice.name} {voice.description ? `- ${voice.description}` : ""}
+                                </SelectItem>
+                              ))}
+                            </>
+                          ) : (
+                            <>
+                              {PROFESSIONAL_VOICES.map((voice) => (
+                                <SelectItem key={voice.id} value={voice.id}>
+                                  {voice.name}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+                          {customVoices?.map((voice: CustomVoice) => (
+                            <SelectItem key={voice.id} value={voice.heygenAudioAssetId || voice.id}>
+                              {voice.name} (Custom)
                             </SelectItem>
                           ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Script Input */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">What should your avatar say?</Label>
+                      <Textarea
+                        placeholder="Enter the script for your avatar to speak... For best results, keep it under 100 words for a 5-10 second video."
+                        value={motionVoiceScript}
+                        onChange={(e) => setMotionVoiceScript(e.target.value)}
+                        className="min-h-[120px]"
+                        disabled={isGeneratingLipSync}
+                        data-testid="input-motion-script"
+                      />
+                      <p className="text-xs text-gray-500">
+                        {motionVoiceScript.split(/\s+/).filter(Boolean).length} words
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Record Mode */}
+                {voiceInputMode === "record" && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-gray-50 dark:bg-gray-900">
+                      {!motionRecordedUrl ? (
+                        <>
+                          <div 
+                            className={`w-20 h-20 rounded-full flex items-center justify-center mb-4 transition-all ${
+                              isMotionRecording 
+                                ? "bg-red-500 animate-pulse" 
+                                : "bg-purple-100 dark:bg-purple-900"
+                            }`}
+                          >
+                            <Mic className={`h-10 w-10 ${isMotionRecording ? "text-white" : "text-purple-600"}`} />
+                          </div>
+                          {isMotionRecording && (
+                            <div className="text-2xl font-mono text-red-500 mb-4">
+                              {formatTime(motionRecordingTime)}
+                            </div>
+                          )}
+                          <Button
+                            onClick={isMotionRecording ? stopMotionRecording : startMotionRecording}
+                            className={isMotionRecording 
+                              ? "bg-red-500 hover:bg-red-600" 
+                              : "bg-purple-500 hover:bg-purple-600"}
+                            data-testid={isMotionRecording ? "button-stop-motion-recording" : "button-start-motion-recording"}
+                          >
+                            {isMotionRecording ? (
+                              <>
+                                <Square className="h-4 w-4 mr-2" />
+                                Stop Recording
+                              </>
+                            ) : (
+                              <>
+                                <Mic className="h-4 w-4 mr-2" />
+                                Start Recording
+                              </>
+                            )}
+                          </Button>
+                          <p className="text-xs text-gray-500 mt-3 text-center">
+                            Record your voice speaking what you want the avatar to say.
+                            <br />Keep it under 30 seconds for best results.
+                          </p>
                         </>
                       ) : (
                         <>
-                          {PROFESSIONAL_VOICES.map((voice) => (
-                            <SelectItem key={voice.id} value={voice.id}>
-                              {voice.name}
-                            </SelectItem>
-                          ))}
+                          <div className="flex items-center gap-2 text-green-600 mb-4">
+                            <CheckCircle className="h-5 w-5" />
+                            <span className="font-medium">Recording saved ({formatTime(motionRecordingTime)})</span>
+                          </div>
+                          <audio 
+                            src={motionRecordedUrl} 
+                            controls 
+                            className="w-full max-w-xs mb-4"
+                            data-testid="audio-motion-recording"
+                          />
+                          <Button
+                            variant="outline"
+                            onClick={clearMotionRecording}
+                            data-testid="button-clear-motion-recording"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Record Again
+                          </Button>
                         </>
                       )}
-                      {customVoices?.map((voice: CustomVoice) => (
-                        <SelectItem key={voice.id} value={voice.heygenAudioAssetId || voice.id}>
-                          {voice.name} (Custom)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    </div>
+                  </div>
+                )}
 
-                {/* Script Input */}
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">What should your avatar say?</Label>
-                  <Textarea
-                    placeholder="Enter the script for your avatar to speak... For best results, keep it under 100 words for a 5-10 second video."
-                    value={motionVoiceScript}
-                    onChange={(e) => setMotionVoiceScript(e.target.value)}
-                    className="min-h-[120px]"
-                    disabled={isGeneratingLipSync}
-                    data-testid="input-motion-script"
-                  />
-                  <p className="text-xs text-gray-500">
-                    {motionVoiceScript.split(/\s+/).filter(Boolean).length} words
-                  </p>
-                </div>
+                {/* Upload Audio Mode */}
+                {voiceInputMode === "upload" && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-gray-50 dark:bg-gray-900">
+                      {!uploadedAudioUrl ? (
+                        <>
+                          <Upload className="h-10 w-10 text-gray-400 mb-4" />
+                          <Label 
+                            htmlFor="audio-upload" 
+                            className="cursor-pointer bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-md"
+                          >
+                            Choose Audio File
+                          </Label>
+                          <input
+                            id="audio-upload"
+                            type="file"
+                            accept="audio/*"
+                            onChange={handleUploadAudio}
+                            className="hidden"
+                            data-testid="input-upload-audio"
+                          />
+                          <p className="text-xs text-gray-500 mt-3 text-center">
+                            Upload an MP3, WAV, or other audio file.
+                            <br />This will be synced to your avatar's lip movements.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 text-green-600 mb-4">
+                            <CheckCircle className="h-5 w-5" />
+                            <span className="font-medium">Audio uploaded: {uploadedAudioFile?.name}</span>
+                          </div>
+                          <audio 
+                            src={uploadedAudioUrl} 
+                            controls 
+                            className="w-full max-w-xs mb-4"
+                            data-testid="audio-uploaded"
+                          />
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setUploadedAudioFile(null);
+                              setUploadedAudioUrl("");
+                            }}
+                            data-testid="button-remove-audio"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Remove & Choose Another
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Lip-sync progress */}
                 {(isGeneratingLipSync || lipSyncStatus === "processing" || lipSyncStatus === "pending") && (
@@ -2204,10 +2548,29 @@ export function AvatarStudio() {
                   <Button
                     className="bg-purple-500 hover:bg-purple-600 text-white"
                     onClick={async () => {
-                      if (!motionVoiceScript.trim()) {
+                      // Validate based on voice input mode
+                      if (voiceInputMode === "tts" && !motionVoiceScript.trim()) {
                         toast({
                           title: "Enter a script",
                           description: "Please write what you want your avatar to say.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      
+                      if (voiceInputMode === "record" && !motionRecordedBlob) {
+                        toast({
+                          title: "Record your voice",
+                          description: "Please record your voice before continuing.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      
+                      if (voiceInputMode === "upload" && !uploadedAudioFile) {
+                        toast({
+                          title: "Upload an audio file",
+                          description: "Please upload an audio file before continuing.",
                           variant: "destructive",
                         });
                         return;
@@ -2228,16 +2591,62 @@ export function AvatarStudio() {
                       
                       console.log("🎤 Starting lip-sync request with:", {
                         videoUrl: typeof motionVideoUrl === 'string' ? motionVideoUrl.substring(0, 50) : motionVideoUrl,
-                        text: motionVoiceScript?.substring(0, 50),
-                        voiceId: selectedMotionVoice,
+                        text: voiceInputMode === "tts" ? motionVoiceScript?.substring(0, 50) : "(audio mode)",
+                        voiceInputMode,
                         voiceProvider,
                       });
                       
                       try {
                         let audioUrl: string | undefined;
                         
-                        // If using ElevenLabs, generate audio first
-                        if (voiceProvider === "elevenlabs") {
+                        // Handle different voice input modes
+                        if (voiceInputMode === "record" && motionRecordedBlob) {
+                          console.log("🎙️ Uploading recorded audio...");
+                          setLipSyncProgress(15);
+                          
+                          const formData = new FormData();
+                          formData.append("audio", motionRecordedBlob, "recording.webm");
+                          
+                          const uploadResponse = await fetch("/api/kling/upload-audio", {
+                            method: "POST",
+                            credentials: "include",
+                            body: formData,
+                          });
+                          
+                          const uploadResult = await uploadResponse.json();
+                          console.log("🎙️ Audio upload result:", uploadResult);
+                          
+                          if (!uploadResponse.ok || !uploadResult.audioUrl) {
+                            throw new Error(uploadResult.error || "Failed to upload recorded audio");
+                          }
+                          
+                          audioUrl = uploadResult.audioUrl;
+                          setLipSyncProgress(30);
+                          console.log("✅ Recorded audio uploaded:", audioUrl);
+                        } else if (voiceInputMode === "upload" && uploadedAudioFile) {
+                          console.log("🎙️ Uploading audio file...");
+                          setLipSyncProgress(15);
+                          
+                          const formData = new FormData();
+                          formData.append("audio", uploadedAudioFile);
+                          
+                          const uploadResponse = await fetch("/api/kling/upload-audio", {
+                            method: "POST",
+                            credentials: "include",
+                            body: formData,
+                          });
+                          
+                          const uploadResult = await uploadResponse.json();
+                          console.log("🎙️ Audio upload result:", uploadResult);
+                          
+                          if (!uploadResponse.ok || !uploadResult.audioUrl) {
+                            throw new Error(uploadResult.error || "Failed to upload audio file");
+                          }
+                          
+                          audioUrl = uploadResult.audioUrl;
+                          setLipSyncProgress(30);
+                          console.log("✅ Audio file uploaded:", audioUrl);
+                        } else if (voiceInputMode === "tts" && voiceProvider === "elevenlabs") {
                           console.log("🎙️ Generating ElevenLabs audio first...");
                           setLipSyncProgress(15);
                           
@@ -2268,10 +2677,12 @@ export function AvatarStudio() {
                           videoUrl: motionVideoUrl,
                         };
                         
-                        if (voiceProvider === "elevenlabs" && audioUrl) {
+                        // Use audio2video mode for record, upload, or ElevenLabs TTS
+                        if (audioUrl) {
                           lipSyncBody.mode = "audio2video";
                           lipSyncBody.audioUrl = audioUrl;
                         } else {
+                          // Fall back to Kling TTS (text2video mode)
                           lipSyncBody.mode = "text2video";
                           lipSyncBody.text = motionVoiceScript.trim();
                           lipSyncBody.voiceId = selectedMotionVoice || "female_calm";
