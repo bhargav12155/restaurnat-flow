@@ -235,7 +235,7 @@ export class KlingService {
     };
   }
 
-  async generateLipSync(request: { videoUrl: string; text: string; voiceId?: string }): Promise<{
+  async generateLipSync(request: { videoUrl: string; text: string; voiceId?: string; mode?: "text2video" | "audio2video"; audioUrl?: string }): Promise<{
     success: boolean;
     videoUrl?: string;
     taskId?: string;
@@ -253,17 +253,15 @@ export class KlingService {
 
       const token = this.getAuthToken();
 
-      let requestBody: { input: Record<string, unknown> };
+      let requestBody: Record<string, unknown>;
 
       if (request.mode === "audio2video" && request.audioUrl) {
         console.log("🎵 Using audio2video mode with provided audio");
         requestBody = {
-          input: {
-            mode: "audio2video",
-            video_url: request.videoUrl,
-            audio_type: "url",
-            audio_url: request.audioUrl,
-          },
+          video_url: request.videoUrl,
+          mode: "audio2video",
+          audio_type: "url",
+          audio_url: request.audioUrl,
         };
       } else {
         const voiceTimbreMap: Record<string, string> = {
@@ -283,13 +281,11 @@ export class KlingService {
         console.log("📝 Truncated text for TTS:", truncatedText);
 
         requestBody = {
-          input: {
-            mode: "text2video",
-            video_url: request.videoUrl,
-            tts_text: truncatedText,
-            tts_timbre: ttsTimbre,
-            tts_speed: 1.0,
-          },
+          video_url: request.videoUrl,
+          mode: "text2video",
+          text: truncatedText,
+          voice_id: ttsTimbre,
+          voice_speed: 1.0,
         };
       }
 
