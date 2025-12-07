@@ -22,6 +22,7 @@ interface TextToSpeechRequest {
   voiceId: string;
   modelId?: string;
   voiceSettings?: VoiceSettings;
+  outputFormat?: string;
 }
 
 interface TextToSpeechResult {
@@ -71,8 +72,9 @@ class ElevenLabsService {
       console.log("📝 Text:", request.text.substring(0, 50) + (request.text.length > 50 ? "..." : ""));
       console.log("🔊 Voice ID:", request.voiceId);
 
+      const outputFormat = request.outputFormat || "mp3_44100_128";
       const response = await fetch(
-        `${ELEVENLABS_API_URL}/text-to-speech/${request.voiceId}`,
+        `${ELEVENLABS_API_URL}/text-to-speech/${request.voiceId}?output_format=${outputFormat}`,
         {
           method: "POST",
           headers: {
@@ -178,6 +180,7 @@ export async function generateSpeech(
     stability?: number;
     similarityBoost?: number;
     uploadToS3?: boolean;
+    outputFormat?: string;
   }
 ): Promise<TextToSpeechResult> {
   try {
@@ -187,6 +190,7 @@ export async function generateSpeech(
       text,
       voiceId,
       modelId: options?.modelId,
+      outputFormat: options?.outputFormat || "mp3_44100_128",
       voiceSettings: {
         stability: options?.stability ?? 0.5,
         similarity_boost: options?.similarityBoost ?? 0.75,
