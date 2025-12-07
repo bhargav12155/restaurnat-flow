@@ -37,24 +37,27 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
 const navigationItems = [
-  { icon: Home, label: "Dashboard", href: "#", key: "dashboard" },
+  { icon: Home, label: "Dashboard", href: "/", key: "dashboard", isPageLink: true },
   {
     icon: Bot,
     label: "AI Content Generator",
-    href: "#ai-content",
+    href: "/#ai-content",
     key: "ai-content",
+    isPageLink: true,
   },
   {
     icon: Share2,
     label: "Quick Posts",
-    href: "#social",
+    href: "/#social",
     key: "social",
+    isPageLink: true,
   },
   {
     icon: Calendar,
     label: "Content Calendar",
-    href: "#calendar",
+    href: "/#calendar",
     key: "calendar",
+    isPageLink: true,
   },
   {
     icon: CalendarDays,
@@ -72,15 +75,17 @@ const navigationItems = [
       {
         icon: Camera,
         label: "Photo Avatars",
-        href: "#photo-avatars",
+        href: "/#photo-avatars",
         key: "photo-avatars",
+        isPageLink: true,
       },
       {
         icon: Video,
         label: "Video Avatars",
-        href: "#video-avatars",
+        href: "/#video-avatars",
         key: "video-avatars",
         badge: "ENTERPRISE",
+        isPageLink: true,
       },
       {
         icon: Sparkles,
@@ -93,31 +98,35 @@ const navigationItems = [
       {
         icon: Video,
         label: "Video Generation",
-        href: "#video-generation",
+        href: "/#video-generation",
         key: "video-generation",
+        isPageLink: true,
       },
       {
         icon: Radio,
         label: "Streaming Avatar",
-        href: "#streaming-avatar",
+        href: "/#streaming-avatar",
         key: "streaming-avatar",
+        isPageLink: true,
       },
     ],
   },
-  { icon: Search, label: "SEO Optimizer", href: "#seo", key: "seo" },
-  { icon: MapPin, label: "Local Market Tools", href: "#market", key: "market" },
+  { icon: Search, label: "SEO Optimizer", href: "/#seo", key: "seo", isPageLink: true },
+  { icon: MapPin, label: "Local Market Tools", href: "/#market", key: "market", isPageLink: true },
   {
     icon: Palette,
     label: "Brand Settings",
-    href: "#brand-settings",
+    href: "/#brand-settings",
     key: "brand-settings",
+    isPageLink: true,
   },
-  { icon: BarChart3, label: "Analytics", href: "#analytics", key: "analytics" },
+  { icon: BarChart3, label: "Analytics", href: "/#analytics", key: "analytics", isPageLink: true },
   {
     icon: Target,
     label: "Advanced Advertising",
-    href: "#advertising",
+    href: "/#advertising",
     key: "advertising",
+    isPageLink: true,
   },
 ];
 
