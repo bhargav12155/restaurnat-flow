@@ -2067,11 +2067,28 @@ export function AvatarStudio() {
                         });
                         return;
                       }
+                      
+                      if (!motionVideoUrl) {
+                        toast({
+                          title: "No motion video",
+                          description: "Please generate a motion video first before adding voice.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      
                       setIsGeneratingLipSync(true);
                       setLipSyncStatus("processing");
                       setLipSyncProgress(10);
                       
+                      console.log("🎤 Starting lip-sync request with:", {
+                        videoUrl: typeof motionVideoUrl === 'string' ? motionVideoUrl.substring(0, 50) : motionVideoUrl,
+                        text: motionVoiceScript?.substring(0, 50),
+                        voiceId: selectedMotionVoice,
+                      });
+                      
                       try {
+                        console.log("🎤 Sending fetch request to /api/kling/lip-sync");
                         const response = await fetch("/api/kling/lip-sync", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
@@ -2083,7 +2100,9 @@ export function AvatarStudio() {
                           }),
                         });
                         
+                        console.log("🎤 Response status:", response.status, response.statusText);
                         const result = await response.json();
+                        console.log("🎤 Response result:", result);
                         
                         if (!response.ok) {
                           throw new Error(result.error || "Failed to add voice");
@@ -2158,13 +2177,16 @@ export function AvatarStudio() {
                         } else {
                           setIsGeneratingLipSync(false);
                         }
-                      } catch (error) {
+                      } catch (error: any) {
                         console.error("Lip sync error:", error);
+                        console.error("Lip sync error message:", error?.message);
+                        console.error("Lip sync error stack:", error?.stack);
                         setLipSyncStatus("failed");
                         setIsGeneratingLipSync(false);
+                        const errorMessage = error?.message || (typeof error === 'string' ? error : "Failed to add voice");
                         toast({
                           title: "Voice Generation Failed",
-                          description: error instanceof Error ? error.message : "Failed to add voice",
+                          description: errorMessage,
                           variant: "destructive",
                         });
                       }
