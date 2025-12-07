@@ -2682,8 +2682,36 @@ export function AvatarStudio() {
                         }
                         
                         console.log("🎤 Sending fetch request to /api/kling/lip-sync");
+                        
+                        // If motionVideoUrl is a blob URL (from direct upload), we need to upload it to S3 first
+                        let finalVideoUrl = motionVideoUrl;
+                        if (motionVideoUrl?.startsWith("blob:") && uploadedMotionFile) {
+                          console.log("🎬 Uploading motion video to S3 (blob URL detected)...");
+                          setLipSyncProgress(35);
+                          
+                          const videoFormData = new FormData();
+                          videoFormData.append("video", uploadedMotionFile);
+                          
+                          const videoUploadResponse = await fetch("/api/kling/upload-video", {
+                            method: "POST",
+                            credentials: "include",
+                            body: videoFormData,
+                          });
+                          
+                          const videoUploadResult = await videoUploadResponse.json();
+                          console.log("🎬 Video upload result:", videoUploadResult);
+                          
+                          if (!videoUploadResponse.ok || !videoUploadResult.videoUrl) {
+                            throw new Error(videoUploadResult.error || "Failed to upload motion video");
+                          }
+                          
+                          finalVideoUrl = videoUploadResult.videoUrl;
+                          setLipSyncProgress(45);
+                          console.log("✅ Motion video uploaded to S3:", finalVideoUrl);
+                        }
+                        
                         const lipSyncBody: Record<string, unknown> = {
-                          videoUrl: motionVideoUrl,
+                          videoUrl: finalVideoUrl,
                         };
                         
                         // Use audio2video mode for record, upload, or ElevenLabs TTS

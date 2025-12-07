@@ -10588,6 +10588,40 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // Kling Lip-Sync - Upload video for lip-sync (when user uploads their own motion video)
+  app.post("/api/kling/upload-video", requireAuth, memoryUpload.single("video"), async (req, res) => {
+    console.log("🎬 Received video upload for lip-sync");
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file provided" });
+      }
+
+      console.log(`🎬 Video file received: ${req.file.originalname}, size: ${req.file.size} bytes, type: ${req.file.mimetype}`);
+
+      // Upload to S3 for persistent URL
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+      
+      const fileName = `lip-sync-video/${user.id}/${Date.now()}-${req.file.originalname}`;
+      const videoUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype);
+      
+      console.log(`✅ Video uploaded to S3: ${videoUrl}`);
+
+      res.json({
+        success: true,
+        videoUrl,
+      });
+    } catch (error) {
+      console.error("Error uploading video for lip-sync:", error);
+      res.status(500).json({ error: "Failed to upload video file" });
+    }
+  });
+
   // ==================== ELEVENLABS VOICE ENDPOINTS ====================
 
   // Check if ElevenLabs is configured
