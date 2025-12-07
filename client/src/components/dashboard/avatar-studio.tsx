@@ -1725,7 +1725,10 @@ Examples:
 
             {/* Duration selector */}
             <div className="space-y-2">
-              <Label>Video Duration</Label>
+              <div className="flex items-center gap-2">
+                <Label>Video Duration</Label>
+                <span className="text-xs text-gray-500">(Kling AI limit: 5-10 sec)</span>
+              </div>
               <Select
                 value={motionDuration}
                 onValueChange={(value) => setMotionDuration(value as "5" | "10")}
