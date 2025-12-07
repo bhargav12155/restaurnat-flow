@@ -1,4 +1,4 @@
-import { decryptApiKey } from "./encryption";
+import jwt from "jsonwebtoken";
 
 interface KlingImageToVideoRequest {
   imageUrl: string;
@@ -43,16 +43,39 @@ interface KlingApiResponse {
   };
 }
 
+function generateJwtToken(accessKey: string, secretKey: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  
+  const payload = {
+    iss: accessKey,
+    exp: now + 1800,
+    nbf: now - 5,
+  };
+  
+  const header = {
+    alg: "HS256" as const,
+    typ: "JWT",
+  };
+  
+  return jwt.sign(payload, secretKey, { header });
+}
+
 export class KlingService {
-  private apiKey: string;
+  private accessKey: string;
+  private secretKey: string;
   private baseUrl = "https://api-singapore.klingai.com";
 
-  constructor(encryptedApiKey: string) {
-    const decryptedKey = decryptApiKey(encryptedApiKey);
-    if (!decryptedKey) {
-      throw new Error("Failed to decrypt Kling API key");
+  constructor(accessKey?: string, secretKey?: string) {
+    this.accessKey = accessKey || process.env.KLING_ACCESS_KEY || "";
+    this.secretKey = secretKey || process.env.KLING_SECRET_KEY || "";
+    
+    if (!this.accessKey || !this.secretKey) {
+      throw new Error("Kling API credentials not configured. Please set KLING_ACCESS_KEY and KLING_SECRET_KEY.");
     }
-    this.apiKey = decryptedKey;
+  }
+
+  private getAuthToken(): string {
+    return generateJwtToken(this.accessKey, this.secretKey);
   }
 
   async generateImageToVideo(request: KlingImageToVideoRequest): Promise<KlingGenerationResult> {
@@ -63,10 +86,12 @@ export class KlingService {
       console.log("🎯 Model:", request.modelName || "kling-v1-6");
       console.log("⚡ Mode:", request.mode || "pro");
 
+      const token = this.getAuthToken();
+
       const response = await fetch(`${this.baseUrl}/v1/videos/image2video`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
+          "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -123,10 +148,12 @@ export class KlingService {
 
   async checkTaskStatus(taskId: string): Promise<KlingTaskStatus> {
     try {
+      const token = this.getAuthToken();
+
       const response = await fetch(`${this.baseUrl}/v1/videos/image2video/${taskId}`, {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${this.apiKey}`,
+          "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
@@ -207,7 +234,6 @@ export class KlingService {
 }
 
 export async function generateMotionVideo(
-  encryptedApiKey: string,
   imageUrl: string,
   prompt: string,
   options?: {
@@ -217,7 +243,7 @@ export async function generateMotionVideo(
     waitForCompletion?: boolean;
   }
 ): Promise<KlingGenerationResult> {
-  const service = new KlingService(encryptedApiKey);
+  const service = new KlingService();
 
   const result = await service.generateImageToVideo({
     imageUrl,
@@ -243,4 +269,9 @@ export async function generateMotionVideo(
   }
 
   return result;
+}
+
+export async function checkMotionVideoStatus(taskId: string): Promise<KlingTaskStatus> {
+  const service = new KlingService();
+  return service.checkTaskStatus(taskId);
 }
