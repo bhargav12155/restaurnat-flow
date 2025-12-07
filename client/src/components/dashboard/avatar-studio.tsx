@@ -134,7 +134,49 @@ export function AvatarStudio() {
   const [motionStatus, setMotionStatus] = useState<string>("");
   const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
   const [motionProgress, setMotionProgress] = useState(0);
+  const [motionTab, setMotionTab] = useState<"templates" | "custom">("templates");
+  const [selectedMotionTemplate, setSelectedMotionTemplate] = useState<string>("talking_naturally");
   const [uploadName, setUploadName] = useState("");
+  
+  // Motion templates based on HeyGen's offerings
+  const MOTION_TEMPLATES = [
+    { 
+      id: "talking_naturally", 
+      name: "Talking Naturally", 
+      description: "Natural speaking motion with subtle head movements and expressions",
+      prompt: "Person speaking naturally with subtle head movements, gentle nodding, natural blinks, and relaxed facial expressions as if having a friendly conversation"
+    },
+    { 
+      id: "expert_presentation", 
+      name: "Expert Presentation", 
+      description: "Confident, authoritative presentation style",
+      prompt: "Professional presenter speaking confidently with purposeful hand gestures, direct eye contact, and authoritative body language as if explaining an important topic"
+    },
+    { 
+      id: "dynamic_announcement", 
+      name: "Dynamic Announcement", 
+      description: "Energetic, attention-grabbing delivery",
+      prompt: "Energetic person making an exciting announcement with animated expressions, wider gestures, raised eyebrows, and enthusiastic body language"
+    },
+    { 
+      id: "keynote_speaker", 
+      name: "Keynote Speaker", 
+      description: "Polished, inspiring speaker on stage",
+      prompt: "Polished keynote speaker with measured movements, inspiring expressions, confident posture, and engaging eye contact as if addressing a large audience"
+    },
+    { 
+      id: "thoughtful_conversation", 
+      name: "Thoughtful Conversation", 
+      description: "Reflective, empathetic speaking style",
+      prompt: "Person having a thoughtful conversation with reflective pauses, understanding nods, empathetic expressions, and calm, measured movements"
+    },
+    { 
+      id: "telling_story", 
+      name: "Telling a Funny Story", 
+      description: "Animated storytelling with humor",
+      prompt: "Animated storyteller with expressive face, playful gestures, raised eyebrows for emphasis, smiles, and varied expressions as if telling an entertaining story"
+    },
+  ];
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [voiceAudioUrls, setVoiceAudioUrls] = useState<Record<string, string>>({});
   
@@ -1633,7 +1675,10 @@ export function AvatarStudio() {
                   className="flex items-center gap-2 border-purple-300 hover:bg-purple-50 text-purple-700"
                   onClick={() => {
                     setShowMotionDialog(true);
-                    setMotionPrompt("");
+                    setMotionTab("templates");
+                    setSelectedMotionTemplate("talking_naturally");
+                    const defaultTemplate = MOTION_TEMPLATES.find(t => t.id === "talking_naturally");
+                    setMotionPrompt(defaultTemplate?.prompt || "");
                     setMotionStatus("");
                     setMotionVideoUrl(null);
                     setMotionProgress(0);
@@ -1679,21 +1724,21 @@ export function AvatarStudio() {
 
       {/* Motion Generation Dialog */}
       <Dialog open={showMotionDialog} onOpenChange={setShowMotionDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
-              Add Motion to Avatar
+              Add Motion
             </DialogTitle>
             <DialogDescription>
-              Transform your static avatar image into a dynamic video with natural motion.
+              Transform your image into a 10-second video with full body and background motion.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {/* Preview of selected avatar */}
-            <div className="flex justify-center">
-              <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-purple-200 shadow-md">
+          <div className="flex gap-6 py-4">
+            {/* Left side: Avatar Preview */}
+            <div className="flex-shrink-0">
+              <div className="w-48 h-64 rounded-lg overflow-hidden border-2 border-cyan-400 shadow-lg bg-gradient-to-b from-cyan-50 to-white dark:from-cyan-950/30 dark:to-gray-900">
                 <img
                   src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
                   alt="Selected Avatar"
@@ -1703,106 +1748,174 @@ export function AvatarStudio() {
               </div>
             </div>
 
-            {/* Motion prompt input */}
-            <div className="space-y-2">
-              <Label htmlFor="motion-prompt">Motion Description</Label>
-              <Textarea
-                id="motion-prompt"
-                placeholder="Describe how you want your avatar to move... 
+            {/* Right side: Options */}
+            <div className="flex-1 space-y-4">
+              {/* Motion Templates / Custom prompt tabs */}
+              <Tabs value={motionTab} onValueChange={(v) => setMotionTab(v as "templates" | "custom")} className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger 
+                    value="templates" 
+                    className="data-[state=active]:text-cyan-600 data-[state=active]:border-b-2 data-[state=active]:border-cyan-500"
+                    data-testid="tab-motion-templates"
+                  >
+                    Motion Templates
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="custom"
+                    data-testid="tab-custom-prompt"
+                  >
+                    Custom prompt
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="templates" className="mt-0">
+                  <ScrollArea className="h-[200px] pr-4">
+                    <div className="space-y-2">
+                      {MOTION_TEMPLATES.map((template) => (
+                        <div
+                          key={template.id}
+                          className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${
+                            selectedMotionTemplate === template.id
+                              ? "bg-cyan-50 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800"
+                              : "hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent"
+                          }`}
+                          onClick={() => {
+                            setSelectedMotionTemplate(template.id);
+                            setMotionPrompt(template.prompt);
+                          }}
+                          data-testid={`template-${template.id}`}
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm">{template.name}</span>
+                              {template.id === "talking_naturally" && (
+                                <span className="text-xs text-gray-500">(Default)</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">{template.description}</p>
+                          </div>
+                          {selectedMotionTemplate === template.id && (
+                            <CheckCircle className="h-5 w-5 text-cyan-500 flex-shrink-0" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </TabsContent>
+
+                <TabsContent value="custom" className="mt-0">
+                  <Textarea
+                    id="motion-prompt"
+                    placeholder="Describe how you want your avatar to move... 
 
 Examples:
 • Nodding head gently while smiling
 • Looking around the room curiously
 • Waving hello with a friendly expression
 • Slight breathing motion with subtle head movement"
-                value={motionPrompt}
-                onChange={(e) => setMotionPrompt(e.target.value)}
-                className="min-h-[100px]"
-                disabled={isGeneratingMotion || motionStatus === "processing"}
-                data-testid="input-motion-prompt"
-              />
-            </div>
-
-            {/* Duration selector */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Label>Video Duration</Label>
-                <span className="text-xs text-gray-500">(Kling AI limit: 5-10 sec)</span>
-              </div>
-              <Select
-                value={motionDuration}
-                onValueChange={(value) => setMotionDuration(value as "5" | "10")}
-                disabled={isGeneratingMotion || motionStatus === "processing"}
-              >
-                <SelectTrigger data-testid="select-motion-duration">
-                  <SelectValue placeholder="Select duration" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="5">5 seconds</SelectItem>
-                  <SelectItem value="10">10 seconds</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Progress indicator */}
-            {(isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending") && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-400">
-                    {motionStatus === "starting" && "Starting generation..."}
-                    {motionStatus === "pending" && "Queued for processing..."}
-                    {motionStatus === "processing" && "Creating motion video..."}
-                  </span>
-                  <span className="text-purple-600 font-medium">{motionProgress}%</span>
-                </div>
-                <Progress value={motionProgress} className="h-2" />
-                <p className="text-xs text-gray-500 text-center">
-                  This may take 1-3 minutes. Please wait...
-                </p>
-              </div>
-            )}
-
-            {/* Video result */}
-            {motionVideoUrl && motionStatus === "completed" && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">Motion video generated!</span>
-                </div>
-                <div className="rounded-lg overflow-hidden border shadow-md bg-black">
-                  <video
-                    src={motionVideoUrl}
-                    controls
-                    autoPlay
-                    loop
-                    className="w-full max-h-64 object-contain"
-                    data-testid="video-motion-result"
+                    value={motionPrompt}
+                    onChange={(e) => {
+                      setMotionPrompt(e.target.value);
+                      setSelectedMotionTemplate("");
+                    }}
+                    className="min-h-[180px]"
+                    disabled={isGeneratingMotion || motionStatus === "processing"}
+                    data-testid="input-motion-prompt"
                   />
-                </div>
-                <div className="flex justify-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open(motionVideoUrl, "_blank")}
-                    data-testid="button-download-motion"
-                  >
-                    <Video className="h-4 w-4 mr-2" />
-                    Open in New Tab
-                  </Button>
-                </div>
-              </div>
-            )}
+                </TabsContent>
+              </Tabs>
 
-            {/* Error state */}
-            {motionStatus === "failed" && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg">
-                <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
-                <span className="text-sm text-red-700 dark:text-red-400">
-                  Video generation failed. Please try again with a different prompt.
-                </span>
+              {/* Motion Engine and Duration */}
+              <div className="flex items-center gap-4 pt-2">
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-gray-600">Motion Engine</Label>
+                  <Select value="kling" disabled>
+                    <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-motion-engine">
+                      <SelectValue placeholder="Kling" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="kling">Kling</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm text-gray-600">Duration</Label>
+                  <Select
+                    value={motionDuration}
+                    onValueChange={(value) => setMotionDuration(value as "5" | "10")}
+                    disabled={isGeneratingMotion || motionStatus === "processing"}
+                  >
+                    <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-motion-duration">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5 sec</SelectItem>
+                      <SelectItem value="10">10 sec</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            )}
+            </div>
           </div>
+
+          {/* Progress indicator */}
+          {(isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending") && (
+            <div className="space-y-2 px-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">
+                  {motionStatus === "starting" && "Starting generation..."}
+                  {motionStatus === "pending" && "Queued for processing..."}
+                  {motionStatus === "processing" && "Creating motion video..."}
+                </span>
+                <span className="text-purple-600 font-medium">{motionProgress}%</span>
+              </div>
+              <Progress value={motionProgress} className="h-2" />
+              <p className="text-xs text-gray-500 text-center">
+                This may take 1-3 minutes. Please wait...
+              </p>
+            </div>
+          )}
+
+          {/* Video result */}
+          {motionVideoUrl && motionStatus === "completed" && (
+            <div className="space-y-3 px-2">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle className="h-4 w-4" />
+                <span className="text-sm font-medium">Motion video generated!</span>
+              </div>
+              <div className="rounded-lg overflow-hidden border shadow-md bg-black">
+                <video
+                  src={motionVideoUrl}
+                  controls
+                  autoPlay
+                  loop
+                  className="w-full max-h-64 object-contain"
+                  data-testid="video-motion-result"
+                />
+              </div>
+              <div className="flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(motionVideoUrl, "_blank")}
+                  data-testid="button-download-motion"
+                >
+                  <Video className="h-4 w-4 mr-2" />
+                  Open in New Tab
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Error state */}
+          {motionStatus === "failed" && (
+            <div className="flex items-center gap-2 p-3 mx-2 bg-red-50 dark:bg-red-950/30 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+              <span className="text-sm text-red-700 dark:text-red-400">
+                Video generation failed. Please try again with a different prompt.
+              </span>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-2 border-t">
             <Button
