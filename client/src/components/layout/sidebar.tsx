@@ -70,14 +70,6 @@ const navigationItems = [
     isCollapsible: true,
     subItems: [
       {
-        icon: Sparkles,
-        label: "Template Studio",
-        href: "/templates",
-        key: "templates",
-        isPageLink: true,
-        badge: "NEW",
-      },
-      {
         icon: Camera,
         label: "Photo Avatars",
         href: "#photo-avatars",
@@ -89,6 +81,14 @@ const navigationItems = [
         href: "#video-avatars",
         key: "video-avatars",
         badge: "ENTERPRISE",
+      },
+      {
+        icon: Sparkles,
+        label: "Template Studio",
+        href: "/templates",
+        key: "templates",
+        isPageLink: true,
+        badge: "NEW",
       },
       {
         icon: Video,
