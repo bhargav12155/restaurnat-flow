@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Readable } from 'stream';
 
@@ -79,25 +80,40 @@ export class S3UploadService {
     fileBuffer: Buffer,
     key: string,
     contentType: string,
-    makePublic: boolean = false
+    returnPresignedUrl: boolean = false,
+    expiresInSeconds: number = 3600
   ): Promise<string> {
-    const params: Record<string, unknown> = {
+    const params = {
       Bucket: this.bucketName,
       Key: key,
       Body: fileBuffer,
       ContentType: contentType,
     };
-    
-    if (makePublic) {
-      params.ACL = 'public-read';
-    }
 
     const upload = new Upload({
       client: this.s3Client,
-      params: params as any,
+      params,
     });
 
     await upload.done();
+    
+    if (returnPresignedUrl) {
+      return this.getPresignedUrl(key, expiresInSeconds);
+    }
+    
     return this.getS3Url(key);
+  }
+
+  async getPresignedUrl(key: string, expiresInSeconds: number = 3600): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    });
+
+    const presignedUrl = await getSignedUrl(this.s3Client, command, {
+      expiresIn: expiresInSeconds,
+    });
+
+    return presignedUrl;
   }
 }

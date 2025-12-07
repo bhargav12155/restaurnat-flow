@@ -10675,14 +10675,15 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         }
       }
 
-      // Upload to S3 for persistent URL (with public-read for Kling API access)
+      // Upload to S3 and get presigned URL for Kling API access
       const { S3UploadService } = await import("./services/s3Upload");
       const s3Service = new S3UploadService();
       
       const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${finalFileName}`;
-      const audioUrl = await s3Service.uploadBuffer(audioBuffer, fileName, finalMimeType, true);
+      // Use presigned URL (valid for 1 hour) since bucket doesn't allow public ACLs
+      const audioUrl = await s3Service.uploadBuffer(audioBuffer, fileName, finalMimeType, true, 3600);
       
-      console.log(`✅ Audio uploaded to S3 (public): ${audioUrl}`);
+      console.log(`✅ Audio uploaded to S3 with presigned URL: ${audioUrl.substring(0, 100)}...`);
 
       res.json({
         success: true,
@@ -10709,14 +10710,15 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       console.log(`🎬 Video file received: ${req.file.originalname}, size: ${req.file.size} bytes, type: ${req.file.mimetype}`);
 
-      // Upload to S3 for persistent URL (with public-read for Kling API access)
+      // Upload to S3 and get presigned URL for Kling API access
       const { S3UploadService } = await import("./services/s3Upload");
       const s3Service = new S3UploadService();
       
       const fileName = `lip-sync-video/${user.id}/${Date.now()}-${req.file.originalname}`;
-      const videoUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype, true);
+      // Use presigned URL (valid for 1 hour) since bucket doesn't allow public ACLs
+      const videoUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype, true, 3600);
       
-      console.log(`✅ Video uploaded to S3 (public): ${videoUrl}`);
+      console.log(`✅ Video uploaded to S3 with presigned URL: ${videoUrl.substring(0, 100)}...`);
 
       res.json({
         success: true,
