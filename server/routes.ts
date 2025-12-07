@@ -10580,6 +10580,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   });
 
   // Kling Lip-Sync - Upload audio for lip-sync (uses memory storage for S3 upload)
+  // Converts WebM/WebA to MP3 for Kling API compatibility
   app.post("/api/kling/upload-audio", requireAuth, memoryUpload.single("audio"), async (req, res) => {
     console.log("🎤 Received audio upload for lip-sync");
     try {
@@ -10592,14 +10593,94 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(400).json({ error: "No audio file provided" });
       }
 
-      console.log(`🎤 Audio file received: ${req.file.originalname}, size: ${req.file.size} bytes`);
+      const originalName = req.file.originalname;
+      const mimeType = req.file.mimetype;
+      console.log(`🎤 Audio file received: ${originalName}, size: ${req.file.size} bytes, type: ${mimeType}`);
+
+      // Check if we need to convert the audio format
+      const needsConversion = mimeType.includes("webm") || 
+                              mimeType.includes("weba") || 
+                              originalName.endsWith(".webm") || 
+                              originalName.endsWith(".weba");
+
+      let audioBuffer = req.file.buffer;
+      let finalMimeType = mimeType;
+      let finalFileName = originalName;
+
+      if (needsConversion) {
+        console.log("🔄 Converting WebM/WebA audio to MP3 for Kling API compatibility...");
+        
+        const { spawn } = await import("child_process");
+        const path = await import("path");
+        const fs = await import("fs/promises");
+        const os = await import("os");
+        
+        // Create temp files for conversion
+        const tempDir = os.tmpdir();
+        const tempInputPath = path.join(tempDir, `input-${Date.now()}.webm`);
+        const tempOutputPath = path.join(tempDir, `output-${Date.now()}.mp3`);
+        
+        try {
+          // Write input file
+          await fs.writeFile(tempInputPath, req.file.buffer);
+          
+          // Run ffmpeg conversion
+          await new Promise<void>((resolve, reject) => {
+            const ffmpeg = spawn("ffmpeg", [
+              "-i", tempInputPath,
+              "-vn",                    // No video
+              "-acodec", "libmp3lame", // MP3 codec
+              "-ab", "128k",           // 128kbps bitrate
+              "-ar", "44100",          // 44.1kHz sample rate
+              "-y",                     // Overwrite output
+              tempOutputPath
+            ]);
+            
+            let errorOutput = "";
+            ffmpeg.stderr.on("data", (data) => {
+              errorOutput += data.toString();
+            });
+            
+            ffmpeg.on("close", (code) => {
+              if (code === 0) {
+                resolve();
+              } else {
+                reject(new Error(`FFmpeg exited with code ${code}: ${errorOutput}`));
+              }
+            });
+            
+            ffmpeg.on("error", (err) => {
+              reject(err);
+            });
+          });
+          
+          // Read converted file
+          audioBuffer = await fs.readFile(tempOutputPath);
+          finalMimeType = "audio/mpeg";
+          finalFileName = originalName.replace(/\.(webm|weba)$/i, ".mp3");
+          
+          console.log(`✅ Audio converted to MP3: ${audioBuffer.length} bytes`);
+          
+          // Cleanup temp files
+          await fs.unlink(tempInputPath).catch(() => {});
+          await fs.unlink(tempOutputPath).catch(() => {});
+          
+        } catch (conversionError) {
+          console.error("❌ Audio conversion failed:", conversionError);
+          // Cleanup on error
+          const fs2 = await import("fs/promises");
+          await fs2.unlink(tempInputPath).catch(() => {});
+          await fs2.unlink(tempOutputPath).catch(() => {});
+          return res.status(500).json({ error: "Failed to convert audio format" });
+        }
+      }
 
       // Upload to S3 for persistent URL
       const { S3UploadService } = await import("./services/s3Upload");
       const s3Service = new S3UploadService();
       
-      const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${req.file.originalname}`;
-      const audioUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype);
+      const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${finalFileName}`;
+      const audioUrl = await s3Service.uploadBuffer(audioBuffer, fileName, finalMimeType);
       
       console.log(`✅ Audio uploaded to S3: ${audioUrl}`);
 
