@@ -10451,27 +10451,34 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
   // Kling Lip-Sync - Generate lip-synced video from motion video + text
   app.post("/api/kling/lip-sync", requireAuth, async (req, res) => {
+    console.log("🎤 Received Kling lip-sync request");
     try {
       const user = await resolveMemStorageUser(req);
+      console.log("🎤 User resolved:", user?.id);
       if (!user) {
+        console.log("🎤 User not authenticated");
         return res.status(401).json({ error: "User not authenticated" });
       }
 
       const { videoUrl, text, voiceId } = req.body;
+      console.log("🎤 Request body - videoUrl:", videoUrl?.substring(0, 50), "text length:", text?.length, "voiceId:", voiceId);
 
       if (!videoUrl) {
+        console.log("🎤 Missing video URL");
         return res.status(400).json({ error: "Video URL is required" });
       }
 
       if (!text || typeof text !== "string" || text.trim().length === 0) {
+        console.log("🎤 Missing or invalid text");
         return res.status(400).json({ error: "Text script is required" });
       }
 
       if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        console.log("🎤 Kling API credentials not configured");
         return res.status(400).json({ error: "Kling API credentials not configured" });
       }
 
-      console.log(`Starting Kling lip-sync for user ${user.id}`);
+      console.log(`🎤 Starting Kling lip-sync for user ${user.id}`);
 
       const { generateLipSyncVideo } = await import("./services/kling");
       const result = await generateLipSyncVideo({
