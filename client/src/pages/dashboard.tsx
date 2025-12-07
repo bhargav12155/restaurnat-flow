@@ -27,12 +27,14 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { VERSION_DISPLAY } from "@/lib/version";
 import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 
 export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeView, setActiveView] = useState("dashboard");
   const [showSocialLinksPrompt, setShowSocialLinksPrompt] = useState(false);
   const { user, isAuthenticated } = useAuth();
+  const [location] = useLocation();
 
   // Connect to WebSocket for real-time updates
   const { isConnected, lastMessage } = useWebSocket({
@@ -49,9 +51,9 @@ export default function Dashboard() {
 
   // Removed legacy social media setup modal - now using OAuth-only flow
 
-  // Handle hash navigation
+  // Handle hash navigation using Wouter's location and hashchange event
   useEffect(() => {
-    const handleHashChange = () => {
+    const updateViewFromHash = () => {
       const hash = window.location.hash.slice(1); // Remove the '#'
       if (hash) {
         setActiveView(hash);
@@ -61,15 +63,15 @@ export default function Dashboard() {
     };
 
     // Set initial view from URL hash
-    handleHashChange();
+    updateViewFromHash();
 
-    // Listen for hash changes
-    window.addEventListener("hashchange", handleHashChange);
+    // Also listen for hashchange events (for same-page navigation)
+    window.addEventListener("hashchange", updateViewFromHash);
 
     return () => {
-      window.removeEventListener("hashchange", handleHashChange);
+      window.removeEventListener("hashchange", updateViewFromHash);
     };
-  }, []);
+  }, [location]); // Re-run when Wouter location changes
 
   // Show social links prompt on first visit (only if not coming from NebraskaHomeHub)
   useEffect(() => {
