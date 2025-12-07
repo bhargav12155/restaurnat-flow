@@ -70,6 +70,9 @@ interface AvatarLook {
   image_url: string;
   image?: string;
   status: string;
+  is_motion?: boolean;
+  motion_preview_url?: string;
+  name?: string;
 }
 
 interface CustomVoice {
@@ -125,6 +128,7 @@ export function AvatarStudio() {
   const [showLookPopup, setShowLookPopup] = useState(false);
   const [popupLookIndex, setPopupLookIndex] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [hoveredLookId, setHoveredLookId] = useState<string | null>(null);
   
   // Motion generation state
   const [showMotionDialog, setShowMotionDialog] = useState(false);
@@ -967,6 +971,9 @@ export function AvatarStudio() {
                     {availableLooks.map((look, index) => {
                       const lookId = look.avatar_id || look.id;
                       const imageUrl = look.image_url || look.image || "";
+                      const hasMotion = look.is_motion && look.motion_preview_url;
+                      const isHovered = hoveredLookId === lookId;
+                      
                       return (
                         <button
                           key={lookId}
@@ -984,6 +991,8 @@ export function AvatarStudio() {
                               description: "Now proceed to choose a voice for your video.",
                             });
                           }}
+                          onMouseEnter={() => setHoveredLookId(lookId)}
+                          onMouseLeave={() => setHoveredLookId(null)}
                           className={`relative rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-lg ${
                             selectedAvatarLook === lookId
                               ? "border-[#D4AF37] ring-2 ring-[#D4AF37]/30"
@@ -991,16 +1000,38 @@ export function AvatarStudio() {
                           }`}
                           data-testid={`avatar-look-${lookId}`}
                         >
+                          {/* Selected indicator */}
                           {selectedAvatarLook === lookId && (
                             <div className="absolute top-1 right-1 w-5 h-5 bg-[#D4AF37] rounded-full flex items-center justify-center z-10">
                               <Check className="h-3 w-3 text-white" />
                             </div>
                           )}
-                          <img
-                            src={imageUrl}
-                            alt={`Look ${lookId}`}
-                            className="w-full aspect-square object-cover"
-                          />
+                          
+                          {/* Motion badge */}
+                          {hasMotion && (
+                            <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 z-10">
+                              <Play className="h-2.5 w-2.5" />
+                              Motion
+                            </div>
+                          )}
+                          
+                          {/* Image or Video on hover */}
+                          {hasMotion && isHovered ? (
+                            <video
+                              src={look.motion_preview_url}
+                              className="w-full aspect-square object-cover"
+                              autoPlay
+                              loop
+                              muted
+                              playsInline
+                            />
+                          ) : (
+                            <img
+                              src={imageUrl}
+                              alt={look.name || `Look ${lookId}`}
+                              className="w-full aspect-square object-cover"
+                            />
+                          )}
                         </button>
                       );
                     })}
@@ -1672,13 +1703,34 @@ export function AvatarStudio() {
                 )}
 
                 <div className="p-6">
-                  <div className="w-72 h-96 mx-auto rounded-xl overflow-hidden shadow-lg border-2 border-gray-100 dark:border-gray-700">
-                    <img
-                      src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
-                      alt={`Avatar Look ${popupLookIndex + 1}`}
-                      className="w-full h-full object-cover"
-                      data-testid="img-popup-avatar"
-                    />
+                  <div className="w-72 h-96 mx-auto rounded-xl overflow-hidden shadow-lg border-2 border-gray-100 dark:border-gray-700 relative">
+                    {/* Motion badge in popup */}
+                    {availableLooks[popupLookIndex]?.is_motion && availableLooks[popupLookIndex]?.motion_preview_url && (
+                      <div className="absolute top-2 left-2 bg-purple-600 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 z-10">
+                        <Play className="h-3 w-3" />
+                        Motion Avatar
+                      </div>
+                    )}
+                    
+                    {/* Show motion video if available, otherwise show image */}
+                    {availableLooks[popupLookIndex]?.is_motion && availableLooks[popupLookIndex]?.motion_preview_url ? (
+                      <video
+                        src={availableLooks[popupLookIndex].motion_preview_url}
+                        className="w-full h-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        data-testid="video-popup-avatar"
+                      />
+                    ) : (
+                      <img
+                        src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
+                        alt={availableLooks[popupLookIndex]?.name || `Avatar Look ${popupLookIndex + 1}`}
+                        className="w-full h-full object-cover"
+                        data-testid="img-popup-avatar"
+                      />
+                    )}
                   </div>
                 </div>
 
