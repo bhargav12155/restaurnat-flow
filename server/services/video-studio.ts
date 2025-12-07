@@ -21,6 +21,8 @@ export interface StudioAvatar {
   groupId?: string; // For avatars that belong to a group
   avatarType?: "avatar" | "talking_photo"; // HeyGen character type for video generation
   defaultVoiceId?: string; // Default voice for this avatar (from group or avatar)
+  isMotion?: boolean; // Whether this avatar has motion/video preview
+  motionPreviewUrl?: string; // URL to the motion preview video
 }
 
 export interface VideoGenerationRequest {
@@ -317,8 +319,33 @@ export class VideoStudioService {
       );
       console.log(`🎭 Video Studio: Found ${photoGroups.length} PHOTO/GENERATED_PHOTO avatar groups`);
 
-      // For PHOTO groups, find the matching avatar
+      // For PHOTO groups, fetch looks to get motion preview data
       for (const group of photoGroups) {
+        let motionLook: any = null;
+        let firstLook: any = null;
+        
+        // Try to fetch looks for this group to find motion previews
+        try {
+          const looksResponse = await fetch(`${this.baseUrl}/v2/avatar_group/${group.id}/avatars`, {
+            method: "GET",
+            headers: {
+              "x-api-key": this.apiKey,
+              "Content-Type": "application/json",
+            },
+          });
+          
+          if (looksResponse.ok) {
+            const looksData = await looksResponse.json();
+            const looks = looksData.data?.avatar_list || [];
+            
+            // Find first motion look and first look overall
+            firstLook = looks[0];
+            motionLook = looks.find((look: any) => look.is_motion && look.motion_preview_url);
+          }
+        } catch (lookError) {
+          console.warn(`🎭 Video Studio: Could not fetch looks for group ${group.id}`);
+        }
+
         const matchingAvatar = allAvatars.find((avatar: any) => 
           avatar.avatar_group_id === group.id ||
           avatar.group_id === group.id
@@ -333,6 +360,8 @@ export class VideoStudioService {
             previewUrl: matchingAvatar.preview_video_url || group.preview_video,
             groupId: group.id,
             avatarType: "avatar",
+            isMotion: !!motionLook,
+            motionPreviewUrl: motionLook?.motion_preview_url,
           });
         } else {
           // For trained photo avatars, use the group ID
@@ -340,10 +369,12 @@ export class VideoStudioService {
             id: group.id,
             name: group.name || "Photo Avatar",
             type: "photo",
-            thumbnailUrl: group.preview_image,
+            thumbnailUrl: firstLook?.image_url || group.preview_image,
             previewUrl: group.preview_video,
             groupId: group.id,
             avatarType: "talking_photo", // Photo avatars use talking_photo type
+            isMotion: !!motionLook,
+            motionPreviewUrl: motionLook?.motion_preview_url,
           });
         }
       }
