@@ -10460,17 +10460,22 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const { videoUrl, text, voiceId } = req.body;
-      console.log("🎤 Request body - videoUrl:", videoUrl?.substring(0, 50), "text length:", text?.length, "voiceId:", voiceId);
+      const { videoUrl, text, voiceId, mode, audioUrl } = req.body;
+      console.log("🎤 Request body - videoUrl:", videoUrl?.substring(0, 50), "text length:", text?.length, "voiceId:", voiceId, "mode:", mode || "text2video");
 
       if (!videoUrl) {
         console.log("🎤 Missing video URL");
         return res.status(400).json({ error: "Video URL is required" });
       }
 
-      if (!text || typeof text !== "string" || text.trim().length === 0) {
+      if (mode !== "audio2video" && (!text || typeof text !== "string" || text.trim().length === 0)) {
         console.log("🎤 Missing or invalid text");
         return res.status(400).json({ error: "Text script is required" });
+      }
+      
+      if (mode === "audio2video" && !audioUrl) {
+        console.log("🎤 Missing audio URL for audio2video mode");
+        return res.status(400).json({ error: "Audio URL is required for audio2video mode" });
       }
 
       if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
@@ -10478,13 +10483,15 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(400).json({ error: "Kling API credentials not configured" });
       }
 
-      console.log(`🎤 Starting Kling lip-sync for user ${user.id}`);
+      console.log(`🎤 Starting Kling lip-sync for user ${user.id} in ${mode || "text2video"} mode`);
 
       const { generateLipSyncVideo } = await import("./services/kling");
       const result = await generateLipSyncVideo({
         videoUrl,
-        text: text.trim(),
+        text: text?.trim() || "",
         voiceId: voiceId || "female_calm",
+        mode: mode || "text2video",
+        audioUrl: audioUrl,
       });
 
       if (!result.success) {
@@ -10529,6 +10536,153 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error) {
       console.error("Error checking lip-sync status:", error);
       res.status(500).json({ error: "Failed to check lip-sync status" });
+    }
+  });
+
+  // ==================== ELEVENLABS VOICE ENDPOINTS ====================
+
+  // Check if ElevenLabs is configured
+  app.get("/api/elevenlabs/status", requireAuth, async (req, res) => {
+    try {
+      const { isElevenLabsConfigured } = await import("./services/elevenlabs");
+      res.json({
+        configured: isElevenLabsConfigured(),
+      });
+    } catch (error) {
+      res.json({ configured: false });
+    }
+  });
+
+  // Get available ElevenLabs voices
+  app.get("/api/elevenlabs/voices", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { isElevenLabsConfigured, getElevenLabsVoices, DEFAULT_VOICES } = await import("./services/elevenlabs");
+      
+      if (!isElevenLabsConfigured()) {
+        return res.json({
+          configured: false,
+          voices: DEFAULT_VOICES,
+        });
+      }
+
+      const voices = await getElevenLabsVoices();
+      res.json({
+        configured: true,
+        voices: voices.length > 0 ? voices.map(v => ({
+          id: v.voice_id,
+          name: v.name,
+          category: v.category,
+          labels: v.labels,
+          previewUrl: v.preview_url,
+        })) : DEFAULT_VOICES,
+      });
+    } catch (error) {
+      console.error("Error fetching ElevenLabs voices:", error);
+      const { DEFAULT_VOICES } = await import("./services/elevenlabs");
+      res.json({
+        configured: false,
+        voices: DEFAULT_VOICES,
+      });
+    }
+  });
+
+  // Generate speech using ElevenLabs
+  app.post("/api/elevenlabs/tts", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { text, voiceId, modelId, stability, similarityBoost } = req.body;
+
+      if (!text || typeof text !== "string" || text.trim().length === 0) {
+        return res.status(400).json({ error: "Text is required" });
+      }
+
+      if (!voiceId) {
+        return res.status(400).json({ error: "Voice ID is required" });
+      }
+
+      const { isElevenLabsConfigured, generateSpeech } = await import("./services/elevenlabs");
+      
+      if (!isElevenLabsConfigured()) {
+        return res.status(400).json({ error: "ElevenLabs API key not configured" });
+      }
+
+      console.log(`🎙️ Generating ElevenLabs speech for user ${user.id}`);
+
+      const result = await generateSpeech(text, voiceId, {
+        modelId,
+        stability,
+        similarityBoost,
+        uploadToS3: true,
+      });
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Failed to generate speech" });
+      }
+
+      res.json({
+        success: true,
+        audioUrl: result.audioUrl,
+      });
+    } catch (error) {
+      console.error("Error generating ElevenLabs speech:", error);
+      res.status(500).json({ error: "Failed to generate speech" });
+    }
+  });
+
+  // Generate speech and return as audio buffer (for direct use with Kling)
+  app.post("/api/elevenlabs/tts/buffer", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { text, voiceId, modelId, stability, similarityBoost } = req.body;
+
+      if (!text || typeof text !== "string" || text.trim().length === 0) {
+        return res.status(400).json({ error: "Text is required" });
+      }
+
+      if (!voiceId) {
+        return res.status(400).json({ error: "Voice ID is required" });
+      }
+
+      const { isElevenLabsConfigured, generateSpeech } = await import("./services/elevenlabs");
+      
+      if (!isElevenLabsConfigured()) {
+        return res.status(400).json({ error: "ElevenLabs API key not configured" });
+      }
+
+      console.log(`🎙️ Generating ElevenLabs speech buffer for user ${user.id}`);
+
+      const result = await generateSpeech(text, voiceId, {
+        modelId,
+        stability,
+        similarityBoost,
+        uploadToS3: false,
+      });
+
+      if (!result.success || !result.audioBuffer) {
+        return res.status(500).json({ error: result.error || "Failed to generate speech" });
+      }
+
+      res.set({
+        "Content-Type": "audio/mpeg",
+        "Content-Length": result.audioBuffer.length,
+      });
+      res.send(result.audioBuffer);
+    } catch (error) {
+      console.error("Error generating ElevenLabs speech buffer:", error);
+      res.status(500).json({ error: "Failed to generate speech" });
     }
   });
 
