@@ -52,18 +52,19 @@ function generateJwtToken(accessKey: string, secretKey: string): string {
     nbf: now - 5,
   };
   
-  const header = {
-    alg: "HS256" as const,
-    typ: "JWT",
-  };
-  
-  return jwt.sign(payload, secretKey, { header });
+  return jwt.sign(payload, secretKey, { 
+    algorithm: "HS256",
+    header: {
+      alg: "HS256",
+      typ: "JWT",
+    }
+  });
 }
 
 export class KlingService {
   private accessKey: string;
   private secretKey: string;
-  private baseUrl = "https://api-singapore.klingai.com";
+  private baseUrl = "https://api.klingai.com";
 
   constructor(accessKey?: string, secretKey?: string) {
     this.accessKey = accessKey || process.env.KLING_ACCESS_KEY || "";
