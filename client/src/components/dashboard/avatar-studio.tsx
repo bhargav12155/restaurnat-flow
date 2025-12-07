@@ -124,6 +124,16 @@ export function AvatarStudio() {
   const [showLookPopup, setShowLookPopup] = useState(false);
   const [popupLookIndex, setPopupLookIndex] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  
+  // Motion generation state
+  const [showMotionDialog, setShowMotionDialog] = useState(false);
+  const [motionPrompt, setMotionPrompt] = useState("");
+  const [motionDuration, setMotionDuration] = useState<"5" | "10">("5");
+  const [isGeneratingMotion, setIsGeneratingMotion] = useState(false);
+  const [motionTaskId, setMotionTaskId] = useState<string | null>(null);
+  const [motionStatus, setMotionStatus] = useState<string>("");
+  const [motionVideoUrl, setMotionVideoUrl] = useState<string | null>(null);
+  const [motionProgress, setMotionProgress] = useState(0);
   const [uploadName, setUploadName] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [voiceAudioUrls, setVoiceAudioUrls] = useState<Record<string, string>>({});
@@ -413,6 +423,135 @@ export function AvatarStudio() {
       });
     },
   });
+
+  // Motion video generation
+  const handleGenerateMotion = async () => {
+    if (!motionPrompt.trim()) {
+      toast({
+        title: "Enter a prompt",
+        description: "Please describe how you want your avatar to move.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const currentLook = availableLooks[popupLookIndex];
+    const imageUrl = currentLook?.image_url || currentLook?.image;
+    
+    if (!imageUrl) {
+      toast({
+        title: "No image selected",
+        description: "Please select an avatar look first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingMotion(true);
+    setMotionStatus("starting");
+    setMotionProgress(0);
+    setMotionVideoUrl(null);
+
+    try {
+      const response = await fetch("/api/kling/generate-motion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          imageUrl,
+          prompt: motionPrompt,
+          duration: motionDuration,
+          waitForCompletion: false,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to start motion generation");
+      }
+
+      if (result.videoUrl) {
+        setMotionVideoUrl(result.videoUrl);
+        setMotionStatus("completed");
+        setMotionProgress(100);
+        toast({
+          title: "Motion Video Ready!",
+          description: "Your animated avatar video is ready to view.",
+        });
+      } else if (result.taskId) {
+        setMotionTaskId(result.taskId);
+        setMotionStatus("processing");
+        pollMotionStatus(result.taskId);
+      }
+    } catch (error) {
+      console.error("Motion generation error:", error);
+      setMotionStatus("failed");
+      toast({
+        title: "Generation Failed",
+        description: error instanceof Error ? error.message : "Failed to generate motion video",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingMotion(false);
+    }
+  };
+
+  const pollMotionStatus = async (taskId: string) => {
+    const maxPolls = 60;
+    let pollCount = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/kling/status/${taskId}`, {
+          credentials: "include",
+        });
+
+        const result = await response.json();
+        pollCount++;
+
+        setMotionProgress(Math.min(95, Math.round((pollCount / maxPolls) * 100)));
+
+        if (result.status === "completed" && result.videoUrl) {
+          setMotionVideoUrl(result.videoUrl);
+          setMotionStatus("completed");
+          setMotionProgress(100);
+          toast({
+            title: "Motion Video Ready!",
+            description: "Your animated avatar video is ready to view.",
+          });
+          return;
+        }
+
+        if (result.status === "failed") {
+          setMotionStatus("failed");
+          toast({
+            title: "Generation Failed",
+            description: result.error || "Video generation failed",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (pollCount < maxPolls && (result.status === "pending" || result.status === "processing")) {
+          setMotionStatus(result.status);
+          setTimeout(poll, 5000);
+        } else if (pollCount >= maxPolls) {
+          setMotionStatus("timeout");
+          toast({
+            title: "Generation Timeout",
+            description: "Video is still processing. Please check back later.",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        console.error("Poll error:", error);
+        setMotionStatus("failed");
+      }
+    };
+
+    poll();
+  };
 
   const startRecording = async () => {
     try {
@@ -1491,12 +1630,13 @@ export function AvatarStudio() {
               <div className="flex items-center justify-center gap-3 px-6 py-4 border-t bg-white dark:bg-gray-900">
                 <Button
                   variant="outline"
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 border-purple-300 hover:bg-purple-50 text-purple-700"
                   onClick={() => {
-                    toast({
-                      title: "Coming Soon",
-                      description: "Motion gestures will be available in a future update.",
-                    });
+                    setShowMotionDialog(true);
+                    setMotionPrompt("");
+                    setMotionStatus("");
+                    setMotionVideoUrl(null);
+                    setMotionProgress(0);
                   }}
                   data-testid="button-add-motion"
                 >
@@ -1534,6 +1674,162 @@ export function AvatarStudio() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Motion Generation Dialog */}
+      <Dialog open={showMotionDialog} onOpenChange={setShowMotionDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-500" />
+              Add Motion to Avatar
+            </DialogTitle>
+            <DialogDescription>
+              Transform your static avatar image into a dynamic video with natural motion.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Preview of selected avatar */}
+            <div className="flex justify-center">
+              <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-purple-200 shadow-md">
+                <img
+                  src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
+                  alt="Selected Avatar"
+                  className="w-full h-full object-cover"
+                  data-testid="img-motion-preview"
+                />
+              </div>
+            </div>
+
+            {/* Motion prompt input */}
+            <div className="space-y-2">
+              <Label htmlFor="motion-prompt">Motion Description</Label>
+              <Textarea
+                id="motion-prompt"
+                placeholder="Describe how you want your avatar to move... 
+
+Examples:
+• Nodding head gently while smiling
+• Looking around the room curiously
+• Waving hello with a friendly expression
+• Slight breathing motion with subtle head movement"
+                value={motionPrompt}
+                onChange={(e) => setMotionPrompt(e.target.value)}
+                className="min-h-[100px]"
+                disabled={isGeneratingMotion || motionStatus === "processing"}
+                data-testid="input-motion-prompt"
+              />
+            </div>
+
+            {/* Duration selector */}
+            <div className="space-y-2">
+              <Label>Video Duration</Label>
+              <Select
+                value={motionDuration}
+                onValueChange={(value) => setMotionDuration(value as "5" | "10")}
+                disabled={isGeneratingMotion || motionStatus === "processing"}
+              >
+                <SelectTrigger data-testid="select-motion-duration">
+                  <SelectValue placeholder="Select duration" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5 seconds</SelectItem>
+                  <SelectItem value="10">10 seconds</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Progress indicator */}
+            {(isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending") && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {motionStatus === "starting" && "Starting generation..."}
+                    {motionStatus === "pending" && "Queued for processing..."}
+                    {motionStatus === "processing" && "Creating motion video..."}
+                  </span>
+                  <span className="text-purple-600 font-medium">{motionProgress}%</span>
+                </div>
+                <Progress value={motionProgress} className="h-2" />
+                <p className="text-xs text-gray-500 text-center">
+                  This may take 1-3 minutes. Please wait...
+                </p>
+              </div>
+            )}
+
+            {/* Video result */}
+            {motionVideoUrl && motionStatus === "completed" && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-green-600">
+                  <CheckCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">Motion video generated!</span>
+                </div>
+                <div className="rounded-lg overflow-hidden border shadow-md bg-black">
+                  <video
+                    src={motionVideoUrl}
+                    controls
+                    autoPlay
+                    loop
+                    className="w-full max-h-64 object-contain"
+                    data-testid="video-motion-result"
+                  />
+                </div>
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(motionVideoUrl, "_blank")}
+                    data-testid="button-download-motion"
+                  >
+                    <Video className="h-4 w-4 mr-2" />
+                    Open in New Tab
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Error state */}
+            {motionStatus === "failed" && (
+              <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/30 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                <span className="text-sm text-red-700 dark:text-red-400">
+                  Video generation failed. Please try again with a different prompt.
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2 border-t">
+            <Button
+              variant="outline"
+              onClick={() => setShowMotionDialog(false)}
+              data-testid="button-cancel-motion"
+            >
+              {motionVideoUrl ? "Close" : "Cancel"}
+            </Button>
+            {!motionVideoUrl && (
+              <Button
+                className="bg-purple-500 hover:bg-purple-600 text-white"
+                onClick={handleGenerateMotion}
+                disabled={isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending" || !motionPrompt.trim()}
+                data-testid="button-generate-motion"
+              >
+                {isGeneratingMotion || motionStatus === "processing" || motionStatus === "pending" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate Motion
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
