@@ -152,6 +152,21 @@ const videoUpload = multer({
   },
 });
 
+// Configure multer with memory storage for audio uploads (for S3 upload)
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit for audio
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("audio/") || file.mimetype === "application/octet-stream") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only audio files are allowed"));
+    }
+  },
+});
+
 function generateFallbackScript(
   topic: string,
   neighborhood: string,
@@ -10539,8 +10554,8 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Kling Lip-Sync - Upload audio for lip-sync
-  app.post("/api/kling/upload-audio", requireAuth, upload.single("audio"), async (req, res) => {
+  // Kling Lip-Sync - Upload audio for lip-sync (uses memory storage for S3 upload)
+  app.post("/api/kling/upload-audio", requireAuth, memoryUpload.single("audio"), async (req, res) => {
     console.log("🎤 Received audio upload for lip-sync");
     try {
       const user = await resolveMemStorageUser(req);
