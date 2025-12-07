@@ -121,6 +121,8 @@ export function AvatarStudio() {
   const [showVideoDialog, setShowVideoDialog] = useState(false);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [showQuickUpload, setShowQuickUpload] = useState(false);
+  const [showLookPopup, setShowLookPopup] = useState(false);
+  const [popupLookIndex, setPopupLookIndex] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadName, setUploadName] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -750,14 +752,17 @@ export function AvatarStudio() {
                     Select an Avatar Look
                   </Label>
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {availableLooks.map((look) => {
+                    {availableLooks.map((look, index) => {
                       const lookId = look.avatar_id || look.id;
                       const imageUrl = look.image_url || look.image || "";
                       return (
                         <button
                           key={lookId}
-                          onClick={() => setSelectedAvatarLook(lookId)}
-                          className={`relative rounded-lg overflow-hidden border-2 transition-all ${
+                          onClick={() => {
+                            setPopupLookIndex(index);
+                            setShowLookPopup(true);
+                          }}
+                          className={`relative rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-lg ${
                             selectedAvatarLook === lookId
                               ? "border-[#D4AF37] ring-2 ring-[#D4AF37]/30"
                               : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
@@ -1410,6 +1415,121 @@ export function AvatarStudio() {
               </>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showLookPopup} onOpenChange={setShowLookPopup}>
+        <DialogContent 
+          className="max-w-lg p-0 gap-0 overflow-hidden bg-white dark:bg-gray-900 rounded-2xl"
+          data-testid="dialog-avatar-look-popup"
+        >
+          {availableLooks.length > 0 && availableLooks[popupLookIndex] && (
+            <>
+              <div className="flex items-center justify-between px-6 py-4 border-b">
+                <DialogTitle className="text-lg font-semibold">
+                  {selectedGroup?.name || "Avatar Look"} - Look {popupLookIndex + 1}
+                </DialogTitle>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowLookPopup(false)}
+                  className="h-8 w-8 rounded-full"
+                  data-testid="button-close-look-popup"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="relative flex items-center justify-center bg-gray-50 dark:bg-gray-800">
+                {availableLooks.length > 1 && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setPopupLookIndex((prev) => 
+                      prev === 0 ? availableLooks.length - 1 : prev - 1
+                    )}
+                    className="absolute left-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
+                    data-testid="button-prev-look"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                )}
+
+                <div className="p-6">
+                  <div className="w-72 h-96 mx-auto rounded-xl overflow-hidden shadow-lg border-2 border-gray-100 dark:border-gray-700">
+                    <img
+                      src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
+                      alt={`Avatar Look ${popupLookIndex + 1}`}
+                      className="w-full h-full object-cover"
+                      data-testid="img-popup-avatar"
+                    />
+                  </div>
+                </div>
+
+                {availableLooks.length > 1 && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setPopupLookIndex((prev) => 
+                      prev === availableLooks.length - 1 ? 0 : prev + 1
+                    )}
+                    className="absolute right-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
+                    data-testid="button-next-look"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-center gap-3 px-6 py-4 border-t bg-white dark:bg-gray-900">
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    toast({
+                      title: "Coming Soon",
+                      description: "Motion gestures will be available in a future update.",
+                    });
+                  }}
+                  data-testid="button-add-motion"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Add Motion
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    toast({
+                      title: "Coming Soon",
+                      description: "Look editing will be available in a future update.",
+                    });
+                  }}
+                  data-testid="button-edit-look"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Edit Look
+                </Button>
+                <Button
+                  className="flex items-center gap-2 bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                  onClick={() => {
+                    const currentLook = availableLooks[popupLookIndex];
+                    const lookId = currentLook?.avatar_id || currentLook?.id || "";
+                    setSelectedAvatarLook(lookId);
+                    setShowLookPopup(false);
+                    toast({
+                      title: "Avatar Selected",
+                      description: "Now proceed to choose a voice for your video.",
+                    });
+                  }}
+                  data-testid="button-select-avatar"
+                >
+                  <Video className="h-4 w-4" />
+                  Create with AI Studio
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
