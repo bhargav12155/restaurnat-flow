@@ -35,6 +35,7 @@ import { getAPIKeyStatus, openaiService } from "./services/openai";
 import { S3UploadService } from "./services/s3Upload";
 import { seoService } from "./services/seo";
 import { SocialMediaError, socialMediaService } from "./services/socialMedia";
+import { seedVideoTemplates } from "./services/template-seeder";
 import { storage } from "./storage";
 import { realtimeService } from "./websocket";
 
@@ -11648,6 +11649,196 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         error: "Failed to get upload status",
         details: error?.message || String(error),
       });
+    }
+  });
+
+  // =====================================================
+  // VIDEO TEMPLATES API
+  // =====================================================
+
+  // Seed templates on server startup
+  seedVideoTemplates().catch((err) => {
+    console.error("Failed to seed video templates:", err);
+  });
+
+  // GET /api/video-templates - List all active templates
+  app.get("/api/video-templates", async (req, res) => {
+    try {
+      const templates = await storage.getVideoTemplates(true);
+      res.json(templates);
+    } catch (error: any) {
+      console.error("Error fetching video templates:", error);
+      res.status(500).json({ error: "Failed to fetch templates" });
+    }
+  });
+
+  // GET /api/video-templates/:id - Get template details with variables
+  app.get("/api/video-templates/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const template = await storage.getVideoTemplateById(id);
+      
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      const variables = await storage.getTemplateVariables(id);
+      
+      res.json({
+        ...template,
+        variables,
+      });
+    } catch (error: any) {
+      console.error("Error fetching template details:", error);
+      res.status(500).json({ error: "Failed to fetch template details" });
+    }
+  });
+
+  // POST /api/video-templates/:id/preview - Generate script preview
+  app.post("/api/video-templates/:id/preview", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { variables } = req.body;
+
+      const template = await storage.getVideoTemplateById(id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      // Replace variables in the script template
+      let script = template.scriptTemplate;
+      if (variables && typeof variables === "object") {
+        for (const [key, value] of Object.entries(variables)) {
+          script = script.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), String(value || ""));
+        }
+      }
+
+      res.json({
+        script,
+        templateName: template.name,
+      });
+    } catch (error: any) {
+      console.error("Error generating preview:", error);
+      res.status(500).json({ error: "Failed to generate preview" });
+    }
+  });
+
+  // POST /api/video-templates/:id/generate - Generate video from template
+  app.post("/api/video-templates/:id/generate", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { variables, avatarId, voiceId, title } = req.body;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const template = await storage.getVideoTemplateById(id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      // Generate the script from template
+      let script = template.scriptTemplate;
+      if (variables && typeof variables === "object") {
+        for (const [key, value] of Object.entries(variables)) {
+          script = script.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), String(value || ""));
+        }
+      }
+
+      // Create a record of the generated video
+      const generatedVideo = await storage.createGeneratedVideo({
+        userId: String(userId),
+        templateId: id,
+        templateName: template.name,
+        avatarId: avatarId || template.defaultAvatarId,
+        voiceId: voiceId || template.defaultVoiceId,
+        title: title || `${template.name} - ${new Date().toLocaleDateString()}`,
+        generatedScript: script,
+        variables: variables as Record<string, string>,
+        status: "draft",
+      });
+
+      res.json({
+        success: true,
+        videoId: generatedVideo.id,
+        script,
+        message: "Video generation request created. Use your preferred avatar and voice to create the video.",
+      });
+    } catch (error: any) {
+      console.error("Error generating video from template:", error);
+      res.status(500).json({ error: "Failed to generate video" });
+    }
+  });
+
+  // GET /api/generated-videos - List user's generated videos
+  app.get("/api/generated-videos", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const videos = await storage.getGeneratedVideos(String(userId));
+      res.json(videos);
+    } catch (error: any) {
+      console.error("Error fetching generated videos:", error);
+      res.status(500).json({ error: "Failed to fetch generated videos" });
+    }
+  });
+
+  // GET /api/generated-videos/:id - Get a specific generated video
+  app.get("/api/generated-videos/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const video = await storage.getGeneratedVideoById(id);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      if (video.userId !== String(userId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      res.json(video);
+    } catch (error: any) {
+      console.error("Error fetching generated video:", error);
+      res.status(500).json({ error: "Failed to fetch generated video" });
+    }
+  });
+
+  // PATCH /api/generated-videos/:id - Update generated video status
+  app.patch("/api/generated-videos/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+      const updates = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const video = await storage.getGeneratedVideoById(id);
+      if (!video) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+
+      if (video.userId !== String(userId)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const updated = await storage.updateGeneratedVideo(id, updates);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating generated video:", error);
+      res.status(500).json({ error: "Failed to update generated video" });
     }
   });
 
