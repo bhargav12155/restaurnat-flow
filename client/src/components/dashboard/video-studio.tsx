@@ -42,6 +42,8 @@ interface StudioAvatar {
   type: "preset" | "photo" | "custom";
   previewUrl?: string;
   thumbnailUrl?: string;
+  isMotion?: boolean;
+  motionPreviewUrl?: string;
 }
 
 interface VideoStatus {
@@ -95,6 +97,7 @@ export function VideoStudio() {
   const [recordedUrl, setRecordedUrl] = useState<string>("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [hoveredAvatarId, setHoveredAvatarId] = useState<string | null>(null);
 
   const { data: avatarsData, isLoading: avatarsLoading, refetch: refetchAvatars } = useQuery<{ avatars: StudioAvatar[] }>({
     queryKey: ["/api/studio/avatars"],
@@ -629,37 +632,64 @@ export function VideoStudio() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {avatars.map((avatar) => (
-                      <div
-                        key={avatar.id}
-                        className={`relative border rounded-lg p-3 cursor-pointer transition-all hover:border-primary ${
-                          selectedAvatar === avatar.id
-                            ? "border-primary ring-2 ring-primary/20"
-                            : "border-border"
-                        }`}
-                        onClick={() => {
-                          setSelectedAvatar(avatar.id);
-                          setAvatarType(avatar.type === "photo" ? "talking_photo" : "avatar");
-                        }}
-                        data-testid={`avatar-option-${avatar.id}`}
-                      >
-                        {avatar.thumbnailUrl ? (
-                          <img
-                            src={avatar.thumbnailUrl}
-                            alt={avatar.name}
-                            className="w-full aspect-square object-cover rounded-md mb-2"
-                          />
-                        ) : (
-                          <div className="w-full aspect-square bg-muted rounded-md mb-2 flex items-center justify-center">
-                            <Video className="w-8 h-8 text-muted-foreground" />
-                          </div>
-                        )}
-                        <p className="text-sm font-medium truncate">{avatar.name}</p>
-                        {selectedAvatar === avatar.id && (
-                          <CheckCircle className="absolute top-2 right-2 w-5 h-5 text-primary" />
-                        )}
-                      </div>
-                    ))}
+                    {avatars.map((avatar) => {
+                      const hasMotion = avatar.isMotion && avatar.motionPreviewUrl;
+                      const hasPreviewVideo = avatar.previewUrl && avatar.previewUrl.includes('.mp4');
+                      const videoUrl = avatar.motionPreviewUrl || (hasPreviewVideo ? avatar.previewUrl : null);
+                      const isHovered = hoveredAvatarId === avatar.id;
+                      
+                      return (
+                        <div
+                          key={avatar.id}
+                          className={`relative border rounded-lg p-3 cursor-pointer transition-all hover:border-primary hover:scale-105 hover:shadow-lg ${
+                            selectedAvatar === avatar.id
+                              ? "border-primary ring-2 ring-primary/20"
+                              : "border-border"
+                          }`}
+                          onClick={() => {
+                            setSelectedAvatar(avatar.id);
+                            setAvatarType(avatar.type === "photo" ? "talking_photo" : "avatar");
+                          }}
+                          onMouseEnter={() => setHoveredAvatarId(avatar.id)}
+                          onMouseLeave={() => setHoveredAvatarId(null)}
+                          data-testid={`avatar-option-${avatar.id}`}
+                        >
+                          {/* Motion badge */}
+                          {(hasMotion || hasPreviewVideo) && (
+                            <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 z-10">
+                              <Play className="h-2.5 w-2.5" />
+                              Motion
+                            </div>
+                          )}
+                          
+                          {/* Image or Video on hover */}
+                          {(hasMotion || hasPreviewVideo) && isHovered && videoUrl ? (
+                            <video
+                              src={videoUrl}
+                              className="w-full aspect-square object-cover rounded-md mb-2"
+                              autoPlay
+                              loop
+                              muted
+                              playsInline
+                            />
+                          ) : avatar.thumbnailUrl ? (
+                            <img
+                              src={avatar.thumbnailUrl}
+                              alt={avatar.name}
+                              className="w-full aspect-square object-cover rounded-md mb-2"
+                            />
+                          ) : (
+                            <div className="w-full aspect-square bg-muted rounded-md mb-2 flex items-center justify-center">
+                              <Video className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                          )}
+                          <p className="text-sm font-medium truncate">{avatar.name}</p>
+                          {selectedAvatar === avatar.id && (
+                            <CheckCircle className="absolute top-2 right-2 w-5 h-5 text-primary" />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </TabsContent>
