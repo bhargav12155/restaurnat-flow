@@ -78,16 +78,23 @@ export class S3UploadService {
   async uploadBuffer(
     fileBuffer: Buffer,
     key: string,
-    contentType: string
+    contentType: string,
+    makePublic: boolean = false
   ): Promise<string> {
+    const params: Record<string, unknown> = {
+      Bucket: this.bucketName,
+      Key: key,
+      Body: fileBuffer,
+      ContentType: contentType,
+    };
+    
+    if (makePublic) {
+      params.ACL = 'public-read';
+    }
+
     const upload = new Upload({
       client: this.s3Client,
-      params: {
-        Bucket: this.bucketName,
-        Key: key,
-        Body: fileBuffer,
-        ContentType: contentType,
-      },
+      params: params as any,
     });
 
     await upload.done();

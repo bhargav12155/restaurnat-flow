@@ -10675,14 +10675,14 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         }
       }
 
-      // Upload to S3 for persistent URL
+      // Upload to S3 for persistent URL (with public-read for Kling API access)
       const { S3UploadService } = await import("./services/s3Upload");
       const s3Service = new S3UploadService();
       
       const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${finalFileName}`;
-      const audioUrl = await s3Service.uploadBuffer(audioBuffer, fileName, finalMimeType);
+      const audioUrl = await s3Service.uploadBuffer(audioBuffer, fileName, finalMimeType, true);
       
-      console.log(`✅ Audio uploaded to S3: ${audioUrl}`);
+      console.log(`✅ Audio uploaded to S3 (public): ${audioUrl}`);
 
       res.json({
         success: true,
@@ -10709,14 +10709,14 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       console.log(`🎬 Video file received: ${req.file.originalname}, size: ${req.file.size} bytes, type: ${req.file.mimetype}`);
 
-      // Upload to S3 for persistent URL
+      // Upload to S3 for persistent URL (with public-read for Kling API access)
       const { S3UploadService } = await import("./services/s3Upload");
       const s3Service = new S3UploadService();
       
       const fileName = `lip-sync-video/${user.id}/${Date.now()}-${req.file.originalname}`;
-      const videoUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype);
+      const videoUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype, true);
       
-      console.log(`✅ Video uploaded to S3: ${videoUrl}`);
+      console.log(`✅ Video uploaded to S3 (public): ${videoUrl}`);
 
       res.json({
         success: true,
