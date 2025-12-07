@@ -253,15 +253,17 @@ export class KlingService {
 
       const token = this.getAuthToken();
 
-      let requestBody: Record<string, unknown>;
+      let requestBody: { input: Record<string, unknown> };
 
       if (request.mode === "audio2video" && request.audioUrl) {
         console.log("🎵 Using audio2video mode with provided audio");
         requestBody = {
-          video_url: request.videoUrl,
-          mode: "audio2video",
-          audio_type: "url",
-          audio_url: request.audioUrl,
+          input: {
+            video_url: request.videoUrl,
+            mode: "audio2video",
+            audio_type: "url",
+            audio_url: request.audioUrl,
+          },
         };
       } else {
         const voiceTimbreMap: Record<string, string> = {
@@ -281,11 +283,13 @@ export class KlingService {
         console.log("📝 Truncated text for TTS:", truncatedText);
 
         requestBody = {
-          video_url: request.videoUrl,
-          mode: "text2video",
-          text: truncatedText,
-          voice_id: ttsTimbre,
-          voice_speed: 1.0,
+          input: {
+            video_url: request.videoUrl,
+            mode: "text2video",
+            text: truncatedText,
+            voice_id: ttsTimbre,
+            voice_speed: 1.0,
+          },
         };
       }
 
