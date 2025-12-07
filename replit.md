@@ -28,6 +28,11 @@ The backend uses Express.js with TypeScript (ESM) and Replit's OpenID Connect fo
 - **Dual Voice Provider System**: Supports both ElevenLabs and Kling for voice generation, with a toggle in the motion dialog to select provider. ElevenLabs provides high-quality voice synthesis using the Rachel voice (voice_id: 21m00Tcm4TlvDq8ikWAM) with mp3_44100_128 output format. Kling provides built-in text-to-video with lip-sync. Requires ELEVENLABS_API_KEY secret for ElevenLabs provider. Service: server/services/elevenlabs.ts.
 - **Hover-to-Play Motion Preview**: Avatar looks with motion (is_motion: true) display a purple "Motion" badge and auto-play their motion video on hover in the avatar grid. The popup dialog also shows the motion video for motion-enabled avatars. Provides a HeyGen-style interactive preview experience. State tracked via hoveredLookId in AvatarStudio component.
 - **Save Motion Button**: Allows users to download motion videos before attempting voice generation, preventing work loss if voice API calls fail.
+- **Multi-Mode Voice Input System**: Three ways to add voice to motion avatars in the Avatar Studio voice step:
+  1. **TTS Mode**: Text-to-speech using ElevenLabs or Kling built-in voices. User types a script, selects a voice provider and voice, and the system generates audio.
+  2. **Record Mode**: Browser-based voice recording using MediaRecorder API. Features: start/stop controls, real-time timer, audio playback preview, re-record option.
+  3. **Upload Mode**: Upload pre-recorded audio files (MP3, WAV, WebM, etc.). Useful for professional voiceovers or pre-recorded content.
+  All modes upload audio to S3 via `/api/kling/upload-audio` endpoint, then use Kling's audio2video mode for lip-sync. This bypasses Kling TTS issues while giving users maximum flexibility for voice input.
 
 ### System Design Choices
 - **Database**: PostgreSQL with Drizzle ORM ensures type-safe operations. The schema supports main users (agents) and public users (clients) with multi-tenancy. Key tables include users, properties, AI content, social posts, and activity tracking.
