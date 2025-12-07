@@ -41,6 +41,7 @@ import {
   Square,
   Hash,
   Trash2,
+  Download,
 } from "lucide-react";
 
 const PROFESSIONAL_VOICES = [
@@ -2115,6 +2116,29 @@ export function AvatarStudio() {
                   Back
                 </Button>
                 <div className="flex gap-2">
+                  {/* Save Motion Video - allows saving without voice */}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (motionVideoUrl) {
+                        const link = document.createElement("a");
+                        link.href = motionVideoUrl;
+                        link.download = `motion-avatar-${Date.now()}.mp4`;
+                        link.target = "_blank";
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        toast({
+                          title: "Download Started",
+                          description: "Your motion video is being downloaded.",
+                        });
+                      }
+                    }}
+                    data-testid="button-save-motion"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Save Motion
+                  </Button>
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -2188,17 +2212,26 @@ export function AvatarStudio() {
                         }
                         
                         console.log("🎤 Sending fetch request to /api/kling/lip-sync");
+                        const lipSyncBody: Record<string, unknown> = {
+                          videoUrl: motionVideoUrl,
+                        };
+                        
+                        if (voiceProvider === "elevenlabs" && audioUrl) {
+                          lipSyncBody.mode = "audio2video";
+                          lipSyncBody.audioUrl = audioUrl;
+                        } else {
+                          lipSyncBody.mode = "text2video";
+                          lipSyncBody.text = motionVoiceScript.trim();
+                          lipSyncBody.voiceId = selectedMotionVoice || "female_calm";
+                        }
+                        
+                        console.log("🎤 Lip-sync request body:", lipSyncBody);
+                        
                         const response = await fetch("/api/kling/lip-sync", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           credentials: "include",
-                          body: JSON.stringify({
-                            videoUrl: motionVideoUrl,
-                            text: voiceProvider === "kling" ? motionVoiceScript : undefined,
-                            voiceId: voiceProvider === "kling" ? selectedMotionVoice : undefined,
-                            mode: voiceProvider === "elevenlabs" ? "audio2video" : "text2video",
-                            audioUrl: audioUrl,
-                          }),
+                          body: JSON.stringify(lipSyncBody),
                         });
                         
                         console.log("🎤 Response status:", response.status, response.statusText);
