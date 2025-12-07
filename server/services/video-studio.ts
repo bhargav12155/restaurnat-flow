@@ -29,6 +29,8 @@ export interface VideoGenerationRequest {
   script: string;
   title?: string;
   voiceId?: string;
+  voiceMode?: "tts" | "record" | "upload";
+  audioUrl?: string; // For recorded/uploaded audio
   aspectRatio?: "16:9" | "9:16" | "1:1";
   quality?: "1080p" | "720p" | "480p";
   gestureIntensity?: number;
@@ -480,11 +482,15 @@ Thanks for watching! If you found this helpful, don't forget to like and subscri
     console.log("🎬 Video Studio: Starting video generation...");
     console.log("📋 Request:", JSON.stringify(request, null, 2));
 
+    // Determine if using custom audio (record/upload) or TTS
+    const useCustomAudio = request.voiceMode && request.voiceMode !== "tts" && request.audioUrl;
+
     const response = await this.heygenService.generateVideo({
       avatarId: request.avatarId,
       script: request.script,
       title: request.title || "Video Studio Generation",
-      voiceId: request.voiceId,
+      voiceId: useCustomAudio ? undefined : request.voiceId,
+      audioUrl: useCustomAudio ? request.audioUrl : undefined,
       aspectRatio: request.aspectRatio || "16:9",
       quality: request.quality || "720p",
       isTalkingPhoto: request.avatarType === "talking_photo",

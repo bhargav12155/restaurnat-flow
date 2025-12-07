@@ -21,12 +21,15 @@ import {
   Film,
   Image,
   Loader2,
+  Mic,
   Play,
   Plus,
   Sparkles,
+  Square,
   Trash2,
   Upload,
   Video,
+  Volume2,
   Wand2,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -82,8 +85,23 @@ export function VideoStudio() {
   const [selectedVideoForPlay, setSelectedVideoForPlay] = useState<SavedVideo | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [voiceInputMode, setVoiceInputMode] = useState<"tts" | "record" | "upload">("tts");
+  const [selectedVoice, setSelectedVoice] = useState<string>("");
+  const [customAudioUrl, setCustomAudioUrl] = useState<string>("");
+  const [customAudioFile, setCustomAudioFile] = useState<File | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedUrl, setRecordedUrl] = useState<string>("");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const { data: avatarsData, isLoading: avatarsLoading, refetch: refetchAvatars } = useQuery<{ avatars: StudioAvatar[] }>({
     queryKey: ["/api/studio/avatars"],
+  });
+
+  const { data: voicesData } = useQuery<{ voices: Array<{ voice_id: string; name: string }> }>({
+    queryKey: ["/api/studio/voices"],
   });
 
   const { data: savedVideosData, isLoading: videosLoading, refetch: refetchVideos } = useQuery<{ videos: SavedVideo[] }>({
@@ -152,12 +170,40 @@ export function VideoStudio() {
 
   const generateVideoMutation = useMutation({
     mutationFn: async () => {
+      let audioUrl = "";
+      if (voiceInputMode === "record" && recordedBlob) {
+        const formData = new FormData();
+        formData.append("audio", recordedBlob, "recording.webm");
+        const uploadRes = await fetch("/api/kling/upload-audio", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        if (!uploadRes.ok) throw new Error("Failed to upload audio");
+        const uploadData = await uploadRes.json();
+        audioUrl = uploadData.audioUrl;
+      } else if (voiceInputMode === "upload" && customAudioFile) {
+        const formData = new FormData();
+        formData.append("audio", customAudioFile);
+        const uploadRes = await fetch("/api/kling/upload-audio", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        if (!uploadRes.ok) throw new Error("Failed to upload audio");
+        const uploadData = await uploadRes.json();
+        audioUrl = uploadData.audioUrl;
+      }
+
       const res = await apiRequest("POST", "/api/studio/generate", {
         avatarId: selectedAvatar,
         avatarType,
         script,
         title: title || topic || "My Video",
         aspectRatio,
+        voiceMode: voiceInputMode,
+        voiceId: voiceInputMode === "tts" ? selectedVoice : undefined,
+        audioUrl: voiceInputMode !== "tts" ? audioUrl : undefined,
       });
       return res.json();
     },
@@ -208,6 +254,76 @@ export function VideoStudio() {
     deleteVideoMutation.mutate(videoId);
   };
 
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      const chunks: Blob[] = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        setRecordedBlob(blob);
+        setRecordedUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      toast({
+        title: "Microphone Access Denied",
+        description: "Please allow microphone access to record audio.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+    }
+  };
+
+  const clearRecording = () => {
+    if (recordedUrl) {
+      URL.revokeObjectURL(recordedUrl);
+    }
+    setRecordedBlob(null);
+    setRecordedUrl("");
+    setRecordingTime(0);
+  };
+
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCustomAudioFile(file);
+      setCustomAudioUrl(URL.createObjectURL(file));
+    }
+  };
+
   const { data: videoStatus } = useQuery<VideoStatus>({
     queryKey: ["/api/studio/status", videoId],
     enabled: !!videoId && isPolling,
@@ -232,6 +348,13 @@ export function VideoStudio() {
     }
   }, [videoStatus, toast]);
 
+  // Set default voice when voices data loads
+  useEffect(() => {
+    if (voicesData?.voices?.length && !selectedVoice) {
+      setSelectedVoice(voicesData.voices[0].voice_id);
+    }
+  }, [voicesData, selectedVoice]);
+
   const handleGenerateScript = () => {
     if (!topic.trim()) {
       toast({
@@ -254,14 +377,36 @@ export function VideoStudio() {
       setStep(1);
       return;
     }
-    if (!script.trim()) {
+    
+    // Script is required for TTS mode
+    if (voiceInputMode === "tts" && !script.trim()) {
       toast({
         title: "Script Required",
-        description: "Please enter or generate a script.",
+        description: "Please enter or generate a script for text-to-speech.",
         variant: "destructive",
       });
       return;
     }
+    
+    // Audio is required for record/upload modes (check blob/file, not URL)
+    if (voiceInputMode === "record" && !recordedBlob) {
+      toast({
+        title: "Recording Required",
+        description: "Please record your voice first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (voiceInputMode === "upload" && !customAudioFile) {
+      toast({
+        title: "Audio Required",
+        description: "Please upload an audio file first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     generateVideoMutation.mutate();
   };
 
@@ -613,13 +758,168 @@ export function VideoStudio() {
               </div>
             </div>
 
+            <div className="space-y-4 pt-4 border-t">
+              <Label className="text-sm font-medium">How should your avatar speak?</Label>
+              
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={voiceInputMode === "tts" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setVoiceInputMode("tts")}
+                  data-testid="button-voice-mode-tts"
+                >
+                  <Volume2 className="h-4 w-4 mr-1" />
+                  Text to Speech
+                </Button>
+                <Button
+                  type="button"
+                  variant={voiceInputMode === "record" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setVoiceInputMode("record")}
+                  data-testid="button-voice-mode-record"
+                >
+                  <Mic className="h-4 w-4 mr-1" />
+                  Record Voice
+                </Button>
+                <Button
+                  type="button"
+                  variant={voiceInputMode === "upload" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setVoiceInputMode("upload")}
+                  data-testid="button-voice-mode-upload"
+                >
+                  <Upload className="h-4 w-4 mr-1" />
+                  Upload Audio
+                </Button>
+              </div>
+
+              {voiceInputMode === "tts" && (
+                <div className="space-y-3">
+                  <Label className="text-sm">Select Voice</Label>
+                  <Select value={selectedVoice} onValueChange={setSelectedVoice}>
+                    <SelectTrigger data-testid="select-voice">
+                      <SelectValue placeholder="Choose a voice for your avatar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {voicesData?.voices?.map((voice) => (
+                        <SelectItem key={voice.voice_id} value={voice.voice_id}>
+                          {voice.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Your script will be converted to speech using the selected voice.
+                  </p>
+                </div>
+              )}
+
+              {voiceInputMode === "record" && (
+                <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-muted/50">
+                  {!recordedUrl ? (
+                    <>
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all ${
+                        isRecording ? "bg-red-500 animate-pulse" : "bg-primary/10"
+                      }`}>
+                        <Mic className={`h-8 w-8 ${isRecording ? "text-white" : "text-primary"}`} />
+                      </div>
+                      {isRecording && (
+                        <div className="text-xl font-mono text-red-500 mb-4">
+                          {formatTime(recordingTime)}
+                        </div>
+                      )}
+                      <Button
+                        type="button"
+                        onClick={isRecording ? stopRecording : startRecording}
+                        className={isRecording ? "bg-red-500 hover:bg-red-600" : ""}
+                        data-testid={isRecording ? "button-stop-recording" : "button-start-recording"}
+                      >
+                        {isRecording ? (
+                          <>
+                            <Square className="h-4 w-4 mr-2" />
+                            Stop Recording
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="h-4 w-4 mr-2" />
+                            Start Recording
+                          </>
+                        )}
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-3 text-center">
+                        Record yourself speaking the script.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 text-green-600 mb-4">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="font-medium">Recording saved ({formatTime(recordingTime)})</span>
+                      </div>
+                      <audio src={recordedUrl} controls className="w-full max-w-xs mb-4" data-testid="audio-recording" />
+                      <Button type="button" variant="outline" onClick={clearRecording} data-testid="button-clear-recording">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Record Again
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {voiceInputMode === "upload" && (
+                <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-muted/50">
+                  {!customAudioUrl ? (
+                    <>
+                      <Upload className="h-8 w-8 text-muted-foreground mb-4" />
+                      <Label htmlFor="audio-upload-video" className="cursor-pointer bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90">
+                        Choose Audio File
+                      </Label>
+                      <input
+                        id="audio-upload-video"
+                        type="file"
+                        accept="audio/*"
+                        onChange={handleAudioUpload}
+                        className="hidden"
+                        data-testid="input-upload-audio"
+                      />
+                      <p className="text-xs text-muted-foreground mt-3 text-center">
+                        Upload an MP3, WAV, or other audio file.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 text-green-600 mb-4">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="font-medium">Audio uploaded: {customAudioFile?.name}</span>
+                      </div>
+                      <audio src={customAudioUrl} controls className="w-full max-w-xs mb-4" data-testid="audio-uploaded" />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => { setCustomAudioFile(null); setCustomAudioUrl(""); }}
+                        data-testid="button-remove-audio"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Remove
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-between pt-4">
               <Button variant="outline" onClick={() => setStep(1)} data-testid="step-2-back">
                 Back
               </Button>
               <Button
                 onClick={() => setStep(3)}
-                disabled={!script.trim()}
+                disabled={
+                  (voiceInputMode === "tts" && !script.trim()) ||
+                  (voiceInputMode === "record" && !recordedBlob) ||
+                  (voiceInputMode === "upload" && !customAudioFile)
+                }
                 data-testid="step-2-next"
               >
                 Next: Generate Video
@@ -650,6 +950,15 @@ export function VideoStudio() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Aspect Ratio:</span> {aspectRatio}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Voice:</span>{" "}
+                  {voiceInputMode === "tts" 
+                    ? (voicesData?.voices?.find(v => v.voice_id === selectedVoice)?.name || "Default Voice")
+                    : voiceInputMode === "record" 
+                      ? "Recorded Voice"
+                      : "Uploaded Audio"
+                  }
                 </div>
                 <div className="col-span-2">
                   <span className="text-muted-foreground">Title:</span>{" "}
