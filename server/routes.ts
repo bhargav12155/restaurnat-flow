@@ -167,6 +167,21 @@ const memoryUpload = multer({
   },
 });
 
+// Configure multer with memory storage for video uploads to S3 (for lip-sync)
+const memoryVideoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit for video
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("video/") || file.mimetype === "application/octet-stream") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only video files are allowed"));
+    }
+  },
+});
+
 function generateFallbackScript(
   topic: string,
   neighborhood: string,
@@ -10589,7 +10604,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   });
 
   // Kling Lip-Sync - Upload video for lip-sync (when user uploads their own motion video)
-  app.post("/api/kling/upload-video", requireAuth, memoryUpload.single("video"), async (req, res) => {
+  app.post("/api/kling/upload-video", requireAuth, memoryVideoUpload.single("video"), async (req, res) => {
     console.log("🎬 Received video upload for lip-sync");
     try {
       const user = await resolveMemStorageUser(req);

@@ -308,14 +308,15 @@ export class VideoStudioService {
         }
       }
 
-      // Filter for trained PHOTO groups (photo avatars that are ready to use)
-      const trainedPhotoGroups = groups.filter(
-        (group: any) => group.group_type === "PHOTO" && group.train_status === "ready"
+      // Filter for ALL PHOTO groups (include both trained and empty - they can still be used for video generation)
+      // Also include GENERATED_PHOTO groups (AI-generated photo avatars)
+      const photoGroups = groups.filter(
+        (group: any) => group.group_type === "PHOTO" || group.group_type === "GENERATED_PHOTO"
       );
-      console.log(`🎭 Video Studio: Found ${trainedPhotoGroups.length} trained PHOTO avatar groups`);
+      console.log(`🎭 Video Studio: Found ${photoGroups.length} PHOTO/GENERATED_PHOTO avatar groups`);
 
       // For PHOTO groups, find the matching avatar
-      for (const group of trainedPhotoGroups) {
+      for (const group of photoGroups) {
         const matchingAvatar = allAvatars.find((avatar: any) => 
           avatar.avatar_group_id === group.id ||
           avatar.group_id === group.id
