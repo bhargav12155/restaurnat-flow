@@ -1527,7 +1527,7 @@ export function AvatarStudio() {
                   Edit Look
                 </Button>
                 <Button
-                  className="flex items-center gap-2 bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                  className="btn-golden flex items-center gap-2 relative overflow-hidden"
                   onClick={() => {
                     setShowLookPopup(false);
                     toast({
