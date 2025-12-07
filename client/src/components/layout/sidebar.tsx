@@ -34,7 +34,7 @@ import {
   Video,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 const navigationItems = [
   { icon: Home, label: "Dashboard", href: "/dashboard", key: "dashboard", isPageLink: true },
@@ -155,6 +155,7 @@ function SidebarContent({
 }: SidebarContentProps) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(["avatar-video"]);
 
   const handleAdvancedAdvertisingClick = (e: React.MouseEvent) => {
@@ -170,6 +171,31 @@ function SidebarContent({
     if (isMobile && onClose) {
       onClose();
     }
+  };
+
+  const navigateTo = (href: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    if (href.includes('#')) {
+      const [path, hash] = href.split('#');
+      const currentPath = window.location.pathname;
+      
+      if (currentPath === path || (currentPath === '/' && path === '/dashboard')) {
+        window.location.hash = hash;
+      } else {
+        setLocation(path);
+        setTimeout(() => {
+          window.location.hash = hash;
+        }, 50);
+      }
+    } else {
+      setLocation(href);
+      if (window.location.hash) {
+        window.location.hash = '';
+      }
+    }
+    
+    handleNavClick();
   };
 
   const toggleMenu = (key: string) => {
@@ -262,7 +288,6 @@ function SidebarContent({
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
                       {item.subItems.map((subItem: any) => {
                         const isSubActive = activeView === subItem.key;
-                        const isSubPageLink = subItem.isPageLink;
                         return (
                           <Button
                             key={subItem.label}
@@ -274,40 +299,20 @@ function SidebarContent({
                                 : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                             )}
                             data-testid={`nav-${subItem.label.toLowerCase().replace(/\s+/g, "-")}`}
-                            onClick={handleNavClick}
-                            asChild
+                            onClick={(e) => navigateTo(subItem.href, e)}
                           >
-                            {isSubPageLink ? (
-                              <Link href={subItem.href} className="flex items-center flex-1">
-                                <subItem.icon className="h-4 w-4 mr-3" />
-                                <span className="flex items-center gap-2 flex-1">
-                                  {subItem.label}
-                                  {subItem.badge && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                                    >
-                                      {subItem.badge}
-                                    </Badge>
-                                  )}
-                                </span>
-                              </Link>
-                            ) : (
-                              <a href={subItem.href} className="flex items-center flex-1">
-                                <subItem.icon className="h-4 w-4 mr-3" />
-                                <span className="flex items-center gap-2 flex-1">
-                                  {subItem.label}
-                                  {subItem.badge && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                                    >
-                                      {subItem.badge}
-                                    </Badge>
-                                  )}
-                                </span>
-                              </a>
-                            )}
+                            <subItem.icon className="h-4 w-4 mr-3" />
+                            <span className="flex items-center gap-2 flex-1">
+                              {subItem.label}
+                              {subItem.badge && (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                                >
+                                  {subItem.badge}
+                                </Badge>
+                              )}
+                            </span>
                           </Button>
                         );
                       })}
@@ -316,8 +321,6 @@ function SidebarContent({
                 </div>
               );
             }
-
-            const isPageLink = item.isPageLink;
 
             return (
               <Button
@@ -336,45 +339,19 @@ function SidebarContent({
                 onClick={(e) => {
                   if (isAdvancedAdvertising) {
                     handleAdvancedAdvertisingClick(e);
+                  } else {
+                    navigateTo(item.href, e);
                   }
-                  handleNavClick();
                 }}
-                asChild={!isAdvancedAdvertising}
                 title={isCollapsed ? item.label : undefined}
               >
-                {isAdvancedAdvertising ? (
-                  <>
-                    <item.icon
-                      className={cn("h-4 w-4", !isCollapsed && "mr-3")}
-                    />
-                    {!isCollapsed && (
-                      <span className="flex items-center gap-2 flex-1">
-                        {item.label}
-                      </span>
-                    )}
-                  </>
-                ) : isPageLink ? (
-                  <Link href={item.href} className="flex items-center flex-1">
-                    <item.icon
-                      className={cn("h-4 w-4", !isCollapsed && "mr-3")}
-                    />
-                    {!isCollapsed && (
-                      <span className="flex items-center gap-2 flex-1">
-                        {item.label}
-                      </span>
-                    )}
-                  </Link>
-                ) : (
-                  <a href={item.href} className="flex items-center flex-1">
-                    <item.icon
-                      className={cn("h-4 w-4", !isCollapsed && "mr-3")}
-                    />
-                    {!isCollapsed && (
-                      <span className="flex items-center gap-2 flex-1">
-                        {item.label}
-                      </span>
-                    )}
-                  </a>
+                <item.icon
+                  className={cn("h-4 w-4", !isCollapsed && "mr-3")}
+                />
+                {!isCollapsed && (
+                  <span className="flex items-center gap-2 flex-1">
+                    {item.label}
+                  </span>
                 )}
               </Button>
             );
