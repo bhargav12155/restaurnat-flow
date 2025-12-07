@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2 } from "lucide-react";
+import { Link } from "wouter";
+import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -372,14 +373,21 @@ export default function EventsCalendarPage() {
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="page-title">
-            <CalendarDays className="w-8 h-8" />
-            Event Calendar
-          </h1>
-          <p className="text-muted-foreground">
-            Track local events and generate timely social media posts
-          </p>
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="icon" data-testid="btn-back-dashboard">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="page-title">
+              <CalendarDays className="w-8 h-8" />
+              Event Calendar
+            </h1>
+            <p className="text-muted-foreground">
+              Track local events and generate timely social media posts
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
           <Button 
