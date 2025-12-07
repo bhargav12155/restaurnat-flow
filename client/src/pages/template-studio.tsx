@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -183,18 +183,31 @@ function VariableFormField({ variable, form }: { variable: TemplateVariable; for
 function TemplateDetailModal({ 
   template, 
   isOpen, 
-  onClose 
+  onClose,
+  isLoading = false,
+  isError = false,
+  onRetry
 }: { 
   template: VideoTemplateWithVariables | null; 
   isOpen: boolean; 
   onClose: () => void;
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"form" | "preview">("form");
   const [generatedScript, setGeneratedScript] = useState<string>("");
   
+  const hasVariables = template?.variables && template.variables.length > 0;
+  
   const buildFormSchema = () => {
-    if (!template?.variables) return z.object({ variables: z.object({}) });
+    if (!template?.variables || template.variables.length === 0) {
+      return z.object({ 
+        variables: z.object({}),
+        title: z.string().optional(),
+      });
+    }
     
     const variableSchema: Record<string, z.ZodTypeAny> = {};
     template.variables.forEach((v) => {
@@ -215,9 +228,11 @@ function TemplateDetailModal({
   
   const buildDefaultValues = () => {
     const defaults: Record<string, string> = {};
-    template?.variables?.forEach((v) => {
-      defaults[v.key] = v.defaultValue || "";
-    });
+    if (template?.variables) {
+      template.variables.forEach((v) => {
+        defaults[v.key] = v.defaultValue || "";
+      });
+    }
     return { variables: defaults, title: "" };
   };
   
@@ -226,6 +241,12 @@ function TemplateDetailModal({
     defaultValues: buildDefaultValues(),
     mode: "onChange",
   });
+  
+  useEffect(() => {
+    if (hasVariables) {
+      form.reset(buildDefaultValues());
+    }
+  }, [template?.id, hasVariables]);
   
   const previewMutation = useMutation({
     mutationFn: async (variables: Record<string, string>) => {
@@ -307,39 +328,57 @@ function TemplateDetailModal({
           
           <TabsContent value="form" className="flex-1 overflow-hidden mt-4">
             <ScrollArea className="h-[400px] pr-4">
-              <Form {...form}>
-                <form className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="title"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Video Title (Optional)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field} 
-                            placeholder={`${template.name} - ${new Date().toLocaleDateString()}`}
-                            data-testid="input-title"
-                          />
-                        </FormControl>
-                        <FormDescription>Give your video a custom title</FormDescription>
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <div className="border-t pt-4">
-                    <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      Template Variables
-                    </h4>
-                    <div className="space-y-4">
-                      {template.variables.map((variable) => (
-                        <VariableFormField key={variable.id} variable={variable} form={form} />
-                      ))}
+              {isError ? (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <FileText className="h-12 w-12 text-destructive mb-4" />
+                  <p className="text-destructive font-medium mb-2">Failed to load template details</p>
+                  <p className="text-muted-foreground text-sm mb-4">Please try again.</p>
+                  {onRetry && (
+                    <Button variant="outline" size="sm" onClick={onRetry}>
+                      Retry
+                    </Button>
+                  )}
+                </div>
+              ) : !hasVariables ? (
+                <div className="flex flex-col items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                  <p className="text-muted-foreground">Loading template details...</p>
+                </div>
+              ) : (
+                <Form {...form}>
+                  <form className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="title"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Video Title (Optional)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              placeholder={`${template.name} - ${new Date().toLocaleDateString()}`}
+                              data-testid="input-title"
+                            />
+                          </FormControl>
+                          <FormDescription>Give your video a custom title</FormDescription>
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <div className="border-t pt-4">
+                      <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        Template Variables
+                      </h4>
+                      <div className="space-y-4">
+                        {template.variables.map((variable) => (
+                          <VariableFormField key={variable.id} variable={variable} form={form} />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                </form>
-              </Form>
+                  </form>
+                </Form>
+              )}
             </ScrollArea>
           </TabsContent>
           
@@ -380,7 +419,7 @@ function TemplateDetailModal({
           {activeTab === "form" ? (
             <Button 
               onClick={handlePreview} 
-              disabled={previewMutation.isPending}
+              disabled={previewMutation.isPending || !hasVariables}
               data-testid="button-preview"
             >
               {previewMutation.isPending ? (
@@ -398,7 +437,7 @@ function TemplateDetailModal({
           ) : (
             <Button 
               onClick={handleGenerate} 
-              disabled={generateMutation.isPending}
+              disabled={generateMutation.isPending || !hasVariables}
               data-testid="button-generate"
             >
               {generateMutation.isPending ? (
@@ -528,6 +567,21 @@ export default function TemplateStudioPage() {
                   </Card>
                 ))}
               </div>
+            ) : templatesQuery.isError ? (
+              <Card className="p-8 text-center border-destructive/50 bg-destructive/5">
+                <FileText className="h-12 w-12 mx-auto text-destructive mb-4" />
+                <p className="text-destructive font-medium mb-2">Failed to load templates</p>
+                <p className="text-muted-foreground text-sm mb-4">
+                  There was an error loading templates. Please try again.
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => templatesQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </Card>
             ) : templatesQuery.data?.length === 0 ? (
               <Card className="p-8 text-center">
                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -566,6 +620,21 @@ export default function TemplateStudioPage() {
                   </Card>
                 ))}
               </div>
+            ) : generatedVideosQuery.isError ? (
+              <Card className="p-8 text-center border-destructive/50 bg-destructive/5">
+                <Video className="h-12 w-12 mx-auto text-destructive mb-4" />
+                <p className="text-destructive font-medium mb-2">Failed to load generated scripts</p>
+                <p className="text-muted-foreground text-sm mb-4">
+                  There was an error loading your scripts. Please try again.
+                </p>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => generatedVideosQuery.refetch()}
+                >
+                  Retry
+                </Button>
+              </Card>
             ) : generatedVideosQuery.data?.length === 0 ? (
               <Card className="p-8 text-center border-dashed">
                 <Play className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -588,6 +657,9 @@ export default function TemplateStudioPage() {
         template={templateDetailQuery.data || selectedTemplate}
         isOpen={isModalOpen}
         onClose={handleCloseModal}
+        isLoading={templateDetailQuery.isLoading}
+        isError={templateDetailQuery.isError}
+        onRetry={() => templateDetailQuery.refetch()}
       />
     </div>
   );
