@@ -13,6 +13,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.918.0",
     "@aws-sdk/lib-storage": "^3.918.0",
+    "@aws-sdk/s3-request-presigner": "^3.946.0",
     "@google-cloud/storage": "^7.17.2",
     "@googleapis/youtube": "^29.0.0",
     "@heygen/streaming-avatar": "^2.1.0",
