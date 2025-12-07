@@ -10234,6 +10234,10 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         aiApiKeyMasked: brandSettings?.aiApiKeyLastFour 
           ? `****...${brandSettings.aiApiKeyLastFour}` 
           : null,
+        hasKlingApiKey: !!brandSettings?.klingApiKeyEncrypted,
+        klingApiKeyMasked: brandSettings?.klingApiKeyLastFour 
+          ? `****...${brandSettings.klingApiKeyLastFour}` 
+          : null,
         availableProviders: [
           { id: "platform", name: "Platform Default (OpenAI)", description: "Use the platform's AI service" },
           { id: "openai", name: "OpenAI (GPT-4)", description: "Your own OpenAI API key" },
@@ -10270,6 +10274,89 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error) {
       console.error("Error removing API key:", error);
       res.status(500).json({ error: "Failed to remove API key" });
+    }
+  });
+
+  // ==================== KLING API KEY MANAGEMENT ====================
+
+  // Update Kling API key
+  app.put("/api/kling-preferences", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { apiKey } = req.body;
+
+      // Import encryption utilities
+      const { encryptApiKey, getLastFourChars } = await import("./services/encryption");
+
+      // Prepare update data
+      const updateData: any = {
+        userId: user.id,
+      };
+
+      // Handle Kling API key update
+      if (apiKey && apiKey !== "" && !apiKey.startsWith("****")) {
+        // Validate Kling API key format (should be alphanumeric)
+        if (apiKey.length < 20) {
+          return res.status(400).json({ 
+            error: "Invalid Kling API key format. Please check your key." 
+          });
+        }
+
+        // Encrypt and store the key
+        updateData.klingApiKeyEncrypted = encryptApiKey(apiKey);
+        updateData.klingApiKeyLastFour = getLastFourChars(apiKey);
+      } else if (apiKey === "") {
+        // Clear the API key if empty string sent
+        updateData.klingApiKeyEncrypted = null;
+        updateData.klingApiKeyLastFour = null;
+      }
+
+      // Update brand settings with Kling API key
+      const updatedSettings = await storage.upsertBrandSettings(updateData);
+
+      console.log(`✅ Kling API key updated for user ${user.id}: hasKey=${!!updateData.klingApiKeyEncrypted}`);
+
+      res.json({
+        success: true,
+        message: "Kling API key saved successfully",
+        hasKlingApiKey: !!updatedSettings.klingApiKeyEncrypted,
+        klingApiKeyMasked: updatedSettings.klingApiKeyLastFour 
+          ? `****...${updatedSettings.klingApiKeyLastFour}` 
+          : null,
+      });
+    } catch (error) {
+      console.error("Error saving Kling API key:", error);
+      res.status(500).json({ error: "Failed to save Kling API key" });
+    }
+  });
+
+  // Delete Kling API key
+  app.delete("/api/kling-preferences/api-key", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      await storage.upsertBrandSettings({
+        userId: user.id,
+        klingApiKeyEncrypted: null,
+        klingApiKeyLastFour: null,
+      });
+
+      console.log(`✅ Kling API key removed for user ${user.id}`);
+
+      res.json({
+        success: true,
+        message: "Kling API key removed successfully",
+      });
+    } catch (error) {
+      console.error("Error removing Kling API key:", error);
+      res.status(500).json({ error: "Failed to remove Kling API key" });
     }
   });
 

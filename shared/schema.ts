@@ -733,6 +733,8 @@ export const brandSettings = pgTable("brand_settings", {
   aiProvider: text("ai_provider").default("openai"),
   aiApiKeyEncrypted: text("ai_api_key_encrypted"),
   aiApiKeyLastFour: text("ai_api_key_last_four"),
+  klingApiKeyEncrypted: text("kling_api_key_encrypted"),
+  klingApiKeyLastFour: text("kling_api_key_last_four"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
