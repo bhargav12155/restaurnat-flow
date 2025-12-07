@@ -1439,15 +1439,6 @@ export function AvatarStudio() {
                 <DialogTitle className="text-lg font-semibold">
                   {selectedGroup?.name || "Avatar Look"} - Look {popupLookIndex + 1}
                 </DialogTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowLookPopup(false)}
-                  className="h-8 w-8 rounded-full"
-                  data-testid="button-close-look-popup"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
 
               <div className="relative flex items-center justify-center bg-gray-50 dark:bg-gray-800">
