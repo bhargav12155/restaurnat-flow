@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  FileText,
   Home,
   MapPin,
   Menu,
@@ -28,6 +29,7 @@ import {
   Search,
   Settings,
   Share2,
+  Sparkles,
   Target,
   Video,
 } from "lucide-react";
@@ -67,6 +69,14 @@ const navigationItems = [
     key: "avatar-video",
     isCollapsible: true,
     subItems: [
+      {
+        icon: Sparkles,
+        label: "Template Studio",
+        href: "/templates",
+        key: "templates",
+        isPageLink: true,
+        badge: "NEW",
+      },
       {
         icon: Camera,
         label: "Photo Avatars",
@@ -243,6 +253,7 @@ function SidebarContent({
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
                       {item.subItems.map((subItem: any) => {
                         const isSubActive = activeView === subItem.key;
+                        const isSubPageLink = subItem.isPageLink;
                         return (
                           <Button
                             key={subItem.label}
@@ -257,20 +268,37 @@ function SidebarContent({
                             onClick={handleNavClick}
                             asChild
                           >
-                            <a href={subItem.href} className="flex items-center flex-1">
-                              <subItem.icon className="h-4 w-4 mr-3" />
-                              <span className="flex items-center gap-2 flex-1">
-                                {subItem.label}
-                                {subItem.badge && (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                                  >
-                                    {subItem.badge}
-                                  </Badge>
-                                )}
-                              </span>
-                            </a>
+                            {isSubPageLink ? (
+                              <Link href={subItem.href} className="flex items-center flex-1">
+                                <subItem.icon className="h-4 w-4 mr-3" />
+                                <span className="flex items-center gap-2 flex-1">
+                                  {subItem.label}
+                                  {subItem.badge && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                                    >
+                                      {subItem.badge}
+                                    </Badge>
+                                  )}
+                                </span>
+                              </Link>
+                            ) : (
+                              <a href={subItem.href} className="flex items-center flex-1">
+                                <subItem.icon className="h-4 w-4 mr-3" />
+                                <span className="flex items-center gap-2 flex-1">
+                                  {subItem.label}
+                                  {subItem.badge && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                                    >
+                                      {subItem.badge}
+                                    </Badge>
+                                  )}
+                                </span>
+                              </a>
+                            )}
                           </Button>
                         );
                       })}
