@@ -10570,11 +10570,11 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.log(`🎤 Audio file received: ${req.file.originalname}, size: ${req.file.size} bytes`);
 
       // Upload to S3 for persistent URL
-      const { S3Service } = await import("./services/s3");
-      const s3Service = new S3Service();
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
       
       const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${req.file.originalname}`;
-      const audioUrl = await s3Service.uploadFile(req.file.buffer, fileName, req.file.mimetype);
+      const audioUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype);
       
       console.log(`✅ Audio uploaded to S3: ${audioUrl}`);
 

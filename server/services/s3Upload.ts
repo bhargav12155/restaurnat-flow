@@ -74,4 +74,23 @@ export class S3UploadService {
     const region = process.env.AWS_REGION || 'us-east-2';
     return `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
   }
+
+  async uploadBuffer(
+    fileBuffer: Buffer,
+    key: string,
+    contentType: string
+  ): Promise<string> {
+    const upload = new Upload({
+      client: this.s3Client,
+      params: {
+        Bucket: this.bucketName,
+        Key: key,
+        Body: fileBuffer,
+        ContentType: contentType,
+      },
+    });
+
+    await upload.done();
+    return this.getS3Url(key);
+  }
 }
