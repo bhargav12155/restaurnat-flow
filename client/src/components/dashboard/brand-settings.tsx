@@ -129,6 +129,11 @@ export function BrandSettings() {
   const [aiApiKeyInput, setAiApiKeyInput] = useState('');
   const [isSavingAiPrefs, setIsSavingAiPrefs] = useState(false);
   const [isRemovingApiKey, setIsRemovingApiKey] = useState(false);
+  
+  // Kling API key state
+  const [klingApiKeyInput, setKlingApiKeyInput] = useState('');
+  const [isSavingKlingKey, setIsSavingKlingKey] = useState(false);
+  const [isRemovingKlingKey, setIsRemovingKlingKey] = useState(false);
 
   const { data: brandSettingsData, isLoading } = useQuery<BrandSettingsData>({
     queryKey: ['/api/brand-settings'],
@@ -140,6 +145,8 @@ export function BrandSettings() {
     aiProvider: string;
     hasCustomApiKey: boolean;
     aiApiKeyMasked: string | null;
+    hasKlingApiKey: boolean;
+    klingApiKeyMasked: string | null;
     availableProviders: { id: string; name: string; description: string }[];
   }
 
@@ -238,6 +245,90 @@ export function BrandSettings() {
       });
     } finally {
       setIsRemovingApiKey(false);
+    }
+  };
+
+  // Save Kling API key handler
+  const handleSaveKlingApiKey = async () => {
+    if (!klingApiKeyInput) {
+      toast({
+        title: "Enter API Key",
+        description: "Please enter your Kling API key",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingKlingKey(true);
+    try {
+      const response = await fetch('/api/kling-preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          apiKey: klingApiKeyInput,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: "Kling API key saved",
+          description: "Your Kling API key has been securely stored",
+        });
+        setKlingApiKeyInput('');
+        refetchAiPrefs();
+      } else {
+        toast({
+          title: "Error saving key",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save Kling API key",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingKlingKey(false);
+    }
+  };
+
+  // Remove Kling API key handler
+  const handleRemoveKlingApiKey = async () => {
+    setIsRemovingKlingKey(true);
+    try {
+      const response = await fetch('/api/kling-preferences/api-key', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      
+      const result = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: "Kling API key removed",
+          description: "Your Kling API key has been removed",
+        });
+        refetchAiPrefs();
+      } else {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to remove Kling API key",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRemovingKlingKey(false);
     }
   };
 
@@ -840,6 +931,98 @@ export function BrandSettings() {
                     </>
                   )}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Kling AI Motion Generator API */}
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Sparkles className="w-5 h-5 text-purple-500" />
+                Kling AI Motion
+                <Badge variant="outline" className="ml-2 text-xs">
+                  Video
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Transform your avatar images into dynamic videos with Kling AI. Add natural motion, gestures, and lifelike animation to static photos.
+              </p>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Kling API Key
+                  </Label>
+                  {aiPreferences?.hasKlingApiKey && (
+                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Configured
+                    </Badge>
+                  )}
+                </div>
+                
+                {aiPreferences?.hasKlingApiKey ? (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-mono text-gray-600 dark:text-gray-400">
+                      {aiPreferences.klingApiKeyMasked || '****...****'}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRemoveKlingApiKey}
+                      disabled={isRemovingKlingKey}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      data-testid="remove-kling-api-key"
+                    >
+                      {isRemovingKlingKey ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Input
+                      type="password"
+                      value={klingApiKeyInput}
+                      onChange={(e) => setKlingApiKeyInput(e.target.value)}
+                      placeholder="Enter your Kling API key"
+                      className="font-mono"
+                      data-testid="input-kling-api-key"
+                    />
+                    <Button
+                      onClick={handleSaveKlingApiKey}
+                      disabled={isSavingKlingKey || !klingApiKeyInput}
+                      size="sm"
+                      className="w-full bg-purple-500 hover:bg-purple-600 text-white"
+                      data-testid="save-kling-api-key"
+                    >
+                      {isSavingKlingKey ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Key className="w-4 h-4 mr-2" />
+                          Save Kling API Key
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+                
+                <div className="flex items-start gap-2 p-3 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
+                  <Shield className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-purple-700 dark:text-purple-400">
+                    <p>Get your API key from <a href="https://app.klingai.com/global/dev" target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">Kling AI Developer Portal</a></p>
+                    <p className="mt-1 opacity-80">Enables: Image-to-video motion, gesture animation, video effects</p>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
