@@ -10228,13 +10228,17 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const brandSettings = await storage.getBrandSettings(user.id);
 
+      const hasKlingEnvKeys = !!(process.env.KLING_ACCESS_KEY && process.env.KLING_SECRET_KEY);
+      const hasKlingUserKeys = !!(brandSettings?.klingApiKeyEncrypted);
+
       res.json({
         aiProvider: brandSettings?.aiProvider || "openai",
         hasCustomApiKey: !!brandSettings?.aiApiKeyEncrypted,
         aiApiKeyMasked: brandSettings?.aiApiKeyLastFour 
           ? `****...${brandSettings.aiApiKeyLastFour}` 
           : null,
-        hasKlingApiKey: !!brandSettings?.klingApiKeyEncrypted,
+        hasKlingApiKey: hasKlingEnvKeys || hasKlingUserKeys,
+        klingConfiguredViaEnv: hasKlingEnvKeys,
         klingApiKeyMasked: brandSettings?.klingApiKeyLastFour 
           ? `****...${brandSettings.klingApiKeyLastFour}` 
           : null,
@@ -10370,16 +10374,15 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const { imageUrl, prompt, duration, aspectRatio, waitForCompletion } = req.body;
+      const { imageUrl, prompt, duration, waitForCompletion } = req.body;
 
       if (!imageUrl || !prompt) {
         return res.status(400).json({ error: "Image URL and prompt are required" });
       }
 
-      const brandSettings = await storage.getBrandSettings(user.id);
-      if (!brandSettings?.klingApiKeyEncrypted) {
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
         return res.status(400).json({ 
-          error: "Kling API key not configured. Please add your API key in Brand Settings." 
+          error: "Kling API credentials not configured. Please set KLING_ACCESS_KEY and KLING_SECRET_KEY." 
         });
       }
 
@@ -10390,12 +10393,11 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const { generateMotionVideo } = await import("./services/kling");
       
       const result = await generateMotionVideo(
-        brandSettings.klingApiKeyEncrypted,
         imageUrl,
         prompt,
         {
           duration: duration || "5",
-          aspectRatio: aspectRatio || "16:9",
+          mode: "pro",
           waitForCompletion: waitForCompletion || false,
         }
       );
@@ -10426,14 +10428,12 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const { taskId } = req.params;
 
-      const brandSettings = await storage.getBrandSettings(user.id);
-      if (!brandSettings?.klingApiKeyEncrypted) {
-        return res.status(400).json({ error: "Kling API key not configured" });
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        return res.status(400).json({ error: "Kling API credentials not configured" });
       }
 
-      const { KlingService } = await import("./services/kling");
-      const service = new KlingService(brandSettings.klingApiKeyEncrypted);
-      const status = await service.checkTaskStatus(taskId);
+      const { checkMotionVideoStatus } = await import("./services/kling");
+      const status = await checkMotionVideoStatus(taskId);
 
       res.json({
         taskId,
