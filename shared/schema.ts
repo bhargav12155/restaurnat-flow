@@ -1185,3 +1185,98 @@ export interface MobileUploadSession {
   expiresAt: Date;
   uploadedUrl: string | null;
 }
+
+// =====================================================
+// VIDEO TEMPLATES TABLE (Template-based video generation)
+// =====================================================
+export const videoTemplates = pgTable("video_templates", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  description: text("description"),
+  thumbnailUrl: text("thumbnail_url"),
+  defaultAvatarId: text("default_avatar_id"),
+  defaultVoiceId: text("default_voice_id"),
+  scriptTemplate: text("script_template").notNull(),
+  renderSettings: jsonb("render_settings").$type<{
+    width?: number;
+    height?: number;
+    caption?: boolean;
+    aspectRatio?: string;
+  }>(),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// =====================================================
+// TEMPLATE VARIABLES TABLE (Variables for each template)
+// =====================================================
+export const templateVariables = pgTable("template_variables", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  templateId: varchar("template_id").notNull(),
+  key: text("key").notNull(),
+  label: text("label").notNull(),
+  fieldType: text("field_type").notNull(),
+  placeholder: text("placeholder"),
+  helperText: text("helper_text"),
+  required: boolean("required").default(true),
+  options: jsonb("options").$type<string[]>(),
+  defaultValue: text("default_value"),
+  orderIndex: integer("order_index").default(0),
+});
+
+// =====================================================
+// GENERATED VIDEOS TABLE (Videos created from templates)
+// =====================================================
+export const generatedVideos = pgTable("generated_videos", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  templateId: varchar("template_id"),
+  templateName: text("template_name"),
+  avatarId: text("avatar_id"),
+  voiceId: text("voice_id"),
+  title: text("title"),
+  generatedScript: text("generated_script"),
+  variables: jsonb("variables").$type<Record<string, string>>(),
+  status: text("status").notNull().default("draft"),
+  heygenVideoId: text("heygen_video_id"),
+  videoUrl: text("video_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  duration: real("duration"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Insert schemas and types for video templates
+export const insertVideoTemplateSchema = createInsertSchema(videoTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTemplateVariableSchema = createInsertSchema(templateVariables).omit({
+  id: true,
+});
+
+export const insertGeneratedVideoSchema = createInsertSchema(generatedVideos).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export type VideoTemplate = typeof videoTemplates.$inferSelect;
+export type InsertVideoTemplate = z.infer<typeof insertVideoTemplateSchema>;
+export type TemplateVariable = typeof templateVariables.$inferSelect;
+export type InsertTemplateVariable = z.infer<typeof insertTemplateVariableSchema>;
+export type GeneratedVideo = typeof generatedVideos.$inferSelect;
+export type InsertGeneratedVideo = z.infer<typeof insertGeneratedVideoSchema>;
