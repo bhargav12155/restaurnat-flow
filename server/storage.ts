@@ -16,6 +16,8 @@ import {
   eventPostSuggestions as eventPostSuggestionsTable,
   events as eventsTable,
   eventSources as eventSourcesTable,
+  type GeneratedVideo,
+  generatedVideos as generatedVideosTable,
   type InsertAnalytics,
   type InsertAvatar,
   type InsertBrandSettings,
@@ -26,6 +28,7 @@ import {
   type InsertEvent,
   type InsertEventPostSuggestion,
   type InsertEventSource,
+  type InsertGeneratedVideo,
   type InsertMarketData,
   type InsertMediaAsset,
   type InsertPhotoAvatar,
@@ -35,9 +38,11 @@ import {
   type InsertScheduledPost,
   type InsertSeoKeyword,
   type InsertSocialMediaAccount,
+  type InsertTemplateVariable,
   type InsertUser,
   type InsertVideoAvatar,
   type InsertVideoContent,
+  type InsertVideoTemplate,
   type MarketData,
   type MediaAsset,
   type MobileUploadSession,
@@ -52,11 +57,15 @@ import {
   scheduledPosts as scheduledPostsTable,
   type SeoKeyword,
   type SocialMediaAccount,
+  type TemplateVariable,
+  templateVariables as templateVariablesTable,
   type User,
   type VideoAvatar,
   videoAvatars,
   type VideoContent,
   videoContent as videoContentTable,
+  type VideoTemplate,
+  videoTemplates as videoTemplatesTable,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
@@ -298,6 +307,23 @@ export interface IStorage {
   getComplianceSettings(userId: string): Promise<ComplianceSettings | undefined>;
   createComplianceSettings(settings: InsertComplianceSettings): Promise<ComplianceSettings>;
   updateComplianceSettings(userId: string, updates: Partial<ComplianceSettings>): Promise<ComplianceSettings | undefined>;
+
+  // Video Templates
+  getVideoTemplates(activeOnly?: boolean): Promise<VideoTemplate[]>;
+  getVideoTemplateById(id: string): Promise<VideoTemplate | undefined>;
+  getVideoTemplateBySlug(slug: string): Promise<VideoTemplate | undefined>;
+  createVideoTemplate(template: InsertVideoTemplate): Promise<VideoTemplate>;
+  updateVideoTemplate(id: string, updates: Partial<VideoTemplate>): Promise<VideoTemplate | undefined>;
+
+  // Template Variables
+  getTemplateVariables(templateId: string): Promise<TemplateVariable[]>;
+  createTemplateVariables(variables: InsertTemplateVariable[]): Promise<TemplateVariable[]>;
+
+  // Generated Videos
+  getGeneratedVideos(userId: string): Promise<GeneratedVideo[]>;
+  getGeneratedVideoById(id: string): Promise<GeneratedVideo | undefined>;
+  createGeneratedVideo(video: InsertGeneratedVideo): Promise<GeneratedVideo>;
+  updateGeneratedVideo(id: string, updates: Partial<GeneratedVideo>): Promise<GeneratedVideo | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -320,6 +346,9 @@ export class MemStorage implements IStorage {
   private events: Map<string, Event> = new Map();
   private eventPostSuggestions: Map<string, EventPostSuggestion> = new Map();
   private complianceSettings: Map<string, ComplianceSettings> = new Map();
+  private videoTemplates: Map<string, VideoTemplate> = new Map();
+  private templateVariables: Map<string, TemplateVariable> = new Map();
+  private generatedVideos: Map<string, GeneratedVideo> = new Map();
 
   constructor() {
     this.seedData();
@@ -1977,6 +2006,105 @@ export class MemStorage implements IStorage {
       .update(complianceSettingsTable)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(complianceSettingsTable.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  // Video Templates
+  async getVideoTemplates(activeOnly: boolean = true): Promise<VideoTemplate[]> {
+    if (activeOnly) {
+      return await db
+        .select()
+        .from(videoTemplatesTable)
+        .where(eq(videoTemplatesTable.isActive, true))
+        .orderBy(videoTemplatesTable.sortOrder);
+    }
+    return await db
+      .select()
+      .from(videoTemplatesTable)
+      .orderBy(videoTemplatesTable.sortOrder);
+  }
+
+  async getVideoTemplateById(id: string): Promise<VideoTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(videoTemplatesTable)
+      .where(eq(videoTemplatesTable.id, id));
+    return template;
+  }
+
+  async getVideoTemplateBySlug(slug: string): Promise<VideoTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(videoTemplatesTable)
+      .where(eq(videoTemplatesTable.slug, slug));
+    return template;
+  }
+
+  async createVideoTemplate(template: InsertVideoTemplate): Promise<VideoTemplate> {
+    const [newTemplate] = await db
+      .insert(videoTemplatesTable)
+      .values(template)
+      .returning();
+    return newTemplate;
+  }
+
+  async updateVideoTemplate(id: string, updates: Partial<VideoTemplate>): Promise<VideoTemplate | undefined> {
+    const [updated] = await db
+      .update(videoTemplatesTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(videoTemplatesTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Template Variables
+  async getTemplateVariables(templateId: string): Promise<TemplateVariable[]> {
+    return await db
+      .select()
+      .from(templateVariablesTable)
+      .where(eq(templateVariablesTable.templateId, templateId))
+      .orderBy(templateVariablesTable.orderIndex);
+  }
+
+  async createTemplateVariables(variables: InsertTemplateVariable[]): Promise<TemplateVariable[]> {
+    if (variables.length === 0) return [];
+    return await db
+      .insert(templateVariablesTable)
+      .values(variables)
+      .returning();
+  }
+
+  // Generated Videos
+  async getGeneratedVideos(userId: string): Promise<GeneratedVideo[]> {
+    return await db
+      .select()
+      .from(generatedVideosTable)
+      .where(eq(generatedVideosTable.userId, userId))
+      .orderBy(desc(generatedVideosTable.createdAt));
+  }
+
+  async getGeneratedVideoById(id: string): Promise<GeneratedVideo | undefined> {
+    const [video] = await db
+      .select()
+      .from(generatedVideosTable)
+      .where(eq(generatedVideosTable.id, id));
+    return video;
+  }
+
+  async createGeneratedVideo(video: InsertGeneratedVideo): Promise<GeneratedVideo> {
+    const [newVideo] = await db
+      .insert(generatedVideosTable)
+      .values(video)
+      .returning();
+    return newVideo;
+  }
+
+  async updateGeneratedVideo(id: string, updates: Partial<GeneratedVideo>): Promise<GeneratedVideo | undefined> {
+    const [updated] = await db
+      .update(generatedVideosTable)
+      .set(updates)
+      .where(eq(generatedVideosTable.id, id))
       .returning();
     return updated;
   }
