@@ -10360,6 +10360,94 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // ==================== KLING MOTION VIDEO GENERATION ====================
+
+  // Generate motion video from static image
+  app.post("/api/kling/generate-motion", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { imageUrl, prompt, duration, aspectRatio, waitForCompletion } = req.body;
+
+      if (!imageUrl || !prompt) {
+        return res.status(400).json({ error: "Image URL and prompt are required" });
+      }
+
+      const brandSettings = await storage.getBrandSettings(user.id);
+      if (!brandSettings?.klingApiKeyEncrypted) {
+        return res.status(400).json({ 
+          error: "Kling API key not configured. Please add your API key in Brand Settings." 
+        });
+      }
+
+      console.log(`🎬 Generating motion video for user ${user.id}`);
+      console.log(`📸 Image: ${imageUrl}`);
+      console.log(`📝 Prompt: ${prompt}`);
+
+      const { generateMotionVideo } = await import("./services/kling");
+      
+      const result = await generateMotionVideo(
+        brandSettings.klingApiKeyEncrypted,
+        imageUrl,
+        prompt,
+        {
+          duration: duration || "5",
+          aspectRatio: aspectRatio || "16:9",
+          waitForCompletion: waitForCompletion || false,
+        }
+      );
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Video generation failed" });
+      }
+
+      res.json({
+        success: true,
+        taskId: result.taskId,
+        status: result.status,
+        videoUrl: result.videoUrl,
+      });
+    } catch (error) {
+      console.error("Error generating motion video:", error);
+      res.status(500).json({ error: "Failed to generate motion video" });
+    }
+  });
+
+  // Check motion video generation status
+  app.get("/api/kling/status/:taskId", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { taskId } = req.params;
+
+      const brandSettings = await storage.getBrandSettings(user.id);
+      if (!brandSettings?.klingApiKeyEncrypted) {
+        return res.status(400).json({ error: "Kling API key not configured" });
+      }
+
+      const { KlingService } = await import("./services/kling");
+      const service = new KlingService(brandSettings.klingApiKeyEncrypted);
+      const status = await service.checkTaskStatus(taskId);
+
+      res.json({
+        taskId,
+        status: status.status,
+        progress: status.progress,
+        videoUrl: status.videoUrl,
+        error: status.error,
+      });
+    } catch (error) {
+      console.error("Error checking motion video status:", error);
+      res.status(500).json({ error: "Failed to check video status" });
+    }
+  });
+
   // ==================== TUTORIAL VIDEOS ENDPOINTS ====================
 
   // Get all tutorial videos or filter by category/subcategory
