@@ -5971,6 +5971,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         script, 
         title,
         voiceId,
+        voiceMode = "tts",
+        audioUrl,
         aspectRatio = "16:9",
         quality = "720p",
         gestureIntensity = 0
@@ -5980,16 +5982,24 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(400).json({ error: "Avatar ID is required" });
       }
 
-      if (!script) {
-        return res.status(400).json({ error: "Script is required" });
+      // Script is required for TTS mode, optional for record/upload modes
+      if (voiceMode === "tts" && !script) {
+        return res.status(400).json({ error: "Script is required for text-to-speech mode" });
+      }
+
+      // Audio URL is required for record/upload modes
+      if (voiceMode !== "tts" && !audioUrl) {
+        return res.status(400).json({ error: "Audio URL is required for recorded/uploaded voice mode" });
       }
 
       const result = await studio.generateVideo({
         avatarId,
         avatarType,
-        script,
+        script: script || "", // May be empty for audio modes
         title,
         voiceId,
+        voiceMode,
+        audioUrl,
         aspectRatio,
         quality,
         gestureIntensity,
