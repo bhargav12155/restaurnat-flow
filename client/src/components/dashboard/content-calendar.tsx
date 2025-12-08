@@ -26,6 +26,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { AiGeneratedBadge } from "@/components/shared/ai-generated-badge";
 import { useAuth } from "@/hooks/useAuth";
+import { ComplianceChecker } from "@/components/shared/compliance-checker";
 
 const calendarDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -1646,6 +1647,26 @@ export function ContentCalendar() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+          
+          {/* BHHS Compliance Checker */}
+          {previewContent && (
+            <div className="px-4 pt-3">
+              <ComplianceChecker
+                content={isEditing ? editedContent : (previewContent.content || "")}
+                platform={previewContent.platform || "general"}
+                hasMedia={!!(photoPreview || savedPhotoUrl)}
+                hasVideo={false}
+                onContentFix={(fixedContent) => {
+                  setEditedContent(fixedContent);
+                  if (!isEditing) {
+                    setIsEditing(true);
+                  }
+                }}
+                showGuidelines={false}
+                className="mb-2"
+              />
             </div>
           )}
           
