@@ -749,10 +749,10 @@ export function ContentCalendar() {
     };
   };
   
-  const handlePhotoComplete = (result: any) => {
-    if (result.successful && result.successful[0]) {
-      const uploadedUrl = result.successful[0].uploadURL;
+  const handlePhotoComplete = (uploadedUrl: string) => {
+    if (uploadedUrl) {
       setPhotoPreview(uploadedUrl);
+      setSavedPhotoUrl(uploadedUrl);
       toast({
         title: "Photo Uploaded",
         description: "Your property photo has been uploaded successfully",
