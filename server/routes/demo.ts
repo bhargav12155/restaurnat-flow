@@ -8,6 +8,8 @@ import { generateToken } from "../middleware/auth";
 
 const router = Router();
 
+const DEMO_PROPERTY_IMAGE = "/attached_assets/image-534_1765232065566.jpg";
+
 const DEMO_PROPERTIES = [
   {
     mlsId: "DEMO-001",
@@ -26,7 +28,7 @@ const DEMO_PROPERTIES = [
     listingDate: new Date("2024-11-01"),
     description: "Stunning modern home in highly sought-after Westside neighborhood. Features open floor plan, gourmet kitchen with granite counters, hardwood floors throughout, and finished basement with wet bar.",
     features: ["Open Floor Plan", "Granite Counters", "Hardwood Floors", "Finished Basement", "3-Car Garage", "Smart Home"],
-    photoUrls: ["https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800"],
+    photoUrls: [DEMO_PROPERTY_IMAGE],
     neighborhood: "Westside",
     schoolDistrict: "Westside Community Schools",
     agentName: "Demo Agent",
@@ -48,7 +50,7 @@ const DEMO_PROPERTIES = [
     listingDate: new Date("2024-11-15"),
     description: "Charming ranch home perfect for first-time buyers. Updated kitchen, spacious backyard, and convenient location near shopping and restaurants.",
     features: ["Ranch Style", "Updated Kitchen", "Fenced Yard", "2-Car Garage", "Near Schools"],
-    photoUrls: ["https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800"],
+    photoUrls: [DEMO_PROPERTY_IMAGE],
     neighborhood: "Millard",
     schoolDistrict: "Millard Public Schools",
     agentName: "Demo Agent",
@@ -70,7 +72,7 @@ const DEMO_PROPERTIES = [
     listingDate: new Date("2024-12-01"),
     description: "Luxury executive home in premier Elkhorn location. Custom finishes throughout, chef's kitchen, theater room, wine cellar, and resort-style backyard with pool.",
     features: ["Custom Home", "Pool", "Theater Room", "Wine Cellar", "Chef's Kitchen", "4-Car Garage"],
-    photoUrls: ["https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800"],
+    photoUrls: [DEMO_PROPERTY_IMAGE],
     neighborhood: "Elkhorn",
     schoolDistrict: "Elkhorn Public Schools",
     agentName: "Demo Agent",

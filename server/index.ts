@@ -64,6 +64,10 @@ if (!fs.existsSync(uploadsPath)) {
 }
 app.use("/uploads", express.static(uploadsPath));
 
+// Serve attached assets (demo images, etc.)
+const attachedAssetsPath = path.resolve(process.cwd(), "attached_assets");
+app.use("/attached_assets", express.static(attachedAssetsPath));
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
