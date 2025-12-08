@@ -27,6 +27,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { AiGeneratedBadge } from "@/components/shared/ai-generated-badge";
 import { useAuth } from "@/hooks/useAuth";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
+import { CharacterCounter } from "@/components/ui/character-counter";
 
 const calendarDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -1261,12 +1262,19 @@ export function ContentCalendar() {
                   
                   <div className="px-3 pb-3">
                     {isEditing ? (
-                      <Textarea
-                        value={editedContent}
-                        onChange={(e) => setEditedContent(e.target.value)}
-                        className="text-sm mb-3 min-h-[100px] resize-none"
-                        placeholder="Edit your content..."
-                      />
+                      <>
+                        <Textarea
+                          value={editedContent}
+                          onChange={(e) => setEditedContent(e.target.value)}
+                          className="text-sm mb-2 min-h-[100px] resize-none"
+                          placeholder="Edit your content..."
+                        />
+                        <CharacterCounter
+                          platform="facebook"
+                          text={editedContent}
+                          className="mb-3"
+                        />
+                      </>
                     ) : (
                       <div className="text-sm mb-3 whitespace-pre-wrap">
                         {editedContent}
@@ -1412,12 +1420,19 @@ export function ContentCalendar() {
                       <span className="font-semibold">mikebjork_realtor</span>
                       <span className="ml-1">
                         {isEditing ? (
-                          <Textarea
-                            value={editedContent}
-                            onChange={(e) => setEditedContent(e.target.value)}
-                            className="text-sm mt-2 min-h-[80px] resize-none w-full"
-                            placeholder="Edit your caption..."
-                          />
+                          <>
+                            <Textarea
+                              value={editedContent}
+                              onChange={(e) => setEditedContent(e.target.value)}
+                              className="text-sm mt-2 min-h-[80px] resize-none w-full"
+                              placeholder="Edit your caption..."
+                            />
+                            <CharacterCounter
+                              platform="instagram"
+                              text={editedContent}
+                              className="mt-2"
+                            />
+                          </>
                         ) : (
                           <span className="whitespace-pre-wrap">{editedContent}</span>
                         )}
@@ -1499,12 +1514,18 @@ export function ContentCalendar() {
                       {previewContent.title}
                     </div>
                     {isEditing ? (
-                      <Textarea
-                        value={editedContent}
-                        onChange={(e) => setEditedContent(e.target.value)}
-                        className="text-xs text-gray-600 min-h-[60px] resize-none"
-                        placeholder="Edit video description..."
-                      />
+                      <>
+                        <Textarea
+                          value={editedContent}
+                          onChange={(e) => setEditedContent(e.target.value)}
+                          className="text-xs text-gray-600 min-h-[60px] resize-none"
+                          placeholder="Edit video description..."
+                        />
+                        <CharacterCounter
+                          platform="youtube"
+                          text={editedContent}
+                        />
+                      </>
                     ) : (
                       <div className="text-xs text-gray-600 max-h-20 overflow-y-auto whitespace-pre-wrap">
                         {editedContent}
@@ -1530,12 +1551,19 @@ export function ContentCalendar() {
                     </div>
                   </div>
                   {isEditing ? (
-                    <Textarea
-                      value={editedContent}
-                      onChange={(e) => setEditedContent(e.target.value)}
-                      className="text-sm mb-3 min-h-[100px] resize-none"
-                      placeholder="Edit your content..."
-                    />
+                    <>
+                      <Textarea
+                        value={editedContent}
+                        onChange={(e) => setEditedContent(e.target.value)}
+                        className="text-sm mb-2 min-h-[100px] resize-none"
+                        placeholder="Edit your content..."
+                      />
+                      <CharacterCounter
+                        platform="linkedin"
+                        text={editedContent}
+                        className="mb-3"
+                      />
+                    </>
                   ) : (
                     <div className="text-sm mb-3 whitespace-pre-wrap">
                       {editedContent}

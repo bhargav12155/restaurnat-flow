@@ -1,4 +1,5 @@
 import type { InsertScheduledPost, MarketData } from "@shared/schema";
+import { PLATFORM_CONFIGS } from "@shared/platform-prompts";
 
 export interface GeneratedContentPlan {
   posts: InsertScheduledPost[];
@@ -55,6 +56,11 @@ export class AIContentCalendarGenerator {
       `${m.neighborhood}: avg $${Math.round((m.avgPrice || 0) / 1000)}K, ${m.daysOnMarket} days on market, ${m.trend} market`
     ).join('; ');
 
+    const fbConfig = PLATFORM_CONFIGS.facebook;
+    const igConfig = PLATFORM_CONFIGS.instagram;
+    const liConfig = PLATFORM_CONFIGS.linkedin;
+    const xConfig = PLATFORM_CONFIGS.x;
+
     const prompt = `You are a social media content strategist for real estate agents. Create a ${weeks}-week (${days}-day) content calendar for a real estate agent in Omaha, Nebraska.
 
 **Agent Profile:**
@@ -67,9 +73,35 @@ Create exactly ${days} social media posts (one per day) that:
 1. Mix content types: 40% local market updates, 30% neighborhood spotlights, 20% buyer/seller tips, 10% community engagement
 2. Rotate platforms: Facebook, Instagram, LinkedIn, X (Twitter)
 3. Vary posting times: mornings (9-10am), afternoons (2-3pm), evenings (6-7pm)
-4. Include relevant hashtags for Instagram posts only
+4. Include relevant hashtags for Instagram posts only (1-2 hashtags max - 21% better engagement than 3+)
 5. Reference actual market data and neighborhoods from service areas
-6. Keep posts concise and engaging (Instagram: 150-200 chars, others: 200-300 chars)
+6. CRITICAL: Optimize character count for each platform's engagement sweet spot
+
+**📊 Platform Character Optimization (FOLLOW THESE EXACTLY):**
+
+FACEBOOK:
+- Optimal: ${fbConfig.optimalCharacters.min}-${fbConfig.optimalCharacters.max} characters (posts under 50 get 66% more engagement!)
+- Truncates at: ${fbConfig.truncatesAt} chars - put hook FIRST
+- ${fbConfig.hashtagRecommendation}
+- Lead with attention-grabbing hook (users spend only 2.5 seconds scanning)
+
+INSTAGRAM:
+- Optimal: ${igConfig.optimalCharacters.min}-${igConfig.optimalCharacters.max} characters for maximum engagement
+- Truncates at: ${igConfig.truncatesAt} chars - first line is critical!
+- ${igConfig.hashtagRecommendation}
+- Use emojis sparingly, line breaks strategically
+
+X (TWITTER):
+- Optimal: ${xConfig.optimalCharacters.min}-${xConfig.optimalCharacters.max} characters (36% more engagement!)
+- Maximum: ${xConfig.maxCharacters} chars (hard limit)
+- ${xConfig.hashtagRecommendation}
+- Create urgency or curiosity in every tweet
+
+LINKEDIN:
+- Optimal: ${liConfig.optimalCharacters.min}-${liConfig.optimalCharacters.max} characters (~25 words)
+- Truncates at: ${liConfig.truncatesAt} chars with 'See More'
+- ${liConfig.hashtagRecommendation}
+- Professional yet approachable tone, position as thought leader
 
 **Post Types:**
 - "local_market": Market updates, price trends, inventory levels
@@ -78,13 +110,15 @@ Create exactly ${days} social media posts (one per day) that:
 - "seller_tips": Staging, pricing strategy, market timing
 - "community": Local events, businesses, Omaha lifestyle
 
+💡 KEY INSIGHT: Average attention span is 1.7 seconds on mobile - LEAD WITH A STRONG HOOK!
+
 Return ONLY a valid JSON array with exactly ${days} posts in this structure:
 [
   {
     "platform": "facebook|instagram|linkedin|x",
     "postType": "local_market|neighborhood_spotlight|buyer_tips|seller_tips|community",
-    "content": "engaging post text (concise, platform-appropriate)",
-    "hashtags": ["tag1", "tag2"] (only for Instagram, empty array for others),
+    "content": "engaging post text (OPTIMIZED for platform character count)",
+    "hashtags": ["tag1", "tag2"] (only for Instagram, 1-2 max, empty array for others),
     "neighborhood": "neighborhood name or null",
     "dayOffset": day_number (0-${days-1}, where 0 = tomorrow)
   }
