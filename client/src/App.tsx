@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
+import { DemoProvider } from "@/contexts/DemoContext";
 import Dashboard from "@/pages/dashboard";
 import SocialMediaPage from "@/pages/social-media";
 import SettingsPage from "@/pages/settings";
@@ -17,6 +18,7 @@ import EventsCalendarPage from "@/pages/events-calendar";
 import TemplateStudioPage from "@/pages/template-studio";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
+import { DemoModeBanner } from "@/components/shared/demo-mode-banner";
 
 function Router() {
   return (
@@ -78,10 +80,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <DemoProvider>
+          <TooltipProvider>
+            <DemoModeBanner />
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </DemoProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -15,6 +15,8 @@ declare global {
         username?: string;
         email?: string;
         agentSlug?: string;
+        name?: string;
+        isDemo?: boolean;
       };
     }
   }
@@ -26,6 +28,8 @@ export interface JWTPayload {
   email: string;
   type?: "agent" | "public";
   agentSlug?: string;
+  name?: string;
+  isDemo?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -78,8 +82,10 @@ export const extractUserId = (
         type: "agent",
         username: decoded.username,
         email: decoded.email,
+        name: decoded.name,
+        isDemo: decoded.isDemo,
       };
-      console.log("🔐 [AUTH] Agent user authenticated:", req.user.id, `(${req.user.email})`);
+      console.log("🔐 [AUTH] Agent user authenticated:", req.user.id, `(${req.user.email})`, decoded.isDemo ? "[DEMO]" : "");
     }
 
     next();
