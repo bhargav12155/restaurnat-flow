@@ -76,6 +76,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useOptimizationPrereqs } from "@/hooks/use-optimization-prereqs";
+import { ComplianceChecker } from "@/components/shared/compliance-checker";
 import { AiGeneratedBadge } from "@/components/shared/ai-generated-badge";
 import { PostingDialog } from "@/components/shared/posting-dialog";
 import {
@@ -1894,6 +1895,25 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   <div className="prose prose-sm max-w-none text-sm text-foreground whitespace-pre-wrap">
                     {lastGenerated.content}
                   </div>
+                )}
+                
+                {/* BHHS Compliance Check */}
+                {((isEditing && editedContent.trim().length > 10) || 
+                  (!isEditing && lastGenerated.content.trim().length > 10)) && (
+                  <ComplianceChecker
+                    content={isEditing ? editedContent : lastGenerated.content}
+                    platform="general"
+                    hasMedia={false}
+                    hasVideo={false}
+                    onContentFix={(fixedContent) => {
+                      setEditedContent(fixedContent);
+                      if (!isEditing) {
+                        setIsEditing(true);
+                      }
+                    }}
+                    showGuidelines={false}
+                    className="mt-3"
+                  />
                 )}
               </div>
             )}
