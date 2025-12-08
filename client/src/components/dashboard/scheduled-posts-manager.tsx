@@ -57,6 +57,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
+import { CharacterCounter, PlatformTip } from "@/components/ui/character-counter";
 
 interface ScheduledPost {
   id: string;
@@ -456,20 +457,34 @@ export function ScheduledPostsManager() {
                 </Button>
               </div>
 
+              {/* Platform Tip */}
+              {selectedPost?.platform && (
+                <PlatformTip platform={selectedPost.platform} />
+              )}
+
               {/* Content Editor */}
               <div>
                 <Label htmlFor="edit-content" className="text-sm font-medium">
                   Content
                 </Label>
                 {editMode === "manual" ? (
-                  <Textarea
-                    id="edit-content"
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    className="mt-1"
-                    rows={6}
-                    data-testid="textarea-content"
-                  />
+                  <>
+                    <Textarea
+                      id="edit-content"
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className="mt-1"
+                      rows={6}
+                      data-testid="textarea-content"
+                    />
+                    {selectedPost?.platform && (
+                      <CharacterCounter
+                        platform={selectedPost.platform}
+                        text={editContent}
+                        className="mt-2"
+                      />
+                    )}
+                  </>
                 ) : (
                   <div className="space-y-3 mt-1">
                     <Textarea
@@ -480,6 +495,13 @@ export function ScheduledPostsManager() {
                       className="resize-none"
                       data-testid="textarea-ai-content"
                     />
+                    {selectedPost?.platform && (
+                      <CharacterCounter
+                        platform={selectedPost.platform}
+                        text={aiEditContent}
+                        className="mt-2"
+                      />
+                    )}
                     
                     {showPromptEditor && (
                       <div className="space-y-2">
