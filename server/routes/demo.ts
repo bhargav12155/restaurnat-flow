@@ -79,7 +79,7 @@ const DEMO_PROPERTIES = [
 
 const DEMO_SCHEDULED_POSTS = [
   {
-    platform: "Facebook",
+    platform: "facebook",
     postType: "just_listed",
     content: "🏡 Just Listed! Beautiful 4BR/3.5BA home in Westside at $475,000. Open floor plan, gourmet kitchen, finished basement. Schedule your showing today! #OmahaRealEstate #JustListed",
     hashtags: ["OmahaRealEstate", "JustListed", "WestsideHomes"],
@@ -90,7 +90,7 @@ const DEMO_SCHEDULED_POSTS = [
     seoScore: 85,
   },
   {
-    platform: "Instagram",
+    platform: "instagram",
     postType: "market_update",
     content: "📊 Omaha Market Update: Home prices up 5% this quarter. Great time to list! DM for a free home valuation.",
     hashtags: ["OmahaRealEstate", "MarketUpdate", "RealEstateAgent"],
@@ -101,7 +101,7 @@ const DEMO_SCHEDULED_POSTS = [
     seoScore: 78,
   },
   {
-    platform: "LinkedIn",
+    platform: "linkedin",
     postType: "open_house",
     content: "Join us this Sunday for an Open House at 1234 Maple Street in Westside! 1-4 PM. This stunning 4BR home won't last long.",
     hashtags: ["OpenHouse", "OmahaRealEstate", "BHHS"],
@@ -112,7 +112,7 @@ const DEMO_SCHEDULED_POSTS = [
     seoScore: 72,
   },
   {
-    platform: "X",
+    platform: "x",
     postType: "tip",
     content: "🔑 Buying tip: Get pre-approved before house hunting to show sellers you're serious! #RealEstateTips #HomeBuyers",
     hashtags: ["RealEstateTips", "HomeBuyers", "OmahaRealEstate"],
