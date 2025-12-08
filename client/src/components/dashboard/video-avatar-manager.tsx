@@ -34,7 +34,9 @@ import {
   Download,
   FileText,
   Loader2,
+  Maximize2,
   Mic,
+  Pause,
   Play,
   RefreshCw,
   Smartphone,
@@ -44,6 +46,7 @@ import {
   Upload,
   Video,
   Volume2,
+  VolumeX,
   XCircle,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -174,6 +177,11 @@ export default function VideoAvatarManager() {
   // Upload motion video state
   const [uploadedMotionFile, setUploadedMotionFile] = useState<File | null>(null);
   const [uploadedMotionUrl, setUploadedMotionUrl] = useState<string>("");
+
+  // Video preview controls for popup
+  const [isPopupVideoPlaying, setIsPopupVideoPlaying] = useState(true);
+  const [isPopupVideoMuted, setIsPopupVideoMuted] = useState(true);
+  const popupVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // Fetch video avatars
   const { data: avatars = [], isLoading: isLoadingAvatars } = useQuery<
@@ -1244,7 +1252,7 @@ export default function VideoAvatarManager() {
                 )}
 
                 <div className="p-6">
-                  <div className="w-72 h-96 mx-auto rounded-xl overflow-hidden shadow-lg border-2 border-gray-100 dark:border-gray-700 relative">
+                  <div className="w-72 h-96 mx-auto rounded-xl overflow-hidden shadow-lg border-2 border-gray-100 dark:border-gray-700 relative group">
                     {/* Video badge */}
                     {completeAvatars[popupAvatarIndex]?.previewVideoUrl && (
                       <div className="absolute top-2 left-2 bg-purple-600 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 z-10">
@@ -1255,15 +1263,96 @@ export default function VideoAvatarManager() {
                     
                     {/* Show preview video if available, otherwise show thumbnail */}
                     {completeAvatars[popupAvatarIndex]?.previewVideoUrl ? (
-                      <video
-                        src={completeAvatars[popupAvatarIndex].previewVideoUrl}
-                        className="w-full h-full object-cover"
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        data-testid="video-popup-avatar"
-                      />
+                      <>
+                        <video
+                          ref={popupVideoRef}
+                          src={completeAvatars[popupAvatarIndex].previewVideoUrl}
+                          className="w-full h-full object-cover cursor-pointer"
+                          autoPlay
+                          loop
+                          muted={isPopupVideoMuted}
+                          playsInline
+                          onClick={() => {
+                            if (popupVideoRef.current) {
+                              if (popupVideoRef.current.paused) {
+                                popupVideoRef.current.play();
+                                setIsPopupVideoPlaying(true);
+                              } else {
+                                popupVideoRef.current.pause();
+                                setIsPopupVideoPlaying(false);
+                              }
+                            }
+                          }}
+                          data-testid="video-popup-avatar"
+                        />
+                        
+                        {/* Video controls overlay */}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-white hover:bg-white/20"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (popupVideoRef.current) {
+                                  if (popupVideoRef.current.paused) {
+                                    popupVideoRef.current.play();
+                                    setIsPopupVideoPlaying(true);
+                                  } else {
+                                    popupVideoRef.current.pause();
+                                    setIsPopupVideoPlaying(false);
+                                  }
+                                }
+                              }}
+                              data-testid="button-toggle-play"
+                            >
+                              {isPopupVideoPlaying ? (
+                                <Pause className="h-4 w-4" />
+                              ) : (
+                                <Play className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-white hover:bg-white/20"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsPopupVideoMuted(!isPopupVideoMuted);
+                              }}
+                              data-testid="button-toggle-mute"
+                            >
+                              {isPopupVideoMuted ? (
+                                <VolumeX className="h-4 w-4" />
+                              ) : (
+                                <Volume2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-white hover:bg-white/20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(completeAvatars[popupAvatarIndex].previewVideoUrl, "_blank");
+                            }}
+                            data-testid="button-fullscreen"
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        
+                        {/* Play indicator when paused */}
+                        {!isPopupVideoPlaying && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center">
+                              <Play className="h-8 w-8 text-gray-800 ml-1" />
+                            </div>
+                          </div>
+                        )}
+                      </>
                     ) : completeAvatars[popupAvatarIndex]?.thumbnailUrl ? (
                       <img
                         src={completeAvatars[popupAvatarIndex].thumbnailUrl}
