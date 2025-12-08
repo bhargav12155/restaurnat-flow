@@ -24,15 +24,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   Loader2,
+  Play,
   RefreshCw,
   Smartphone,
+  Sparkles,
   Trash2,
   Video,
   XCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { QRCodeSVG } from "qrcode.react";
 
 interface VideoAvatar {
@@ -69,6 +74,12 @@ export default function VideoAvatarManager() {
   const [qrSessionId, setQrSessionId] = useState<string | null>(null);
   const [qrUploadType, setQrUploadType] = useState<"training" | "consent">("training");
   const [qrPolling, setQrPolling] = useState(false);
+
+  // Hover and popup state for avatar cards
+  const [hoveredAvatarId, setHoveredAvatarId] = useState<string | null>(null);
+  const [showAvatarPopup, setShowAvatarPopup] = useState(false);
+  const [popupAvatarIndex, setPopupAvatarIndex] = useState(0);
+  const [, setLocation] = useLocation();
 
   // Fetch video avatars
   const { data: avatars = [], isLoading: isLoadingAvatars } = useQuery<
@@ -595,81 +606,95 @@ export default function VideoAvatarManager() {
                 </p>
               </div>
             ) : (
-              completeAvatars.map((avatar) => (
-                <Card key={avatar.id} className="overflow-hidden" data-testid={`card-avatar-${avatar.id}`}>
-                  <div className="aspect-square relative bg-muted">
-                    {avatar.thumbnailUrl ? (
-                      <img
-                        src={avatar.thumbnailUrl}
-                        alt={avatar.avatarName}
-                        className="w-full h-full object-cover"
-                        data-testid={`img-avatar-${avatar.id}`}
-                        onError={(e) => {
-                          const parent = e.currentTarget.parentElement;
-                          if (parent) {
-                            e.currentTarget.style.display = 'none';
-                            const fallback = parent.querySelector('.fallback-icon');
-                            if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                          }
-                        }}
-                      />
-                    ) : null}
-                    <div 
-                      className="fallback-icon absolute inset-0 flex items-center justify-center bg-muted" 
-                      style={{ display: avatar.thumbnailUrl ? 'none' : 'flex' }}
-                    >
-                      <Video className="w-16 h-16 text-muted-foreground" />
-                    </div>
-                  </div>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">
-                          {avatar.avatarName}
-                        </CardTitle>
-                        <CardDescription className="text-xs">
-                          {new Date(avatar.createdAt).toLocaleDateString()}
-                        </CardDescription>
-                      </div>
-                      {getStatusBadge(avatar.status)}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-2">
-                    <div className="space-y-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">
-                          Avatar ID:
-                        </span>
-                        <p className="font-mono text-xs truncate">
-                          {avatar.heygenAvatarId}
-                        </p>
-                      </div>
-                      {avatar.voiceId && (
-                        <div>
-                          <span className="text-muted-foreground">
-                            Voice ID:
-                          </span>
-                          <p className="font-mono text-xs truncate">
-                            {avatar.voiceId}
-                          </p>
+              completeAvatars.map((avatar, index) => {
+                const isHovered = hoveredAvatarId === avatar.id;
+                const hasPreviewVideo = !!avatar.previewVideoUrl;
+                
+                return (
+                  <button
+                    key={avatar.id}
+                    onClick={() => {
+                      setPopupAvatarIndex(index);
+                      setShowAvatarPopup(true);
+                    }}
+                    onMouseEnter={() => setHoveredAvatarId(avatar.id)}
+                    onMouseLeave={() => setHoveredAvatarId(null)}
+                    className="relative rounded-xl overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-lg border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50 text-left bg-white dark:bg-gray-900"
+                    data-testid={`card-avatar-${avatar.id}`}
+                  >
+                    <div className="aspect-square relative bg-muted">
+                      {/* Motion badge */}
+                      {hasPreviewVideo && (
+                        <div className="absolute top-2 left-2 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 z-10">
+                          <Play className="h-2.5 w-2.5" />
+                          Video
                         </div>
                       )}
+                      
+                      {/* Hover-to-play video or show thumbnail */}
+                      {hasPreviewVideo && isHovered ? (
+                        <video
+                          src={avatar.previewVideoUrl}
+                          className="w-full h-full object-cover"
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                        />
+                      ) : avatar.thumbnailUrl ? (
+                        <img
+                          src={avatar.thumbnailUrl}
+                          alt={avatar.avatarName}
+                          className="w-full h-full object-cover"
+                          data-testid={`img-avatar-${avatar.id}`}
+                          onError={(e) => {
+                            const parent = e.currentTarget.parentElement;
+                            if (parent) {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = parent.querySelector('.fallback-icon');
+                              if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center bg-muted">
+                          <Video className="w-16 h-16 text-muted-foreground" />
+                        </div>
+                      )}
+                      
+                      {/* Delete button on hover */}
+                      {isHovered && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm("Delete this video avatar? This cannot be undone.")) {
+                              deleteMutation.mutate(avatar.heygenAvatarId);
+                            }
+                          }}
+                          disabled={deleteMutation.isPending}
+                          className="absolute bottom-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center z-10 transition-colors"
+                          data-testid={`button-delete-avatar-${avatar.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-white" />
+                        </button>
+                      )}
                     </div>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="w-full mt-4"
-                      onClick={() =>
-                        deleteMutation.mutate(avatar.heygenAvatarId)
-                      }
-                      disabled={deleteMutation.isPending}
-                    >
-                      <Trash2 className="w-3 h-3 mr-2" />
-                      Delete Avatar
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
+                    <div className="p-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-medium text-sm truncate">
+                            {avatar.avatarName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(avatar.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        {getStatusBadge(avatar.status)}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
             )}
           </div>
         </TabsContent>
@@ -830,6 +855,141 @@ export default function VideoAvatarManager() {
               The QR code expires in 15 minutes. This dialog will close automatically when upload completes.
             </p>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Video Avatar Popup Dialog */}
+      <Dialog open={showAvatarPopup} onOpenChange={setShowAvatarPopup}>
+        <DialogContent 
+          className="max-w-lg p-0 gap-0 overflow-hidden bg-white dark:bg-gray-900 rounded-2xl"
+          data-testid="dialog-video-avatar-popup"
+        >
+          {completeAvatars.length > 0 && completeAvatars[popupAvatarIndex] && (
+            <>
+              <div className="flex items-center justify-between px-6 py-4 border-b">
+                <DialogTitle className="text-lg font-semibold">
+                  {completeAvatars[popupAvatarIndex].avatarName}
+                </DialogTitle>
+                <DialogDescription className="sr-only">
+                  Video avatar options
+                </DialogDescription>
+              </div>
+
+              <div className="relative flex items-center justify-center bg-gray-50 dark:bg-gray-800">
+                {completeAvatars.length > 1 && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      const newIndex = popupAvatarIndex === 0 ? completeAvatars.length - 1 : popupAvatarIndex - 1;
+                      setPopupAvatarIndex(newIndex);
+                    }}
+                    className="absolute left-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
+                    data-testid="button-prev-avatar"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </Button>
+                )}
+
+                <div className="p-6">
+                  <div className="w-72 h-96 mx-auto rounded-xl overflow-hidden shadow-lg border-2 border-gray-100 dark:border-gray-700 relative">
+                    {/* Video badge */}
+                    {completeAvatars[popupAvatarIndex]?.previewVideoUrl && (
+                      <div className="absolute top-2 left-2 bg-purple-600 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 z-10">
+                        <Play className="h-3 w-3" />
+                        Video Avatar
+                      </div>
+                    )}
+                    
+                    {/* Show preview video if available, otherwise show thumbnail */}
+                    {completeAvatars[popupAvatarIndex]?.previewVideoUrl ? (
+                      <video
+                        src={completeAvatars[popupAvatarIndex].previewVideoUrl}
+                        className="w-full h-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        data-testid="video-popup-avatar"
+                      />
+                    ) : completeAvatars[popupAvatarIndex]?.thumbnailUrl ? (
+                      <img
+                        src={completeAvatars[popupAvatarIndex].thumbnailUrl}
+                        alt={completeAvatars[popupAvatarIndex].avatarName}
+                        className="w-full h-full object-cover"
+                        data-testid="img-popup-avatar"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-muted">
+                        <Video className="w-16 h-16 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {completeAvatars.length > 1 && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      const newIndex = popupAvatarIndex === completeAvatars.length - 1 ? 0 : popupAvatarIndex + 1;
+                      setPopupAvatarIndex(newIndex);
+                    }}
+                    className="absolute right-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
+                    data-testid="button-next-avatar"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-center gap-3 px-6 py-4 border-t bg-white dark:bg-gray-900">
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2 border-purple-300 hover:bg-purple-50 text-purple-700"
+                  onClick={() => {
+                    toast({
+                      title: "Coming Soon",
+                      description: "Motion generation for video avatars will be available soon.",
+                    });
+                  }}
+                  data-testid="button-add-motion"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Add Motion
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    toast({
+                      title: "Coming Soon",
+                      description: "Look editing will be available in a future update.",
+                    });
+                  }}
+                  data-testid="button-edit-look"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Edit Look
+                </Button>
+                <Button
+                  className="btn-golden flex items-center gap-2 relative overflow-hidden bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                  onClick={() => {
+                    setShowAvatarPopup(false);
+                    setLocation("/avatar-studio");
+                    toast({
+                      title: "Avatar Selected",
+                      description: "Opening AI Studio to create your video.",
+                    });
+                  }}
+                  data-testid="button-create-with-ai"
+                >
+                  <Video className="h-4 w-4" />
+                  Create with AI Studio
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
