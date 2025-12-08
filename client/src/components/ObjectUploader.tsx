@@ -70,6 +70,16 @@ export function ObjectUploader({
         throw new Error(`Upload failed: ${response.statusText}`);
       }
 
+      // Try to parse JSON response which may contain the actual file URL
+      try {
+        const data = await response.json();
+        if (data.url) {
+          return data.url;
+        }
+      } catch {
+        // If response is not JSON, fall back to the original URL
+      }
+
       return uploadParams.url.split('?')[0]; // Remove query parameters to get the file URL
     } catch (error) {
       console.error('Upload error:', error);

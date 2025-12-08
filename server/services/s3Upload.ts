@@ -116,4 +116,18 @@ export class S3UploadService {
 
     return presignedUrl;
   }
+
+  async getPresignedPutUrl(key: string, contentType: string, expiresInSeconds: number = 3600): Promise<string> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+      ContentType: contentType,
+    });
+
+    const presignedUrl = await getSignedUrl(this.s3Client, command, {
+      expiresIn: expiresInSeconds,
+    });
+
+    return presignedUrl;
+  }
 }
