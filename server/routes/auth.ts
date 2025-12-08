@@ -7,6 +7,9 @@ import {
   loginAgent,
   testUserIdentification,
 } from "../utils/auth";
+import { db } from "../db";
+import { users } from "../../shared/schema";
+import { eq } from "drizzle-orm";
 
 const router = Router();
 
@@ -242,12 +245,45 @@ router.get("/me", requireAuth, (req: Request, res: Response) => {
  * GET /api/auth/check
  * Check if user is authenticated (optional auth)
  */
-router.get("/check", optionalAuth, (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    authenticated: !!req.user,
-    user: req.user || null,
-  });
+router.get("/check", optionalAuth, async (req: Request, res: Response) => {
+  if (!req.user) {
+    return res.json({
+      success: true,
+      authenticated: false,
+      user: null,
+    });
+  }
+
+  try {
+    let enrichedUser = { ...req.user };
+    
+    if (req.user.type === "agent" && req.user.id) {
+      const dbUser = await db.query.users.findFirst({
+        where: eq(users.id, String(req.user.id)),
+      });
+      
+      if (dbUser) {
+        enrichedUser = {
+          ...enrichedUser,
+          name: dbUser.name,
+          isDemo: dbUser.isDemo || false,
+        };
+      }
+    }
+    
+    res.json({
+      success: true,
+      authenticated: true,
+      user: enrichedUser,
+    });
+  } catch (error) {
+    console.error("Error enriching user data:", error);
+    res.json({
+      success: true,
+      authenticated: !!req.user,
+      user: req.user,
+    });
+  }
 });
 
 // =====================================================

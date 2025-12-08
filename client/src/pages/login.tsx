@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, User, ArrowRight } from "lucide-react";
+import { Loader2, User, ArrowRight, Sparkles } from "lucide-react";
 
 interface LoginPageProps {
   onSuccess?: () => void;
@@ -25,6 +25,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
   const [localError, setLocalError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isAutoLogging, setIsAutoLogging] = useState(false);
+  const [isDemoLoading, setIsDemoLoading] = useState(false);
 
   const handleLoginSuccess = () => {
     if (onSuccess) {
@@ -219,6 +220,37 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     }
   };
 
+  const handleDemoAccess = async () => {
+    setLocalError(null);
+    setSuccess(null);
+    setIsDemoLoading(true);
+
+    try {
+      const response = await fetch("/api/demo/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        setSuccess("Demo account created! Redirecting...");
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 1000);
+      } else {
+        const errorData = await response.json();
+        setLocalError(errorData.error || "Failed to create demo account");
+      }
+    } catch (error) {
+      console.error("Demo access error:", error);
+      setLocalError("Failed to create demo account. Please try again.");
+    } finally {
+      setIsDemoLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
@@ -293,11 +325,44 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
           </form>
 
           <div className="mt-6 pt-6 border-t border-gray-200">
-            <div className="text-center">
+            <div className="text-center space-y-4">
               <p className="text-xs text-gray-500">
                 Use your email address for client access
                 <br />
                 or agent code for professional features
+              </p>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-gray-500">Or</span>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 hover:from-purple-100 hover:to-indigo-100 text-purple-700"
+                onClick={handleDemoAccess}
+                disabled={isDemoLoading || isLoading}
+                data-testid="button-demo-access"
+              >
+                {isDemoLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating demo...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Try Demo
+                  </>
+                )}
+              </Button>
+              <p className="text-xs text-gray-400">
+                Experience the full platform with sample data
               </p>
             </div>
           </div>

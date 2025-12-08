@@ -23,6 +23,7 @@ import { requireAuth } from "./middleware/auth";
 import { ObjectNotFoundError, ObjectStorageService } from "./objectStorage";
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
+import demoRoutes from "./routes/demo";
 import { HeyGenService } from "./services/heygen";
 import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
 import { HeyGenStreamingService } from "./services/heygen-streaming";
@@ -502,6 +503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // =====================================================
   app.use("/api/auth", authRoutes);
   app.use("/api/user", userRoutes);
+  app.use("/api/demo", demoRoutes);
 
   // API Key Management
   app.get("/api/openai/status", async (req, res) => {

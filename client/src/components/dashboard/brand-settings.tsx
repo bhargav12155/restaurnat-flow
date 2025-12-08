@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ObjectUploader } from '@/components/ObjectUploader';
 import { useToast } from '@/hooks/use-toast';
+import { useDemo } from '@/contexts/DemoContext';
 import { 
   Upload, 
   Image, 
@@ -85,6 +86,7 @@ const FONT_OPTIONS = [
 
 export function BrandSettings() {
   const { toast } = useToast();
+  const { isDemo, demoSocialAccounts } = useDemo();
   const [currentStep, setCurrentStep] = useState(1);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadedBrandGuide, setUploadedBrandGuide] = useState<string | null>(null);
@@ -164,6 +166,32 @@ export function BrandSettings() {
       if (brandSettingsData.socialConnections) setSocialConnections(brandSettingsData.socialConnections);
     }
   }, [brandSettingsData]);
+
+  useEffect(() => {
+    if (isDemo && demoSocialAccounts.length > 0) {
+      const demoConnections: typeof socialConnections = {
+        facebook: { connected: false, accountName: '', profileUrl: '' },
+        instagram: { connected: false, accountName: '', profileUrl: '' },
+        linkedin: { connected: false, accountName: '', profileUrl: '' },
+        twitter: { connected: false, accountName: '', profileUrl: '' },
+        tiktok: { connected: false, accountName: '', profileUrl: '' },
+        youtube: { connected: false, accountName: '', profileUrl: '' },
+      };
+      
+      demoSocialAccounts.forEach(account => {
+        const platform = account.platform === 'x' ? 'twitter' : account.platform;
+        if (platform in demoConnections) {
+          demoConnections[platform as keyof typeof demoConnections] = {
+            connected: account.isConnected,
+            accountName: account.accountUsername,
+            profileUrl: '',
+          };
+        }
+      });
+      
+      setSocialConnections(demoConnections);
+    }
+  }, [isDemo, demoSocialAccounts]);
 
   // Sync AI preferences when loaded
   useEffect(() => {
