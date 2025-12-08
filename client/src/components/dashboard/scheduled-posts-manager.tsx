@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { ComplianceChecker } from "@/components/shared/compliance-checker";
 
 interface ScheduledPost {
   id: string;
@@ -543,6 +544,24 @@ export function ScheduledPostsManager() {
                   </div>
                 )}
               </div>
+
+              {/* BHHS Compliance Check */}
+              {(editContent.trim().length > 10 || aiEditContent.trim().length > 10) && (
+                <ComplianceChecker
+                  content={editMode === "manual" ? editContent : aiEditContent}
+                  platform={selectedPost?.platform || "general"}
+                  hasMedia={!!selectedPost?.metadata?.imageUrl}
+                  hasVideo={false}
+                  onContentFix={(fixedContent) => {
+                    if (editMode === "manual") {
+                      setEditContent(fixedContent);
+                    } else {
+                      setAiEditContent(fixedContent);
+                    }
+                  }}
+                  showGuidelines={false}
+                />
+              )}
 
               {/* Schedule Date/Time */}
               <div>

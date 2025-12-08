@@ -35,6 +35,7 @@ import {
 import { useState, useEffect, useRef } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { ComplianceChecker } from "@/components/shared/compliance-checker";
 
 interface StudioAvatar {
   id: string;
@@ -761,6 +762,17 @@ export function VideoStudio() {
                 {script.length}/1500 characters
               </p>
             </div>
+
+            {script.trim().length > 10 && (
+              <ComplianceChecker
+                content={script}
+                platform="video"
+                hasMedia={false}
+                hasVideo={true}
+                onContentFix={(fixedContent) => setScript(fixedContent)}
+                showGuidelines={false}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
