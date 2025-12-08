@@ -11874,6 +11874,59 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
+  // Direct file upload endpoint (used by ObjectUploader component)
+  // This endpoint accepts file uploads directly and stores them in S3
+  app.put("/api/upload-placeholder", async (req, res) => {
+    try {
+      const contentType = req.headers['content-type'] || 'application/octet-stream';
+      const extension = contentType.split('/')[1]?.split(';')[0] || 'bin';
+      const fileName = `uploads/${Date.now()}-${nanoid()}.${extension}`;
+      
+      console.log(`📤 Direct upload: ${fileName}, type: ${contentType}`);
+      
+      if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+        console.log(`⚠️ S3 not configured, returning placeholder response`);
+        return res.status(200).json({ 
+          success: true, 
+          url: `/uploads/placeholder-${Date.now()}.${extension}`,
+          message: "S3 not configured - placeholder response"
+        });
+      }
+
+      // Collect the request body as a buffer
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk) => chunks.push(chunk));
+      req.on('end', async () => {
+        try {
+          const fileBuffer = Buffer.concat(chunks);
+          
+          if (fileBuffer.length === 0) {
+            return res.status(400).json({ error: "No file data received" });
+          }
+          
+          console.log(`📤 Received ${fileBuffer.length} bytes, uploading to S3...`);
+          
+          const s3Service = new S3UploadService();
+          const fileUrl = await s3Service.uploadBuffer(fileBuffer, fileName, contentType, true, 3600);
+          
+          console.log(`✅ File uploaded successfully: ${fileUrl.substring(0, 80)}...`);
+          
+          res.status(200).json({
+            success: true,
+            url: fileUrl,
+            key: fileName,
+          });
+        } catch (uploadError: any) {
+          console.error("❌ S3 upload failed:", uploadError?.message);
+          res.status(500).json({ error: "Failed to upload file to storage" });
+        }
+      });
+    } catch (error: any) {
+      console.error("❌ Upload endpoint error:", error?.message);
+      res.status(500).json({ error: "Failed to process upload" });
+    }
+  });
+
   // Get specific media item
   app.get("/api/media/:id", requireAuth, async (req, res) => {
     try {
