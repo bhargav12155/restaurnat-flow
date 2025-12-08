@@ -8,7 +8,7 @@ import { generateToken } from "../middleware/auth";
 
 const router = Router();
 
-const DEMO_PROPERTY_IMAGE = "/attached_assets/image-534_1765232065566.jpg";
+const DEMO_PROPERTY_IMAGE = "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800";
 
 const DEMO_PROPERTIES = [
   {
