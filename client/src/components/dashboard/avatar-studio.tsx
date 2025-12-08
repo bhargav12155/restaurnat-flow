@@ -524,6 +524,38 @@ export function AvatarStudio() {
     },
   });
 
+  const deleteAvatarLookMutation = useMutation({
+    mutationFn: async (avatarId: string) => {
+      const response = await fetch(`/api/photo-avatars/${avatarId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete avatar look");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Avatar Look Deleted",
+        description: "The avatar look has been removed.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatar-groups", selectedAvatarGroup, "looks"] });
+      if (selectedAvatarLook && deleteAvatarLookMutation.variables === selectedAvatarLook) {
+        setSelectedAvatarLook("");
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Deletion Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Motion video generation
   const handleGenerateMotion = async () => {
     if (!motionPrompt.trim()) {
@@ -1136,6 +1168,23 @@ export function AvatarStudio() {
                               <Play className="h-2.5 w-2.5" />
                               Motion
                             </div>
+                          )}
+                          
+                          {/* Delete button */}
+                          {isHovered && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm("Delete this avatar look? This cannot be undone.")) {
+                                  deleteAvatarLookMutation.mutate(lookId);
+                                }
+                              }}
+                              disabled={deleteAvatarLookMutation.isPending}
+                              className="absolute bottom-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center z-10 transition-colors"
+                              data-testid={`button-delete-look-${lookId}`}
+                            >
+                              <Trash2 className="h-3 w-3 text-white" />
+                            </button>
                           )}
                           
                           {/* Image or Video on hover */}
