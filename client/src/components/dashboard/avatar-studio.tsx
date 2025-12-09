@@ -21,6 +21,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDemo } from "@/contexts/DemoContext";
 import demoMotionVideo from "@assets/preview_video_target_(1)_1765290240595.mp4";
+import demoFinalVideo from "@assets/preview_video_target_(1)_1765291235450.mp4";
 import {
   User,
   Mic,
@@ -2680,6 +2681,29 @@ export function AvatarStudio() {
                         voiceInputMode,
                         voiceProvider,
                       });
+                      
+                      // Demo mode: skip API calls and use demo video
+                      if (isDemo) {
+                        let progress = 10;
+                        const progressInterval = setInterval(() => {
+                          progress += 15;
+                          setLipSyncProgress(Math.min(progress, 90));
+                        }, 300);
+
+                        setTimeout(() => {
+                          clearInterval(progressInterval);
+                          setFinalVideoUrl(demoFinalVideo);
+                          setLipSyncStatus("completed");
+                          setLipSyncProgress(100);
+                          setIsGeneratingLipSync(false);
+                          setMotionDialogStep("final");
+                          toast({
+                            title: "Video Ready!",
+                            description: "Demo: Your avatar is now speaking with your voice.",
+                          });
+                        }, 2000);
+                        return;
+                      }
                       
                       try {
                         let audioUrl: string | undefined;
