@@ -162,33 +162,25 @@ const getPhotoAvatarGroupTemplates = (userId: string) => [
     groupName: "Professional Headshots",
     heygenGroupId: `demo-group-professional-${userId}`,
     trainingStatus: "completed",
-    s3ImageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400",
+    s3ImageUrl: "/attached_assets/demo-avatar-preview.jpg",
   },
   {
     userId,
     groupName: "Casual Style",
     heygenGroupId: `demo-group-casual-${userId}`,
     trainingStatus: "completed",
-    s3ImageUrl: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400",
+    s3ImageUrl: "/attached_assets/demo-avatar-preview.jpg",
   },
 ];
 
 const getPhotoAvatarLooksTemplates = (groupId: string, groupIndex: number) => {
-  const images = groupIndex === 0 
-    ? [
-        "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400",
-        "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400",
-      ]
-    : [
-        "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400",
-        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
-      ];
+  const demoImage = "/attached_assets/demo-avatar-preview.jpg";
   
-  return images.map((url, i) => ({
+  return [0, 1, 2].map((i) => ({
     groupId,
-    photoUrl: url,
+    photoUrl: demoImage,
     heygenPhotoId: `demo-look-${groupId}-${i}`,
-    poseType: i === 0 ? "front" : "side",
+    poseType: i === 0 ? "front" : i === 1 ? "side" : "angle",
     processingStatus: "completed",
   }));
 };
