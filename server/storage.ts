@@ -219,6 +219,7 @@ export interface IStorage {
 
   // Individual Photo Avatars
   createPhotoAvatar(avatar: InsertPhotoAvatar): Promise<PhotoAvatar>;
+  listPhotoAvatarsByGroup(groupId: string): Promise<PhotoAvatar[]>;
   getPhotoAvatarByHeygenIdAndUser(
     heygenAvatarId: string,
     userId: string
@@ -1513,6 +1514,13 @@ export class MemStorage implements IStorage {
   async createPhotoAvatar(avatar: InsertPhotoAvatar): Promise<PhotoAvatar> {
     const [result] = await db.insert(photoAvatars).values(avatar).returning();
     return result;
+  }
+
+  async listPhotoAvatarsByGroup(groupId: string): Promise<PhotoAvatar[]> {
+    return await db
+      .select()
+      .from(photoAvatars)
+      .where(eq(photoAvatars.groupId, groupId));
   }
 
   async getPhotoAvatarByHeygenIdAndUser(
