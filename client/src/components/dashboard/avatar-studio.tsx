@@ -19,6 +19,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDemo } from "@/contexts/DemoContext";
+import demoMotionVideo from "@assets/preview_video_target_(1)_1765290240595.mp4";
 import {
   User,
   Mic,
@@ -123,6 +125,7 @@ const PLATFORM_OPTIONS = [
 export function AvatarStudio() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isDemo } = useDemo();
   
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedAvatarGroup, setSelectedAvatarGroup] = useState<string>("");
@@ -583,6 +586,30 @@ export function AvatarStudio() {
     setMotionStatus("starting");
     setMotionProgress(0);
     setMotionVideoUrl(null);
+
+    // Demo mode: use pre-recorded video with simulated progress
+    if (isDemo) {
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        progress += 10;
+        setMotionProgress(Math.min(progress, 90));
+        setMotionStatus("processing");
+      }, 200);
+
+      setTimeout(() => {
+        clearInterval(progressInterval);
+        setMotionVideoUrl(demoMotionVideo);
+        setMotionStatus("completed");
+        setMotionProgress(100);
+        setIsGeneratingMotion(false);
+        setMotionDialogStep("voice");
+        toast({
+          title: "Motion Video Ready!",
+          description: "Demo: Now add your voice to make your avatar speak.",
+        });
+      }, 2500);
+      return;
+    }
 
     try {
       const response = await fetch("/api/kling/generate-motion", {

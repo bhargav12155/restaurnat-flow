@@ -7075,6 +7075,26 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           let previewImage = dbGroup.s3ImageUrl;
           let trainStatus = "empty"; // Default: not trained yet
 
+          // Demo groups: skip HeyGen API calls, use database data
+          const isDemoGroup = groupId.startsWith("demo-group-");
+          if (isDemoGroup) {
+            const dbLooks = await storage.listPhotoAvatarsByGroup(groupId);
+            looksCount = dbLooks.length;
+            trainStatus = "ready";
+            heygenStatus = "completed";
+            return {
+              group_id: groupId,
+              name: dbGroup.groupName,
+              status: "ready",
+              train_status: trainStatus,
+              default_voice_id: null,
+              created_at: dbGroup.createdAt || new Date().toISOString(),
+              avatar_count: looksCount,
+              preview_image: previewImage,
+              num_looks: looksCount,
+            };
+          }
+
           try {
             const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
             looksCount = Array.isArray(looks?.avatar_list)
@@ -7345,6 +7365,21 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         );
         if (!dbGroup) {
           return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        // Demo groups: return database data directly
+        if (groupId.startsWith("demo-group-")) {
+          const dbLooks = await storage.listPhotoAvatarsByGroup(groupId);
+          const demoLooks = dbLooks.map((look, index) => ({
+            id: look.id,
+            avatar_id: look.heygenPhotoId || `demo-avatar-${index}`,
+            image_url: look.photoUrl,
+            image: look.photoUrl,
+            status: "completed",
+            is_motion: false,
+            name: look.poseType || "Avatar Look",
+          }));
+          return res.json({ avatar_list: demoLooks });
         }
 
         const photoAvatarService = new HeyGenPhotoAvatarService();
