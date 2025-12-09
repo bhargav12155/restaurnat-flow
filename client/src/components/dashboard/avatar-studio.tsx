@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDemo } from "@/contexts/DemoContext";
 import demoMotionVideo from "@assets/preview_video_target_(1)_1765290240595.mp4";
 import demoFinalVideo from "@assets/preview_video_target_(1)_1765291235450.mp4";
+import demoEditLookResult from "@assets/demo-edit-look-result.jpg";
 import {
   User,
   Mic,
@@ -182,6 +183,9 @@ export function AvatarStudio() {
   // Upload motion video state (skip to voice step)
   const [uploadedMotionFile, setUploadedMotionFile] = useState<File | null>(null);
   const [uploadedMotionUrl, setUploadedMotionUrl] = useState<string>("");
+  
+  // Edit look result dialog (demo mode)
+  const [showEditLookResult, setShowEditLookResult] = useState(false);
   
   // Motion templates based on HeyGen's offerings
   const MOTION_TEMPLATES = [
@@ -1981,10 +1985,14 @@ export function AvatarStudio() {
                   variant="outline"
                   className="flex items-center gap-2"
                   onClick={() => {
-                    toast({
-                      title: "Coming Soon",
-                      description: "Look editing will be available in a future update.",
-                    });
+                    if (isDemo) {
+                      setShowEditLookResult(true);
+                    } else {
+                      toast({
+                        title: "Coming Soon",
+                        description: "Look editing will be available in a future update.",
+                      });
+                    }
                   }}
                   data-testid="button-edit-look"
                 >
@@ -2997,6 +3005,56 @@ export function AvatarStudio() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Look Result Dialog (Demo Mode) */}
+      <Dialog open={showEditLookResult} onOpenChange={setShowEditLookResult}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 text-[#D4AF37]" />
+              Look Edited Successfully
+            </DialogTitle>
+            <DialogDescription>
+              Your avatar look has been updated with the new style.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="rounded-lg overflow-hidden border-2 border-[#D4AF37] shadow-lg">
+              <img
+                src={demoEditLookResult}
+                alt="Edited Look Result"
+                className="w-full h-auto object-cover"
+                data-testid="img-edit-look-result"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setShowEditLookResult(false)}
+              data-testid="button-close-edit-result"
+            >
+              Close
+            </Button>
+            <Button
+              className="btn-golden"
+              onClick={() => {
+                setShowEditLookResult(false);
+                toast({
+                  title: "Look Applied",
+                  description: "Your edited look is now ready to use.",
+                });
+              }}
+              data-testid="button-use-edited-look"
+            >
+              <Check className="h-4 w-4 mr-2" />
+              Use This Look
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
