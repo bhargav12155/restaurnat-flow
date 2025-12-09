@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
-import { users, properties, scheduledPosts, avatars, socialMediaAccounts } from "../../shared/schema";
+import { users, properties, scheduledPosts, avatars, socialMediaAccounts, photoAvatarGroups, photoAvatars } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../middleware/auth";
@@ -156,6 +156,43 @@ const getAvatarTemplates = (uniqueId: string) => [
   },
 ];
 
+const getPhotoAvatarGroupTemplates = (userId: string) => [
+  {
+    userId,
+    groupName: "Professional Headshots",
+    heygenGroupId: `demo-group-professional-${userId}`,
+    trainingStatus: "completed",
+    s3ImageUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400",
+  },
+  {
+    userId,
+    groupName: "Casual Style",
+    heygenGroupId: `demo-group-casual-${userId}`,
+    trainingStatus: "completed",
+    s3ImageUrl: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400",
+  },
+];
+
+const getPhotoAvatarLooksTemplates = (groupId: string, groupIndex: number) => {
+  const images = groupIndex === 0 
+    ? [
+        "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400",
+        "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400",
+      ]
+    : [
+        "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400",
+        "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400",
+      ];
+  
+  return images.map((url, i) => ({
+    groupId,
+    photoUrl: url,
+    heygenPhotoId: `demo-look-${groupId}-${i}`,
+    poseType: i === 0 ? "front" : "side",
+    processingStatus: "completed",
+  }));
+};
+
 const DEMO_SOCIAL_ACCOUNTS = [
   {
     platform: "facebook",
@@ -233,6 +270,19 @@ router.post("/create", async (req: Request, res: Response) => {
       demoAvatars.map(a => ({ ...a, userId }))
     );
     console.log("📱 [DEMO] Avatars inserted");
+
+    console.log("📱 [DEMO] Inserting photo avatar groups...");
+    const photoGroupTemplates = getPhotoAvatarGroupTemplates(userId);
+    const insertedGroups = await db.insert(photoAvatarGroups).values(photoGroupTemplates).returning();
+    console.log("📱 [DEMO] Photo avatar groups inserted:", insertedGroups.length);
+
+    console.log("📱 [DEMO] Inserting photo avatar looks...");
+    for (let i = 0; i < insertedGroups.length; i++) {
+      const group = insertedGroups[i];
+      const looks = getPhotoAvatarLooksTemplates(group.heygenGroupId, i);
+      await db.insert(photoAvatars).values(looks);
+    }
+    console.log("📱 [DEMO] Photo avatar looks inserted");
 
     console.log("📱 [DEMO] Inserting social media accounts...");
     await db.insert(socialMediaAccounts).values(
