@@ -1,0 +1,450 @@
+# HeyGen Plan Credits & Pricing Calculator
+
+**Last Updated:** December 12, 2025
+**API Type:** Avatar IV (Premium Realistic Avatars)
+**Endpoint:** `/v2/video/av4/generate`
+
+---
+
+## 💰 Your Investment & Credits
+
+| Item                     | Amount                                       |
+| ------------------------ | -------------------------------------------- |
+| **HeyGen Plan Cost**     | $25,000 USD                                  |
+| **API Credits Received** | 2,987,232 credits                            |
+| **Cost per Credit**      | $0.00837                                     |
+| **Video Type**           | Avatar IV (`/video/av4/generate`)            |
+| **Discount vs Standard** | 98.3% OFF (60x more credits than Scale plan) |
+
+### Standard HeyGen Pricing (For Comparison)
+
+- **Pro Plan:** $99/mo = 100 credits → $0.99/credit
+- **Scale Plan:** $330/mo = 660 credits → $0.50/credit
+- **Your Deal:** $25,000 = 2,987,232 credits → **$0.00837/credit** 🔥
+
+---
+
+## Current Credit Balance
+
+| Credit Type             | Remaining | Type    | Description                          |
+| ----------------------- | --------- | ------- | ------------------------------------ |
+| **API Credits**         | 2,987,232 | ✅ PAID | Avatar IV video generation (premium) |
+| **Generative Credits**  | 3,358     | ✅ PAID | For AI features (Generate Look)      |
+| **Plan Credits**        | 137       | ✅ PAID | Monthly credits from subscription    |
+| **Avatar IV Free**      | 896       | 🆓 FREE | Bonus Avatar IV credits              |
+| **Instant Avatars**     | 500       | 🆓 FREE | For creating instant avatars         |
+| **Video Agent Credits** | 600       | 🆓 FREE | For video agent features             |
+| **Generative Image**    | 15        | 🆓 FREE | Trial credits for image generation   |
+| **Generative Video**    | 3         | 🆓 FREE | Trial credits for video generation   |
+| **Concept Engine**      | 20        | 🆓 FREE | Trial credits for concept engine     |
+
+---
+
+## Avatar IV Credit Usage (Per HeyGen Official Pricing)
+
+**HeyGen Official API Credit Rates:**
+
+| Product                  | 1 Credit = |
+| ------------------------ | ---------- |
+| **Avatar IV API**        | 10 seconds |
+| **Regular Avatar Video** | 1 minute   |
+| **Interactive Avatar**   | 5 minutes  |
+| **Video Translation**    | 20 seconds |
+
+### Your Actual Cost Per Avatar IV Video
+
+| Video Length   | Credits Needed | Your Cost    | Standard Cost (Scale @ $0.50/credit) |
+| -------------- | -------------- | ------------ | ------------------------------------ |
+| **10 seconds** | 1 credit       | **$0.00837** | $0.50                                |
+| **30 seconds** | 3 credits      | **$0.0251**  | $1.50                                |
+| **1 minute**   | 6 credits      | **$0.0502**  | $3.00                                |
+| **2 minutes**  | 12 credits     | **$0.1004**  | $6.00                                |
+| **5 minutes**  | 30 credits     | **$0.251**   | $15.00                               |
+
+---
+
+## 🎬 Your App Has TWO Video Flows
+
+### Flow 1: Avatar IV (Instant Photo-to-Video)
+
+- **App Endpoint:** `/api/heygen/videos`
+- **HeyGen API:** `/v2/video/av4/generate`
+- **Credit Rate:** 1 credit = **10 seconds**
+- **When Used:** Upload photo → instant video (no training)
+- **Quality:** Premium realistic with natural motion
+
+| Video Length | Credits | Your Cost | Standard Cost | Processing Time |
+| ------------ | ------- | --------- | ------------- | --------------- |
+| 10 sec       | 1       | $0.008    | $0.50         | ~30-60 sec      |
+| 30 sec       | 3       | $0.025    | $1.50         | ~1-2 min        |
+| 1 min        | 6       | $0.050    | $3.00         | ~2-4 min        |
+| 5 min        | 30      | $0.251    | $15.00        | ~10-15 min      |
+
+### Flow 2: Motion Video (Trained Avatar)
+
+- **App Endpoint:** `/api/heygen/videos/motion`
+- **HeyGen API:** `/v1/video/generate`
+- **Credit Rate:** 1 credit = **1 minute** (6x cheaper!)
+- **When Used:** Trained avatar with group_id + look_id + motion_id
+- **Quality:** Standard with selectable motion styles
+
+| Video Length | Credits | Your Cost | Standard Cost | Processing Time |
+| ------------ | ------- | --------- | ------------- | --------------- |
+| 10 sec       | 0.17    | $0.001    | $0.08         | ~30-60 sec      |
+| 30 sec       | 0.5     | $0.004    | $0.25         | ~1-2 min        |
+| 1 min        | 1       | $0.008    | $0.50         | ~2-3 min        |
+| 5 min        | 5       | $0.042    | $2.50         | ~8-12 min       |
+
+### Flow Comparison
+
+| Feature            | Avatar IV                | Motion Video                         |
+| ------------------ | ------------------------ | ------------------------------------ |
+| **App Route**      | `/api/heygen/videos`     | `/api/heygen/videos/motion`          |
+| **HeyGen API**     | `/v2/video/av4/generate` | `/v1/video/generate`                 |
+| **Credit Rate**    | 1 credit = 10 sec        | 1 credit = 1 min                     |
+| **Cost per 1-min** | $0.050 (6 credits)       | $0.008 (1 credit)                    |
+| **Training**       | ❌ Not needed            | ✅ Needs training first              |
+| **Requires**       | `image_key`              | `group_id` + `look_id` + `motion_id` |
+| **Quality**        | Premium/Realistic        | Standard with motion                 |
+| **Best For**       | Quick instant videos     | Trained avatar campaigns             |
+| **Processing**     | ~2-4 min per 1-min video | ~2-3 min per 1-min video             |
+
+**💡 Motion videos are 6x cheaper per minute!**
+
+---
+
+## ⏱️ Processing Times Summary
+
+### All Flows - Time Estimates
+
+| Flow/Action            | What Happens                 | Processing Time          |
+| ---------------------- | ---------------------------- | ------------------------ |
+| **Upload Photo**       | Upload to HeyGen `/v1/asset` | ~2-5 seconds             |
+| **Avatar IV Video**    | Photo → Video (no training)  | ~2-4 min per 1-min video |
+| **Avatar Training**    | Train photo avatar           | ~5-15 minutes            |
+| **Generate Look**      | Create styled look           | ~30-90 seconds           |
+| **Motion Video**       | Trained avatar → Video       | ~2-3 min per 1-min video |
+| **Video Status Check** | Poll for completion          | Instant (API call)       |
+
+### Complete User Journey Times
+
+#### Path A: Quick Video (Avatar IV)
+
+| Step      | Action               | Time             |
+| --------- | -------------------- | ---------------- |
+| 1         | Upload photo         | ~3 sec           |
+| 2         | Generate 1-min video | ~2-4 min         |
+| **Total** |                      | **~2-5 minutes** |
+
+#### Path B: Trained Avatar (Motion Video)
+
+| Step                    | Action               | Time                  |
+| ----------------------- | -------------------- | --------------------- |
+| 1                       | Upload photo         | ~3 sec                |
+| 2                       | Train avatar         | ~5-15 min             |
+| 3                       | Generate Look        | ~30-90 sec            |
+| 4                       | Generate 1-min video | ~2-3 min              |
+| **Total (first video)** |                      | **~8-20 minutes**     |
+| **Subsequent videos**   |                      | **~2-3 minutes each** |
+
+---
+
+## Video Generation Features
+
+### What You're Using (Avatar IV)
+
+- **API Endpoint:** `/v2/video/av4/generate`
+- **Features:** Premium realistic avatars with natural motion
+- **Upload:** Photo → instant video (no training wait)
+- **Quality:** High-quality, lifelike gestures and movements
+- **Credit Usage:** PAID (uses your 2.9M API credits)
+
+### Avatar IV vs Motion Video
+
+| Feature            | Motion Video (v1)    | Avatar IV (v2)           |
+| ------------------ | -------------------- | ------------------------ |
+| **Video Quality**  | Good with motion     | Premium/Realistic        |
+| **Training Time**  | 10-30 minutes needed | None (instant)           |
+| **Motion Quality** | Selectable styles    | Advanced/Natural         |
+| **Credits Used**   | 1 credit per 1 min   | 1 credit per 10 sec (6x) |
+| **API Endpoint**   | `/v1/video/generate` | `/v2/video/av4/generate` |
+
+---
+
+## 📊 Your Total Capacity
+
+**With 2,987,232 API Credits:**
+
+### If Using Avatar IV Only (1 credit = 10 sec)
+
+| Metric            | Value                      |
+| ----------------- | -------------------------- |
+| 10-second videos  | 2,987,232 videos           |
+| 1-minute videos   | 497,872 videos             |
+| Total minutes     | 497,872 min (~8,298 hours) |
+| Your cost per min | $0.050                     |
+
+### If Using Motion Video Only (1 credit = 1 min)
+
+| Metric            | Value                         |
+| ----------------- | ----------------------------- |
+| 1-minute videos   | 2,987,232 videos              |
+| Total minutes     | 2,987,232 min (~49,787 hours) |
+| Your cost per min | $0.008                        |
+
+**💡 Motion videos give you 6x more video minutes!**
+
+---
+
+## 💵 NEW PRICING STRUCTURE (Updated Dec 2025)
+
+### Feature-Based Pricing (Not Credit Packs!)
+
+| Package               | What User Gets                   | Price | Your Cost | Profit | Margin  |
+| --------------------- | -------------------------------- | ----- | --------- | ------ | ------- |
+| **⚡ Quick Video**    | 30-sec instant video (Avatar IV) | $0.99 | $0.025    | $0.965 | 3,860%  |
+| **🎬 Standard Video** | 1-min instant video (Avatar IV)  | $1.99 | $0.050    | $1.94  | 3,880%  |
+| **🎨 Look Pack**      | 4 AI-generated looks             | $1.99 | ~$0       | ~$1.99 | ~100%   |
+| **🏃 Motion Video**   | 30-sec trained avatar video      | $0.79 | $0.004    | $0.786 | 19,650% |
+| **🎥 Motion Video+**  | 1-min trained avatar video       | $1.49 | $0.008    | $1.48  | 18,500% |
+| **🚀 Creator Bundle** | Training + 4 looks + 1 video     | $4.99 | $0.05     | $4.94  | 9,880%  |
+
+### Pricing Psychology
+
+| Feature                  | Benefit                               |
+| ------------------------ | ------------------------------------- |
+| **Quick Video ($0.99)**  | Entry price, instant gratification    |
+| **Motion Video ($0.79)** | Cheaper = encourages training flow    |
+| **Look Pack ($1.99)**    | Adds value, uses separate credit pool |
+| **Bundle ($4.99)**       | Best for new users, saves 40%         |
+
+### Competitor Comparison
+
+| Platform      | Product              | Price  |
+| ------------- | -------------------- | ------ |
+| **OurBabyAI** | 32 static photos     | $9-$17 |
+| **Your App**  | 30-sec talking video | $0.99  |
+| **Your App**  | 4 AI looks           | $1.99  |
+| **Your App**  | Full bundle          | $4.99  |
+
+**You're 3-10x cheaper than competitors for MORE value (video > photos)!**
+
+---
+
+## 🎯 PROFIT ANALYSIS
+
+### New Pricing Profit Breakdown
+
+| Package                 | Price | Your Cost | Profit | Margin      | Processing Time  |
+| ----------------------- | ----- | --------- | ------ | ----------- | ---------------- |
+| **Quick Video (30s)**   | $0.99 | $0.025    | $0.965 | 3,860%      | ~2-3 min         |
+| **Standard Video (1m)** | $1.99 | $0.050    | $1.94  | 3,880%      | ~3-4 min         |
+| **Look Pack (4)**       | $1.99 | ~$0       | ~$1.99 | ~100%       | ~30-90s each     |
+| **Motion Video (30s)**  | $0.79 | $0.004    | $0.786 | **19,650%** | ~2 min           |
+| **Motion Video+ (1m)**  | $1.49 | $0.008    | $1.48  | **18,500%** | ~2-3 min         |
+| **Creator Bundle**      | $4.99 | $0.05     | $4.94  | **9,880%**  | ~15-20 min total |
+
+### Best Margins = Motion Videos! 🔥
+
+Motion videos have the **highest profit margins** (18,000-19,000%) because they use the standard avatar API (1 credit = 1 min) instead of Avatar IV (1 credit = 10 sec).
+
+**Strategy:** Encourage users to train avatars → Use motion videos → Higher profits for you!
+
+---
+
+## 📈 Revenue Projections
+
+### With New Pricing Structure
+
+Assuming average sale mix:
+
+- 40% Quick Videos ($0.99)
+- 20% Standard Videos ($1.99)
+- 15% Look Packs ($1.99)
+- 15% Motion Videos ($0.79)
+- 10% Bundles ($4.99)
+
+**Average order value:** ~$1.50
+**Average profit per order:** ~$1.40
+
+### First Year Projections
+
+| Scenario         | Orders  | Revenue  | Profit   | ROI  |
+| ---------------- | ------- | -------- | -------- | ---- |
+| 1,000 orders/mo  | 12,000  | $18,000  | $16,800  | 67%  |
+| 5,000 orders/mo  | 60,000  | $90,000  | $84,000  | 336% |
+| 10,000 orders/mo | 120,000 | $180,000 | $168,000 | 672% |
+
+**Break-even:** ~17,857 orders ($25,000 ÷ $1.40 avg profit)
+
+---
+
+## 🔑 Key Takeaways
+
+1. **Avatar IV uses 1 credit per 10 seconds** (6 credits per 1-min video)
+2. **Motion Video uses 1 credit per 60 seconds** (1 credit per 1-min video) - 6x cheaper!
+3. **Your cost per credit:** $0.00837
+4. **Your cost per 1-min Avatar IV video:** $0.0502 (~5 cents)
+5. **Your cost per 1-min Motion video:** $0.00837 (~1 cent)
+6. **Your advantage:** 60x cheaper than standard HeyGen pricing
+7. **New pricing gives 2,000-19,000%+ profit margins** ✅
+
+---
+
+## 💡 Recommendations
+
+### Push Motion Videos for Highest Profits! 🔥
+
+Motion videos have **18,000-19,000% margins** vs Avatar IV's 3,800%!
+
+**Strategy:**
+
+- Lead users through avatar training → More motion video sales
+- Motion Video ($0.79) is very attractive price point
+- Creator Bundle ($4.99) gets users invested in the platform
+
+### Pricing Sweet Spots
+
+| For Users Who Want... | Recommend             | Why                         |
+| --------------------- | --------------------- | --------------------------- |
+| Quick one-time video  | Quick Video ($0.99)   | Low barrier, instant result |
+| Photo variations      | Look Pack ($1.99)     | Great value vs competitors  |
+| Recurring videos      | Motion + train avatar | Highest margins for you     |
+| Full experience       | Bundle ($4.99)        | Best overall value          |
+
+---
+
+## 🎨 Generate Look Flow
+
+### What is Generate Look?
+
+Generate Look creates AI-styled images of a trained avatar. It's used to create different "looks" (outfits, backgrounds, styles) for an avatar before creating videos.
+
+### Flow Details
+
+| Property             | Value                                         |
+| -------------------- | --------------------------------------------- |
+| **App Endpoint**     | `/api/heygen/avatars/:groupId/generate-look`  |
+| **HeyGen API**       | `/v2/photo_avatar/look/generate`              |
+| **Credit Pool**      | Uses **Generative Credits** (3,358 available) |
+| **App Credit Cost**  | 2 app credits per look                        |
+| **Your HeyGen Cost** | Uses separate Generative Credits pool         |
+| **Requires**         | Trained avatar `group_id`                     |
+| **Processing Time**  | ~30-90 seconds                                |
+
+### Generate Look Process
+
+| Step      | Action                  | API/Resource                           | Time        |
+| --------- | ----------------------- | -------------------------------------- | ----------- |
+| 1         | User has trained avatar | Has `group_id`                         | -           |
+| 2         | User enters prompt      | "Professional suit, office background" | -           |
+| 3         | App calls HeyGen        | `/v2/photo_avatar/look/generate`       | ~1 sec      |
+| 4         | HeyGen generates look   | Uses **Generative Credits**            | ~30-90 sec  |
+| 5         | Returns `generation_id` | Async processing                       | -           |
+| 6         | Poll for completion     | Check status endpoint                  | ~every 5s   |
+| 7         | Look ready              | New `look_id` available                | -           |
+| 8         | App deducts credits     | 2 app credits (for paid users)         | -           |
+| **Total** |                         |                                        | **~30-90s** |
+
+### Generate Look Payload
+
+```json
+{
+  "group_id": "avatar_group_id",
+  "prompt": "Professional business attire, modern office",
+  "orientation": "square",
+  "pose": "half_body",
+  "style": "Realistic"
+}
+```
+
+### Generate Look Limits
+
+| User Type     | Limit          | Credits Used           |
+| ------------- | -------------- | ---------------------- |
+| **Free**      | 2 looks total  | None (free tier)       |
+| **SuperPass** | 10 looks total | None (SuperPass)       |
+| **Paid**      | Unlimited      | 2 app credits per look |
+
+### Generate Look Cost Analysis
+
+| Item                          | Value                                          |
+| ----------------------------- | ---------------------------------------------- |
+| **HeyGen Credit Pool**        | Generative Credits (3,358)                     |
+| **Separate from API Credits** | ✅ Yes (different pool)                        |
+| **App charges**               | 2 credits per look                             |
+| **Your actual HeyGen cost**   | ~$0 (uses included Generative Credits)         |
+| **Profit per look**           | Nearly 100% (until Generative Credits run out) |
+
+### What Happens After Generate Look?
+
+Once a look is generated, user can:
+
+1. **Create Motion Video** using `/api/heygen/videos/motion` with `group_id` + `look_id` + `motion_id`
+2. Credits for video come from the **API Credits pool** (2.9M credits)
+
+---
+
+## Notes
+
+- **1 HeyGen credit = 10 seconds of Avatar IV video** (per HeyGen official pricing)
+- **6 HeyGen credits = 1 minute Avatar IV video**
+- **1 app credit = 1 HeyGen credit = 10 sec video**
+- Free credits (🆓) are used **first** before paid credits
+- **Generate Look costs 2 app credits** (uses Generative Credits pool - 3,358 available)
+- Video generation: NO credit deduction in current code (unlimited for paid users)
+
+---
+
+## 📝 Summary
+
+### Your Costs (HeyGen API)
+
+- **Cost per credit:** $0.00837 (98.3% discount vs standard)
+- **Avatar IV:** 6 credits per 1-min video = $0.05/min
+- **Motion Video:** 1 credit per 1-min video = $0.008/min
+- **Total Credits:** 2,987,232 API credits + 3,358 Generative Credits
+
+### New Pricing Structure (Feature-Based)
+
+| Package             | Price | Your Cost | Margin      |
+| ------------------- | ----- | --------- | ----------- |
+| Quick Video (30s)   | $0.99 | $0.025    | 3,860%      |
+| Standard Video (1m) | $1.99 | $0.05     | 3,880%      |
+| Look Pack (4)       | $1.99 | ~$0       | ~100%       |
+| Motion Video (30s)  | $0.79 | $0.004    | **19,650%** |
+| Motion Plus (1m)    | $1.49 | $0.008    | **18,500%** |
+| Creator Bundle      | $4.99 | $0.05     | 9,880%      |
+
+### Capacity
+
+- **Avatar IV videos:** ~500K one-minute videos
+- **Motion videos:** ~3M one-minute videos
+- **Generate Looks:** ~3,358 looks
+
+---
+
+## 🔧 Technical Details
+
+### API Endpoints Used
+
+| Feature             | App Endpoint                                 | HeyGen API                       | Credit Rate        |
+| ------------------- | -------------------------------------------- | -------------------------------- | ------------------ |
+| **Avatar IV Video** | `/api/heygen/videos`                         | `/v2/video/av4/generate`         | 1 credit = 10 sec  |
+| **Motion Video**    | `/api/heygen/videos/motion`                  | `/v1/video/generate`             | 1 credit = 60 sec  |
+| **Generate Look**   | `/api/heygen/avatars/:groupId/generate-look` | `/v2/photo_avatar/look/generate` | Generative Credits |
+
+### Credit Pools
+
+- **API Credits:** 2,987,232 (for video generation)
+- **Generative Credits:** 3,358 (for Generate Look only)
+- **Refresh:** One-time purchase, credits don't expire
+
+### Processing Times
+
+| Feature         | Average Time  |
+| --------------- | ------------- |
+| Avatar IV Video | 2-4 minutes   |
+| Motion Video    | 2-3 minutes   |
+| Generate Look   | 30-90 seconds |
+| Avatar Training | 5-15 minutes  |
