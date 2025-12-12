@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { Event, EventSource, InsertEvent } from "@shared/schema";
+import * as cheerio from 'cheerio';
 
 interface GoogleCalendarEvent {
   id: string;
@@ -43,6 +44,9 @@ export class EventIngestionService {
           break;
         case 'ical':
           result = await this.syncICalFeed(source);
+          break;
+        case 'web_scraper':
+          result = await this.syncWebScraper(source);
           break;
         case 'manual':
           result = { added: 0, updated: 0, errors: [] };
@@ -405,7 +409,278 @@ export class EventIngestionService {
     });
   }
 
-  getPopularOmahaCalendars(): { name: string; type: string; calendarId?: string; icalUrl?: string }[] {
+  private async syncWebScraper(source: EventSource): Promise<{ added: number; updated: number; errors: string[] }> {
+    const config = source.config as { scrapeUrl?: string; scraperType?: string };
+    
+    if (!config?.scrapeUrl) {
+      return { added: 0, updated: 0, errors: ['Scrape URL is required'] };
+    }
+
+    try {
+      const response = await fetch(config.scrapeUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; NebraskaHomeHub/1.0)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch page (${response.status})`);
+      }
+
+      const html = await response.text();
+      let events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
+
+      // Choose scraper based on scraperType
+      switch (config.scraperType) {
+        case 'omaha_daily_record':
+          events = this.scrapeOmahaDailyRecord(html, config.scrapeUrl);
+          break;
+        case 'omaha_realtors':
+          events = this.scrapeOmahaRealtors(html, config.scrapeUrl);
+          break;
+        case 'calendar_wiz':
+          events = this.scrapeCalendarWiz(html, config.scrapeUrl);
+          break;
+        default:
+          events = this.scrapeGenericCalendar(html, config.scrapeUrl);
+      }
+
+      console.log(`📅 Scraped ${events.length} events from ${source.name}`);
+
+      let added = 0;
+      let updated = 0;
+      const errors: string[] = [];
+      
+      const now = new Date();
+      const futureEvents = events.filter(e => e.date >= now);
+
+      for (const scrapedEvent of futureEvents) {
+        try {
+          const externalId = `${config.scraperType || 'scraper'}-${Buffer.from(scrapedEvent.title + scrapedEvent.date.toISOString()).toString('base64').slice(0, 32)}`;
+          const existingEvent = await storage.getEventByExternalId(source.userId, source.id, externalId);
+          
+          const eventData: InsertEvent = {
+            userId: source.userId,
+            sourceId: source.id,
+            externalId,
+            title: scrapedEvent.title,
+            description: scrapedEvent.description || null,
+            startTime: scrapedEvent.date,
+            endTime: null,
+            timezone: 'America/Chicago',
+            location: scrapedEvent.location || null,
+            eventUrl: scrapedEvent.url || config.scrapeUrl,
+            isAllDay: false,
+            visibility: 'public',
+            category: 'real_estate',
+            tags: ['omaha', 'real_estate'],
+            rawData: scrapedEvent as any,
+          };
+
+          if (existingEvent) {
+            await storage.updateEvent(existingEvent.id, eventData);
+            updated++;
+          } else {
+            await storage.createEvent(eventData);
+            added++;
+          }
+        } catch (eventError: any) {
+          errors.push(`Failed to process scraped event: ${eventError.message}`);
+        }
+      }
+
+      return { added, updated, errors };
+    } catch (error: any) {
+      return { added: 0, updated: 0, errors: [error.message] };
+    }
+  }
+
+  private scrapeOmahaDailyRecord(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
+    const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
+    const $ = cheerio.load(html);
+
+    // Look for event entries in the calendar
+    $('article.event-item, .event-listing, .calendar-event, tr.event, div[class*="event"]').each((_, elem) => {
+      try {
+        const $elem = $(elem);
+        const title = $elem.find('h2, h3, h4, .event-title, .title, a[href*="event"]').first().text().trim();
+        const dateText = $elem.find('.event-date, .date, time, [class*="date"]').first().text().trim();
+        const location = $elem.find('.event-location, .location, .venue').first().text().trim();
+        const description = $elem.find('.event-description, .description, .excerpt').first().text().trim();
+        const linkElem = $elem.find('a[href*="event"]').first();
+        const url = linkElem.attr('href');
+
+        if (title && dateText) {
+          const parsedDate = this.parseFlexibleDate(dateText);
+          if (parsedDate) {
+            events.push({
+              title,
+              date: parsedDate,
+              location: location || undefined,
+              description: description || undefined,
+              url: url ? new URL(url, baseUrl).href : undefined,
+            });
+          }
+        }
+      } catch (e) { }
+    });
+
+    return events;
+  }
+
+  private scrapeOmahaRealtors(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
+    const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
+    const $ = cheerio.load(html);
+
+    // Omaha Realtors uses divs and specific class structures
+    $('.event-item, .social-event, article, .tribe-events-calendar-list__event').each((_, elem) => {
+      try {
+        const $elem = $(elem);
+        const title = $elem.find('h2, h3, .event-title, .tribe-events-calendar-list__event-title').first().text().trim();
+        const dateText = $elem.find('.event-date, time, .tribe-events-calendar-list__event-datetime').first().text().trim();
+        const location = $elem.find('.event-venue, .location, .tribe-events-calendar-list__event-venue').first().text().trim();
+        const description = $elem.find('.event-description, .excerpt').first().text().trim();
+        const linkElem = $elem.find('a[href*="event"]').first();
+        const url = linkElem.attr('href');
+
+        if (title && dateText) {
+          const parsedDate = this.parseFlexibleDate(dateText);
+          if (parsedDate) {
+            events.push({
+              title,
+              date: parsedDate,
+              location: location || 'Omaha, NE',
+              description: description || undefined,
+              url: url ? new URL(url, baseUrl).href : undefined,
+            });
+          }
+        }
+      } catch (e) { }
+    });
+
+    return events;
+  }
+
+  private scrapeCalendarWiz(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
+    const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
+    const $ = cheerio.load(html);
+
+    // CalendarWiz has a specific structure with table-based or div-based calendars
+    $('td.calDay, .event, .cw-event, tr[class*="event"]').each((_, elem) => {
+      try {
+        const $elem = $(elem);
+        const eventLinks = $elem.find('a');
+        
+        eventLinks.each((_, linkElem) => {
+          const $link = $(linkElem);
+          const title = $link.text().trim();
+          const href = $link.attr('href');
+          
+          // Try to find date from parent cell or data attributes
+          const dateCell = $elem.closest('td.calDay, [data-date]');
+          const dateAttr = dateCell.attr('data-date') || dateCell.attr('id');
+          
+          if (title && href) {
+            // Parse date from URL parameters or nearby elements
+            const urlMatch = href.match(/date=(\d{4}-\d{2}-\d{2})/);
+            let date: Date | null = null;
+            
+            if (urlMatch) {
+              date = new Date(urlMatch[1]);
+            } else if (dateAttr) {
+              date = this.parseFlexibleDate(dateAttr);
+            }
+            
+            if (date) {
+              events.push({
+                title,
+                date,
+                location: 'Omaha, NE',
+                url: href.startsWith('http') ? href : new URL(href, baseUrl).href,
+              });
+            }
+          }
+        });
+      } catch (e) { }
+    });
+
+    return events;
+  }
+
+  private scrapeGenericCalendar(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
+    const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
+    const $ = cheerio.load(html);
+
+    // Generic fallback - look for common event patterns
+    $('[class*="event"], article, .listing, tr').each((_, elem) => {
+      try {
+        const $elem = $(elem);
+        const title = $elem.find('h1, h2, h3, h4, .title, a').first().text().trim();
+        const dateText = $elem.find('time, [class*="date"], [datetime]').first().text().trim() || 
+                        $elem.find('[datetime]').first().attr('datetime');
+        
+        if (title && dateText) {
+          const parsedDate = this.parseFlexibleDate(dateText);
+          if (parsedDate) {
+            events.push({ title, date: parsedDate });
+          }
+        }
+      } catch (e) { }
+    });
+
+    return events;
+  }
+
+  private parseFlexibleDate(dateStr: string): Date | null {
+    if (!dateStr) return null;
+    
+    // Try standard Date parsing first
+    const directParse = new Date(dateStr);
+    if (!isNaN(directParse.getTime()) && directParse.getFullYear() >= 2024) {
+      return directParse;
+    }
+
+    // Try common patterns
+    const patterns = [
+      /(\w+)\s+(\d{1,2}),?\s*(\d{4})?/i,  // "January 15, 2025" or "January 15"
+      /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/,   // "1/15/2025" or "1/15/25"
+      /(\d{4})-(\d{2})-(\d{2})/,           // "2025-01-15"
+    ];
+
+    const currentYear = new Date().getFullYear();
+    
+    for (const pattern of patterns) {
+      const match = dateStr.match(pattern);
+      if (match) {
+        try {
+          if (pattern === patterns[0]) {
+            const monthNames: Record<string, number> = {
+              january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+              july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+              jan: 0, feb: 1, mar: 2, apr: 3, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+            };
+            const month = monthNames[match[1].toLowerCase()];
+            const day = parseInt(match[2]);
+            const year = match[3] ? parseInt(match[3]) : currentYear;
+            if (month !== undefined) {
+              return new Date(year, month, day);
+            }
+          } else if (pattern === patterns[1]) {
+            let year = parseInt(match[3]);
+            if (year < 100) year += 2000;
+            return new Date(year, parseInt(match[1]) - 1, parseInt(match[2]));
+          } else if (pattern === patterns[2]) {
+            return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+          }
+        } catch (e) { }
+      }
+    }
+
+    return null;
+  }
+
+  getPopularOmahaCalendars(): { name: string; type: string; calendarId?: string; icalUrl?: string; scrapeUrl?: string; scraperType?: string }[] {
     return [
       {
         name: 'US Holidays',
@@ -416,6 +691,24 @@ export class EventIngestionService {
         name: 'Omaha City Events',
         type: 'ical',
         icalUrl: 'https://www.visitomaha.com/events/rss/',
+      },
+      {
+        name: 'Omaha Daily Record - Local Real Estate Events',
+        type: 'web_scraper',
+        scrapeUrl: 'https://omahadailyrecord.com/calendar/local-real-estate-events',
+        scraperType: 'omaha_daily_record',
+      },
+      {
+        name: 'Omaha Area Board of Realtors - Social Events',
+        type: 'web_scraper',
+        scrapeUrl: 'https://www.omaharealtors.com/social-events/',
+        scraperType: 'omaha_realtors',
+      },
+      {
+        name: 'OABR Calendar (CalendarWiz)',
+        type: 'web_scraper',
+        scrapeUrl: 'https://www.calendarwiz.com/calendars/calendar.php?crd=oabr',
+        scraperType: 'calendar_wiz',
       },
     ];
   }
