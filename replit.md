@@ -1,7 +1,7 @@
 # Nebraska Home Hub - Real Estate Marketing Platform
 
 ## Overview
-Nebraska Home Hub is a comprehensive real estate marketing platform for Omaha-area agents. It provides AI-powered content generation, multi-platform social media management, and SEO analytics to help real estate professionals create engaging marketing content and manage their online presence. The platform uses advanced AI for localized content creation and integrates social media posting, property management, and performance analytics into a unified dashboard. Its business vision is to empower real estate agents with cutting-edge tools to enhance their market reach and engagement.
+Nebraska Home Hub is an AI-powered real estate marketing platform for Omaha-area agents. It provides AI content generation, multi-platform social media management, and SEO analytics to enhance agents' market reach and engagement. The platform unifies content creation, social media posting, property management, and performance analytics into a single dashboard.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -9,53 +9,42 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The frontend is built with React, TypeScript, and Vite. It uses shadcn/ui components, Radix primitives, and Tailwind CSS for a neutral-themed, accessible design. Wouter handles routing, and TanStack Query manages state and API caching. Real-time updates are facilitated via WebSockets.
+The frontend is built with React, TypeScript, and Vite, utilizing shadcn/ui components, Radix primitives, and Tailwind CSS for a neutral, accessible design. Wouter handles routing, and TanStack Query manages state and API caching. Real-time updates are enabled via WebSockets.
 
 ### Technical Implementations
-The backend uses Express.js with TypeScript (ESM) and Replit's OpenID Connect for authentication with session storage. The API is RESTful, incorporating middleware for user context and authorization. WebSocket support is included for real-time communication. Special attention is paid to iframe and mobile support with environment-aware SameSite and Secure cookie attributes. Secure auto-login within iMakePage is implemented using PostMessage API and URL parameters, with origin validation. A robust OAuth 2.0 system with PKCE (S256) is in place for social media integrations (e.g., Twitter/X, YouTube), featuring database-backed PKCE storage and automatic cleanup.
+The backend uses Express.js with TypeScript (ESM) and Replit's OpenID Connect for authentication with session storage. It features a RESTful API with middleware for user context and authorization, and WebSocket support for real-time communication. Secure auto-login within iframes is implemented using PostMessage API and URL parameters. An OAuth 2.0 system with PKCE (S256) supports social media integrations, with database-backed PKCE storage.
 
 ### Feature Specifications
-- **AI Content Generator Wizard**: A step-by-step wizard UI for content creation with 4 steps: (1) Choose Content Type - visual card selection for social posts, blog articles, property features, market updates; (2) Add Details - topic input or property search based on content type; (3) Generate - summary review and AI generation; (4) Share - results with platform-specific sharing. The wizard maintains state when navigating back/forward and provides clear progress indication.
-- **AI Integration**: Leverages OpenAI's GPT-5 for generating real estate marketing content tailored to Omaha neighborhoods.
-- **Avatar Support & Gestures**: Supports various avatar types for video generation (public, talking photo, custom photo avatars with gestures). Photo avatar groups undergo a specific training workflow, which includes photo uploads, processing by HeyGen, and user-initiated training. Streaming avatars are also supported.
-- **Video Avatar Voice Extraction**: When creating video avatars from training footage, audio is automatically extracted using ffmpeg and uploaded to HeyGen as an audio asset. This extracted voice is stored with the avatar and automatically used when generating videos, allowing avatars to speak in the user's own voice rather than synthetic TTS.
-- **Engagement Tracking & Analytics**: A system monitors anonymous user behavior on agent websites, tracking sessions, property interactions (views, likes), and automatically generating leads based on engagement scores. A client-side JavaScript library (`engagement-tracker.ts`) handles real-time tracking and scoring.
-- **Video Studio**: A unified 3-step video creation flow (Upload → Ask → Get It) consolidates HeyGen services, allowing users to create talking photo avatars, generate scripts via AI, and produce videos. Features multi-mode voice input:
-  1. **TTS Mode**: Text-to-speech using HeyGen voices. User types/generates a script, selects a voice from the dropdown, and the avatar speaks the text.
-  2. **Record Mode**: Browser-based voice recording using MediaRecorder API. User records their own voice speaking the content.
-  3. **Upload Mode**: Upload pre-recorded audio files (MP3, WAV, WebM, etc.). User can use professional voiceovers or pre-recorded content.
-  The video generation backend (VideoStudioService) routes to HeyGen's voice system for TTS or audio_url for custom audio lip-sync.
-- **QR Code Mobile Upload**: Enables users to upload training and consent videos from their mobile devices by scanning a QR code, simplifying the video avatar creation process.
-- **Event Calendar**: Tracks local events from multiple calendar sources (iCal feeds, Google Calendar) and generates AI-powered social media posts timed to each event. Features include: event source management with sync capability, manual event creation with all-day toggle and category selection, AI post generation for multiple platforms (Facebook, Instagram, LinkedIn, X), and post scheduling suggestions (T-24h and T-2h before events). Located at `/events` route with form validation using Zod/react-hook-form.
-- **BHHS Compliance System**: Integrated compliance checking for all social media and video content to meet Berkshire Hathaway HomeServices brokerage requirements. Features include: automatic detection of advertising content, brokerage name requirement enforcement (must appear in first line of ads), prohibited term detection for non-brokers, and one-click auto-fix to add required BHHS branding. The ComplianceChecker component is integrated into: Content Calendar (post preview), Social Media Manager (Quick Posts), Post Composer, Scheduled Posts Manager (edit dialog), AI Content Generator (generated content preview), and Video Studio (script editor). Backend endpoints: GET/PATCH `/api/compliance/settings`, POST `/api/compliance/check`, POST `/api/compliance/fix`, GET `/api/compliance/guidelines`. Service: server/services/compliance.ts.
-- **User-Configurable AI Engine Preferences**: Allows users to select their preferred AI provider (OpenAI, Anthropic/Claude, Google/Gemini, or Platform Default) in Brand Settings. Users can optionally provide their own API keys for BYOK (Bring Your Own Key) model. API keys are encrypted server-side using AES-256-GCM encryption before storage. The encrypted keys never leave the server - only boolean status and masked last 4 characters are returned to the frontend. Located in Brand Settings → Visual Identity (Step 2). Endpoints: GET/PUT /api/ai-preferences, DELETE /api/ai-preferences/api-key.
-- **Kling AI Motion Video Generation**: Enables users to transform static avatar images into dynamic motion videos using Kling AI's image-to-video API. Features include: HeyGen-style motion templates (Talking Naturally, Expert Presentation, Dynamic Announcement, Keynote Speaker, Thoughtful Conversation, Telling a Funny Story) with tab-based UI for templates vs custom prompts, configurable video duration (5 or 10 seconds), real-time progress tracking with polling, and video preview/download. Authentication uses JWT tokens generated from Access Key + Secret Key (stored as KLING_ACCESS_KEY and KLING_SECRET_KEY environment secrets). Located in Avatar Studio with "Add Motion" button on avatar look popup. Endpoints: POST /api/kling/generate-motion, GET /api/kling/status/:taskId. Service: server/services/kling.ts.
-- **Dual Voice Provider System**: Supports both ElevenLabs and Kling for voice generation, with a toggle in the motion dialog to select provider. ElevenLabs provides high-quality voice synthesis using the Rachel voice (voice_id: 21m00Tcm4TlvDq8ikWAM) with mp3_44100_128 output format. Kling provides built-in text-to-video with lip-sync. Requires ELEVENLABS_API_KEY secret for ElevenLabs provider. Service: server/services/elevenlabs.ts.
-- **Hover-to-Play Motion Preview**: Avatar looks with motion (is_motion: true) display a purple "Motion" badge and auto-play their motion video on hover in the avatar grid. The popup dialog also shows the motion video for motion-enabled avatars. Provides a HeyGen-style interactive preview experience. State tracked via hoveredLookId in AvatarStudio component.
-- **Save Motion Button**: Allows users to download motion videos before attempting voice generation, preventing work loss if voice API calls fail.
-- **Multi-Mode Voice Input System**: Three ways to add voice to motion avatars in the Avatar Studio voice step:
-  1. **TTS Mode**: Text-to-speech using ElevenLabs or Kling built-in voices. User types a script, selects a voice provider and voice, and the system generates audio.
-  2. **Record Mode**: Browser-based voice recording using MediaRecorder API. Features: start/stop controls, real-time timer, audio playback preview, re-record option.
-  3. **Upload Mode**: Upload pre-recorded audio files (MP3, WAV, WebM, etc.). Useful for professional voiceovers or pre-recorded content.
-  All modes upload audio to S3 via `/api/kling/upload-audio` endpoint, then use Kling's audio2video mode for lip-sync. This bypasses Kling TTS issues while giving users maximum flexibility for voice input.
+- **AI Content Generator Wizard**: A 4-step wizard for AI-powered content creation (social posts, blog articles, property features, market updates) with state management and progress indication.
+- **AI Integration**: Leverages OpenAI's GPT-5 for localized real estate marketing content.
+- **Avatar Support & Gestures**: Supports various avatar types for video generation (public, talking photo, custom photo avatars with gestures), including a training workflow and streaming avatars.
+- **Video Avatar Voice Extraction**: Automatically extracts audio from training footage using ffmpeg for use with HeyGen, allowing avatars to speak in the user's own voice.
+- **Engagement Tracking & Analytics**: Monitors anonymous user behavior on agent websites to track interactions and generate leads based on engagement scores using a client-side JavaScript library.
+- **Video Studio**: A 3-step video creation flow consolidating HeyGen services, allowing users to create talking photo avatars, generate AI scripts, and produce videos with multi-mode voice input (TTS, browser recording, audio upload).
+- **QR Code Mobile Upload**: Simplifies video avatar creation by allowing users to upload training and consent videos from mobile devices via QR code scanning.
+- **Event Calendar**: Tracks local events from multiple sources (iCal, Google Calendar), generating AI-powered, scheduled social media posts.
+- **BHHS Compliance System**: Integrates compliance checks for all social media and video content to meet brokerage requirements, including automatic detection of ad content, branding enforcement, prohibited term detection, and one-click auto-fix.
+- **User-Configurable AI Engine Preferences**: Allows users to select their preferred AI provider (OpenAI, Anthropic, Google) and optionally provide their own API keys, which are encrypted server-side.
+- **Kling AI Motion Video Generation**: Transforms static avatar images into dynamic motion videos using Kling AI's image-to-video API, offering HeyGen-style motion templates, configurable duration, and real-time progress tracking.
+- **Dual Voice Provider System**: Supports ElevenLabs and Kling for voice generation, with a toggle for selection. ElevenLabs uses high-quality Rachel voice; Kling provides built-in text-to-video with lip-sync.
+- **Hover-to-Play Motion Preview**: Displays a "Motion" badge and auto-plays motion videos on hover for motion-enabled avatars in the avatar grid.
+- **Save Motion Button**: Allows downloading motion videos before voice generation to prevent work loss.
+- **Multi-Mode Voice Input System for Motion Avatars**: Provides TTS (ElevenLabs/Kling), browser recording, and audio file upload options for adding voice to motion avatars, bypassing Kling TTS issues and offering flexibility.
 
 ### System Design Choices
-- **Database**: PostgreSQL with Drizzle ORM ensures type-safe operations. The schema supports main users (agents) and public users (clients) with multi-tenancy. Key tables include users, properties, AI content, social posts, and activity tracking.
-- **Storage Architecture**: A dual-storage strategy is implemented, combining HeyGen's API storage with AWS S3 for backup and long-term archival of voice recordings, avatar images, and generated videos, ensuring data durability and redundancy.
+- **Database**: PostgreSQL with Drizzle ORM, supporting main users (agents) and public users (clients) with multi-tenancy.
+- **Storage Architecture**: Dual-storage strategy combining HeyGen API storage with AWS S3 for backup and archival of voice recordings, avatar images, and generated videos.
 - **Real-time Communication**: WebSockets provide live updates for content generation status, social media posting, lead notifications, and activity feeds.
 
 ## External Dependencies
 
 - **Database**: PostgreSQL (Neon serverless hosting)
-- **AI Services**: OpenAI GPT-5 API
+- **AI Services**: OpenAI GPT-5 API, Kling AI, ElevenLabs
 - **Authentication**: Replit OpenID Connect
-- **Social Media APIs**:
-    - Twitter/X OAuth 2.0 (with PKCE)
-    - YouTube OAuth
-    - Placeholder integrations for Facebook, Instagram, LinkedIn, TikTok
+- **Social Media APIs**: Twitter/X OAuth 2.0, YouTube OAuth (with placeholders for Facebook, Instagram, LinkedIn, TikTok)
 - **UI Components**: Radix UI, Tailwind CSS
 - **Real-time Features**: Native WebSocket
 - **SEO Tools**: Google PageSpeed Insights API
 - **Development Tools**: Vite, TypeScript, Drizzle Kit
-- **Video Generation**: HeyGen API (for avatars and video creation)
+- **Video Generation**: HeyGen API
 - **File Storage**: AWS S3
