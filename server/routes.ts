@@ -7468,7 +7468,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         if (!dbGroup) {
           return res.status(404).json({ error: "Avatar group not found" });
         }
-        const { numLooks = 3 } = req.body;
+        const { numLooks = 2 } = req.body; // Default to 2 (professional + casual)
 
         const photoAvatarService = new HeyGenPhotoAvatarService();
 
@@ -7547,6 +7547,34 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       } catch (error) {
         console.error("Failed to check training status:", error);
         res.status(500).json({ error: "Failed to check training status" });
+      }
+    }
+  );
+
+  // Check look generation status
+  app.get(
+    "/api/photo-avatars/look-status/:generationId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { generationId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        console.log(`📋 Checking look generation status for ${generationId}`);
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const status = await photoAvatarService.getLookGenerationStatus(generationId);
+
+        res.json(status);
+      } catch (error: any) {
+        console.error("Failed to check look generation status:", error);
+        res.status(500).json({ 
+          error: "Failed to check look generation status",
+          details: error?.message || String(error)
+        });
       }
     }
   );
