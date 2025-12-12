@@ -7551,20 +7551,29 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
-  // Check look generation status
+  // Check look generation status (requires groupId for ownership validation)
   app.get(
-    "/api/photo-avatars/look-status/:generationId",
+    "/api/photo-avatars/groups/:groupId/look-status/:generationId",
     requireAuth,
     async (req, res) => {
       try {
-        const { generationId } = req.params;
+        const { groupId, generationId } = req.params;
         const userId = String(req.user?.id);
 
         if (!userId) {
           return res.status(401).json({ error: "User not authenticated" });
         }
 
-        console.log(`📋 Checking look generation status for ${generationId}`);
+        // Ownership check - verify user owns this group
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found or access denied" });
+        }
+
+        console.log(`📋 Checking look generation status for ${generationId} (group: ${groupId})`);
         const photoAvatarService = new HeyGenPhotoAvatarService();
         const status = await photoAvatarService.getLookGenerationStatus(generationId);
 

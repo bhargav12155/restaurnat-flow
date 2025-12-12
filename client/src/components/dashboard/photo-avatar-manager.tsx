@@ -307,84 +307,90 @@ export function PhotoAvatarManager() {
             
             console.log("🎨 Auto-generating looks:", data);
             
-            // Poll for look generation completion
+            // Poll for look generation completion using Promise.all for parallel polling
             if (data.looks && data.looks.length > 0) {
-              let completedCount = 0;
               const totalLooks = data.looks.length;
               
-              // Poll each look's status
-              for (const look of data.looks) {
-                const pollLookStatus = async () => {
-                  const maxAttempts = 60; // 5 minutes max
-                  let attempts = 0;
-                  
-                  while (attempts < maxAttempts) {
-                    try {
-                      const statusRes = await apiRequest(
-                        "GET",
-                        `/api/photo-avatars/look-status/${look.generationId}`
-                      );
-                      const statusData = await statusRes.json();
-                      
-                      if (statusData.status === "completed" || statusData.status === "success") {
-                        completedCount++;
-                        const progress = Math.round((completedCount / totalLooks) * 100);
-                        
-                        setLookGenerationStatus(prev => ({
-                          ...prev,
-                          [groupId]: {
-                            ...prev[groupId],
-                            progress,
-                            status: completedCount === totalLooks ? 'completed' : 'generating'
-                          }
-                        }));
-                        
-                        if (completedCount === totalLooks) {
-                          toast({
-                            title: "✅ Looks Ready!",
-                            description: `Professional and Casual looks for "${group.name}" are now available!`,
-                            duration: 6000,
-                          });
-                          
-                          // Refresh avatar groups to show new looks
-                          queryClient.invalidateQueries({
-                            queryKey: ["/api/photo-avatars/groups"],
-                          });
-                          queryClient.invalidateQueries({
-                            queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
-                          });
-                        }
-                        return;
-                      } else if (statusData.status === "failed") {
-                        setLookGenerationStatus(prev => ({
-                          ...prev,
-                          [groupId]: { ...prev[groupId], status: 'failed' }
-                        }));
-                        return;
-                      }
-                      
-                      // Still processing, wait and try again
-                      await new Promise(resolve => setTimeout(resolve, 5000));
-                      attempts++;
-                      
-                      // Update progress while waiting
-                      setLookGenerationStatus(prev => ({
-                        ...prev,
-                        [groupId]: {
-                          ...prev[groupId],
-                          progress: Math.min(90, 10 + (attempts / maxAttempts) * 80)
-                        }
-                      }));
-                    } catch (pollError) {
-                      console.error("Error polling look status:", pollError);
-                      attempts++;
-                      await new Promise(resolve => setTimeout(resolve, 5000));
-                    }
-                  }
-                };
+              // Create poll function for each look
+              const pollLookStatus = async (look: any, lookIndex: number): Promise<boolean> => {
+                const maxAttempts = 60; // 5 minutes max
+                let attempts = 0;
                 
-                pollLookStatus();
-              }
+                while (attempts < maxAttempts) {
+                  try {
+                    const statusRes = await apiRequest(
+                      "GET",
+                      `/api/photo-avatars/groups/${groupId}/look-status/${look.generationId}`
+                    );
+                    const statusData = await statusRes.json();
+                    
+                    if (statusData.status === "completed" || statusData.status === "success") {
+                      console.log(`✅ Look ${look.label} completed`);
+                      return true;
+                    } else if (statusData.status === "failed") {
+                      console.error(`❌ Look ${look.label} failed`);
+                      return false;
+                    }
+                    
+                    // Still processing, wait and try again
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    attempts++;
+                    
+                    // Update progress while waiting
+                    const progressPercent = Math.min(90, 10 + (attempts / maxAttempts) * 80);
+                    setLookGenerationStatus(prev => ({
+                      ...prev,
+                      [groupId]: {
+                        ...prev[groupId],
+                        progress: progressPercent
+                      }
+                    }));
+                  } catch (pollError) {
+                    console.error("Error polling look status:", pollError);
+                    attempts++;
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                  }
+                }
+                return false; // Timed out
+              };
+              
+              // Run all polls in parallel
+              Promise.all(data.looks.map((look: any, index: number) => pollLookStatus(look, index)))
+                .then((results) => {
+                  const allCompleted = results.every(r => r === true);
+                  
+                  setLookGenerationStatus(prev => ({
+                    ...prev,
+                    [groupId]: {
+                      ...prev[groupId],
+                      progress: 100,
+                      status: allCompleted ? 'completed' : 'failed'
+                    }
+                  }));
+                  
+                  if (allCompleted) {
+                    toast({
+                      title: "✅ Looks Ready!",
+                      description: `Professional and Casual looks for "${group.name}" are now available!`,
+                      duration: 6000,
+                    });
+                  }
+                  
+                  // Refresh avatar groups to show new looks
+                  queryClient.invalidateQueries({
+                    queryKey: ["/api/photo-avatars/groups"],
+                  });
+                  queryClient.invalidateQueries({
+                    queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
+                  });
+                })
+                .catch((err) => {
+                  console.error("Error in look generation polling:", err);
+                  setLookGenerationStatus(prev => ({
+                    ...prev,
+                    [groupId]: { ...prev[groupId], status: 'failed' }
+                  }));
+                });
             }
           } catch (error) {
             console.error("Failed to auto-generate looks:", error);
