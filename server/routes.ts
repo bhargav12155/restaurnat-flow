@@ -6285,6 +6285,125 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Auto-setup Omaha real estate event sources
+  app.post("/api/events/setup-omaha-sources", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { eventIngestionService } = await import('./services/event-ingestion');
+      
+      const templates = eventIngestionService.getPopularOmahaCalendars();
+      const realEstateTemplates = templates.filter(t => 
+        t.name.includes('Real Estate') || t.name.includes('Realtors') || t.name.includes('OABR')
+      );
+      
+      const existingSources = await storage.getEventSources(userId);
+      const addedSources: any[] = [];
+      
+      for (const template of realEstateTemplates) {
+        const alreadyExists = existingSources.some(s => 
+          s.name === template.name || 
+          (s.config as any)?.scrapeUrl === template.scrapeUrl
+        );
+        
+        if (!alreadyExists) {
+          const config: any = {};
+          if (template.calendarId) config.calendarId = template.calendarId;
+          if (template.icalUrl) config.icalUrl = template.icalUrl;
+          if (template.scrapeUrl) config.scrapeUrl = template.scrapeUrl;
+          if (template.scraperType) config.scraperType = template.scraperType;
+          
+          const source = await storage.createEventSource({
+            userId,
+            name: template.name,
+            type: template.type,
+            config,
+            status: 'active',
+          });
+          addedSources.push(source);
+        }
+      }
+      
+      // Sync the newly added sources
+      if (addedSources.length > 0) {
+        for (const source of addedSources) {
+          await eventIngestionService.syncSource(source);
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        addedSources: addedSources.length,
+        message: `Added ${addedSources.length} Omaha real estate event sources`
+      });
+    } catch (error) {
+      console.error("Failed to setup Omaha sources:", error);
+      res.status(500).json({ error: "Failed to setup Omaha sources" });
+    }
+  });
+
+  // Generate weekly content plan from events
+  app.post("/api/events/generate-weekly-plan", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { weekStart, platforms } = req.body;
+      
+      const startDate = weekStart ? new Date(weekStart) : new Date();
+      const endDate = new Date(startDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      
+      const events = await storage.getEvents(userId, { startDate, endDate });
+      
+      if (events.length === 0) {
+        return res.json({ suggestions: [], message: "No events found for this week" });
+      }
+      
+      const { UnifiedAIService } = await import('./services/unified-ai');
+      const aiService = new UnifiedAIService();
+      const targetPlatforms = platforms || ['facebook', 'instagram', 'linkedin', 'x'];
+      
+      const allSuggestions: any[] = [];
+      
+      for (const event of events.slice(0, 10)) {
+        for (const platform of targetPlatforms) {
+          try {
+            const prompt = `Create a ${platform} post for a real estate agent promoting this local event:
+
+Event: ${event.title}
+Date: ${event.startTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+${event.location ? `Location: ${event.location}` : ''}
+${event.description ? `Details: ${event.description.slice(0, 200)}` : ''}
+
+Create an engaging post that connects the event to real estate/community value.
+Return JSON: { "content": "post text with emojis", "hashtags": ["tag1", "tag2"] }`;
+
+            const result = await aiService.generate(prompt, { jsonMode: true });
+            let parsed: any = {};
+            try { parsed = JSON.parse(result.content); } catch { parsed = { content: result.content, hashtags: [] }; }
+
+            const suggestedTime = new Date(event.startTime.getTime() - 24 * 60 * 60 * 1000);
+            
+            const suggestion = await storage.createEventPostSuggestion({
+              userId,
+              eventId: event.id,
+              platform,
+              content: parsed.content || result.content,
+              hashtags: parsed.hashtags || [],
+              suggestedPostTime: suggestedTime,
+              status: 'suggested',
+              aiMetadata: { model: result.model },
+            });
+            
+            allSuggestions.push({ ...suggestion, eventTitle: event.title, eventDate: event.startTime });
+          } catch (e) { console.error(`Failed to generate for ${platform}:`, e); }
+        }
+      }
+      
+      res.json({ suggestions: allSuggestions, eventsProcessed: Math.min(events.length, 10) });
+    } catch (error) {
+      console.error("Failed to generate weekly plan:", error);
+      res.status(500).json({ error: "Failed to generate weekly plan" });
+    }
+  });
+
   // List user's events
   app.get("/api/events", requireAuth, async (req: any, res) => {
     try {
