@@ -364,17 +364,48 @@ export function AvatarStudio() {
       if (!createResponse.ok) throw new Error("Failed to create avatar group");
       return createResponse.json();
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      const groupId = data?.group?.group_id || data?.group_id || data?.id;
+      
       toast({
         title: "Photo Uploaded",
-        description: "Avatar group created. Training will start automatically.",
+        description: "Avatar group created. Starting training automatically...",
       });
+      
       queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
       setShowQuickUpload(false);
       setUploadedFile(null);
       setUploadName("");
-      if (data?.group?.group_id) {
-        setSelectedAvatarGroup(data.group.group_id);
+      
+      if (groupId) {
+        setSelectedAvatarGroup(groupId);
+        
+        // Auto-trigger training after group creation
+        try {
+          console.log(`🚀 Auto-starting training for group ${groupId}`);
+          await apiRequest(
+            "POST",
+            `/api/photo-avatars/groups/${groupId}/train`,
+            {}
+          );
+          
+          toast({
+            title: "🎓 Training Started!",
+            description: "Avatar is now training (~5-15 min). Professional & Casual looks will be generated automatically when complete.",
+            duration: 8000,
+          });
+          
+          queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+        } catch (trainError: any) {
+          console.error("Auto-training failed:", trainError);
+          if (!trainError?.message?.includes("already in progress")) {
+            toast({
+              title: "Training Not Started",
+              description: "Avatar created but training didn't start automatically. You can start it manually.",
+              variant: "default",
+            });
+          }
+        }
       }
     },
     onError: (error: Error) => {
