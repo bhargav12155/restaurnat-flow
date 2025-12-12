@@ -7909,24 +7909,24 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
         const { avatarId } = req.params;
 
-        // Ownership validation
-        const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(
-          avatarId,
-          userId
-        );
-        if (!dbAvatar) {
-          return res.status(404).json({ error: "Avatar not found" });
-        }
-
+        // Get status from HeyGen API directly
         const photoAvatarService = new HeyGenPhotoAvatarService();
         const status = await photoAvatarService.getAvatarStatus(avatarId);
 
-        // Update status in database if changed
-        if (status.status && status.status !== dbAvatar.status) {
-          await storage.updatePhotoAvatar(avatarId, userId, {
-            status: status.status,
-            metadata: { ...dbAvatar.metadata, ...status },
-          });
+        // Optionally update database if avatar exists there
+        try {
+          const dbAvatar = await storage.getPhotoAvatarByHeygenIdAndUser(
+            avatarId,
+            userId
+          );
+          if (dbAvatar && status.status && status.status !== dbAvatar.status) {
+            await storage.updatePhotoAvatar(avatarId, userId, {
+              status: status.status,
+              metadata: { ...dbAvatar.metadata, ...status },
+            });
+          }
+        } catch (e) {
+          // Ignore database errors - avatar might not be in our database
         }
 
         res.json(status);
