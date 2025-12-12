@@ -524,7 +524,7 @@ export class HeyGenPhotoAvatarService {
     } else {
       body = imageData;
       console.log(
-        `📤 HeyGen: Using Buffer directly, size: ${body.length} bytes`
+        `📤 HeyGen: Using Buffer directly, size: ${(body as Buffer).length} bytes`
       );
     }
 

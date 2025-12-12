@@ -311,9 +311,11 @@ export function PhotoAvatarManager() {
       });
 
       // STEP 1: AUTO-TRAIN - If avatar group is created but not trained, start training
-      // group.status = "pending" (uploading), "completed" (upload done) 
-      // We auto-train when upload is complete (status === "completed") and train_status is "empty"
-      if (currentTrainStatus === "empty" && !alreadyStartedTraining && group.status === "completed") {
+      // Backend may map some groups to status "ready" even when train_status is still "empty".
+      // We should auto-train for any non-pending group that is still untrained.
+      const isUploadProcessed = group.status === "completed" || group.status === "ready";
+      
+      if (currentTrainStatus === "empty" && !alreadyStartedTraining && isUploadProcessed) {
         console.log(`    🎓 AUTO-TRAINING: Starting training for "${group.name}"...`);
         autoTrainedRef.current.add(groupId);
         
