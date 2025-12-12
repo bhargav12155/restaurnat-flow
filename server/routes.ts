@@ -7437,19 +7437,21 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           return res.status(404).json({ error: "Avatar group not found" });
         }
 
-        const photoAvatarService = new HeyGenPhotoAvatarService();
-        const looksData = await photoAvatarService.getAvatarGroupLooks(groupId);
+        // Fetch photos from database (all persisted avatars in the group)
+        // This ensures we return ALL avatars that have been added to the group,
+        // not just what the HeyGen API might return in a single request
+        const dbPhotos = await storage.listPhotoAvatarsByGroup(groupId);
 
-        // Transform avatar looks into photo format
-        const photos = (looksData.avatar_list || []).map((avatar: any) => ({
-          id: avatar.id,
-          url: avatar.image_url,
-          thumbnail: avatar.image_url,
-          name: avatar.name,
+        // Transform database photos into photo format
+        const photos = dbPhotos.map((photo) => ({
+          id: photo.heygenPhotoId || photo.id,
+          url: photo.photoUrl,
+          thumbnail: photo.photoUrl,
+          name: photo.poseType || `Avatar ${photo.id.substring(0, 8)}`,
           type: "avatar",
-          created_at: avatar.created_at,
-          status: avatar.status,
-          motion_preview_url: avatar.motion_preview_url,
+          created_at: photo.createdAt,
+          status: photo.processingStatus,
+          motion_preview_url: undefined,
         }));
 
         res.json({
