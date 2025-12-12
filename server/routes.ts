@@ -7468,7 +7468,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         if (!dbGroup) {
           return res.status(404).json({ error: "Avatar group not found" });
         }
-        const { numLooks = 2 } = req.body; // Default to 2 (professional + casual)
+        const { numLooks = 4 } = req.body; // Default to 4 professional styles
 
         const photoAvatarService = new HeyGenPhotoAvatarService();
 
