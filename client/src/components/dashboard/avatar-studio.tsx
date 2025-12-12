@@ -564,7 +564,7 @@ export function AvatarStudio() {
     },
   });
 
-  // Motion video generation
+  // Motion video generation using HeyGen API
   const handleGenerateMotion = async () => {
     if (!motionPrompt.trim()) {
       toast({
@@ -576,11 +576,11 @@ export function AvatarStudio() {
     }
 
     const currentLook = availableLooks[popupLookIndex];
-    const imageUrl = currentLook?.image_url || currentLook?.image;
+    const avatarId = currentLook?.id || currentLook?.avatar_id;
     
-    if (!imageUrl) {
+    if (!avatarId) {
       toast({
-        title: "No image selected",
+        title: "No avatar selected",
         description: "Please select an avatar look first.",
         variant: "destructive",
       });
@@ -617,58 +617,47 @@ export function AvatarStudio() {
     }
 
     try {
-      const response = await fetch("/api/kling/generate-motion", {
+      // Use HeyGen's add_motion API instead of Kling
+      const response = await fetch(`/api/photo-avatars/${avatarId}/add-motion`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          imageUrl,
           prompt: motionPrompt,
-          duration: motionDuration,
-          waitForCompletion: false,
+          motionType: "consistent",
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to start motion generation");
+        throw new Error(result.error || result.details || "Failed to start motion generation");
       }
 
-      if (result.videoUrl) {
-        setMotionVideoUrl(result.videoUrl);
-        setMotionStatus("completed");
-        setMotionProgress(100);
-        setMotionDialogStep("voice");
-        toast({
-          title: "Motion Video Ready!",
-          description: "Now add your voice to make your avatar speak.",
-        });
-      } else if (result.taskId) {
-        setMotionTaskId(result.taskId);
-        setMotionStatus("processing");
-        pollMotionStatus(result.taskId);
-      }
+      // HeyGen returns a motion job ID, poll for completion
+      setMotionTaskId(avatarId);
+      setMotionStatus("processing");
+      pollHeyGenMotionStatus(avatarId);
     } catch (error) {
       console.error("Motion generation error:", error);
       setMotionStatus("failed");
+      setIsGeneratingMotion(false);
       toast({
         title: "Generation Failed",
         description: error instanceof Error ? error.message : "Failed to generate motion video",
         variant: "destructive",
       });
-    } finally {
-      setIsGeneratingMotion(false);
     }
   };
 
-  const pollMotionStatus = async (taskId: string) => {
+  // Poll HeyGen avatar status for motion completion
+  const pollHeyGenMotionStatus = async (avatarId: string) => {
     const maxPolls = 60;
     let pollCount = 0;
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/kling/status/${taskId}`, {
+        const response = await fetch(`/api/photo-avatars/${avatarId}/status`, {
           credentials: "include",
         });
 
@@ -677,11 +666,15 @@ export function AvatarStudio() {
 
         setMotionProgress(Math.min(95, Math.round((pollCount / maxPolls) * 100)));
 
-        if (result.status === "completed" && result.videoUrl) {
-          setMotionVideoUrl(result.videoUrl);
+        // Check if motion is ready and has preview URL
+        if (result.is_motion && result.motion_preview_url) {
+          setMotionVideoUrl(result.motion_preview_url);
           setMotionStatus("completed");
           setMotionProgress(100);
+          setIsGeneratingMotion(false);
           setMotionDialogStep("voice");
+          // Refresh avatar looks to update UI
+          queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "looks"] });
           toast({
             title: "Motion Video Ready!",
             description: "Now add your voice to make your avatar speak.",
@@ -689,8 +682,9 @@ export function AvatarStudio() {
           return;
         }
 
-        if (result.status === "failed") {
+        if (result.status === "failed" || result.error) {
           setMotionStatus("failed");
+          setIsGeneratingMotion(false);
           toast({
             title: "Generation Failed",
             description: result.error || "Video generation failed",
@@ -699,11 +693,13 @@ export function AvatarStudio() {
           return;
         }
 
-        if (pollCount < maxPolls && (result.status === "pending" || result.status === "processing")) {
-          setMotionStatus(result.status);
-          setTimeout(poll, 5000);
+        // If motion not ready yet, keep polling
+        if (pollCount < maxPolls && !result.is_motion) {
+          setMotionStatus("processing");
+          setTimeout(poll, 3000);
         } else if (pollCount >= maxPolls) {
           setMotionStatus("timeout");
+          setIsGeneratingMotion(false);
           toast({
             title: "Generation Timeout",
             description: "Video is still processing. Please check back later.",
@@ -713,6 +709,7 @@ export function AvatarStudio() {
       } catch (error) {
         console.error("Poll error:", error);
         setMotionStatus("failed");
+        setIsGeneratingMotion(false);
       }
     };
 
