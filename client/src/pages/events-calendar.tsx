@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "wouter";
-import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, ArrowLeft } from "lucide-react";
+import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, ArrowLeft, Wand2, ListChecks, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,6 +49,11 @@ interface EventPostSuggestion {
   hashtags: string[];
   suggestedPostTime: string | null;
   status: string;
+}
+
+interface WeeklyPlanSuggestion extends EventPostSuggestion {
+  eventTitle: string;
+  eventDate: string;
 }
 
 const eventFormSchema = z.object({
@@ -104,7 +109,7 @@ type SourceFormData = z.infer<typeof sourceFormSchema>;
 
 export default function EventsCalendarPage() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState("calendar");
+  const [activeTab, setActiveTab] = useState("weekly-planner");
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showAddSourceDialog, setShowAddSourceDialog] = useState(false);
   const [showAddEventDialog, setShowAddEventDialog] = useState(false);
@@ -258,6 +263,72 @@ export default function EventsCalendarPage() {
     },
     onSuccess: () => {
       refetchSuggestions();
+    },
+  });
+
+  const [weeklyPlanSuggestions, setWeeklyPlanSuggestions] = useState<WeeklyPlanSuggestion[]>([]);
+  const [isOmahaSourcesSetup, setIsOmahaSourcesSetup] = useState(false);
+
+  const setupOmahaSourcesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/events/setup-omaha-sources");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ 
+        title: "Omaha Sources Added", 
+        description: data.message || `Added ${data.addedSources} real estate event sources` 
+      });
+      setIsOmahaSourcesSetup(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/events/sources"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Setup Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const generateWeeklyPlanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/events/generate-weekly-plan", {
+        platforms: ['facebook', 'instagram', 'linkedin', 'x'],
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setWeeklyPlanSuggestions(data.suggestions || []);
+      toast({ 
+        title: "Weekly Plan Generated", 
+        description: `Created ${data.suggestions?.length || 0} post suggestions for upcoming events` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Generation Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const acceptWeeklyPlanSuggestionMutation = useMutation({
+    mutationFn: async (suggestionId: string) => {
+      const res = await apiRequest("POST", `/api/events/suggestions/${suggestionId}/accept`);
+      return res.json();
+    },
+    onSuccess: (_, suggestionId) => {
+      setWeeklyPlanSuggestions(prev => 
+        prev.map(s => s.id === suggestionId ? { ...s, status: 'accepted' } : s)
+      );
+      toast({ title: "Post Scheduled", description: "The post has been added to your schedule." });
+    },
+  });
+
+  const rejectWeeklyPlanSuggestionMutation = useMutation({
+    mutationFn: async (suggestionId: string) => {
+      const res = await apiRequest("POST", `/api/events/suggestions/${suggestionId}/reject`);
+      return res.json();
+    },
+    onSuccess: (_, suggestionId) => {
+      setWeeklyPlanSuggestions(prev => 
+        prev.map(s => s.id === suggestionId ? { ...s, status: 'rejected' } : s)
+      );
     },
   });
 
@@ -605,6 +676,10 @@ export default function EventsCalendarPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
+          <TabsTrigger value="weekly-planner" data-testid="tab-weekly-planner">
+            <Wand2 className="w-4 h-4 mr-2" />
+            Weekly Planner
+          </TabsTrigger>
           <TabsTrigger value="calendar" data-testid="tab-calendar">
             <Calendar className="w-4 h-4 mr-2" />
             Events
@@ -614,6 +689,249 @@ export default function EventsCalendarPage() {
             Sources
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="weekly-planner">
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Wand2 className="w-5 h-5 text-primary" />
+                    Generate Your Weekly Content Plan
+                  </CardTitle>
+                  <CardDescription>
+                    Automatically fetch Omaha real estate events and generate AI-powered social media posts for the week
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <Button
+                      onClick={() => setupOmahaSourcesMutation.mutate()}
+                      disabled={setupOmahaSourcesMutation.isPending || isOmahaSourcesSetup}
+                      variant={isOmahaSourcesSetup ? "secondary" : "default"}
+                      className="flex-1"
+                      data-testid="btn-setup-omaha-sources"
+                    >
+                      {setupOmahaSourcesMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : isOmahaSourcesSetup ? (
+                        <CheckCircle2 className="w-4 h-4 mr-2 text-green-500" />
+                      ) : (
+                        <ListChecks className="w-4 h-4 mr-2" />
+                      )}
+                      {isOmahaSourcesSetup ? "Omaha Sources Ready" : "Setup Omaha Sources"}
+                    </Button>
+                    <Button
+                      onClick={() => generateWeeklyPlanMutation.mutate()}
+                      disabled={generateWeeklyPlanMutation.isPending}
+                      variant="default"
+                      className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                      data-testid="btn-generate-weekly-plan"
+                    >
+                      {generateWeeklyPlanMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 mr-2" />
+                      )}
+                      Generate Weekly Plan
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Sources: Omaha Daily Record, Omaha Realtors, OABR Calendar
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>This Week's Events</CardTitle>
+                  <CardDescription>
+                    {(() => {
+                      const now = new Date();
+                      const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                      const weekEvents = events.filter(e => {
+                        const eventDate = new Date(e.startTime);
+                        return eventDate >= now && eventDate <= weekEnd;
+                      });
+                      return `${weekEvents.length} events this week`;
+                    })()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {eventsLoading ? (
+                    <div className="flex justify-center p-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (() => {
+                    const now = new Date();
+                    const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+                    const weekEvents = events
+                      .filter(e => {
+                        const eventDate = new Date(e.startTime);
+                        return eventDate >= now && eventDate <= weekEnd;
+                      })
+                      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+                    
+                    if (weekEvents.length === 0) {
+                      return (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                          <p>No events this week</p>
+                          <p className="text-sm">Click "Setup Omaha Sources" to fetch local real estate events</p>
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="space-y-3">
+                        {weekEvents.map((event) => (
+                          <div
+                            key={event.id}
+                            className="p-4 rounded-lg border bg-card"
+                            data-testid={`week-event-${event.id}`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge className={getCategoryColor(event.category)} variant="secondary">
+                                    {event.category || "community"}
+                                  </Badge>
+                                </div>
+                                <h4 className="font-semibold">{event.title}</h4>
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {formatDate(event.startTime)} {!event.isAllDay && formatTime(event.startTime)}
+                                  </span>
+                                  {event.location && (
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3" />
+                                      {event.location}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {event.eventUrl && (
+                                <a 
+                                  href={event.eventUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-muted-foreground hover:text-primary"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5" />
+                    Generated Posts
+                  </CardTitle>
+                  <CardDescription>
+                    {weeklyPlanSuggestions.filter(s => s.status === 'suggested').length} pending posts
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {generateWeeklyPlanMutation.isPending ? (
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+                      <p className="text-sm text-muted-foreground">Generating your weekly content plan...</p>
+                    </div>
+                  ) : weeklyPlanSuggestions.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No posts generated yet</p>
+                      <p className="text-sm">Click "Generate Weekly Plan" to create AI-powered posts</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                      {weeklyPlanSuggestions
+                        .filter(s => s.status === 'suggested')
+                        .map((suggestion) => (
+                        <div key={suggestion.id} className="p-3 border rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">
+                                {getPlatformIcon(suggestion.platform)}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                                {suggestion.eventTitle}
+                              </span>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => acceptWeeklyPlanSuggestionMutation.mutate(suggestion.id)}
+                                disabled={acceptWeeklyPlanSuggestionMutation.isPending}
+                                data-testid={`btn-accept-weekly-${suggestion.id}`}
+                              >
+                                <Check className="w-4 h-4 text-green-500" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => rejectWeeklyPlanSuggestionMutation.mutate(suggestion.id)}
+                                disabled={rejectWeeklyPlanSuggestionMutation.isPending}
+                                data-testid={`btn-reject-weekly-${suggestion.id}`}
+                              >
+                                <X className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </div>
+                          <p className="text-sm">{suggestion.content}</p>
+                          {suggestion.hashtags && suggestion.hashtags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {suggestion.hashtags.map((tag, i) => (
+                                <span key={i} className="text-xs text-blue-500">
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {suggestion.suggestedPostTime && (
+                            <p className="text-xs text-muted-foreground mt-2">
+                              Suggested: {formatDate(suggestion.suggestedPostTime)}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      {weeklyPlanSuggestions.filter(s => s.status === 'accepted').length > 0 && (
+                        <div className="border-t pt-4 mt-4">
+                          <h5 className="text-sm font-medium text-green-600 mb-2 flex items-center gap-1">
+                            <CheckCircle2 className="w-4 h-4" />
+                            Accepted Posts ({weeklyPlanSuggestions.filter(s => s.status === 'accepted').length})
+                          </h5>
+                          {weeklyPlanSuggestions
+                            .filter(s => s.status === 'accepted')
+                            .map((suggestion) => (
+                            <div key={suggestion.id} className="p-2 bg-green-50 dark:bg-green-900/20 rounded text-sm mb-2">
+                              <Badge variant="outline" className="mb-1">
+                                {getPlatformIcon(suggestion.platform)}
+                              </Badge>
+                              <p className="text-xs truncate">{suggestion.eventTitle}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
 
         <TabsContent value="calendar">
           <div className="grid lg:grid-cols-3 gap-6">
