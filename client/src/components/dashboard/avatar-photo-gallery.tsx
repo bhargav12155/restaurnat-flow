@@ -43,6 +43,38 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
     refetchInterval: hasPendingMotion ? 5000 : false, // Poll every 5s only when motion is pending
   });
 
+  // DEBUG: Log when photoData changes
+  useEffect(() => {
+    console.log('🖼️ [GALLERY] groupId:', groupId);
+    console.log('🖼️ [GALLERY] photoData:', photoData);
+    if (photoData?.photos) {
+      console.log('🖼️ [GALLERY] Total photos:', photoData.photos.length);
+      photoData.photos.forEach((photo, idx) => {
+        console.log(`🖼️ [GALLERY] Photo ${idx}:`, {
+          id: photo.id,
+          name: photo.name,
+          url: photo.url,
+          type: photo.type,
+          hasMotion: !!photo.motion_preview_url,
+          motionStatus: photo.motion_status
+        });
+      });
+    }
+  }, [photoData, groupId]);
+
+  // DEBUG: Log when selectedPhoto changes
+  useEffect(() => {
+    if (selectedPhoto) {
+      console.log('🖼️ [GALLERY] selectedPhoto:', {
+        id: selectedPhoto.id,
+        name: selectedPhoto.name,
+        url: selectedPhoto.url,
+        type: selectedPhoto.type,
+        hasMotion: !!selectedPhoto.motion_preview_url,
+      });
+    }
+  }, [selectedPhoto]);
+
   // Check for completed motion animations and notify
   useEffect(() => {
     if (photoData?.photos) {
@@ -170,7 +202,15 @@ export function AvatarPhotoGallery({ groupId }: AvatarPhotoGalleryProps) {
         {photos.map((photo, index) => (
           <button
             key={photo.id || index}
-            onClick={() => setSelectedPhoto(photo)}
+            onClick={() => {
+              console.log('🖼️ [GALLERY] Clicked photo:', {
+                index,
+                id: photo.id,
+                name: photo.name,
+                url: photo.url,
+              });
+              setSelectedPhoto(photo);
+            }}
             className="relative group rounded-lg overflow-hidden border-2 border-gray-200 hover:border-[#D4AF37] transition-all duration-200 hover:shadow-lg bg-gray-50 w-full"
             data-testid={`avatar-photo-${index}`}
           >
