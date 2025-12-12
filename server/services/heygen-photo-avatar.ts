@@ -295,29 +295,45 @@ export class HeyGenPhotoAvatarService {
     return response.data;
   }
 
-  // Look configurations for professional and casual styles
+  // Look configurations - 4 professional real estate agent styles
   static readonly LOOK_CONFIGS = [
     {
-      label: "professional",
-      name: "Professional",
-      prompt: "Professional business attire, wearing a tailored navy blue suit with crisp white shirt, standing in modern corporate office with floor-to-ceiling windows, confident and authoritative expression, executive portrait lighting, clean and polished appearance",
+      label: "professional-executive",
+      name: "Executive",
+      prompt: "Professional executive attire, wearing a tailored navy blue suit with crisp white shirt, standing in modern corporate office with floor-to-ceiling windows and city skyline view, confident and authoritative expression, executive portrait lighting, clean and polished luxury real estate agent appearance",
       orientation: "portrait" as const,
       pose: "half_body" as const,
       style: "Realistic",
     },
     {
-      label: "casual",
-      name: "Casual",
-      prompt: "Casual smart outfit, wearing a comfortable light blue button-down shirt with sleeves rolled up, relaxed outdoor setting with soft natural golden hour lighting, warm and friendly welcoming smile, approachable neighborhood real estate agent vibe",
+      label: "professional-friendly",
+      name: "Friendly Agent",
+      prompt: "Professional business casual, wearing a sharp charcoal blazer over light blue dress shirt no tie, warm and welcoming smile, standing in elegant home foyer with grand staircase, approachable real estate agent helping families find their dream home, soft natural lighting",
+      orientation: "portrait" as const,
+      pose: "half_body" as const,
+      style: "Realistic",
+    },
+    {
+      label: "professional-outdoor",
+      name: "Property Tour",
+      prompt: "Professional outdoor attire, wearing a smart tan sport coat with white shirt, standing in front of beautiful suburban home with manicured lawn, confident welcoming smile, golden hour natural sunlight, real estate agent showing property, professional but approachable",
+      orientation: "portrait" as const,
+      pose: "half_body" as const,
+      style: "Realistic",
+    },
+    {
+      label: "professional-modern",
+      name: "Modern Professional",
+      prompt: "Contemporary professional style, wearing a sleek black blazer with subtle pattern dress shirt, standing in modern open-concept kitchen with marble countertops, professional confident expression, bright airy interior lighting, luxury home specialist real estate agent",
       orientation: "portrait" as const,
       pose: "half_body" as const,
       style: "Realistic",
     },
   ];
 
-  // Generate new looks for trained avatar with professional & casual styles
+  // Generate new looks for trained avatar with 4 professional real estate styles
   // Note: This requires the avatar group to be trained first
-  async generateNewLooks(groupId: string, numLooks: number = 2) {
+  async generateNewLooks(groupId: string, numLooks: number = 4) {
     const configs = HeyGenPhotoAvatarService.LOOK_CONFIGS.slice(0, numLooks);
     
     const results: Array<{
