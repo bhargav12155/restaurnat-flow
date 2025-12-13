@@ -46,6 +46,7 @@ import {
   Hash,
   Trash2,
   Download,
+  Terminal,
 } from "lucide-react";
 
 const PROFESSIONAL_VOICES = [
@@ -246,6 +247,18 @@ export function AvatarStudio() {
   // AI script generation settings
   const [customPrompt, setCustomPrompt] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState("instagram_reel");
+  
+  // Activity log state for step-by-step visibility
+  const [activityLogs, setActivityLogs] = useState<Array<{
+    id: string;
+    timestamp: string;
+    step: 'upload' | 'group_created' | 'waiting' | 'training_started' | 'training_progress' | 'training_complete' | 'generating_looks' | 'looks_complete' | 'error';
+    message: string;
+    groupName?: string;
+    details?: string;
+  }>>([]);
+  const [showActivityPanel, setShowActivityPanel] = useState(true);
+  const activityLogRef = useRef<HTMLDivElement>(null);
 
   const { data: avatarGroupsResponse, isLoading: groupsLoading } = useQuery<{
     avatar_group_list?: PhotoAvatarGroup[];
@@ -339,6 +352,13 @@ export function AvatarStudio() {
 
   const uploadPhotoMutation = useMutation({
     mutationFn: async ({ file, name }: { file: File; name: string }) => {
+      addActivityLog({
+        step: 'upload',
+        message: 'Uploading photo...',
+        groupName: name,
+        details: `File: ${file.name}`
+      });
+      
       const formData = new FormData();
       formData.append("photo", file);
 
@@ -350,6 +370,13 @@ export function AvatarStudio() {
 
       if (!uploadResponse.ok) throw new Error("Upload failed");
       const uploadData = await uploadResponse.json();
+
+      addActivityLog({
+        step: 'waiting',
+        message: 'Creating avatar group...',
+        groupName: name,
+        details: 'Photo uploaded, now creating your avatar'
+      });
 
       const createResponse = await fetch("/api/photo-avatars/create-from-uploads", {
         method: "POST",
@@ -366,6 +393,14 @@ export function AvatarStudio() {
     },
     onSuccess: async (data) => {
       const groupId = data?.group?.group_id || data?.group_id || data?.id;
+      const groupName = data?.group?.name || uploadName || "Avatar";
+      
+      addActivityLog({
+        step: 'group_created',
+        message: 'Avatar group created!',
+        groupName: groupName,
+        details: 'Your avatar is ready for training'
+      });
       
       toast({
         title: "Photo Uploaded",
@@ -380,6 +415,13 @@ export function AvatarStudio() {
       if (groupId) {
         setSelectedAvatarGroup(groupId);
         
+        addActivityLog({
+          step: 'training_started',
+          message: 'Starting training...',
+          groupName: groupName,
+          details: 'Training takes 5-15 minutes'
+        });
+        
         // Auto-trigger training after group creation
         try {
           console.log(`🚀 Auto-starting training for group ${groupId}`);
@@ -388,6 +430,13 @@ export function AvatarStudio() {
             `/api/photo-avatars/groups/${groupId}/train`,
             {}
           );
+          
+          addActivityLog({
+            step: 'training_progress',
+            message: 'Training in progress...',
+            groupName: groupName,
+            details: 'HeyGen is processing your avatar. Please wait.'
+          });
           
           toast({
             title: "🎓 Training Started!",
@@ -399,6 +448,12 @@ export function AvatarStudio() {
         } catch (trainError: any) {
           console.error("Auto-training failed:", trainError);
           if (!trainError?.message?.includes("already in progress")) {
+            addActivityLog({
+              step: 'error',
+              message: 'Training failed to start',
+              groupName: groupName,
+              details: trainError?.message || 'Unknown error'
+            });
             toast({
               title: "Training Not Started",
               description: "Avatar created but training didn't start automatically. You can start it manually.",
@@ -409,6 +464,11 @@ export function AvatarStudio() {
       }
     },
     onError: (error: Error) => {
+      addActivityLog({
+        step: 'error',
+        message: 'Upload failed',
+        details: error.message
+      });
       toast({
         title: "Upload Failed",
         description: error.message,
@@ -1001,6 +1061,44 @@ export function AvatarStudio() {
 
   const selectedGroup = avatarGroups.find((g) => g.group_id === selectedAvatarGroup);
 
+  // Helper to add activity log entry
+  const addActivityLog = (log: Omit<typeof activityLogs[0], 'id' | 'timestamp'>) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setActivityLogs(prev => [...prev.slice(-30), { ...log, id, timestamp }]);
+    setTimeout(() => {
+      if (activityLogRef.current) {
+        activityLogRef.current.scrollTop = activityLogRef.current.scrollHeight;
+      }
+    }, 100);
+  };
+  
+  // Helper to get step icon and color
+  const getStepStyle = (step: typeof activityLogs[0]['step']) => {
+    switch (step) {
+      case 'upload':
+        return { icon: Upload, color: 'text-blue-500', bg: 'bg-blue-50' };
+      case 'group_created':
+        return { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' };
+      case 'waiting':
+        return { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-50' };
+      case 'training_started':
+        return { icon: Sparkles, color: 'text-purple-500', bg: 'bg-purple-50' };
+      case 'training_progress':
+        return { icon: Loader2, color: 'text-blue-500', bg: 'bg-blue-50' };
+      case 'training_complete':
+        return { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' };
+      case 'generating_looks':
+        return { icon: Wand2, color: 'text-purple-500', bg: 'bg-purple-50' };
+      case 'looks_complete':
+        return { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-100' };
+      case 'error':
+        return { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50' };
+      default:
+        return { icon: Clock, color: 'text-gray-500', bg: 'bg-gray-50' };
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status?.toLowerCase()) {
       case "completed":
@@ -1017,16 +1115,32 @@ export function AvatarStudio() {
   };
 
   return (
-    <div className="space-y-6" data-testid="avatar-studio">
+    <div className="flex gap-4" data-testid="avatar-studio">
+      {/* Main Content */}
+      <div className="flex-1 space-y-6">
       <Card className="border-0 shadow-lg">
         <CardHeader className="pb-2">
-          <CardTitle className="text-2xl font-bold flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-[#D4AF37]" />
-            Avatar Studio
-          </CardTitle>
-          <CardDescription>
-            Create professional AI avatar videos in 3 simple steps
-          </CardDescription>
+          <div className="flex justify-between items-start">
+            <div>
+              <CardTitle className="text-2xl font-bold flex items-center gap-2">
+                <Sparkles className="h-6 w-6 text-[#D4AF37]" />
+                Avatar Studio
+              </CardTitle>
+              <CardDescription>
+                Create professional AI avatar videos in 3 simple steps
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowActivityPanel(!showActivityPanel)}
+              className="flex items-center gap-1"
+              data-testid="button-toggle-activity-log"
+            >
+              <Terminal className="w-4 h-4" />
+              {showActivityPanel ? 'Hide' : 'Show'} Log
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between mb-8 px-4">
@@ -3085,6 +3199,82 @@ export function AvatarStudio() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
+
+      {/* Activity Log Panel - Right Side */}
+      {showActivityPanel && (
+        <Card className="w-80 flex-shrink-0 h-fit max-h-[600px] sticky top-4" data-testid="activity-log-panel">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Terminal className="w-4 h-4" />
+                Activity Log
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActivityLogs([])}
+                className="h-6 px-2 text-xs"
+                data-testid="button-clear-activity-log"
+              >
+                Clear
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div
+              ref={activityLogRef}
+              className="space-y-2 overflow-y-auto max-h-[480px] pr-1"
+            >
+              {activityLogs.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No activity yet</p>
+                  <p className="text-xs mt-1">Upload a photo to get started</p>
+                </div>
+              ) : (
+                activityLogs.map((log) => {
+                  const style = getStepStyle(log.step);
+                  const IconComponent = style.icon;
+                  return (
+                    <div
+                      key={log.id}
+                      className={`p-2 rounded-lg ${style.bg} border border-gray-100`}
+                      data-testid={`activity-log-${log.id}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className={`mt-0.5 ${style.color}`}>
+                          <IconComponent className={`w-4 h-4 ${log.step === 'training_progress' ? 'animate-spin' : ''}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium text-sm text-gray-800 truncate">
+                              {log.message}
+                            </p>
+                            <span className="text-[10px] text-gray-400 flex-shrink-0">
+                              {log.timestamp}
+                            </span>
+                          </div>
+                          {log.groupName && (
+                            <p className="text-xs text-gray-600 truncate">
+                              {log.groupName}
+                            </p>
+                          )}
+                          {log.details && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {log.details}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
