@@ -749,10 +749,12 @@ export function AvatarStudio() {
       return response.json();
     },
     onSuccess: (data) => {
-      setGenerateLooksStatus("complete");
-      setGenerateLooksResult(data);
+      const groupId = data.group_id;
       
-      // Use appropriate log stages - avatar is now training, not complete
+      // Show initial success - workflow started
+      setGenerateLooksStatus("polling");
+      setGenerateLooksResult({ ...data, percent_complete: 0 });
+      
       addActivityLog({
         step: 'training_started',
         message: 'Avatar workflow started!',
@@ -762,23 +764,94 @@ export function AvatarStudio() {
       
       toast({
         title: "Avatar Workflow Started!",
-        description: "Your avatar is training and looks will be generated automatically. Check back in 6-8 minutes.",
+        description: "Training started. Polling for progress every 30 seconds...",
       });
       
-      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
-      
-      // Reset form after successful creation
-      setTimeout(() => {
-        setGenerateLooksFile(null);
-        setGenerateLooksName("");
-        setGenerateLooksPrompt("");
-        setGenerateLooksOrientation("square");
-        setGenerateLooksPose("half_body");
-        setGenerateLooksStyle("Realistic");
-        setShowQuickUpload(false);
-        setGenerateLooksStatus("idle");
-        setGenerateLooksResult(null);
-      }, 5000);
+      // Start polling status every 30 seconds (as per heygen-wrapper.md)
+      if (groupId) {
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(`/api/photo-avatars/status/${groupId}`, {
+              credentials: "include",
+            });
+            
+            if (!statusResponse.ok) {
+              console.error("Status poll failed:", statusResponse.status);
+              return;
+            }
+            
+            const statusData = await statusResponse.json();
+            const percentComplete = statusData.workflow_status?.percent_complete || 0;
+            const isComplete = statusData.training?.is_complete && statusData.looks?.count > 0;
+            
+            // Update progress
+            setGenerateLooksResult((prev: any) => ({
+              ...prev,
+              ...statusData,
+              percent_complete: percentComplete,
+            }));
+            
+            addActivityLog({
+              step: 'polling',
+              message: `Progress: ${percentComplete}%`,
+              groupName: data.avatar_name || generateLooksName,
+              details: isComplete ? `${statusData.looks?.count} looks ready!` : 'Training in progress...'
+            });
+            
+            // Check if workflow is complete (100% with looks)
+            if (isComplete || percentComplete >= 100) {
+              clearInterval(pollInterval);
+              setGenerateLooksStatus("complete");
+              
+              addActivityLog({
+                step: 'complete',
+                message: 'Avatar with looks ready!',
+                groupName: data.avatar_name || generateLooksName,
+                details: `${statusData.looks?.count || 4} professional looks generated`
+              });
+              
+              toast({
+                title: "Avatar Complete!",
+                description: `Your avatar with ${statusData.looks?.count || 4} looks is ready to use.`,
+              });
+              
+              queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+              
+              // Reset form after completion
+              setTimeout(() => {
+                setGenerateLooksFile(null);
+                setGenerateLooksName("");
+                setGenerateLooksPrompt("");
+                setGenerateLooksOrientation("square");
+                setGenerateLooksPose("half_body");
+                setGenerateLooksStyle("Realistic");
+                setShowQuickUpload(false);
+                setGenerateLooksStatus("idle");
+                setGenerateLooksResult(null);
+              }, 3000);
+            }
+          } catch (pollError) {
+            console.error("Status polling error:", pollError);
+          }
+        }, 30000); // Poll every 30 seconds as per heygen-wrapper.md
+        
+        // Stop polling after 15 minutes max (safety timeout)
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          if (generateLooksStatus === "polling") {
+            setGenerateLooksStatus("complete");
+            queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+            toast({
+              title: "Processing continues in background",
+              description: "Check your avatars list - your avatar may still be processing.",
+            });
+          }
+        }, 15 * 60 * 1000);
+      } else {
+        // No group_id returned, just show complete
+        setGenerateLooksStatus("complete");
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+      }
     },
     onError: (error: any) => {
       setGenerateLooksStatus("error");
@@ -2339,52 +2412,65 @@ export function AvatarStudio() {
             </TabsContent>
             
             <TabsContent value="generate-looks" className="space-y-4 mt-4">
-              {generateLooksStatus === "complete" && generateLooksResult && !generateLooksResult.error ? (
+              {generateLooksStatus === "polling" && generateLooksResult ? (
+                <div className="space-y-4 text-center py-4">
+                  <div className="relative">
+                    <Loader2 className="h-12 w-12 mx-auto text-blue-500 animate-spin" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">Training in Progress</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Your avatar is being trained and 4 looks will be generated automatically.
+                    </p>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Progress</span>
+                      <span className="text-sm font-bold text-blue-700 dark:text-blue-400">
+                        {generateLooksResult.percent_complete || 0}%
+                      </span>
+                    </div>
+                    <Progress value={generateLooksResult.percent_complete || 0} className="h-2" />
+                    <p className="text-xs text-blue-600 dark:text-blue-500 mt-2">
+                      Polling every 30 seconds... (~6-8 minutes total)
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={() => setShowQuickUpload(false)}
+                    variant="outline"
+                  >
+                    Close (Training Continues)
+                  </Button>
+                </div>
+              ) : generateLooksStatus === "complete" && generateLooksResult && !generateLooksResult.error ? (
                 <div className="space-y-4 text-center py-4">
                   <div className="relative">
                     <CheckCircle className="h-12 w-12 mx-auto text-green-500" />
-                    <Loader2 className="h-5 w-5 absolute -right-1 -bottom-1 text-blue-500 animate-spin" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg">Workflow Started!</h3>
+                    <h3 className="font-semibold text-lg">Avatar Ready!</h3>
                     <p className="text-sm text-gray-500 mt-1">
-                      Your avatar is being trained and looks will be generated automatically.
+                      Your avatar with {generateLooksResult.looks?.count || 4} professional looks is ready.
                     </p>
                   </div>
-                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mt-4">
-                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                      <Clock className="h-4 w-4" />
-                      <span className="text-sm font-medium">Processing (~6-8 minutes)</span>
-                    </div>
-                    <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
-                      Training and look generation are running in the background. 
-                      Your avatar will appear in the list once ready.
-                    </p>
-                  </div>
-                  {generateLooksResult.looks && generateLooksResult.looks.length > 0 && (
-                    <div className="text-left bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mt-2">
-                      <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Queued {generateLooksResult.looks.length} look(s):
-                      </p>
-                      <ul className="text-xs text-gray-500 space-y-1">
-                        {generateLooksResult.looks.slice(0, 3).map((look, i) => (
-                          <li key={i} className="flex items-center gap-2">
-                            <Clock className="h-3 w-3 text-gray-400" />
-                            <span className="truncate">{look.prompt}</span>
-                          </li>
-                        ))}
-                        {generateLooksResult.looks.length > 3 && (
-                          <li className="text-gray-400">+{generateLooksResult.looks.length - 3} more...</li>
-                        )}
-                      </ul>
+                  {generateLooksResult.looks?.list && generateLooksResult.looks.list.length > 0 && (
+                    <div className="grid grid-cols-4 gap-2 mt-4">
+                      {generateLooksResult.looks.list.slice(0, 4).map((look: any, i: number) => (
+                        <div key={look.id || i} className="aspect-square rounded-lg overflow-hidden border">
+                          <img 
+                            src={look.image_url} 
+                            alt={look.name || `Look ${i + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
                     </div>
                   )}
                   <Button 
                     onClick={() => setShowQuickUpload(false)}
                     className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
                   >
-                    Close & Monitor Progress
+                    Done
                   </Button>
                 </div>
               ) : generateLooksStatus === "error" ? (
