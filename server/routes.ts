@@ -8509,6 +8509,267 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
+  // ==================== COMBINED CREATE WITH LOOKS ENDPOINT ====================
+  
+  // Create avatar with looks in one step (matches React integration guide)
+  app.post(
+    "/api/photo-avatars/create-with-looks",
+    requireAuth,
+    upload.single("image"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No image uploaded" });
+        }
+
+        const userId = req.user?.id;
+        if (!userId) {
+          // Clean up temp file before returning auth error
+          if (req.file?.path && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+          }
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        const { name, prompt, orientation, pose, style } = req.body;
+        const avatarName = name || "My Avatar";
+        const lookOrientation = orientation || "square";
+        const lookPose = pose || "half_body";
+        const lookStyle = style || "Realistic";
+
+        console.log("🚀 Create with looks request:", {
+          name: avatarName,
+          prompt,
+          orientation: lookOrientation,
+          pose: lookPose,
+          style: lookStyle,
+          filename: req.file.originalname,
+        });
+
+        const fileBuffer = fs.readFileSync(req.file.path);
+
+        // Check for duplicate image
+        const crypto = await import("crypto");
+        const imageHash = crypto
+          .createHash("sha256")
+          .update(fileBuffer)
+          .digest("hex");
+
+        const existingAvatar = await storage.getPhotoAvatarGroupByImageHash(
+          imageHash,
+          userId
+        );
+        if (existingAvatar) {
+          console.log("♻️ Avatar reuse detected:", existingAvatar.heygenGroupId);
+          fs.unlinkSync(req.file.path);
+          return res.json({
+            success: true,
+            group_id: existingAvatar.heygenGroupId,
+            avatar_name: existingAvatar.groupName,
+            training_status: existingAvatar.trainingStatus || "ready",
+            looks: [],
+            message: "This image was already uploaded. Reusing existing avatar.",
+            reused: true,
+            check_status_url: `/api/photo-avatars/status/${existingAvatar.heygenGroupId}`,
+          });
+        }
+
+        // Upload to S3 for backup
+        const s3Service = new S3UploadService();
+        const s3ImageUrl = await s3Service.uploadFile(
+          userId,
+          fileBuffer,
+          `avatar-images/${nanoid()}_${req.file.originalname}`,
+          req.file.mimetype
+        );
+        console.log("✅ Photo backed up to S3:", s3ImageUrl);
+
+        // Upload to HeyGen and get the image key
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const heygenImageKey = await photoAvatarService.uploadCustomPhoto(
+          fileBuffer,
+          req.file.mimetype
+        );
+        console.log("✅ Photo uploaded to HeyGen, key:", heygenImageKey);
+
+        // Create avatar group
+        const createResult = await photoAvatarService.createAvatarGroup(
+          avatarName,
+          [heygenImageKey]
+        );
+        const groupId = createResult.group_id || createResult.avatar_group_id;
+        console.log("✅ Avatar group created:", groupId);
+
+        // Save to database
+        await storage.createPhotoAvatarGroup({
+          userId,
+          heygenGroupId: groupId,
+          groupName: avatarName,
+          imageHash,
+          s3ImageUrl,
+          heygenImageKey,
+          trainingStatus: "pending",
+        });
+
+        // Clean up temp file
+        fs.unlinkSync(req.file.path);
+
+        // Start training after 20 seconds (fire and forget)
+        const looksToGenerate: Array<{ index: number; generation_id: string; prompt: string }> = [];
+        
+        if (groupId) {
+          setTimeout(async () => {
+            try {
+              console.log(`🎓 Auto-starting training for group ${groupId}...`);
+              await photoAvatarService.trainAvatarGroup(groupId);
+              console.log(`✅ Auto-training started for group ${groupId}`);
+            } catch (trainError: any) {
+              console.error(`❌ Auto-training failed for ${groupId}:`, trainError?.message);
+            }
+          }, 20000);
+        }
+
+        res.json({
+          success: true,
+          group_id: groupId,
+          avatar_name: avatarName,
+          training_status: "pending",
+          looks: looksToGenerate,
+          message: "Avatar created! Training will start in ~20 seconds and looks will be generated after training completes (~6-8 minutes total).",
+          check_status_url: `/api/photo-avatars/status/${groupId}`,
+        });
+      } catch (error: any) {
+        console.error("❌ Failed to create avatar with looks:", error);
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        res.status(500).json({
+          error: "Failed to create avatar with looks",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
+  // Get avatar group workflow status (for polling)
+  app.get("/api/photo-avatars/status/:groupId", requireAuth, async (req, res) => {
+    try {
+      const { groupId } = req.params;
+      console.log("📊 Checking workflow status for group:", groupId);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      
+      // Get group details from HeyGen
+      const groupDetails = await photoAvatarService.getAvatarGroup(groupId);
+      const trainStatus = (groupDetails?.train_status || groupDetails?.status || "unknown").toLowerCase();
+      
+      // Get looks for this group
+      let looks: Array<{ id: string; name: string; image_url: string; status: string }> = [];
+      try {
+        const avatarList = await photoAvatarService.getAvatarGroupLooks(groupId);
+        looks = ((avatarList as any)?.avatar_list || avatarList || []).map((look: any) => ({
+          id: look.avatar_id || look.id,
+          name: look.name || "Look",
+          image_url: look.image_url || look.image || "",
+          status: look.status || "ready",
+        }));
+      } catch (e) {
+        console.log("Could not fetch looks, group may still be training");
+      }
+
+      // Calculate percent complete
+      let percentComplete = 0;
+      const isTrainingComplete = trainStatus === "ready" || trainStatus === "completed";
+      const isProcessing = trainStatus === "processing";
+      const isFailed = trainStatus === "failed";
+      
+      if (isTrainingComplete) {
+        percentComplete = looks.length > 0 ? 100 : 50;
+      } else if (isProcessing) {
+        percentComplete = 25;
+      } else if (trainStatus === "pending") {
+        percentComplete = 10;
+      }
+
+      res.json({
+        group_id: groupId,
+        training: {
+          status: trainStatus,
+          error: isFailed ? "Training failed" : null,
+          is_complete: isTrainingComplete,
+          is_processing: isProcessing,
+          is_failed: isFailed,
+        },
+        avatar: {
+          name: groupDetails?.name || "Avatar",
+          status: trainStatus,
+          created_at: groupDetails?.created_at || Date.now(),
+        },
+        motion: {
+          enabled: false,
+          preview_url: null,
+        },
+        looks: {
+          count: looks.length,
+          list: looks,
+        },
+        workflow_status: {
+          ready_for_video: isTrainingComplete && looks.length > 0,
+          ready_for_looks: isTrainingComplete,
+          ready_for_motion: isTrainingComplete && looks.length > 0,
+          percent_complete: percentComplete,
+        },
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to get workflow status:", error);
+      res.status(500).json({
+        error: "Failed to get workflow status",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Get video generation status
+  app.get("/api/photo-avatars/video-status/:videoId", requireAuth, async (req, res) => {
+    try {
+      const { videoId } = req.params;
+      console.log("🎬 Checking video status:", videoId);
+
+      const heygenService = new HeyGenService();
+      const videoStatus = await heygenService.checkVideoStatus(videoId);
+
+      const status = (videoStatus.status || "unknown").toLowerCase();
+      const isComplete = status === "completed" || status === "complete";
+      const isProcessing = status === "processing" || status === "pending";
+      const isFailed = status === "failed" || status === "error";
+
+      // Calculate percent complete based on status
+      let percentComplete = 0;
+      if (isComplete) percentComplete = 100;
+      else if (isProcessing) percentComplete = 50;
+      else if (status === "pending") percentComplete = 10;
+
+      res.json({
+        video_id: videoId,
+        status: status,
+        is_complete: isComplete,
+        is_processing: isProcessing,
+        is_failed: isFailed,
+        video_url: videoStatus.video_url || null,
+        thumbnail_url: videoStatus.thumbnail_url || null,
+        duration: videoStatus.duration || null,
+        error: videoStatus.error || null,
+        percent_complete: percentComplete,
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to get video status:", error);
+      res.status(500).json({
+        error: "Failed to get video status",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   // ==================== VIDEO AVATAR API ENDPOINTS (ENTERPRISE) ====================
 
   // Create video avatar from training footage
