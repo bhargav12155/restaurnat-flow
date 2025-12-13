@@ -8523,18 +8523,18 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           return res.status(400).json({ error: "No image uploaded" });
         }
 
-        console.log("🚀 Proxying create-with-looks to external service on port 3001");
+        console.log("🚀 Proxying create-with-looks to external service");
 
-        // Build FormData to forward to external service
-        const FormData = (await import("form-data")).default;
-        const formData = new FormData();
-        
-        // Read file and append to form
+        // Read file buffer
         const fileBuffer = fs.readFileSync(req.file.path);
-        formData.append("image", fileBuffer, {
-          filename: req.file.originalname,
-          contentType: req.file.mimetype,
-        });
+        
+        // Clean up temp file early
+        fs.unlinkSync(req.file.path);
+
+        // Use Node.js native FormData with Blob for proper multipart handling
+        const formData = new FormData();
+        const blob = new Blob([fileBuffer], { type: req.file.mimetype });
+        formData.append("image", blob, req.file.originalname);
         
         // Forward all body fields
         if (req.body.name) formData.append("name", req.body.name);
@@ -8543,15 +8543,13 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         if (req.body.pose) formData.append("pose", req.body.pose);
         if (req.body.style) formData.append("style", req.body.style);
 
-        // Clean up temp file
-        fs.unlinkSync(req.file.path);
-
         // Proxy to external service (AWS Elastic Beanstalk)
         const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://gb-video-studio-env-2.eba-h2pwbutp.us-east-2.elasticbeanstalk.com";
+        console.log("📤 Forwarding to:", externalServiceUrl);
+        
         const response = await fetch(`${externalServiceUrl}/api/photo-avatars/create-with-looks`, {
           method: "POST",
-          body: formData as any,
-          headers: formData.getHeaders(),
+          body: formData,
         });
 
         if (!response.ok) {
