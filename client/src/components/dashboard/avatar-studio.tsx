@@ -1560,13 +1560,22 @@ export function AvatarStudio() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {readyAvatarGroups.map((group) => (
-                    <button
+                    <div
                       key={group.group_id}
                       onClick={() => {
                         setSelectedAvatarGroup(group.group_id);
                         setSelectedAvatarLook("");
                       }}
-                      className={`relative p-3 rounded-xl border-2 transition-all text-left ${
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedAvatarGroup(group.group_id);
+                          setSelectedAvatarLook("");
+                        }
+                      }}
+                      className={`relative p-3 rounded-xl border-2 transition-all text-left cursor-pointer ${
                         selectedAvatarGroup === group.group_id
                           ? "border-[#D4AF37] bg-[#D4AF37]/5 shadow-lg"
                           : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
@@ -1634,7 +1643,7 @@ export function AvatarStudio() {
                           )}
                         </Button>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}
