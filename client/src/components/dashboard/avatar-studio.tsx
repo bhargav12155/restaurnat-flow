@@ -588,6 +588,60 @@ export function AvatarStudio() {
     },
   });
 
+  // Regenerate looks mutation with activity log integration
+  const regenerateLooksMutation = useMutation({
+    mutationFn: async ({ groupId, groupName, previewImage }: { groupId: string; groupName: string; previewImage?: string }) => {
+      addActivityLog({
+        step: 'generating_looks',
+        message: 'Regenerating professional looks...',
+        groupName: groupName,
+        details: 'Creating new avatar looks (this may take a few minutes)',
+        previewImage: previewImage
+      });
+      
+      const response = await apiRequest(
+        "POST",
+        `/api/photo-avatars/groups/${groupId}/generate-looks`,
+        {}
+      );
+      return { response: await response.json(), groupName, previewImage };
+    },
+    onSuccess: ({ groupName, previewImage }) => {
+      addActivityLog({
+        step: 'looks_complete',
+        message: 'Look generation started!',
+        groupName: groupName,
+        details: 'New looks are being generated. Check back in a few minutes.',
+        previewImage: previewImage
+      });
+      
+      toast({
+        title: "Generating Looks",
+        description: "Creating professional looks for your avatar. This may take a few minutes.",
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+      if (selectedAvatarGroup) {
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "looks"] });
+      }
+    },
+    onError: (error: any, variables) => {
+      addActivityLog({
+        step: 'error',
+        message: 'Look generation failed',
+        groupName: variables.groupName,
+        details: error?.message || 'Unknown error',
+        previewImage: variables.previewImage
+      });
+      
+      toast({
+        title: "Generation Failed",
+        description: error?.message || "Failed to generate looks",
+        variant: "destructive",
+      });
+    },
+  });
+
   const generateVideoMutation = useMutation({
     mutationFn: async (data: {
       avatarId: string;
@@ -1399,6 +1453,41 @@ export function AvatarStudio() {
                       </div>
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* Regenerate Looks button for selected group */}
+              {selectedAvatarGroup && selectedGroup && selectedGroup.train_status === "ready" && (
+                <div className="mt-4 flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      regenerateLooksMutation.mutate({
+                        groupId: selectedAvatarGroup,
+                        groupName: selectedGroup.name,
+                        previewImage: selectedGroup.preview_image
+                      });
+                    }}
+                    disabled={regenerateLooksMutation.isPending}
+                    className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10"
+                    data-testid="button-regenerate-looks"
+                  >
+                    {regenerateLooksMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Regenerate Looks
+                      </>
+                    )}
+                  </Button>
+                  <span className="text-xs text-gray-500">
+                    Generate new professional looks for this avatar
+                  </span>
                 </div>
               )}
 
