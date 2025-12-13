@@ -38,10 +38,12 @@ export function StreamingAvatarComponent() {
   const [message, setMessage] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [gestureIntensity, setGestureIntensity] = useState(0);
+  const [isListening, setIsListening] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const roomRef = useRef<LiveKitClient.Room | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Fetch stored custom avatars (streaming-compatible)
   const { data: customAvatarsResponse } = useQuery({
@@ -266,6 +268,51 @@ export function StreamingAvatarComponent() {
     if (videoRef.current) {
       videoRef.current.style.display = isVideoOn ? 'none' : 'block';
       setIsVideoOn(!isVideoOn);
+    }
+  };
+
+  // Speech to Text
+  const handleStartListening = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast({
+        title: "Not Supported",
+        description: "Speech recognition is not supported in your browser. Use Chrome, Edge, or Safari.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onstart = () => setIsListening(true);
+      recognitionRef.current.onend = () => setIsListening(false);
+      recognitionRef.current.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (event.isFinal) {
+          setMessage(prev => prev + (prev ? ' ' : '') + transcript);
+        }
+      };
+      recognitionRef.current.onerror = (event: any) => {
+        toast({
+          title: "Speech Recognition Error",
+          description: event.error,
+          variant: "destructive"
+        });
+      };
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      recognitionRef.current.start();
     }
   };
 
@@ -500,6 +547,21 @@ export function StreamingAvatarComponent() {
                     }
                   }}
                 />
+                <Button
+                  onClick={handleStartListening}
+                  variant={isListening ? "default" : "outline"}
+                  className="h-[80px]"
+                  data-testid="button-listen"
+                  title={isListening ? "Stop listening..." : "Click to speak"}
+                >
+                  {isListening ? (
+                    <>
+                      <Mic className="w-4 h-4 animate-pulse text-red-500" />
+                    </>
+                  ) : (
+                    <MicOff className="w-4 h-4" />
+                  )}
+                </Button>
               </div>
               <Button
                 onClick={handleSpeak}
