@@ -259,6 +259,11 @@ export function AvatarStudio() {
   }>>([]);
   const [showActivityPanel, setShowActivityPanel] = useState(true);
   const activityLogRef = useRef<HTMLDivElement>(null);
+  
+  // Ref to track previous group train statuses for detecting changes
+  const previousGroupStatusRef = useRef<Record<string, string>>({});
+  // Track groups that have already triggered look generation
+  const looksTriggeredRef = useRef<Set<string>>(new Set());
 
   const { data: avatarGroupsResponse, isLoading: groupsLoading } = useQuery<{
     avatar_group_list?: PhotoAvatarGroup[];
@@ -350,6 +355,115 @@ export function AvatarStudio() {
     };
   }, [customVoices.length]);
 
+  // Effect to detect training completion and auto-trigger look generation
+  useEffect(() => {
+    if (!avatarGroups || avatarGroups.length === 0) return;
+
+    const triggerLookGeneration = async (groupId: string, groupName: string) => {
+      if (looksTriggeredRef.current.has(groupId)) {
+        console.log(`⏭️ Looks already triggered for group ${groupId}, skipping`);
+        return;
+      }
+      
+      looksTriggeredRef.current.add(groupId);
+      
+      addActivityLog({
+        step: 'generating_looks',
+        message: 'Generating professional looks...',
+        groupName: groupName,
+        details: 'Creating professional and casual avatar looks'
+      });
+      
+      try {
+        console.log(`🎨 Auto-triggering look generation for group ${groupId}`);
+        await apiRequest(
+          "POST",
+          `/api/photo-avatars/groups/${groupId}/generate-looks`,
+          {}
+        );
+        
+        toast({
+          title: "Generating Looks",
+          description: "Creating professional looks for your avatar. This may take a few minutes.",
+        });
+        
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", groupId, "looks"] });
+      } catch (error: any) {
+        console.error("Look generation failed:", error);
+        // Remove from triggered set so it can be retried
+        looksTriggeredRef.current.delete(groupId);
+        
+        addActivityLog({
+          step: 'error',
+          message: 'Look generation failed',
+          groupName: groupName,
+          details: error?.message || 'Unknown error'
+        });
+      }
+    };
+
+    avatarGroups.forEach((group) => {
+      const groupId = group.group_id;
+      const currentTrainStatus = (group.train_status || group.status || "").toLowerCase();
+      const previousStatus = previousGroupStatusRef.current[groupId];
+      const numLooks = group.num_looks || 0;
+      
+      // Detect training completion: status changed from processing to ready
+      if (previousStatus === "processing" && currentTrainStatus === "ready") {
+        console.log(`✅ Training completed for group ${groupId}: ${group.name}`);
+        
+        addActivityLog({
+          step: 'training_complete',
+          message: 'Training complete!',
+          groupName: group.name,
+          details: 'Avatar is ready. Now generating professional looks...'
+        });
+        
+        toast({
+          title: "Training Complete!",
+          description: `${group.name} is ready. Generating professional looks...`,
+          duration: 5000,
+        });
+        
+        // Auto-trigger look generation
+        triggerLookGeneration(groupId, group.name);
+      }
+      
+      // Handle ready groups with zero looks on first load (page refresh scenario)
+      // If train_status is ready, num_looks is 0, and we haven't triggered looks yet
+      if (currentTrainStatus === "ready" && numLooks === 0 && !previousStatus) {
+        console.log(`🔄 Ready group with zero looks found on load: ${groupId} - ${group.name}`);
+        // Auto-trigger look generation for ready groups that need looks
+        triggerLookGeneration(groupId, group.name);
+      }
+      
+      // Also detect when looks are complete (num_looks increases from 0)
+      if (currentTrainStatus === "ready" && numLooks > 0) {
+        const wasZeroLooks = previousGroupStatusRef.current[`${groupId}_looks`] === "0";
+        if (wasZeroLooks) {
+          addActivityLog({
+            step: 'looks_complete',
+            message: 'Looks generated successfully!',
+            groupName: group.name,
+            details: `${numLooks} look(s) are now available`
+          });
+          
+          toast({
+            title: "Looks Ready!",
+            description: `${numLooks} professional look(s) created for ${group.name}`,
+          });
+        }
+        previousGroupStatusRef.current[`${groupId}_looks`] = String(numLooks);
+      } else {
+        previousGroupStatusRef.current[`${groupId}_looks`] = String(numLooks);
+      }
+      
+      // Update previous status for next comparison
+      previousGroupStatusRef.current[groupId] = currentTrainStatus;
+    });
+  }, [avatarGroups, toast]);
+
   const uploadPhotoMutation = useMutation({
     mutationFn: async ({ file, name }: { file: File; name: string }) => {
       addActivityLog({
@@ -392,8 +506,8 @@ export function AvatarStudio() {
       return createResponse.json();
     },
     onSuccess: async (data) => {
-      const groupId = data?.group?.group_id || data?.group_id || data?.id;
-      const groupName = data?.group?.name || uploadName || "Avatar";
+      const groupId = data?.group?.group_id || data?.groupId || data?.group_id || data?.id;
+      const groupName = data?.group?.name || data?.name || uploadName || "Avatar";
       
       addActivityLog({
         step: 'group_created',
