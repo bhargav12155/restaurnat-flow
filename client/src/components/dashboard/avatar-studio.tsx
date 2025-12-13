@@ -270,13 +270,19 @@ export function AvatarStudio() {
     avatar_group_list?: PhotoAvatarGroup[];
   }>({
     queryKey: ["/api/photo-avatars/groups"],
-    // Smart polling: only poll when there are groups in processing state
+    // Poll when there are groups NOT ready (empty, pending, processing) 
+    // to detect training start and completion
     refetchInterval: (query) => {
       const groups = query.state.data?.avatar_group_list ?? [];
-      const hasProcessing = groups.some((g: PhotoAvatarGroup) => 
-        g.status === 'processing' || g.train_status === 'processing'
-      );
-      return hasProcessing ? 5000 : false;
+      const hasNonReady = groups.some((g: PhotoAvatarGroup) => {
+        const trainStatus = (g.train_status || "").toLowerCase();
+        const status = (g.status || "").toLowerCase();
+        const numLooks = g.num_looks || 0;
+        // Poll if group is not fully ready (empty, pending, processing, or ready with no looks)
+        return trainStatus !== 'ready' || (trainStatus === 'ready' && numLooks === 0) ||
+               status === 'processing' || status === 'pending';
+      });
+      return hasNonReady ? 5000 : false;
     },
   });
 
@@ -454,18 +460,18 @@ export function AvatarStudio() {
         triggerLookGeneration(groupId, group.name, previewImage);
       }
       
-      // Handle ready groups with zero looks on first load (page refresh scenario)
-      // If train_status is ready, num_looks is 0, and we haven't triggered looks yet
-      if (currentTrainStatus === "ready" && numLooks === 0 && !previousStatus) {
-        console.log(`🔄 Ready group with zero looks found on load: ${groupId} - ${group.name}`);
-        // Auto-trigger look generation for ready groups that need looks
+      // Handle ready groups with only original photo on first load (page refresh scenario)
+      // If train_status is ready, num_looks is 0 or 1 (just original), and we haven't triggered looks yet
+      if (currentTrainStatus === "ready" && numLooks <= 1 && !previousStatus) {
+        console.log(`🔄 Ready group with only original photo found on load: ${groupId} - ${group.name} (${numLooks} looks)`);
+        // Auto-trigger look generation for ready groups that need additional looks
         triggerLookGeneration(groupId, group.name, previewImage);
       }
       
-      // Also detect when looks are complete (num_looks increases from 0)
-      if (currentTrainStatus === "ready" && numLooks > 0) {
-        const wasZeroLooks = previousGroupStatusRef.current[`${groupId}_looks`] === "0";
-        if (wasZeroLooks) {
+      // Detect when new looks are generated (num_looks increases from 0 or 1)
+      if (currentTrainStatus === "ready" && numLooks > 1) {
+        const prevLooksCount = parseInt(previousGroupStatusRef.current[`${groupId}_looks`] || "0", 10);
+        if (prevLooksCount <= 1 && numLooks > prevLooksCount) {
           addActivityLog({
             step: 'looks_complete',
             message: 'Looks generated successfully!',
@@ -479,10 +485,8 @@ export function AvatarStudio() {
             description: `${numLooks} professional look(s) created for ${group.name}`,
           });
         }
-        previousGroupStatusRef.current[`${groupId}_looks`] = String(numLooks);
-      } else {
-        previousGroupStatusRef.current[`${groupId}_looks`] = String(numLooks);
       }
+      previousGroupStatusRef.current[`${groupId}_looks`] = String(numLooks);
       
       // Update previous status for next comparison
       previousGroupStatusRef.current[groupId] = currentTrainStatus;
