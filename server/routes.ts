@@ -8649,77 +8649,30 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
-  // Get avatar group workflow status (for polling)
+  // Get avatar group workflow status (for polling) - Proxies to external service on port 3001
   app.get("/api/photo-avatars/status/:groupId", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
-      console.log("📊 Checking workflow status for group:", groupId);
+      console.log("📊 Proxying workflow status request to port 3001 for group:", groupId);
 
-      const photoAvatarService = new HeyGenPhotoAvatarService();
+      // Proxy to external photo avatar service on port 3001
+      const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://localhost:3001";
+      const response = await fetch(`${externalServiceUrl}/api/photo-avatars/status/${groupId}`);
       
-      // Get group details from HeyGen
-      const groupDetails = await photoAvatarService.getAvatarGroup(groupId);
-      const trainStatus = (groupDetails?.train_status || groupDetails?.status || "unknown").toLowerCase();
-      
-      // Get looks for this group
-      let looks: Array<{ id: string; name: string; image_url: string; status: string }> = [];
-      try {
-        const avatarList = await photoAvatarService.getAvatarGroupLooks(groupId);
-        looks = ((avatarList as any)?.avatar_list || avatarList || []).map((look: any) => ({
-          id: look.avatar_id || look.id,
-          name: look.name || "Look",
-          image_url: look.image_url || look.image || "",
-          status: look.status || "ready",
-        }));
-      } catch (e) {
-        console.log("Could not fetch looks, group may still be training");
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ External service error:", response.status, errorText);
+        return res.status(response.status).json({
+          error: "External service error",
+          details: errorText,
+        });
       }
 
-      // Calculate percent complete
-      let percentComplete = 0;
-      const isTrainingComplete = trainStatus === "ready" || trainStatus === "completed";
-      const isProcessing = trainStatus === "processing";
-      const isFailed = trainStatus === "failed";
-      
-      if (isTrainingComplete) {
-        percentComplete = looks.length > 0 ? 100 : 50;
-      } else if (isProcessing) {
-        percentComplete = 25;
-      } else if (trainStatus === "pending") {
-        percentComplete = 10;
-      }
-
-      res.json({
-        group_id: groupId,
-        training: {
-          status: trainStatus,
-          error: isFailed ? "Training failed" : null,
-          is_complete: isTrainingComplete,
-          is_processing: isProcessing,
-          is_failed: isFailed,
-        },
-        avatar: {
-          name: groupDetails?.name || "Avatar",
-          status: trainStatus,
-          created_at: groupDetails?.created_at || Date.now(),
-        },
-        motion: {
-          enabled: false,
-          preview_url: null,
-        },
-        looks: {
-          count: looks.length,
-          list: looks,
-        },
-        workflow_status: {
-          ready_for_video: isTrainingComplete && looks.length > 0,
-          ready_for_looks: isTrainingComplete,
-          ready_for_motion: isTrainingComplete && looks.length > 0,
-          percent_complete: percentComplete,
-        },
-      });
+      const data = await response.json();
+      console.log("✅ Status received from external service:", data.workflow_status?.percent_complete || 0, "%");
+      res.json(data);
     } catch (error: any) {
-      console.error("❌ Failed to get workflow status:", error);
+      console.error("❌ Failed to get workflow status from external service:", error);
       res.status(500).json({
         error: "Failed to get workflow status",
         details: error?.message || String(error),
