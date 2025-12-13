@@ -294,7 +294,7 @@ export class HeyGenPhotoAvatarService {
       label: "professional-executive",
       name: "Executive",
       prompt: "Professional executive attire, wearing a tailored navy blue suit with crisp white shirt, standing in modern corporate office with floor-to-ceiling windows and city skyline view, confident and authoritative expression, executive portrait lighting, clean and polished luxury real estate agent appearance",
-      orientation: "portrait" as const,
+      orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
     },
@@ -302,7 +302,7 @@ export class HeyGenPhotoAvatarService {
       label: "professional-friendly",
       name: "Friendly Agent",
       prompt: "Professional business casual, wearing a sharp charcoal blazer over light blue dress shirt no tie, warm and welcoming smile, standing in elegant home foyer with grand staircase, approachable real estate agent helping families find their dream home, soft natural lighting",
-      orientation: "portrait" as const,
+      orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
     },
@@ -310,7 +310,7 @@ export class HeyGenPhotoAvatarService {
       label: "professional-outdoor",
       name: "Property Tour",
       prompt: "Professional outdoor attire, wearing a smart tan sport coat with white shirt, standing in front of beautiful suburban home with manicured lawn, confident welcoming smile, golden hour natural sunlight, real estate agent showing property, professional but approachable",
-      orientation: "portrait" as const,
+      orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
     },
@@ -318,7 +318,7 @@ export class HeyGenPhotoAvatarService {
       label: "professional-modern",
       name: "Modern Professional",
       prompt: "Contemporary professional style, wearing a sleek black blazer with subtle pattern dress shirt, standing in modern open-concept kitchen with marble countertops, professional confident expression, bright airy interior lighting, luxury home specialist real estate agent",
-      orientation: "portrait" as const,
+      orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
     },
@@ -407,7 +407,7 @@ export class HeyGenPhotoAvatarService {
   async editLook(params: {
     groupId: string;
     prompt: string;
-    orientation?: "square" | "landscape" | "portrait";
+    orientation?: "square" | "horizontal" | "vertical";
     pose?: "half_body" | "full_body";
     style?: string;
     referenceImages?: string[];
