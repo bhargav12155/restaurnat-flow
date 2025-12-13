@@ -537,50 +537,18 @@ export function AvatarStudio() {
         
         addActivityLog({
           step: 'training_started',
-          message: 'Starting training...',
+          message: 'Training will start shortly...',
           groupName: groupName,
-          details: 'Training takes 5-15 minutes'
+          details: 'HeyGen needs ~20 seconds to process your image before training begins'
         });
         
-        // Auto-trigger training after group creation
-        try {
-          console.log(`🚀 Auto-starting training for group ${groupId}`);
-          await apiRequest(
-            "POST",
-            `/api/photo-avatars/groups/${groupId}/train`,
-            {}
-          );
-          
-          addActivityLog({
-            step: 'training_progress',
-            message: 'Training in progress...',
-            groupName: groupName,
-            details: 'HeyGen is processing your avatar. Please wait.'
-          });
-          
-          toast({
-            title: "🎓 Training Started!",
-            description: "Avatar is now training (~5-15 min). Professional & Casual looks will be generated automatically when complete.",
-            duration: 8000,
-          });
-          
-          queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
-        } catch (trainError: any) {
-          console.error("Auto-training failed:", trainError);
-          if (!trainError?.message?.includes("already in progress")) {
-            addActivityLog({
-              step: 'error',
-              message: 'Training failed to start',
-              groupName: groupName,
-              details: trainError?.message || 'Unknown error'
-            });
-            toast({
-              title: "Training Not Started",
-              description: "Avatar created but training didn't start automatically. You can start it manually.",
-              variant: "default",
-            });
-          }
-        }
+        toast({
+          title: "Avatar Created!",
+          description: "Training will start automatically in ~20 seconds. This process takes 5-15 minutes.",
+          duration: 8000,
+        });
+        
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
       }
     },
     onError: (error: Error) => {
