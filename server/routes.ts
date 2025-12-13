@@ -8614,28 +8614,26 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         // Clean up temp file
         fs.unlinkSync(req.file.path);
 
-        // Start training after 20 seconds (fire and forget)
-        const looksToGenerate: Array<{ index: number; generation_id: string; prompt: string }> = [];
-        
+        // Start training immediately (fire and forget - HeyGen processes async)
+        let trainingStarted = false;
         if (groupId) {
-          setTimeout(async () => {
-            try {
-              console.log(`🎓 Auto-starting training for group ${groupId}...`);
-              await photoAvatarService.trainAvatarGroup(groupId);
-              console.log(`✅ Auto-training started for group ${groupId}`);
-            } catch (trainError: any) {
-              console.error(`❌ Auto-training failed for ${groupId}:`, trainError?.message);
-            }
-          }, 20000);
+          try {
+            console.log(`🎓 Starting training immediately for group ${groupId}...`);
+            await photoAvatarService.trainAvatarGroup(groupId);
+            trainingStarted = true;
+            console.log(`✅ Training started for group ${groupId}`);
+          } catch (trainError: any) {
+            console.error(`⚠️ Training start failed (may already be processing):`, trainError?.message);
+          }
         }
 
         res.json({
           success: true,
           group_id: groupId,
           avatar_name: avatarName,
-          training_status: "pending",
-          looks: looksToGenerate,
-          message: "Avatar created! Training will start in ~20 seconds and looks will be generated after training completes (~6-8 minutes total).",
+          training_status: trainingStarted ? "processing" : "pending",
+          looks: [],
+          message: "Avatar created and training started! Poll the status endpoint to track progress. Looks will be auto-generated when training completes (~5-8 minutes).",
           check_status_url: `/api/photo-avatars/status/${groupId}`,
         });
       } catch (error: any) {
