@@ -588,6 +588,57 @@ export function AvatarStudio() {
     },
   });
 
+  // Retrain avatar mutation with activity log integration
+  const retrainMutation = useMutation({
+    mutationFn: async ({ groupId, groupName, previewImage }: { groupId: string; groupName: string; previewImage?: string }) => {
+      addActivityLog({
+        step: 'training_started',
+        message: 'Retraining avatar...',
+        groupName: groupName,
+        details: 'Starting avatar retraining (~5-15 minutes)',
+        previewImage: previewImage
+      });
+      
+      const response = await apiRequest(
+        "POST",
+        `/api/photo-avatars/groups/${groupId}/train`,
+        {}
+      );
+      return { response: await response.json(), groupId, groupName, previewImage };
+    },
+    onSuccess: ({ groupName, previewImage }) => {
+      addActivityLog({
+        step: 'training_progress',
+        message: 'Retraining in progress...',
+        groupName: groupName,
+        details: 'HeyGen is processing your avatar (~5-15 min)',
+        previewImage: previewImage
+      });
+      
+      toast({
+        title: "Retraining Started",
+        description: "Your avatar is being retrained. This takes 5-15 minutes.",
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+    },
+    onError: (error: any, variables) => {
+      addActivityLog({
+        step: 'error',
+        message: 'Retrain failed',
+        groupName: variables.groupName,
+        details: error?.message || 'Unknown error',
+        previewImage: variables.previewImage
+      });
+      
+      toast({
+        title: "Retrain Failed",
+        description: error?.message || "Failed to retrain avatar",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Regenerate looks mutation with activity log integration
   const regenerateLooksMutation = useMutation({
     mutationFn: async ({ groupId, groupName, previewImage }: { groupId: string; groupName: string; previewImage?: string }) => {
@@ -1450,6 +1501,31 @@ export function AvatarStudio() {
                             {group.num_looks} look{(group.num_looks || 0) > 1 ? "s" : ""}
                           </span>
                         )}
+                        {/* Retrain button */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-[#D4AF37] hover:bg-[#D4AF37]/10 ml-auto"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            retrainMutation.mutate({
+                              groupId: group.group_id,
+                              groupName: group.name,
+                              previewImage: group.preview_image
+                            });
+                          }}
+                          disabled={retrainMutation.isPending || group.train_status === "processing"}
+                          data-testid={`button-retrain-${group.group_id}`}
+                        >
+                          {retrainMutation.isPending ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Retrain
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </button>
                   ))}
