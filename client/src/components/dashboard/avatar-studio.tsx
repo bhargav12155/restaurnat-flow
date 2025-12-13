@@ -479,13 +479,9 @@ export function AvatarStudio() {
         triggerLookGeneration(groupId, group.name, previewImage);
       }
       
-      // Handle ready groups with only original photo on first load (page refresh scenario)
-      // If train_status is ready, num_looks is 0 or 1 (just original), and we haven't triggered looks yet
-      if (currentTrainStatus === "ready" && numLooks <= 1 && !previousStatus) {
-        console.log(`🔄 Ready group with only original photo found on load: ${groupId} - ${group.name} (${numLooks} looks)`);
-        // Auto-trigger look generation for ready groups that need additional looks
-        triggerLookGeneration(groupId, group.name, previewImage);
-      }
+      // Note: Removed auto-trigger on page load to prevent repeated API calls
+      // Users can manually trigger look generation via "Regenerate Looks" button if needed
+      // Auto-generation only happens on actual training completion (processing→ready transition above)
       
       // Detect when new looks are generated (num_looks increases from 0 or 1)
       if (currentTrainStatus === "ready" && numLooks > 1) {
