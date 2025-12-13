@@ -356,8 +356,11 @@ export function PhotoAvatarManager() {
       }
 
       // STEP 2: AUTO-GENERATE LOOKS - If trained but has < 4 looks
-      const trainingJustCompleted = previousTrainStatus && previousTrainStatus !== "ready" && currentTrainStatus === "ready";
-      const alreadyTrainedWithFewLooks = !previousTrainStatus && currentTrainStatus === "ready" && numLooks < 4;
+      // Note: HeyGen returns "completed" or "ready" for trained avatars - accept both!
+      const isTrainedStatus = currentTrainStatus === "ready" || currentTrainStatus === "completed";
+      const wasNotTrained = previousTrainStatus !== "ready" && previousTrainStatus !== "completed";
+      const trainingJustCompleted = previousTrainStatus && wasNotTrained && isTrainedStatus;
+      const alreadyTrainedWithFewLooks = !previousTrainStatus && isTrainedStatus && numLooks < 4;
       
       const shouldAutoGenerate = (trainingJustCompleted || alreadyTrainedWithFewLooks) && 
                                   !alreadyProcessedLooks;
@@ -365,7 +368,7 @@ export function PhotoAvatarManager() {
       // Log the decision
       if (currentTrainStatus === "processing") {
         console.log(`    ⏳ WAITING: Training in progress...`);
-      } else if (currentTrainStatus !== "ready") {
+      } else if (!isTrainedStatus) {
         console.log(`    ⚠️ SKIPPED: Not trained yet (status: "${currentTrainStatus}")`);
       } else if (numLooks >= 4) {
         console.log(`    ✅ COMPLETE: Already has ${numLooks} looks`);
