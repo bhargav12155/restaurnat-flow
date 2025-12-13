@@ -256,6 +256,7 @@ export function AvatarStudio() {
     message: string;
     groupName?: string;
     details?: string;
+    previewImage?: string;
   }>>([]);
   const [showActivityPanel, setShowActivityPanel] = useState(true);
   const activityLogRef = useRef<HTMLDivElement>(null);
@@ -359,7 +360,7 @@ export function AvatarStudio() {
   useEffect(() => {
     if (!avatarGroups || avatarGroups.length === 0) return;
 
-    const triggerLookGeneration = async (groupId: string, groupName: string) => {
+    const triggerLookGeneration = async (groupId: string, groupName: string, previewImage?: string) => {
       if (looksTriggeredRef.current.has(groupId)) {
         console.log(`⏭️ Looks already triggered for group ${groupId}, skipping`);
         return;
@@ -371,7 +372,8 @@ export function AvatarStudio() {
         step: 'generating_looks',
         message: 'Generating professional looks...',
         groupName: groupName,
-        details: 'Creating professional and casual avatar looks'
+        details: 'Creating professional and casual avatar looks',
+        previewImage: previewImage
       });
       
       try {
@@ -398,7 +400,8 @@ export function AvatarStudio() {
           step: 'error',
           message: 'Look generation failed',
           groupName: groupName,
-          details: error?.message || 'Unknown error'
+          details: error?.message || 'Unknown error',
+          previewImage: previewImage
         });
       }
     };
@@ -408,6 +411,7 @@ export function AvatarStudio() {
       const currentTrainStatus = (group.train_status || group.status || "").toLowerCase();
       const previousStatus = previousGroupStatusRef.current[groupId];
       const numLooks = group.num_looks || 0;
+      const previewImage = group.preview_image;
       
       // Detect training completion: status changed from processing to ready
       if (previousStatus === "processing" && currentTrainStatus === "ready") {
@@ -417,7 +421,8 @@ export function AvatarStudio() {
           step: 'training_complete',
           message: 'Training complete!',
           groupName: group.name,
-          details: 'Avatar is ready. Now generating professional looks...'
+          details: 'Avatar is ready. Now generating professional looks...',
+          previewImage: previewImage
         });
         
         toast({
@@ -427,7 +432,7 @@ export function AvatarStudio() {
         });
         
         // Auto-trigger look generation
-        triggerLookGeneration(groupId, group.name);
+        triggerLookGeneration(groupId, group.name, previewImage);
       }
       
       // Handle ready groups with zero looks on first load (page refresh scenario)
@@ -435,7 +440,7 @@ export function AvatarStudio() {
       if (currentTrainStatus === "ready" && numLooks === 0 && !previousStatus) {
         console.log(`🔄 Ready group with zero looks found on load: ${groupId} - ${group.name}`);
         // Auto-trigger look generation for ready groups that need looks
-        triggerLookGeneration(groupId, group.name);
+        triggerLookGeneration(groupId, group.name, previewImage);
       }
       
       // Also detect when looks are complete (num_looks increases from 0)
@@ -446,7 +451,8 @@ export function AvatarStudio() {
             step: 'looks_complete',
             message: 'Looks generated successfully!',
             groupName: group.name,
-            details: `${numLooks} look(s) are now available`
+            details: `${numLooks} look(s) are now available`,
+            previewImage: previewImage
           });
           
           toast({
@@ -3357,9 +3363,17 @@ export function AvatarStudio() {
                       data-testid={`activity-log-${log.id}`}
                     >
                       <div className="flex items-start gap-2">
-                        <div className={`mt-0.5 ${style.color}`}>
-                          <IconComponent className={`w-4 h-4 ${log.step === 'training_progress' ? 'animate-spin' : ''}`} />
-                        </div>
+                        {log.previewImage ? (
+                          <img 
+                            src={log.previewImage} 
+                            alt={log.groupName || "Avatar"} 
+                            className="w-10 h-10 rounded-md object-cover flex-shrink-0 border border-gray-200"
+                          />
+                        ) : (
+                          <div className={`mt-0.5 ${style.color}`}>
+                            <IconComponent className={`w-4 h-4 ${log.step === 'training_progress' ? 'animate-spin' : ''}`} />
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
                             <p className="font-medium text-sm text-gray-800 truncate">
