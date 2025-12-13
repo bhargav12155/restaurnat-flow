@@ -8466,17 +8466,29 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           }
         }
 
-        // Don't auto-train - HeyGen needs time to process images first
-        // Training will happen when user clicks "Train" button after images are ready
+        // Auto-train after a delay - HeyGen needs ~15-30 seconds to process images
         console.log(
-          "✅ Backend: Avatar group created, waiting for HeyGen to process images"
+          "✅ Backend: Avatar group created, will auto-train in 20 seconds"
         );
+
+        // Start training after 20 seconds (fire and forget)
+        if (groupId) {
+          setTimeout(async () => {
+            try {
+              console.log(`🎓 Backend: Auto-starting training for group ${groupId} after delay...`);
+              await photoAvatarService.trainAvatarGroup(groupId);
+              console.log(`✅ Backend: Auto-training started for group ${groupId}`);
+            } catch (trainError: any) {
+              console.error(`❌ Backend: Auto-training failed for ${groupId}:`, trainError?.message);
+            }
+          }, 20000); // 20 second delay
+        }
 
         const responseData = {
           success: true,
           groupId: groupId,
           message:
-            "Avatar group created. Waiting for HeyGen to process images before training.",
+            "Avatar group created! Training will start automatically in ~20 seconds.",
         };
 
         console.log(
