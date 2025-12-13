@@ -8546,8 +8546,8 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         // Clean up temp file
         fs.unlinkSync(req.file.path);
 
-        // Proxy to external service
-        const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://localhost:3001";
+        // Proxy to external service (AWS Elastic Beanstalk)
+        const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://gb-video-studio-env-2.eba-h2pwbutp.us-east-2.elasticbeanstalk.com";
         const response = await fetch(`${externalServiceUrl}/api/photo-avatars/create-with-looks`, {
           method: "POST",
           body: formData as any,
@@ -8585,8 +8585,8 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const { groupId } = req.params;
       console.log("📊 Proxying workflow status request to port 3001 for group:", groupId);
 
-      // Proxy to external photo avatar service on port 3001
-      const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://localhost:3001";
+      // Proxy to external photo avatar service (AWS Elastic Beanstalk)
+      const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://gb-video-studio-env-2.eba-h2pwbutp.us-east-2.elasticbeanstalk.com";
       const response = await fetch(`${externalServiceUrl}/api/photo-avatars/status/${groupId}`);
       
       if (!response.ok) {
