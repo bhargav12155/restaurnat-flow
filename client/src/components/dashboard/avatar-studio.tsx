@@ -413,6 +413,25 @@ export function AvatarStudio() {
       const numLooks = group.num_looks || 0;
       const previewImage = group.preview_image;
       
+      // Detect training started: status changed to processing
+      if (previousStatus && previousStatus !== "processing" && currentTrainStatus === "processing") {
+        console.log(`🎓 Training started for group ${groupId}: ${group.name}`);
+        
+        addActivityLog({
+          step: 'training_progress',
+          message: 'Training in progress...',
+          groupName: group.name,
+          details: 'HeyGen is processing your avatar (~5-15 min)',
+          previewImage: previewImage
+        });
+        
+        toast({
+          title: "Training Started!",
+          description: `${group.name} is now training. This takes 5-15 minutes.`,
+          duration: 5000,
+        });
+      }
+      
       // Detect training completion: status changed from processing to ready
       if (previousStatus === "processing" && currentTrainStatus === "ready") {
         console.log(`✅ Training completed for group ${groupId}: ${group.name}`);
