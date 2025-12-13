@@ -261,6 +261,25 @@ export function AvatarStudio() {
   const [showActivityPanel, setShowActivityPanel] = useState(true);
   const activityLogRef = useRef<HTMLDivElement>(null);
   
+  // Upload dialog tab state
+  const [uploadDialogTab, setUploadDialogTab] = useState<"quick" | "generate-looks">("quick");
+  
+  // Generate Looks form state
+  const [generateLooksFile, setGenerateLooksFile] = useState<File | null>(null);
+  const [generateLooksName, setGenerateLooksName] = useState("");
+  const [generateLooksPrompt, setGenerateLooksPrompt] = useState("");
+  const [generateLooksOrientation, setGenerateLooksOrientation] = useState<"square" | "horizontal" | "vertical">("square");
+  const [generateLooksPose, setGenerateLooksPose] = useState<"half_body" | "close_up" | "full_body">("half_body");
+  const [generateLooksStyle, setGenerateLooksStyle] = useState<"Realistic" | "Pixar" | "Cinematic">("Realistic");
+  const [generateLooksStatus, setGenerateLooksStatus] = useState<"idle" | "creating" | "training" | "generating" | "complete" | "error">("idle");
+  const [generateLooksResult, setGenerateLooksResult] = useState<{
+    group_id?: string;
+    avatar_name?: string;
+    looks?: Array<{ index: number; generation_id: string; prompt: string }>;
+    message?: string;
+    error?: string;
+  } | null>(null);
+  
   // Ref to track previous group train statuses for detecting changes
   const previousGroupStatusRef = useRef<Record<string, string>>({});
   // Track groups that have already triggered look generation
@@ -688,6 +707,98 @@ export function AvatarStudio() {
       toast({
         title: "Generation Failed",
         description: error?.message || "Failed to generate looks",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Create avatar with looks mutation (one-step workflow)
+  const createWithLooksMutation = useMutation({
+    mutationFn: async (data: {
+      file: File;
+      name: string;
+      prompt?: string;
+      orientation: "square" | "horizontal" | "vertical";
+      pose: "half_body" | "close_up" | "full_body";
+      style: "Realistic" | "Pixar" | "Cinematic";
+    }) => {
+      setGenerateLooksStatus("creating");
+      
+      addActivityLog({
+        step: 'upload',
+        message: 'Creating avatar with looks...',
+        groupName: data.name,
+        details: 'Uploading photo and starting automated workflow'
+      });
+      
+      const formData = new FormData();
+      formData.append("image", data.file);
+      formData.append("name", data.name);
+      if (data.prompt) formData.append("prompt", data.prompt);
+      formData.append("orientation", data.orientation);
+      formData.append("pose", data.pose);
+      formData.append("style", data.style);
+
+      const response = await fetch("/api/photo-avatars/create-with-looks", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create avatar with looks");
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setGenerateLooksStatus("complete");
+      setGenerateLooksResult(data);
+      
+      // Use appropriate log stages - avatar is now training, not complete
+      addActivityLog({
+        step: 'training_started',
+        message: 'Avatar workflow started!',
+        groupName: data.avatar_name || generateLooksName,
+        details: 'Training and look generation in progress (~6-8 minutes)'
+      });
+      
+      toast({
+        title: "Avatar Workflow Started!",
+        description: "Your avatar is training and looks will be generated automatically. Check back in 6-8 minutes.",
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+      
+      // Reset form after successful creation
+      setTimeout(() => {
+        setGenerateLooksFile(null);
+        setGenerateLooksName("");
+        setGenerateLooksPrompt("");
+        setGenerateLooksOrientation("square");
+        setGenerateLooksPose("half_body");
+        setGenerateLooksStyle("Realistic");
+        setShowQuickUpload(false);
+        setGenerateLooksStatus("idle");
+        setGenerateLooksResult(null);
+      }, 5000);
+    },
+    onError: (error: any) => {
+      setGenerateLooksStatus("error");
+      // Store error separately, clear any stale success data
+      setGenerateLooksResult({ error: error?.message || "Failed to create avatar. Please try again." });
+      
+      addActivityLog({
+        step: 'error',
+        message: 'Failed to create avatar',
+        groupName: generateLooksName,
+        details: error?.message || 'Unknown error'
+      });
+      
+      toast({
+        title: "Creation Failed",
+        description: error?.message || "Failed to create avatar with looks. Please try again.",
         variant: "destructive",
       });
     },
@@ -2146,61 +2257,296 @@ export function AvatarStudio() {
         </CardContent>
       </Card>
 
-      <Dialog open={showQuickUpload} onOpenChange={setShowQuickUpload}>
-        <DialogContent data-testid="dialog-quick-upload">
+      <Dialog open={showQuickUpload} onOpenChange={(open) => {
+        setShowQuickUpload(open);
+        if (!open) {
+          setUploadDialogTab("quick");
+          setGenerateLooksStatus("idle");
+          setGenerateLooksResult(null);
+        }
+      }}>
+        <DialogContent className="max-w-lg" data-testid="dialog-quick-upload">
           <DialogHeader>
-            <DialogTitle>Quick Upload Photo</DialogTitle>
+            <DialogTitle>Create Avatar</DialogTitle>
             <DialogDescription>
-              Upload a photo to create a new avatar quickly
+              Upload a photo to create a new avatar
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="upload-name">Avatar Name</Label>
-              <Input
-                id="upload-name"
-                value={uploadName}
-                onChange={(e) => setUploadName(e.target.value)}
-                placeholder="e.g., My Professional Avatar"
-                data-testid="input-upload-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="upload-file">Photo</Label>
-              <Input
-                id="upload-file"
-                type="file"
-                accept="image/*"
-                onChange={(e) => setUploadedFile(e.target.files?.[0] || null)}
-                data-testid="input-upload-file"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowQuickUpload(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (uploadedFile && uploadName.trim()) {
-                    uploadPhotoMutation.mutate({
-                      file: uploadedFile,
-                      name: uploadName.trim(),
-                    });
-                  }
-                }}
-                disabled={!uploadedFile || !uploadName.trim() || uploadPhotoMutation.isPending}
-                className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
-                data-testid="button-confirm-upload"
-              >
-                {uploadPhotoMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4 mr-2" />
-                )}
-                Upload
-              </Button>
-            </div>
-          </div>
+          
+          <Tabs value={uploadDialogTab} onValueChange={(v) => setUploadDialogTab(v as "quick" | "generate-looks")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="quick" data-testid="tab-quick-upload">
+                <Upload className="h-4 w-4 mr-2" />
+                Quick Upload
+              </TabsTrigger>
+              <TabsTrigger value="generate-looks" data-testid="tab-generate-looks">
+                <Sparkles className="h-4 w-4 mr-2" />
+                Generate Looks
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="quick" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="upload-name">Avatar Name</Label>
+                <Input
+                  id="upload-name"
+                  value={uploadName}
+                  onChange={(e) => setUploadName(e.target.value)}
+                  placeholder="e.g., My Professional Avatar"
+                  data-testid="input-upload-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="upload-file">Photo</Label>
+                <Input
+                  id="upload-file"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setUploadedFile(e.target.files?.[0] || null)}
+                  data-testid="input-upload-file"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowQuickUpload(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (uploadedFile && uploadName.trim()) {
+                      uploadPhotoMutation.mutate({
+                        file: uploadedFile,
+                        name: uploadName.trim(),
+                      });
+                    }
+                  }}
+                  disabled={!uploadedFile || !uploadName.trim() || uploadPhotoMutation.isPending}
+                  className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                  data-testid="button-confirm-upload"
+                >
+                  {uploadPhotoMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4 mr-2" />
+                  )}
+                  Upload
+                </Button>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="generate-looks" className="space-y-4 mt-4">
+              {generateLooksStatus === "complete" && generateLooksResult && !generateLooksResult.error ? (
+                <div className="space-y-4 text-center py-4">
+                  <div className="relative">
+                    <CheckCircle className="h-12 w-12 mx-auto text-green-500" />
+                    <Loader2 className="h-5 w-5 absolute -right-1 -bottom-1 text-blue-500 animate-spin" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">Workflow Started!</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Your avatar is being trained and looks will be generated automatically.
+                    </p>
+                  </div>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mt-4">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                      <Clock className="h-4 w-4" />
+                      <span className="text-sm font-medium">Processing (~6-8 minutes)</span>
+                    </div>
+                    <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                      Training and look generation are running in the background. 
+                      Your avatar will appear in the list once ready.
+                    </p>
+                  </div>
+                  {generateLooksResult.looks && generateLooksResult.looks.length > 0 && (
+                    <div className="text-left bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mt-2">
+                      <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Queued {generateLooksResult.looks.length} look(s):
+                      </p>
+                      <ul className="text-xs text-gray-500 space-y-1">
+                        {generateLooksResult.looks.slice(0, 3).map((look, i) => (
+                          <li key={i} className="flex items-center gap-2">
+                            <Clock className="h-3 w-3 text-gray-400" />
+                            <span className="truncate">{look.prompt}</span>
+                          </li>
+                        ))}
+                        {generateLooksResult.looks.length > 3 && (
+                          <li className="text-gray-400">+{generateLooksResult.looks.length - 3} more...</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  <Button 
+                    onClick={() => setShowQuickUpload(false)}
+                    className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                  >
+                    Close & Monitor Progress
+                  </Button>
+                </div>
+              ) : generateLooksStatus === "error" ? (
+                <div className="space-y-4 text-center py-4">
+                  <AlertCircle className="h-12 w-12 mx-auto text-red-500" />
+                  <div>
+                    <h3 className="font-semibold text-lg text-red-600">Creation Failed</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      {generateLooksResult?.error || "Something went wrong. Please try again."}
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={() => {
+                      setGenerateLooksStatus("idle");
+                      setGenerateLooksResult(null);
+                    }}
+                    variant="outline"
+                  >
+                    Try Again
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="generate-looks-file">Photo *</Label>
+                    <Input
+                      id="generate-looks-file"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setGenerateLooksFile(e.target.files?.[0] || null)}
+                      disabled={createWithLooksMutation.isPending}
+                      data-testid="input-generate-looks-file"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="generate-looks-name">Avatar Name</Label>
+                    <Input
+                      id="generate-looks-name"
+                      value={generateLooksName}
+                      onChange={(e) => setGenerateLooksName(e.target.value)}
+                      placeholder="e.g., Professional Headshot"
+                      disabled={createWithLooksMutation.isPending}
+                      data-testid="input-generate-looks-name"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="generate-looks-prompt">Custom Prompt (optional)</Label>
+                    <Textarea
+                      id="generate-looks-prompt"
+                      value={generateLooksPrompt}
+                      onChange={(e) => setGenerateLooksPrompt(e.target.value)}
+                      placeholder="e.g., professional business attire, confident smile"
+                      rows={2}
+                      disabled={createWithLooksMutation.isPending}
+                      data-testid="input-generate-looks-prompt"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label>Orientation</Label>
+                      <Select
+                        value={generateLooksOrientation}
+                        onValueChange={(v) => setGenerateLooksOrientation(v as "square" | "horizontal" | "vertical")}
+                        disabled={createWithLooksMutation.isPending}
+                      >
+                        <SelectTrigger data-testid="select-orientation">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="square">Square</SelectItem>
+                          <SelectItem value="horizontal">Horizontal</SelectItem>
+                          <SelectItem value="vertical">Vertical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Pose</Label>
+                      <Select
+                        value={generateLooksPose}
+                        onValueChange={(v) => setGenerateLooksPose(v as "half_body" | "close_up" | "full_body")}
+                        disabled={createWithLooksMutation.isPending}
+                      >
+                        <SelectTrigger data-testid="select-pose">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="half_body">Half Body</SelectItem>
+                          <SelectItem value="close_up">Close Up</SelectItem>
+                          <SelectItem value="full_body">Full Body</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Style</Label>
+                      <Select
+                        value={generateLooksStyle}
+                        onValueChange={(v) => setGenerateLooksStyle(v as "Realistic" | "Pixar" | "Cinematic")}
+                        disabled={createWithLooksMutation.isPending}
+                      >
+                        <SelectTrigger data-testid="select-style">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Realistic">Realistic</SelectItem>
+                          <SelectItem value="Pixar">Pixar</SelectItem>
+                          <SelectItem value="Cinematic">Cinematic</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  {createWithLooksMutation.isPending && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm font-medium">
+                          {generateLooksStatus === "creating" ? "Creating avatar..." : "Processing..."}
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-500 mt-1">
+                        This may take 6-8 minutes. Training and look generation run automatically.
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-end gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setShowQuickUpload(false)}
+                      disabled={createWithLooksMutation.isPending}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        if (generateLooksFile) {
+                          createWithLooksMutation.mutate({
+                            file: generateLooksFile,
+                            name: generateLooksName.trim() || `Avatar ${Date.now()}`,
+                            prompt: generateLooksPrompt.trim() || undefined,
+                            orientation: generateLooksOrientation,
+                            pose: generateLooksPose,
+                            style: generateLooksStyle,
+                          });
+                        }
+                      }}
+                      disabled={!generateLooksFile || createWithLooksMutation.isPending}
+                      className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                      data-testid="button-create-with-looks"
+                    >
+                      {createWithLooksMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 mr-2" />
+                      )}
+                      Create Avatar
+                    </Button>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
