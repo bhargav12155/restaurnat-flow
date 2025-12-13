@@ -278,6 +278,31 @@ export function PhotoAvatarManager() {
   }>>([]);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   
+  // Activity log for step-by-step visibility (user-friendly version)
+  const [activityLogs, setActivityLogs] = useState<Array<{
+    id: string;
+    timestamp: string;
+    step: 'upload' | 'group_created' | 'waiting' | 'training_started' | 'training_progress' | 'training_complete' | 'generating_looks' | 'looks_complete' | 'error';
+    message: string;
+    groupName?: string;
+    details?: string;
+  }>>([]);
+  const [showActivityPanel, setShowActivityPanel] = useState(true);
+  const activityLogRef = useRef<HTMLDivElement>(null);
+  
+  // Helper to add activity log
+  const addActivityLog = (log: Omit<typeof activityLogs[0], 'id' | 'timestamp'>) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setActivityLogs(prev => [...prev.slice(-30), { ...log, id, timestamp }]);
+    // Auto-scroll to bottom
+    setTimeout(() => {
+      if (activityLogRef.current) {
+        activityLogRef.current.scrollTop = activityLogRef.current.scrollHeight;
+      }
+    }, 100);
+  };
+  
   // Helper to add debug log
   const addDebugLog = (log: Omit<typeof debugLogs[0], 'timestamp'>) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -321,6 +346,13 @@ export function PhotoAvatarManager() {
         console.log(`    🎓 AUTO-TRAINING: Starting training for "${group.name}"...`);
         autoTrainedRef.current.add(groupId);
         
+        addActivityLog({
+          step: 'training_started',
+          message: 'Training avatar...',
+          groupName: group.name,
+          details: 'HeyGen is processing your photo. This takes 5-15 minutes.'
+        });
+        
         addDebugLog({
           type: 'info',
           message: `Auto-starting training for "${group.name}" (status: empty → training)`
@@ -340,12 +372,25 @@ export function PhotoAvatarManager() {
           );
           console.log(`    ✅ Training request sent for "${group.name}"`);
           
+          addActivityLog({
+            step: 'training_progress',
+            message: 'Training in progress...',
+            groupName: group.name,
+            details: 'Please wait while HeyGen trains your avatar.'
+          });
+          
           // Refresh to pick up the new training status
           queryClient.invalidateQueries({
             queryKey: ["/api/photo-avatars/groups"],
           });
         } catch (trainError) {
           console.error(`    ❌ Failed to start training for "${group.name}":`, trainError);
+          addActivityLog({
+            step: 'error',
+            message: 'Training failed',
+            groupName: group.name,
+            details: String(trainError)
+          });
           addDebugLog({
             type: 'error',
             message: `Failed to auto-train "${group.name}": ${trainError}`
@@ -382,6 +427,13 @@ export function PhotoAvatarManager() {
 
       if (shouldAutoGenerate) {
         // Log the trigger reason
+        addActivityLog({
+          step: 'training_complete',
+          message: 'Training completed!',
+          groupName: group.name,
+          details: 'Avatar trained successfully. Now generating professional looks...'
+        });
+        
         addDebugLog({
           type: 'info',
           message: trainingJustCompleted 
@@ -401,6 +453,13 @@ export function PhotoAvatarManager() {
         autoTrainedRef.current.add(groupId);
         
         // Update status to show generation is starting (4 professional styles)
+        addActivityLog({
+          step: 'generating_looks',
+          message: 'Generating 4 professional looks...',
+          groupName: group.name,
+          details: 'Executive, Friendly Agent, Property Tour, Modern Professional'
+        });
+        
         setLookGenerationStatus(prev => ({
           ...prev,
           [groupId]: {
@@ -486,6 +545,13 @@ export function PhotoAvatarManager() {
                 }));
                 
                 if (allCompleted) {
+                  addActivityLog({
+                    step: 'looks_complete',
+                    message: 'All looks ready!',
+                    groupName: group.name,
+                    details: '4 professional looks generated successfully.'
+                  });
+                  
                   toast({
                     title: "✅ Looks Ready!",
                     description: `Professional and Casual looks for "${group.name}" are now available!`,
@@ -618,6 +684,12 @@ export function PhotoAvatarManager() {
   // Upload custom photos
   const uploadPhotoMutation = useMutation({
     mutationFn: async (file: File) => {
+      addActivityLog({
+        step: 'upload',
+        message: 'Uploading photo...',
+        details: `File: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`
+      });
+      
       const formData = new FormData();
       formData.append("photo", file);
 
@@ -630,6 +702,12 @@ export function PhotoAvatarManager() {
       return response.json();
     },
     onSuccess: (data) => {
+      addActivityLog({
+        step: 'group_created',
+        message: 'Photo uploaded to HeyGen',
+        details: 'Now creating avatar group...'
+      });
+      
       toast({
         title: "Photo Uploaded",
         description:
@@ -637,6 +715,12 @@ export function PhotoAvatarManager() {
       });
     },
     onError: () => {
+      addActivityLog({
+        step: 'error',
+        message: 'Upload failed',
+        details: 'Please check your file and try again.'
+      });
+      
       toast({
         title: "Upload Failed",
         description: "Failed to upload photo. Please try again.",
@@ -647,11 +731,26 @@ export function PhotoAvatarManager() {
 
   // Create avatar group (auto-triggers training)
   const createGroupMutation = useMutation({
-    mutationFn: ({ name, imageKey }: { name: string; imageKey: string }) =>
-      apiRequest("POST", "/api/photo-avatars/groups", { name, imageKey }),
+    mutationFn: ({ name, imageKey }: { name: string; imageKey: string }) => {
+      addActivityLog({
+        step: 'group_created',
+        message: 'Creating avatar group...',
+        groupName: name,
+        details: 'Setting up your avatar in HeyGen...'
+      });
+      return apiRequest("POST", "/api/photo-avatars/groups", { name, imageKey });
+    },
     onSuccess: async (data: any) => {
       const responseData = await data.json?.() || data;
       const groupId = responseData?.group_id || responseData?.id;
+      const groupName = responseData?.name || 'New Avatar';
+      
+      addActivityLog({
+        step: 'waiting',
+        message: 'Avatar group created!',
+        groupName,
+        details: 'Waiting 20 seconds for HeyGen to process...'
+      });
       
       toast({
         title: "Avatar Created!",
@@ -666,6 +765,14 @@ export function PhotoAvatarManager() {
       if (groupId) {
         try {
           console.log(`🚀 Auto-starting training for group ${groupId}`);
+          
+          addActivityLog({
+            step: 'training_started',
+            message: 'Training started!',
+            groupName,
+            details: 'HeyGen is training your avatar. This takes 5-15 minutes.'
+          });
+          
           await apiRequest(
             "POST",
             `/api/photo-avatars/groups/${groupId}/train`,
@@ -684,6 +791,12 @@ export function PhotoAvatarManager() {
         } catch (trainError: any) {
           console.error("Auto-training failed:", trainError);
           if (!trainError?.message?.includes("already in progress")) {
+            addActivityLog({
+              step: 'error',
+              message: 'Training not started',
+              groupName,
+              details: 'You can start training manually from the Manage tab.'
+            });
             toast({
               title: "Training Not Started",
               description: "Avatar created but training didn't start. You can start it manually.",
@@ -1211,16 +1324,58 @@ export function PhotoAvatarManager() {
     }
   };
 
+  // Helper function to get step icon and color
+  const getStepStyle = (step: typeof activityLogs[0]['step']) => {
+    switch (step) {
+      case 'upload':
+        return { icon: Upload, color: 'text-blue-500', bg: 'bg-blue-50' };
+      case 'group_created':
+        return { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' };
+      case 'waiting':
+        return { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-50' };
+      case 'training_started':
+        return { icon: Sparkles, color: 'text-purple-500', bg: 'bg-purple-50' };
+      case 'training_progress':
+        return { icon: Loader2, color: 'text-blue-500', bg: 'bg-blue-50' };
+      case 'training_complete':
+        return { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' };
+      case 'generating_looks':
+        return { icon: Wand2, color: 'text-purple-500', bg: 'bg-purple-50' };
+      case 'looks_complete':
+        return { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-100' };
+      case 'error':
+        return { icon: AlertCircle, color: 'text-red-500', bg: 'bg-red-50' };
+      default:
+        return { icon: Clock, color: 'text-gray-500', bg: 'bg-gray-50' };
+    }
+  };
+
   return (
-    <Card data-testid="card-photo-avatar-manager">
-      <CardHeader>
-        <CardTitle>Photo Avatar Groups</CardTitle>
-        <CardDescription>
-          Create and manage AI-powered avatar groups from photos for
-          personalized video content
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className="flex gap-4">
+      {/* Main Content */}
+      <Card data-testid="card-photo-avatar-manager" className="flex-1">
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <div>
+              <CardTitle>Photo Avatar Groups</CardTitle>
+              <CardDescription>
+                Create and manage AI-powered avatar groups from photos for
+                personalized video content
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowActivityPanel(!showActivityPanel)}
+              className="flex items-center gap-1"
+              data-testid="button-toggle-activity-log"
+            >
+              <Terminal className="w-4 h-4" />
+              {showActivityPanel ? 'Hide' : 'Show'} Log
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
         <Tabs value={selectedTab} onValueChange={setSelectedTab}>
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="generate" data-testid="tab-generate">
@@ -2700,5 +2855,81 @@ export function PhotoAvatarManager() {
         )}
       </div>
     </Card>
+
+      {/* Activity Log Panel - Right Side */}
+      {showActivityPanel && (
+        <Card className="w-80 flex-shrink-0 h-fit max-h-[600px] sticky top-4" data-testid="activity-log-panel">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Terminal className="w-4 h-4" />
+                Activity Log
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActivityLogs([])}
+                className="h-6 px-2 text-xs"
+                data-testid="button-clear-activity-log"
+              >
+                Clear
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div
+              ref={activityLogRef}
+              className="space-y-2 overflow-y-auto max-h-[480px] pr-1"
+            >
+              {activityLogs.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No activity yet</p>
+                  <p className="text-xs mt-1">Upload a photo to get started</p>
+                </div>
+              ) : (
+                activityLogs.map((log) => {
+                  const style = getStepStyle(log.step);
+                  const IconComponent = style.icon;
+                  return (
+                    <div
+                      key={log.id}
+                      className={`p-2 rounded-lg ${style.bg} border border-gray-100`}
+                      data-testid={`activity-log-${log.id}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className={`mt-0.5 ${style.color}`}>
+                          <IconComponent className={`w-4 h-4 ${log.step === 'training_progress' ? 'animate-spin' : ''}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium text-sm text-gray-800 truncate">
+                              {log.message}
+                            </p>
+                            <span className="text-[10px] text-gray-400 flex-shrink-0">
+                              {log.timestamp}
+                            </span>
+                          </div>
+                          {log.groupName && (
+                            <p className="text-xs text-gray-600 truncate">
+                              {log.groupName}
+                            </p>
+                          )}
+                          {log.details && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {log.details}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
