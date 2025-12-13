@@ -260,24 +260,17 @@ export class HeyGenPhotoAvatarService {
     return response.data;
   }
 
-  // Train avatar group (LORA model)
-  async trainAvatarGroup(groupId: string, defaultVoiceId?: string) {
-    const payload: any = {
+  // Train avatar group - per HeyGen docs only group_id is required
+  async trainAvatarGroup(groupId: string) {
+    const payload = {
       group_id: groupId,
-      training_mode: "lora_training",
     };
-
-    // Add default voice if provided
-    if (defaultVoiceId) {
-      payload.default_voice_id = defaultVoiceId;
-    }
 
     console.log(
       "🚀 HeyGen: Training avatar group with payload:",
       JSON.stringify(payload, null, 2)
     );
 
-    // Try the correct training endpoint - might be /photo_avatar/train instead of /photo_avatar/avatar_group/train
     const response = await this.makeRequest(
       "/photo_avatar/train",
       "POST",
