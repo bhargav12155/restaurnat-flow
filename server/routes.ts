@@ -8509,9 +8509,10 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
-  // ==================== COMBINED CREATE WITH LOOKS ENDPOINT ====================
+  // ==================== PHOTO AVATAR PROXY ENDPOINTS ====================
+  // Proxies to external photo avatar service on port 3001
   
-  // Create avatar with looks in one step (matches React integration guide)
+  // Create avatar with looks - Proxies to external service
   app.post(
     "/api/photo-avatars/create-with-looks",
     requireAuth,
@@ -8522,122 +8523,51 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           return res.status(400).json({ error: "No image uploaded" });
         }
 
-        const userId = req.user?.id;
-        if (!userId) {
-          // Clean up temp file before returning auth error
-          if (req.file?.path && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-          }
-          return res.status(401).json({ error: "User not authenticated" });
-        }
+        console.log("🚀 Proxying create-with-looks to external service on port 3001");
 
-        const { name, prompt, orientation, pose, style } = req.body;
-        const avatarName = name || "My Avatar";
-        const lookOrientation = orientation || "square";
-        const lookPose = pose || "half_body";
-        const lookStyle = style || "Realistic";
-
-        console.log("🚀 Create with looks request:", {
-          name: avatarName,
-          prompt,
-          orientation: lookOrientation,
-          pose: lookPose,
-          style: lookStyle,
-          filename: req.file.originalname,
-        });
-
+        // Build FormData to forward to external service
+        const FormData = (await import("form-data")).default;
+        const formData = new FormData();
+        
+        // Read file and append to form
         const fileBuffer = fs.readFileSync(req.file.path);
-
-        // Check for duplicate image
-        const crypto = await import("crypto");
-        const imageHash = crypto
-          .createHash("sha256")
-          .update(fileBuffer)
-          .digest("hex");
-
-        const existingAvatar = await storage.getPhotoAvatarGroupByImageHash(
-          imageHash,
-          userId
-        );
-        if (existingAvatar) {
-          console.log("♻️ Avatar reuse detected:", existingAvatar.heygenGroupId);
-          fs.unlinkSync(req.file.path);
-          return res.json({
-            success: true,
-            group_id: existingAvatar.heygenGroupId,
-            avatar_name: existingAvatar.groupName,
-            training_status: existingAvatar.trainingStatus || "ready",
-            looks: [],
-            message: "This image was already uploaded. Reusing existing avatar.",
-            reused: true,
-            check_status_url: `/api/photo-avatars/status/${existingAvatar.heygenGroupId}`,
-          });
-        }
-
-        // Upload to S3 for backup
-        const s3Service = new S3UploadService();
-        const s3ImageUrl = await s3Service.uploadFile(
-          userId,
-          fileBuffer,
-          `avatar-images/${nanoid()}_${req.file.originalname}`,
-          req.file.mimetype
-        );
-        console.log("✅ Photo backed up to S3:", s3ImageUrl);
-
-        // Upload to HeyGen and get the image key
-        const photoAvatarService = new HeyGenPhotoAvatarService();
-        const heygenImageKey = await photoAvatarService.uploadCustomPhoto(
-          fileBuffer,
-          req.file.mimetype
-        );
-        console.log("✅ Photo uploaded to HeyGen, key:", heygenImageKey);
-
-        // Create avatar group
-        const createResult = await photoAvatarService.createAvatarGroup(
-          avatarName,
-          [heygenImageKey]
-        );
-        const groupId = createResult.group_id || createResult.avatar_group_id;
-        console.log("✅ Avatar group created:", groupId);
-
-        // Save to database
-        await storage.createPhotoAvatarGroup({
-          userId,
-          heygenGroupId: groupId,
-          groupName: avatarName,
-          imageHash,
-          s3ImageUrl,
-          heygenImageKey,
-          trainingStatus: "pending",
+        formData.append("image", fileBuffer, {
+          filename: req.file.originalname,
+          contentType: req.file.mimetype,
         });
+        
+        // Forward all body fields
+        if (req.body.name) formData.append("name", req.body.name);
+        if (req.body.prompt) formData.append("prompt", req.body.prompt);
+        if (req.body.orientation) formData.append("orientation", req.body.orientation);
+        if (req.body.pose) formData.append("pose", req.body.pose);
+        if (req.body.style) formData.append("style", req.body.style);
 
         // Clean up temp file
         fs.unlinkSync(req.file.path);
 
-        // Start training immediately (fire and forget - HeyGen processes async)
-        let trainingStarted = false;
-        if (groupId) {
-          try {
-            console.log(`🎓 Starting training immediately for group ${groupId}...`);
-            await photoAvatarService.trainAvatarGroup(groupId);
-            trainingStarted = true;
-            console.log(`✅ Training started for group ${groupId}`);
-          } catch (trainError: any) {
-            console.error(`⚠️ Training start failed (may already be processing):`, trainError?.message);
-          }
+        // Proxy to external service
+        const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://localhost:3001";
+        const response = await fetch(`${externalServiceUrl}/api/photo-avatars/create-with-looks`, {
+          method: "POST",
+          body: formData as any,
+          headers: formData.getHeaders(),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("❌ External service error:", response.status, errorText);
+          return res.status(response.status).json({
+            error: "External service error",
+            details: errorText,
+          });
         }
 
-        res.json({
-          success: true,
-          group_id: groupId,
-          avatar_name: avatarName,
-          training_status: trainingStarted ? "processing" : "pending",
-          looks: [],
-          message: "Avatar created and training started! Poll the status endpoint to track progress. Looks will be auto-generated when training completes (~5-8 minutes).",
-          check_status_url: `/api/photo-avatars/status/${groupId}`,
-        });
+        const data = await response.json();
+        console.log("✅ Avatar created via external service:", data.group_id);
+        res.json(data);
       } catch (error: any) {
-        console.error("❌ Failed to create avatar with looks:", error);
+        console.error("❌ Failed to proxy create-with-looks:", error);
         if (req.file?.path && fs.existsSync(req.file.path)) {
           fs.unlinkSync(req.file.path);
         }
