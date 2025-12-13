@@ -271,7 +271,7 @@ export function StreamingAvatarComponent() {
     }
   };
 
-  // Speech to Text
+  // Speech to Text - Interactive voice mode
   const handleStartListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -283,37 +283,150 @@ export function StreamingAvatarComponent() {
       return;
     }
 
-    if (!recognitionRef.current) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
 
-      recognitionRef.current.onstart = () => setIsListening(true);
-      recognitionRef.current.onend = () => setIsListening(false);
-      recognitionRef.current.onresult = (event: any) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-        if (event.isFinal) {
-          setMessage(prev => prev + (prev ? ' ' : '') + transcript);
-        }
-      };
-      recognitionRef.current.onerror = (event: any) => {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      console.log('🎤 Speech recognition started');
+      setIsListening(true);
+    };
+
+    recognition.onend = () => {
+      console.log('🎤 Speech recognition ended');
+      setIsListening(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      const last = event.results.length - 1;
+      const transcript = event.results[last][0].transcript;
+      console.log('🎤 Transcript:', transcript);
+      
+      if (transcript.trim()) {
+        setMessage(transcript.trim());
+        toast({
+          title: "Voice captured",
+          description: `"${transcript.trim()}"`,
+        });
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('🎤 Speech recognition error:', event.error);
+      setIsListening(false);
+      
+      if (event.error === 'no-speech') {
+        toast({
+          title: "No speech detected",
+          description: "Please try speaking again.",
+        });
+      } else if (event.error === 'not-allowed') {
+        toast({
+          title: "Microphone access denied",
+          description: "Please allow microphone access in your browser settings.",
+          variant: "destructive"
+        });
+      } else {
         toast({
           title: "Speech Recognition Error",
           description: event.error,
           variant: "destructive"
         });
-      };
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  // Auto-send message after voice capture (interactive mode)
+  const handleVoiceAndSend = async () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast({
+        title: "Not Supported",
+        description: "Speech recognition is not supported in your browser. Use Chrome, Edge, or Safari.",
+        variant: "destructive"
+      });
+      return;
     }
 
-    if (isListening) {
+    if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
-    } else {
-      recognitionRef.current.start();
+      return;
     }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      console.log('🎤 Interactive mode: listening...');
+      setIsListening(true);
+    };
+
+    recognition.onend = () => {
+      console.log('🎤 Interactive mode: finished');
+      setIsListening(false);
+    };
+
+    recognition.onresult = async (event: any) => {
+      const last = event.results.length - 1;
+      const transcript = event.results[last][0].transcript;
+      console.log('🎤 Interactive transcript:', transcript);
+      
+      if (transcript.trim() && session) {
+        toast({
+          title: "Sending to avatar...",
+          description: `"${transcript.trim()}"`,
+        });
+        
+        try {
+          setIsSpeaking(true);
+          await apiRequest('POST', `/api/streaming/sessions/${session.sessionId}/speak`, {
+            text: transcript.trim(),
+            taskType: 'TALK'
+          });
+          setTimeout(() => setIsSpeaking(false), 2000);
+        } catch (error) {
+          console.error('Failed to make avatar speak:', error);
+          toast({
+            title: "Speech Failed",
+            description: "Failed to make avatar speak.",
+            variant: "destructive"
+          });
+          setIsSpeaking(false);
+        }
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('🎤 Interactive mode error:', event.error);
+      setIsListening(false);
+      
+      if (event.error === 'no-speech') {
+        toast({
+          title: "No speech detected",
+          description: "Please try speaking again.",
+        });
+      } else if (event.error === 'not-allowed') {
+        toast({
+          title: "Microphone access denied",
+          description: "Please allow microphone access in your browser settings.",
+          variant: "destructive"
+        });
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
   };
 
   // Cleanup on unmount
@@ -528,59 +641,96 @@ export function StreamingAvatarComponent() {
             )}
           </div>
 
-          {/* Text Input for Avatar Speech */}
+          {/* Interactive Voice Mode */}
           {isConnected && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Make Avatar Speak</label>
-              <div className="flex gap-2">
-                <Textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Enter text for the avatar to speak..."
-                  className="min-h-[80px]"
-                  disabled={isSpeaking}
-                  data-testid="input-message"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSpeak();
-                    }
-                  }}
-                />
+            <div className="space-y-4">
+              {/* Quick Talk Button - Main interactive feature */}
+              <div className="p-4 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="flex items-center gap-2 mb-3">
+                  <Mic className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  <label className="text-base font-semibold text-green-900 dark:text-green-100">Talk to Avatar</label>
+                  <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                    Interactive
+                  </Badge>
+                </div>
+                <p className="text-sm text-green-700 dark:text-green-300 mb-3">
+                  Click the button below and speak - your voice will be transcribed and sent directly to the avatar!
+                </p>
                 <Button
-                  onClick={handleStartListening}
-                  variant={isListening ? "default" : "outline"}
-                  className="h-[80px]"
-                  data-testid="button-listen"
-                  title={isListening ? "Stop listening..." : "Click to speak"}
+                  onClick={handleVoiceAndSend}
+                  disabled={isSpeaking}
+                  size="lg"
+                  className={`w-full h-16 text-lg transition-all ${
+                    isListening 
+                      ? 'bg-red-500 hover:bg-red-600 animate-pulse' 
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                  data-testid="button-talk-interactive"
                 >
                   {isListening ? (
                     <>
-                      <Mic className="w-4 h-4 animate-pulse text-red-500" />
+                      <Mic className="w-6 h-6 mr-2 animate-bounce" />
+                      Listening... (click to stop)
+                    </>
+                  ) : isSpeaking ? (
+                    <>
+                      <Loader2 className="w-6 h-6 mr-2 animate-spin" />
+                      Avatar Speaking...
                     </>
                   ) : (
-                    <MicOff className="w-4 h-4" />
+                    <>
+                      <Mic className="w-6 h-6 mr-2" />
+                      Click to Talk
+                    </>
                   )}
                 </Button>
               </div>
-              <Button
-                onClick={handleSpeak}
-                disabled={!message.trim() || isSpeaking}
-                className="w-full"
-                data-testid="button-speak"
-              >
-                {isSpeaking ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Speaking...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 mr-2" />
-                    Send
-                  </>
-                )}
-              </Button>
+
+              {/* Manual Text Input - Secondary option */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Or type a message:</label>
+                <div className="flex gap-2">
+                  <Textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder="Type text for the avatar to speak..."
+                    className="min-h-[60px]"
+                    disabled={isSpeaking}
+                    data-testid="input-message"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSpeak();
+                      }
+                    }}
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      onClick={handleStartListening}
+                      variant={isListening ? "default" : "outline"}
+                      size="sm"
+                      className="h-[28px]"
+                      data-testid="button-listen"
+                      title={isListening ? "Stop listening" : "Dictate text"}
+                    >
+                      {isListening ? (
+                        <Mic className="w-4 h-4 animate-pulse text-red-500" />
+                      ) : (
+                        <Mic className="w-4 h-4" />
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleSpeak}
+                      disabled={!message.trim() || isSpeaking}
+                      size="sm"
+                      className="h-[28px]"
+                      data-testid="button-speak"
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
