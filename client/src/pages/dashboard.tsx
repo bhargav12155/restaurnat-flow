@@ -158,9 +158,6 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <div className="hidden lg:block text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">
-                {VERSION_DISPLAY}
-              </div>
               <Button
                 onClick={handleGenerateContent}
                 disabled={isGenerating}
