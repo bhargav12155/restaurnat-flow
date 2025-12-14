@@ -7867,13 +7867,27 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   });
 
   // Edit/Generate new look with custom prompt
-  app.post("/api/heygen/avatars/:groupId/generate-look", async (req, res) => {
+  app.post("/api/heygen/avatars/:groupId/generate-look", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
+      const userId = String(req.user?.id);
       const { prompt, orientation, pose, style, referenceImages } = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
 
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      // Ownership check
+      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+        groupId,
+        userId
+      );
+      if (!dbGroup) {
+        return res.status(404).json({ error: "Avatar group not found" });
       }
 
       console.log("✏️ Editing look for group:", groupId);
