@@ -7613,12 +7613,24 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           // Continue anyway - the generate call will fail with a better error if not trained
         }
 
+        // Get current avatar list BEFORE generating looks to establish baseline
+        let baselineAvatarIds: string[] = [];
+        try {
+          const currentAvatars = await photoAvatarService.getAvatarGroupLooks(groupId);
+          const avatarList = currentAvatars?.avatars || currentAvatars || [];
+          baselineAvatarIds = avatarList.map((a: any) => a.avatar_id || a.id).filter(Boolean);
+          console.log(`📋 Baseline avatar IDs before generation: ${baselineAvatarIds.length} avatars`);
+        } catch (baselineError) {
+          console.warn("Could not get baseline avatars:", baselineError);
+        }
+
         const looks = await photoAvatarService.generateNewLooks(
           groupId,
           numLooks
         );
 
-        // Create look generation job records for each look
+        // Create look generation job records for each look with baseline info
+        const baselineJson = JSON.stringify(baselineAvatarIds);
         const jobRecords = await Promise.all(
           looks.looks.map(async (look: { generationId: string; label: string; name: string; prompt: string }) => {
             const job = await storage.createLookGenerationJob({
@@ -7629,6 +7641,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
               lookName: look.name,
               prompt: look.prompt,
               status: "pending",
+              baselineAvatarIds: baselineJson,
             });
             return job;
           })
@@ -7683,40 +7696,115 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         // Get all jobs for this group
         const jobs = await storage.getLookGenerationJobsByGroup(groupId, userId);
 
-        // Check and update pending jobs
+        // Check and update pending jobs by polling the avatar list
+        // HeyGen doesn't have a status endpoint for look generation, so we poll the avatar list
         const photoAvatarService = new HeyGenPhotoAvatarService();
+        
+        // Get current avatars in the group to detect new completions
+        let currentAvatars: any[] = [];
+        try {
+          const avatarListResponse = await photoAvatarService.getAvatarGroupLooks(groupId);
+          currentAvatars = avatarListResponse?.avatars || avatarListResponse || [];
+          console.log(`📋 Current avatars in group ${groupId}: ${currentAvatars.length}`);
+        } catch (avatarListError) {
+          console.error(`Failed to get avatar list for group ${groupId}:`, avatarListError);
+        }
+
+        // Build a map of current avatar IDs to avatars
+        const currentAvatarMap = new Map<string, any>();
+        for (const avatar of currentAvatars) {
+          const avatarId = avatar.avatar_id || avatar.id;
+          if (avatarId) currentAvatarMap.set(avatarId, avatar);
+        }
+        
+        // Get baseline avatar IDs from the first pending job (all jobs share the same baseline)
+        const pendingJobs = jobs.filter(j => j.status === "pending" || j.status === "processing");
+        let baselineIds: Set<string> = new Set();
+        if (pendingJobs.length > 0 && pendingJobs[0].baselineAvatarIds) {
+          try {
+            const parsed = JSON.parse(pendingJobs[0].baselineAvatarIds);
+            baselineIds = new Set(parsed);
+            console.log(`📋 Baseline has ${baselineIds.size} avatars, current has ${currentAvatarMap.size}`);
+          } catch (e) {
+            console.warn("Could not parse baseline avatar IDs:", e);
+          }
+        }
+        
+        // Find NEW avatars (in current but not in baseline)
+        const newAvatarIds: string[] = [];
+        for (const avatarId of currentAvatarMap.keys()) {
+          if (!baselineIds.has(avatarId)) {
+            newAvatarIds.push(avatarId);
+          }
+        }
+        console.log(`📋 Found ${newAvatarIds.length} new avatars since baseline`);
+        
+        // Get already-assigned avatar IDs from completed jobs
+        const assignedAvatarIds = new Set(
+          jobs.filter(j => j.resultAvatarId).map(j => j.resultAvatarId!)
+        );
+        
+        // Filter new avatars to only those not yet assigned
+        const unassignedNewAvatars = newAvatarIds.filter(id => !assignedAvatarIds.has(id));
+        console.log(`📋 ${unassignedNewAvatars.length} new avatars available for assignment`);
+        
+        // Track which new avatars we've assigned during this poll
+        let newAvatarIndex = 0;
+        
         const updatedJobs = await Promise.all(
           jobs.map(async (job) => {
-            if (job.status === "pending") {
-              try {
-                const status = await photoAvatarService.getLookGenerationStatus(
-                  job.heygenGenerationId
-                );
-                console.log(`📋 Look generation status for ${job.lookLabel}:`, status);
-
-                if (status.status === "completed" || status.status === "done" || status.status === "success") {
-                  const updatedJob = await storage.updateLookGenerationJob(job.id, {
-                    status: "completed",
-                    resultAvatarId: status.avatar_id || status.avatarId,
-                    resultImageUrl: status.image_url || status.imageUrl || status.preview_url,
-                    completedAt: new Date(),
-                  });
-                  return updatedJob || job;
-                } else if (status.status === "failed" || status.status === "error") {
-                  const updatedJob = await storage.updateLookGenerationJob(job.id, {
-                    status: "failed",
-                    errorMessage: status.error || status.message || "Generation failed",
-                    completedAt: new Date(),
-                  });
-                  return updatedJob || job;
-                } else if (status.status === "processing" || status.status === "in_progress") {
-                  const updatedJob = await storage.updateLookGenerationJob(job.id, {
-                    status: "processing",
-                  });
-                  return updatedJob || job;
-                }
-              } catch (statusError) {
-                console.error(`Failed to check status for job ${job.id}:`, statusError);
+            if (job.status === "pending" || job.status === "processing") {
+              // If job already has a result avatar ID, verify it exists and mark complete
+              if (job.resultAvatarId && currentAvatarMap.has(job.resultAvatarId)) {
+                const avatar = currentAvatarMap.get(job.resultAvatarId);
+                const updatedJob = await storage.updateLookGenerationJob(job.id, {
+                  status: "completed",
+                  resultImageUrl: avatar?.preview_image_url || avatar?.image_url || job.resultImageUrl,
+                  completedAt: new Date(),
+                });
+                console.log(`✅ Job ${job.id} (${job.lookLabel}) completed - avatar found in list`);
+                return updatedJob || job;
+              }
+              
+              // Try to assign an unassigned new avatar to this job
+              if (newAvatarIndex < unassignedNewAvatars.length) {
+                const newAvatarId = unassignedNewAvatars[newAvatarIndex];
+                const avatar = currentAvatarMap.get(newAvatarId);
+                newAvatarIndex++;
+                
+                const updatedJob = await storage.updateLookGenerationJob(job.id, {
+                  status: "completed",
+                  resultAvatarId: newAvatarId,
+                  resultImageUrl: avatar?.preview_image_url || avatar?.image_url,
+                  completedAt: new Date(),
+                });
+                console.log(`✅ Job ${job.id} (${job.lookLabel}) matched to new avatar ${newAvatarId}`);
+                return updatedJob || job;
+              }
+              
+              // Check how long the job has been pending
+              const jobCreatedAt = new Date(job.createdAt);
+              const elapsedMs = Date.now() - jobCreatedAt.getTime();
+              const elapsedMinutes = elapsedMs / (1000 * 60);
+              
+              // If job has been pending for more than 1 minute, mark as processing
+              if (job.status === "pending" && elapsedMinutes > 1) {
+                const updatedJob = await storage.updateLookGenerationJob(job.id, {
+                  status: "processing",
+                });
+                console.log(`⏳ Job ${job.id} (${job.lookLabel}) marked as processing (${elapsedMinutes.toFixed(1)} min)`);
+                return updatedJob || job;
+              }
+              
+              // If job has been processing for more than 30 minutes, mark as failed
+              if (elapsedMinutes > 30) {
+                const updatedJob = await storage.updateLookGenerationJob(job.id, {
+                  status: "failed",
+                  errorMessage: "Generation timed out after 30 minutes",
+                  completedAt: new Date(),
+                });
+                console.log(`❌ Job ${job.id} (${job.lookLabel}) timed out after ${elapsedMinutes.toFixed(1)} min`);
+                return updatedJob || job;
               }
             }
             return job;
@@ -7765,6 +7853,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   );
 
   // Check look generation status (requires groupId for ownership validation)
+  // Note: HeyGen doesn't have a dedicated status endpoint, so we check the avatar list
   app.get(
     "/api/photo-avatars/groups/:groupId/look-status/:generationId",
     requireAuth,
@@ -7787,10 +7876,25 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         }
 
         console.log(`📋 Checking look generation status for ${generationId} (group: ${groupId})`);
-        const photoAvatarService = new HeyGenPhotoAvatarService();
-        const status = await photoAvatarService.getLookGenerationStatus(generationId);
+        
+        // Since HeyGen doesn't have a status endpoint for look generation,
+        // we check the job status from our database and the avatar list
+        const jobs = await storage.getLookGenerationJobsByGroup(groupId, userId);
+        const job = jobs.find(j => j.heygenGenerationId === generationId);
+        
+        if (!job) {
+          return res.status(404).json({ error: "Job not found" });
+        }
 
-        res.json(status);
+        // Return the job status
+        res.json({
+          status: job.status,
+          avatar_id: job.resultAvatarId,
+          image_url: job.resultImageUrl,
+          error: job.errorMessage,
+          lookLabel: job.lookLabel,
+          lookName: job.lookName,
+        });
       } catch (error: any) {
         console.error("Failed to check look generation status:", error);
         res.status(500).json({ 
