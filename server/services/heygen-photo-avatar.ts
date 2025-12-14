@@ -279,10 +279,10 @@ export class HeyGenPhotoAvatarService {
     return response.data;
   }
 
-  // Check look generation status
+  // Check look generation status - uses the correct HeyGen endpoint
   async getLookGenerationStatus(generationId: string) {
     const response = await this.makeRequest(
-      `/photo_avatar/look/status/${generationId}`,
+      `/photo_avatar/generation/${generationId}`,
       "GET"
     );
     return response.data;
