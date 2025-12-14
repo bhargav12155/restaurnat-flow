@@ -118,6 +118,22 @@ interface VideoGeneration {
   error?: string;
 }
 
+interface LookGenerationJob {
+  id: string;
+  userId: string;
+  groupId: string;
+  heygenGenerationId: string;
+  lookLabel: string;
+  lookName: string;
+  prompt: string;
+  status: string;
+  resultAvatarId?: string | null;
+  resultImageUrl?: string | null;
+  errorMessage?: string | null;
+  createdAt?: string | null;
+  completedAt?: string | null;
+}
+
 const STEPS = [
   { id: 1, title: "Select Avatar", icon: User },
   { id: 2, title: "Choose Voice", icon: Mic },
@@ -336,6 +352,33 @@ export function AvatarStudio() {
     const status = (look.status || "").toLowerCase();
     return status === "completed" || status === "ready";
   });
+
+  // Look generation jobs polling - poll when group is selected to check for pending jobs
+  const { data: lookJobsData } = useQuery<{ jobs: LookGenerationJob[] }>({
+    queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "look-jobs"],
+    enabled: !!selectedAvatarGroup,
+    refetchInterval: (query) => {
+      const jobs = query.state.data?.jobs ?? [];
+      const hasPending = jobs.some((job) => job.status === "pending" || job.status === "processing");
+      return hasPending ? 5000 : false; // Poll every 5 seconds if there are pending jobs
+    },
+  });
+
+  const lookGenerationJobs = lookJobsData?.jobs ?? [];
+  const pendingLookJobs = lookGenerationJobs.filter(
+    (job) => job.status === "pending" || job.status === "processing"
+  );
+  const hasActiveLookGeneration = pendingLookJobs.length > 0;
+
+  // Auto-refresh looks list when all jobs complete
+  useEffect(() => {
+    if (lookGenerationJobs.length > 0 && pendingLookJobs.length === 0) {
+      // All jobs completed, refresh the looks list
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "looks"] 
+      });
+    }
+  }, [pendingLookJobs.length, lookGenerationJobs.length, selectedAvatarGroup]);
 
   const { data: customVoicesData = [] } = useQuery<CustomVoice[]>({
     queryKey: ["/api/custom-voices"],
@@ -1977,7 +2020,34 @@ export function AvatarStudio() {
                 </div>
               )}
 
-              {selectedAvatarGroup && availableLooks.length === 0 && (
+              {hasActiveLookGeneration && (
+                <div className="mt-4 p-4 bg-gradient-to-r from-[#D4AF37]/10 to-[#D4AF37]/5 border border-[#D4AF37]/30 rounded-lg" data-testid="look-generation-progress">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="h-5 w-5 animate-spin text-[#D4AF37]" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-[#D4AF37]">
+                        Generating {pendingLookJobs.length} new look{pendingLookJobs.length !== 1 ? 's' : ''}...
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        This may take 2-5 minutes. Looks will appear automatically when ready.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-1">
+                    {pendingLookJobs.map((job) => (
+                      <div key={job.id} className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className="h-1.5 w-1.5 rounded-full bg-[#D4AF37] animate-pulse" />
+                        <span>{job.lookName}</span>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {job.status === 'processing' ? 'Processing' : 'Queued'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedAvatarGroup && availableLooks.length === 0 && !hasActiveLookGeneration && (
                 <div className="text-center py-6 text-gray-500 border rounded-lg mt-4">
                   {selectedGroup?.train_status === "ready" ? (
                     <>

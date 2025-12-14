@@ -195,6 +195,27 @@ export const photoAvatars = pgTable("photo_avatars", {
 });
 
 // =====================================================
+// LOOK GENERATION JOBS TABLE (Track pending look generations)
+// =====================================================
+export const lookGenerationJobs = pgTable("look_generation_jobs", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  groupId: text("group_id").notNull(), // HeyGen avatar group ID
+  heygenGenerationId: text("heygen_generation_id").notNull(), // HeyGen generation ID for status polling
+  lookLabel: text("look_label").notNull(), // e.g., "professional-executive"
+  lookName: text("look_name").notNull(), // e.g., "Executive"
+  prompt: text("prompt").notNull(),
+  status: text("status").notNull().default("pending"), // pending, processing, completed, failed
+  resultAvatarId: text("result_avatar_id"), // HeyGen avatar ID when completed
+  resultImageUrl: text("result_image_url"), // Image URL when completed
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// =====================================================
 // VIDEO AVATARS TABLE (Enterprise HeyGen Feature)
 // =====================================================
 export const videoAvatars = pgTable("video_avatars", {
@@ -653,6 +674,9 @@ export const insertPhotoAvatarSchema = createInsertSchema(photoAvatars).omit({
   id: true,
   createdAt: true,
 });
+
+export type LookGenerationJob = typeof lookGenerationJobs.$inferSelect;
+export type InsertLookGenerationJob = typeof lookGenerationJobs.$inferInsert;
 
 // =====================================================
 // TUTORIAL VIDEOS TABLE
