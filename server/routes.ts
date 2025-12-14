@@ -7618,7 +7618,26 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           numLooks
         );
 
-        res.json(looks);
+        // Create look generation job records for each look
+        const jobRecords = await Promise.all(
+          looks.looks.map(async (look: { generationId: string; label: string; name: string; prompt: string }) => {
+            const job = await storage.createLookGenerationJob({
+              userId,
+              groupId,
+              heygenGenerationId: look.generationId,
+              lookLabel: look.label,
+              lookName: look.name,
+              prompt: look.prompt,
+              status: "pending",
+            });
+            return job;
+          })
+        );
+
+        res.json({
+          ...looks,
+          jobIds: jobRecords.map(job => job.id),
+        });
       } catch (error: any) {
         console.error("Failed to generate new looks:", error);
 
@@ -7635,6 +7654,79 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         }
 
         res.status(500).json({ error: "Failed to generate new looks" });
+      }
+    }
+  );
+
+  // Get look generation jobs with status polling
+  app.get(
+    "/api/photo-avatars/groups/:groupId/look-jobs",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        // Get all jobs for this group
+        const jobs = await storage.getLookGenerationJobsByGroup(groupId, userId);
+
+        // Check and update pending jobs
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const updatedJobs = await Promise.all(
+          jobs.map(async (job) => {
+            if (job.status === "pending") {
+              try {
+                const status = await photoAvatarService.getLookGenerationStatus(
+                  job.heygenGenerationId
+                );
+                console.log(`📋 Look generation status for ${job.lookLabel}:`, status);
+
+                if (status.status === "completed" || status.status === "done" || status.status === "success") {
+                  const updatedJob = await storage.updateLookGenerationJob(job.id, {
+                    status: "completed",
+                    resultAvatarId: status.avatar_id || status.avatarId,
+                    resultImageUrl: status.image_url || status.imageUrl || status.preview_url,
+                    completedAt: new Date(),
+                  });
+                  return updatedJob || job;
+                } else if (status.status === "failed" || status.status === "error") {
+                  const updatedJob = await storage.updateLookGenerationJob(job.id, {
+                    status: "failed",
+                    errorMessage: status.error || status.message || "Generation failed",
+                    completedAt: new Date(),
+                  });
+                  return updatedJob || job;
+                } else if (status.status === "processing" || status.status === "in_progress") {
+                  const updatedJob = await storage.updateLookGenerationJob(job.id, {
+                    status: "processing",
+                  });
+                  return updatedJob || job;
+                }
+              } catch (statusError) {
+                console.error(`Failed to check status for job ${job.id}:`, statusError);
+              }
+            }
+            return job;
+          })
+        );
+
+        res.json({ jobs: updatedJobs });
+      } catch (error) {
+        console.error("Failed to get look generation jobs:", error);
+        res.status(500).json({ error: "Failed to get look generation jobs" });
       }
     }
   );
