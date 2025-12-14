@@ -32,6 +32,7 @@ import {
   type InsertMarketData,
   type InsertMediaAsset,
   type InsertPhotoAvatar,
+  type InsertLookGenerationJob,
   type InsertPhotoAvatarGroup,
   type InsertPhotoAvatarGroupVoice,
   type InsertPostMedia,
@@ -43,6 +44,8 @@ import {
   type InsertVideoAvatar,
   type InsertVideoContent,
   type InsertVideoTemplate,
+  type LookGenerationJob,
+  lookGenerationJobs,
   type MarketData,
   type MediaAsset,
   type MobileUploadSession,
@@ -325,6 +328,12 @@ export interface IStorage {
   getGeneratedVideoById(id: string): Promise<GeneratedVideo | undefined>;
   createGeneratedVideo(video: InsertGeneratedVideo): Promise<GeneratedVideo>;
   updateGeneratedVideo(id: string, updates: Partial<GeneratedVideo>): Promise<GeneratedVideo | undefined>;
+
+  // Look Generation Jobs
+  createLookGenerationJob(job: InsertLookGenerationJob): Promise<LookGenerationJob>;
+  getLookGenerationJobsByGroup(groupId: string, userId: string): Promise<LookGenerationJob[]>;
+  updateLookGenerationJob(id: string, updates: Partial<LookGenerationJob>): Promise<LookGenerationJob | undefined>;
+  getPendingLookGenerationJobs(): Promise<LookGenerationJob[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -2115,6 +2124,44 @@ export class MemStorage implements IStorage {
       .where(eq(generatedVideosTable.id, id))
       .returning();
     return updated;
+  }
+
+  // Look Generation Jobs
+  async createLookGenerationJob(job: InsertLookGenerationJob): Promise<LookGenerationJob> {
+    const [newJob] = await db
+      .insert(lookGenerationJobs)
+      .values(job)
+      .returning();
+    return newJob;
+  }
+
+  async getLookGenerationJobsByGroup(groupId: string, userId: string): Promise<LookGenerationJob[]> {
+    return await db
+      .select()
+      .from(lookGenerationJobs)
+      .where(
+        and(
+          eq(lookGenerationJobs.groupId, groupId),
+          eq(lookGenerationJobs.userId, userId)
+        )
+      )
+      .orderBy(desc(lookGenerationJobs.createdAt));
+  }
+
+  async updateLookGenerationJob(id: string, updates: Partial<LookGenerationJob>): Promise<LookGenerationJob | undefined> {
+    const [updated] = await db
+      .update(lookGenerationJobs)
+      .set(updates)
+      .where(eq(lookGenerationJobs.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getPendingLookGenerationJobs(): Promise<LookGenerationJob[]> {
+    return await db
+      .select()
+      .from(lookGenerationJobs)
+      .where(eq(lookGenerationJobs.status, "pending"));
   }
 }
 
