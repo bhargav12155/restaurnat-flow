@@ -17,6 +17,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDemo } from "@/contexts/DemoContext";
@@ -47,6 +53,10 @@ import {
   Trash2,
   Download,
   Terminal,
+  MoreHorizontal,
+  Edit2,
+  Copy,
+  Heart,
 } from "lucide-react";
 
 const PROFESSIONAL_VOICES = [
@@ -708,6 +718,48 @@ export function AvatarStudio() {
       });
     },
   });
+
+  // Delete avatar group mutation
+  const deleteGroupMutation = useMutation({
+    mutationFn: async ({ groupId, groupName }: { groupId: string; groupName: string }) => {
+      const response = await apiRequest(
+        "DELETE",
+        `/api/photo-avatars/groups/${groupId}`,
+        {}
+      );
+      return { groupId, groupName };
+    },
+    onSuccess: ({ groupName }) => {
+      toast({
+        title: "Avatar Deleted",
+        description: `"${groupName}" has been removed.`,
+      });
+      
+      // Clear selection if deleted group was selected
+      if (selectedAvatarGroup) {
+        setSelectedAvatarGroup("");
+        setSelectedAvatarLook("");
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+    },
+    onError: (error: any, variables) => {
+      toast({
+        title: "Delete Failed",
+        description: error?.message || "Failed to delete avatar",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Copy avatar ID to clipboard
+  const copyAvatarId = (groupId: string) => {
+    navigator.clipboard.writeText(groupId);
+    toast({
+      title: "Copied!",
+      description: "Avatar ID copied to clipboard",
+    });
+  };
 
   // Create avatar with looks mutation (one-step workflow)
   const createWithLooksMutation = useMutation({
@@ -1656,11 +1708,79 @@ export function AvatarStudio() {
                       }`}
                       data-testid={`avatar-group-${group.group_id}`}
                     >
-                      {selectedAvatarGroup === group.group_id && (
-                        <div className="absolute top-2 right-2 w-6 h-6 bg-[#D4AF37] rounded-full flex items-center justify-center">
-                          <Check className="h-4 w-4 text-white" />
-                        </div>
-                      )}
+                      {/* Top action bar */}
+                      <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+                        {selectedAvatarGroup === group.group_id && (
+                          <div className="w-6 h-6 bg-[#D4AF37] rounded-full flex items-center justify-center">
+                            <Check className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 bg-white/80 dark:bg-gray-900/80 hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm"
+                              onClick={(e) => e.stopPropagation()}
+                              data-testid={`button-avatar-menu-${group.group_id}`}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedAvatarGroup(group.group_id);
+                                regenerateLooksMutation.mutate({
+                                  groupId: group.group_id,
+                                  groupName: group.name,
+                                  previewImage: group.preview_image
+                                });
+                              }}
+                              data-testid={`menu-edit-${group.group_id}`}
+                            >
+                              <Edit2 className="h-4 w-4 mr-2" />
+                              Edit (Generate Looks)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete "${group.name}"? This cannot be undone.`)) {
+                                  deleteGroupMutation.mutate({
+                                    groupId: group.group_id,
+                                    groupName: group.name
+                                  });
+                                }
+                              }}
+                              className="text-red-600 focus:text-red-600"
+                              data-testid={`menu-delete-${group.group_id}`}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyAvatarId(group.group_id);
+                              }}
+                              data-testid={`menu-copy-id-${group.group_id}`}
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy Avatar ID
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 bg-white/80 dark:bg-gray-900/80 hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm"
+                          onClick={(e) => e.stopPropagation()}
+                          data-testid={`button-favorite-${group.group_id}`}
+                        >
+                          <Heart className="h-4 w-4" />
+                        </Button>
+                      </div>
                       <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                         {group.preview_image ? (
                           <img 
