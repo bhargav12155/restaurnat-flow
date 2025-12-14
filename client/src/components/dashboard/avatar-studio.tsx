@@ -686,15 +686,16 @@ export function AvatarStudio() {
     onSuccess: ({ groupName, previewImage }) => {
       addActivityLog({
         step: 'looks_complete',
-        message: 'Look generation started!',
+        message: 'New looks generation started!',
         groupName: groupName,
-        details: 'New looks are being generated. Check back in a few minutes.',
+        details: 'This takes 3-5 minutes. Come back and check shortly!',
         previewImage: previewImage
       });
       
       toast({
-        title: "Generating Looks",
-        description: "Creating professional looks for your avatar. This may take a few minutes.",
+        title: "New Looks Generation Started!",
+        description: `Creating new professional looks for "${groupName}". This takes 3-5 minutes - come back and check shortly!`,
+        duration: 8000,
       });
       
       queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
@@ -1732,16 +1733,21 @@ export function AvatarStudio() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedAvatarGroup(group.group_id);
+                                toast({
+                                  title: "Starting Look Generation...",
+                                  description: "Please wait while we begin creating new looks.",
+                                });
                                 regenerateLooksMutation.mutate({
                                   groupId: group.group_id,
                                   groupName: group.name,
                                   previewImage: group.preview_image
                                 });
                               }}
+                              disabled={regenerateLooksMutation.isPending}
                               data-testid={`menu-edit-${group.group_id}`}
                             >
                               <Edit2 className="h-4 w-4 mr-2" />
-                              Edit (Generate Looks)
+                              Generate New Looks
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={(e) => {
