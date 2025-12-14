@@ -252,7 +252,7 @@ export function AvatarStudio() {
   const [activityLogs, setActivityLogs] = useState<Array<{
     id: string;
     timestamp: string;
-    step: 'upload' | 'group_created' | 'waiting' | 'training_started' | 'training_progress' | 'training_complete' | 'generating_looks' | 'looks_complete' | 'error';
+    step: 'upload' | 'group_created' | 'waiting' | 'training_started' | 'training_progress' | 'training_complete' | 'generating_looks' | 'looks_complete' | 'polling' | 'complete' | 'error';
     message: string;
     groupName?: string;
     details?: string;
@@ -271,11 +271,12 @@ export function AvatarStudio() {
   const [generateLooksOrientation, setGenerateLooksOrientation] = useState<"square" | "horizontal" | "vertical">("square");
   const [generateLooksPose, setGenerateLooksPose] = useState<"half_body" | "close_up" | "full_body">("half_body");
   const [generateLooksStyle, setGenerateLooksStyle] = useState<"Realistic" | "Pixar" | "Cinematic">("Realistic");
-  const [generateLooksStatus, setGenerateLooksStatus] = useState<"idle" | "creating" | "training" | "generating" | "complete" | "error">("idle");
+  const [generateLooksStatus, setGenerateLooksStatus] = useState<"idle" | "creating" | "training" | "generating" | "polling" | "complete" | "error">("idle");
   const [generateLooksResult, setGenerateLooksResult] = useState<{
     group_id?: string;
     avatar_name?: string;
-    looks?: Array<{ index: number; generation_id: string; prompt: string }>;
+    looks?: { count?: number; list?: Array<{ id?: string; image_url?: string; name?: string }> };
+    percent_complete?: number;
     message?: string;
     error?: string;
   } | null>(null);
