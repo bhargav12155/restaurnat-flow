@@ -7617,7 +7617,8 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         let baselineAvatarIds: string[] = [];
         try {
           const currentAvatars = await photoAvatarService.getAvatarGroupLooks(groupId);
-          const avatarList = currentAvatars?.avatars || currentAvatars || [];
+          // HeyGen returns { avatar_list: [...] } not { avatars: [...] }
+          const avatarList = currentAvatars?.avatar_list || currentAvatars?.avatars || [];
           baselineAvatarIds = avatarList.map((a: any) => a.avatar_id || a.id).filter(Boolean);
           console.log(`📋 Baseline avatar IDs before generation: ${baselineAvatarIds.length} avatars`);
         } catch (baselineError) {
@@ -7704,7 +7705,8 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         let currentAvatars: any[] = [];
         try {
           const avatarListResponse = await photoAvatarService.getAvatarGroupLooks(groupId);
-          currentAvatars = avatarListResponse?.avatars || avatarListResponse || [];
+          // HeyGen returns { avatar_list: [...] } not { avatars: [...] }
+          currentAvatars = avatarListResponse?.avatar_list || avatarListResponse?.avatars || [];
           console.log(`📋 Current avatars in group ${groupId}: ${currentAvatars.length}`);
         } catch (avatarListError) {
           console.error(`Failed to get avatar list for group ${groupId}:`, avatarListError);
