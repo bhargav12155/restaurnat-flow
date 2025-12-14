@@ -211,6 +211,7 @@ export const lookGenerationJobs = pgTable("look_generation_jobs", {
   resultAvatarId: text("result_avatar_id"), // HeyGen avatar ID when completed
   resultImageUrl: text("result_image_url"), // Image URL when completed
   errorMessage: text("error_message"),
+  baselineAvatarIds: text("baseline_avatar_ids"), // JSON array of avatar IDs that existed when job was created
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });
