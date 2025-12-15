@@ -138,9 +138,31 @@ export function PostComposer({ open, onOpenChange }: PostComposerProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/social/posts"] });
     },
     onError: (error: any) => {
+      // Parse the error message for platform-specific issues
+      let errorTitle = "Publishing Failed";
+      let errorDescription = error.message || "Failed to publish post";
+      
+      // Check for TikTok-specific errors
+      if (errorDescription.toLowerCase().includes("tiktok")) {
+        errorTitle = "TikTok Posting Failed";
+        if (errorDescription.includes("verified domain")) {
+          errorDescription = "TikTok requires domain verification for video posts. Please verify your domain in the TikTok Developer Portal first.";
+        } else if (errorDescription.includes("video")) {
+          errorDescription = "TikTok requires a video file to post. Please attach a video from your Media Library.";
+        } else if (errorDescription.includes("expired") || errorDescription.includes("authentication")) {
+          errorDescription = "Your TikTok connection has expired. Please reconnect your TikTok account in Settings.";
+        }
+      }
+      
+      // Check for multi-platform partial failure
+      if (errorDescription.includes("Posted to 0")) {
+        errorTitle = "No Posts Published";
+        errorDescription = "None of the selected platforms were able to publish. Please check your account connections and try again.";
+      }
+      
       toast({
-        title: "Publishing Failed",
-        description: error.message || "Failed to publish post",
+        title: errorTitle,
+        description: errorDescription,
         variant: "destructive",
       });
     },
@@ -155,6 +177,10 @@ export function PostComposer({ open, onOpenChange }: PostComposerProps) {
     setSelectedMedia({ type, id, url, thumbnailUrl });
     setActiveTab("preview");
   };
+
+  // Check if TikTok is selected without a video
+  const tiktokNeedsVideo = selectedPlatforms.includes("tiktok") && 
+    (!selectedMedia.type || selectedMedia.type !== "video" || !selectedMedia.url);
 
   const handlePublish = () => {
     if (!postText.trim()) {
@@ -182,6 +208,16 @@ export function PostComposer({ open, onOpenChange }: PostComposerProps) {
       toast({
         title: "Character Limit Exceeded",
         description: `Your post exceeds the character limit for: ${exceededPlatforms.join(", ")}. Please shorten your message.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // TikTok requires a video - show specific error
+    if (tiktokNeedsVideo) {
+      toast({
+        title: "TikTok Requires Video",
+        description: "TikTok doesn't support text-only posts. Please attach a video from your Media Library, or remove TikTok from selected platforms.",
         variant: "destructive",
       });
       return;
@@ -338,6 +374,17 @@ export function PostComposer({ open, onOpenChange }: PostComposerProps) {
                     );
                   })}
                 </div>
+
+                {/* TikTok Video Requirement Warning */}
+                {tiktokNeedsVideo && (
+                  <div className="mt-3 p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg text-sm text-orange-700 dark:text-orange-300 flex items-start gap-2" data-testid="warning-tiktok-video">
+                    <Video className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">TikTok requires a video</p>
+                      <p className="mt-1">TikTok doesn't support text-only posts. Go to the "Attach Media" tab and select a video from your library, or remove TikTok from your selected platforms.</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </TabsContent>
