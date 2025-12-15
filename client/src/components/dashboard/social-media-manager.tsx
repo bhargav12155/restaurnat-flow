@@ -236,6 +236,7 @@ export function SocialMediaManager() {
     "youtube",
     "x",
     "twitter",
+    "tiktok",
   ];
 
   // Handle OAuth connection
