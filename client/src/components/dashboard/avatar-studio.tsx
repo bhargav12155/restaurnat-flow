@@ -1932,36 +1932,6 @@ export function AvatarStudio() {
                     Select an Avatar Look <span className="text-gray-400 font-normal">(hover for preview, click to select)</span>
                   </Label>
                   
-                  {hoveredLookId && (
-                    <div className="mb-4 flex justify-center">
-                      <div className="relative w-64 h-80 rounded-xl overflow-hidden border-2 border-[#D4AF37] shadow-xl bg-gray-100 dark:bg-gray-800">
-                        {(() => {
-                          const hoveredLook = availableLooks.find(l => (l.avatar_id || l.id) === hoveredLookId);
-                          const hasMotion = hoveredLook?.is_motion && hoveredLook?.motion_preview_url;
-                          const imageUrl = hoveredLook?.image_url || hoveredLook?.image || "";
-                          return hasMotion ? (
-                            <video
-                              src={hoveredLook.motion_preview_url}
-                              className="w-full h-full object-cover"
-                              autoPlay
-                              loop
-                              muted
-                              playsInline
-                            />
-                          ) : (
-                            <img
-                              src={imageUrl}
-                              alt="Preview"
-                              className="w-full h-full object-cover"
-                            />
-                          );
-                        })()}
-                        <div className="absolute bottom-2 left-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded text-center">
-                          Click to select this look
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {availableLooks.map((look, index) => {
@@ -1994,11 +1964,11 @@ export function AvatarStudio() {
                           }}
                           onMouseEnter={() => setHoveredLookId(lookId)}
                           onMouseLeave={() => setHoveredLookId(null)}
-                          className={`relative rounded-lg overflow-hidden border-2 transition-all hover:scale-105 hover:shadow-lg cursor-pointer ${
+                          className={`relative rounded-lg overflow-hidden border-2 transition-all duration-200 cursor-pointer ${
                             selectedAvatarLook === lookId
                               ? "border-[#D4AF37] ring-2 ring-[#D4AF37]/30"
                               : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
-                          }`}
+                          } ${isHovered ? "scale-[2] z-50 shadow-2xl" : "hover:shadow-lg"}`}
                           data-testid={`avatar-look-${lookId}`}
                         >
                           {/* Selected indicator */}
