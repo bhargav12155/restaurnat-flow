@@ -2058,6 +2058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           text,
           mediaType,
           mediaId,
+          mediaIds,
         } = req.body;
         const photo = req.file;
 
@@ -2087,11 +2088,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
           platforms,
           mediaType,
           mediaId,
+          mediaIds,
           hasContent: !!postContent,
           contentLength: postContent?.length,
         });
 
-        // Fetch media URLs from database if media attachment is specified
+        // Handle mediaIds array (from social-media-manager.tsx)
+        // Auto-detect media type and fetch URLs
+        if (mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
+          for (const id of mediaIds) {
+            // Try to find as video first
+            const video = await storage.getVideoById(id);
+            if (video && video.videoUrl) {
+              mediaUrls.videoUrls.push(video.videoUrl);
+              console.log(`📹 Found video from mediaIds: ${video.videoUrl}`);
+              continue;
+            }
+            
+            // Try as avatar
+            const avatar = await storage.getAvatarById(id);
+            if (avatar) {
+              if (avatar.videoUrl) {
+                mediaUrls.videoUrls.push(avatar.videoUrl);
+                console.log(`🎭 Found avatar video from mediaIds: ${avatar.videoUrl}`);
+              } else if (avatar.photoUrl) {
+                mediaUrls.photoUrls.push(avatar.photoUrl);
+                console.log(`🎭 Found avatar photo from mediaIds: ${avatar.photoUrl}`);
+              }
+              continue;
+            }
+            
+            // Try as media asset
+            const asset = await storage.getMediaAssetById(id);
+            if (asset && asset.url) {
+              const isVideo = asset.mimeType?.startsWith("video/") || 
+                             asset.url.match(/\.(mp4|mov|avi|webm|mkv)$/i);
+              if (isVideo) {
+                mediaUrls.videoUrls.push(asset.url);
+                console.log(`📹 Found media asset video from mediaIds: ${asset.url}`);
+              } else {
+                mediaUrls.photoUrls.push(asset.url);
+                console.log(`🖼️ Found media asset photo from mediaIds: ${asset.url}`);
+              }
+            }
+          }
+        }
+
+        // Fetch media URLs from database if media attachment is specified (single mediaType/mediaId)
         if (mediaType && mediaId) {
           if (mediaType === "avatar") {
             const avatar = await storage.getAvatarById(mediaId);
