@@ -1845,15 +1845,6 @@ export function AvatarStudio() {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 bg-white/80 dark:bg-gray-900/80 hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm"
-                          onClick={(e) => e.stopPropagation()}
-                          data-testid={`button-favorite-${group.group_id}`}
-                        >
-                          <Heart className="h-4 w-4" />
-                        </Button>
                       </div>
                       <div className="aspect-square bg-gray-100 dark:bg-gray-800 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                         {group.preview_image ? (
