@@ -1225,6 +1225,282 @@ export class SocialMediaService {
       throw error; // Re-throw to preserve the specific error message
     }
   }
+
+  async getTikTokAccessToken(userId: string): Promise<{
+    accessToken: string;
+    refreshToken?: string;
+    openId?: string;
+  }> {
+    const { storage } = await import("../storage.js");
+    const accounts = await storage.getSocialMediaAccounts(userId);
+    const tiktokAccount = accounts.find(
+      (acc) => acc.platform.toLowerCase() === "tiktok",
+    );
+
+    if (!tiktokAccount || !tiktokAccount.accessToken) {
+      throw new Error(
+        "TikTok account not connected. Please connect your TikTok account first.",
+      );
+    }
+
+    if (!tiktokAccount.isConnected) {
+      throw new Error(
+        "TikTok account is disconnected. Please reconnect your account.",
+      );
+    }
+
+    return {
+      accessToken: tiktokAccount.accessToken,
+      refreshToken: tiktokAccount.refreshToken || undefined,
+      openId: tiktokAccount.accountUsername || undefined,
+    };
+  }
+
+  async queryTikTokCreatorInfo(accessToken: string): Promise<{
+    creatorUsername: string;
+    creatorNickname: string;
+    privacyLevelOptions: string[];
+    maxVideoDuration: number;
+  }> {
+    const response = await fetch(
+      "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error("TikTok creator info query failed:", errorData);
+      throw new Error("Failed to query TikTok creator info");
+    }
+
+    const result = await response.json();
+    if (result.error?.code !== "ok") {
+      throw new Error(result.error?.message || "TikTok API error");
+    }
+
+    return {
+      creatorUsername: result.data.creator_username,
+      creatorNickname: result.data.creator_nickname,
+      privacyLevelOptions: result.data.privacy_level_options || ["SELF_ONLY"],
+      maxVideoDuration: result.data.max_video_post_duration_sec || 300,
+    };
+  }
+
+  async postToTikTok(
+    userId: string,
+    title: string,
+    videoUrl: string,
+    options?: {
+      privacyLevel?: string;
+      disableComment?: boolean;
+      disableDuet?: boolean;
+      disableStitch?: boolean;
+    },
+  ): Promise<{ publishId: string; status?: string }> {
+    try {
+      const { accessToken } = await this.getTikTokAccessToken(userId);
+
+      console.log("🎵 Starting TikTok video post for user:", userId);
+
+      // Query creator info to get available privacy options
+      let privacyLevel = options?.privacyLevel || "SELF_ONLY";
+      try {
+        const creatorInfo = await this.queryTikTokCreatorInfo(accessToken);
+        console.log("🎵 TikTok creator info:", creatorInfo);
+        
+        // Use the requested privacy level if available, otherwise use first available
+        if (!creatorInfo.privacyLevelOptions.includes(privacyLevel)) {
+          privacyLevel = creatorInfo.privacyLevelOptions[0] || "SELF_ONLY";
+          console.log(`🎵 Privacy level adjusted to: ${privacyLevel}`);
+        }
+      } catch (error) {
+        console.warn("Could not query TikTok creator info, using SELF_ONLY:", error);
+        privacyLevel = "SELF_ONLY";
+      }
+
+      // Initialize video post using PULL_FROM_URL
+      const initResponse = await fetch(
+        "https://open.tiktokapis.com/v2/post/publish/video/init/",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
+          body: JSON.stringify({
+            post_info: {
+              title: title.substring(0, 2200), // TikTok title limit
+              privacy_level: privacyLevel,
+              disable_duet: options?.disableDuet ?? false,
+              disable_comment: options?.disableComment ?? false,
+              disable_stitch: options?.disableStitch ?? false,
+            },
+            source_info: {
+              source: "PULL_FROM_URL",
+              video_url: videoUrl,
+            },
+          }),
+        },
+      );
+
+      if (!initResponse.ok) {
+        const errorData = await initResponse.text();
+        console.error("TikTok video init failed:", errorData);
+        
+        if (initResponse.status === 401) {
+          throw new Error(
+            "TikTok authentication failed. Your token may have expired. Please reconnect your TikTok account.",
+          );
+        }
+        
+        throw new Error(`TikTok video init failed: ${errorData}`);
+      }
+
+      const initResult = await initResponse.json();
+      
+      if (initResult.error?.code !== "ok") {
+        throw new Error(initResult.error?.message || "TikTok video init failed");
+      }
+
+      const publishId = initResult.data.publish_id;
+      console.log("🎵 TikTok video init successful, publish_id:", publishId);
+
+      // Check post status
+      const statusResult = await this.checkTikTokPostStatus(accessToken, publishId);
+
+      return {
+        publishId,
+        status: statusResult.status,
+      };
+    } catch (error) {
+      console.error("TikTok posting error:", error);
+      throw error;
+    }
+  }
+
+  async checkTikTokPostStatus(
+    accessToken: string,
+    publishId: string,
+  ): Promise<{ status: string; failReason?: string }> {
+    const response = await fetch(
+      "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+        },
+        body: JSON.stringify({
+          publish_id: publishId,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error("TikTok status check failed:", errorData);
+      return { status: "UNKNOWN" };
+    }
+
+    const result = await response.json();
+    
+    if (result.error?.code !== "ok") {
+      console.error("TikTok status check error:", result.error);
+      return { status: "ERROR", failReason: result.error?.message };
+    }
+
+    return {
+      status: result.data?.status || "PROCESSING",
+      failReason: result.data?.fail_reason,
+    };
+  }
+
+  async postPhotoToTikTok(
+    userId: string,
+    title: string,
+    description: string,
+    photoUrls: string[],
+    options?: {
+      privacyLevel?: string;
+      disableComment?: boolean;
+      autoAddMusic?: boolean;
+    },
+  ): Promise<{ publishId: string; status?: string }> {
+    try {
+      const { accessToken } = await this.getTikTokAccessToken(userId);
+
+      console.log("🎵 Starting TikTok photo post for user:", userId);
+
+      // Query creator info for privacy options
+      let privacyLevel = options?.privacyLevel || "SELF_ONLY";
+      try {
+        const creatorInfo = await this.queryTikTokCreatorInfo(accessToken);
+        if (!creatorInfo.privacyLevelOptions.includes(privacyLevel)) {
+          privacyLevel = creatorInfo.privacyLevelOptions[0] || "SELF_ONLY";
+        }
+      } catch (error) {
+        console.warn("Could not query TikTok creator info:", error);
+        privacyLevel = "SELF_ONLY";
+      }
+
+      // Initialize photo post
+      const initResponse = await fetch(
+        "https://open.tiktokapis.com/v2/post/publish/content/init/",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json; charset=UTF-8",
+          },
+          body: JSON.stringify({
+            post_info: {
+              title: title.substring(0, 150),
+              description: description.substring(0, 2200),
+              disable_comment: options?.disableComment ?? false,
+              privacy_level: privacyLevel,
+              auto_add_music: options?.autoAddMusic ?? true,
+            },
+            source_info: {
+              source: "PULL_FROM_URL",
+              photo_cover_index: 0,
+              photo_images: photoUrls,
+            },
+            post_mode: "DIRECT_POST",
+            media_type: "PHOTO",
+          }),
+        },
+      );
+
+      if (!initResponse.ok) {
+        const errorData = await initResponse.text();
+        console.error("TikTok photo init failed:", errorData);
+        throw new Error(`TikTok photo init failed: ${errorData}`);
+      }
+
+      const initResult = await initResponse.json();
+      
+      if (initResult.error?.code !== "ok") {
+        throw new Error(initResult.error?.message || "TikTok photo init failed");
+      }
+
+      const publishId = initResult.data.publish_id;
+      console.log("🎵 TikTok photo init successful, publish_id:", publishId);
+
+      return {
+        publishId,
+        status: "PROCESSING",
+      };
+    } catch (error) {
+      console.error("TikTok photo posting error:", error);
+      throw error;
+    }
+  }
 }
 
 export const socialMediaService = new SocialMediaService();
