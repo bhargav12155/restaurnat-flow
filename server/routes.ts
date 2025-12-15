@@ -1084,40 +1084,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "User not authenticated" });
         }
 
-        // CRITICAL: Resolve the authenticated user to their MemStorage UUID
-        let userId = String(req.user.id);
+        // CRITICAL FIX: Use the stable database user ID directly
+        // Do NOT convert to MemStorage UUID - that causes persistence issues on page refresh
+        const userId = String(req.user.id);
         console.log(
-          `🔌 Disconnecting ${platform} for JWT user ${userId} (${req.user.email})`
+          `🔌 Disconnecting ${platform} for stable DB user ID: ${userId}`
         );
-
-        // Try to find user by ID first
-        let user = await storage.getUser(userId);
-
-        // If not found by ID, try by email (critical for DB-authenticated users)
-        if (!user && req.user.email) {
-          user = await storage.getUserByEmail(req.user.email);
-        }
-
-        // If not found by email, try by username as fallback
-        if (!user && req.user.username) {
-          user = await storage.getUserByUsername(req.user.username);
-        }
-
-        if (!user) {
-          return res.status(404).json({
-            error: "User not found",
-            message:
-              "Could not find user in storage. Please reconnect your account.",
-          });
-        }
-
-        // Use the MemStorage UUID for the disconnect operation
-        const resolvedUserId = user.id;
-        console.log(`   → Resolved to MemStorage UUID: ${resolvedUserId}`);
 
         // Disconnect the account (marks isConnected=false and clears tokens)
         const disconnectedAccount = await storage.disconnectSocialMediaAccount(
-          resolvedUserId,
+          userId,
           platform
         );
 
