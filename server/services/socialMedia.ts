@@ -1307,6 +1307,7 @@ export class SocialMediaService {
       const { accessToken } = await this.getTikTokAccessToken(userId);
 
       console.log("🎵 Starting TikTok video post for user:", userId);
+      console.log("🎵 Video URL:", videoUrl);
 
       // Query creator info to get available privacy options
       let privacyLevel = options?.privacyLevel || "SELF_ONLY";
@@ -1324,7 +1325,40 @@ export class SocialMediaService {
         privacyLevel = "SELF_ONLY";
       }
 
-      // Initialize video post using PULL_FROM_URL
+      // Download the video from URL to buffer (required for FILE_UPLOAD method)
+      // This is necessary because PULL_FROM_URL only works with videos on verified domains
+      console.log("🎵 Downloading video from URL for direct upload...");
+      
+      let videoBuffer: Buffer;
+      let videoSize: number;
+      
+      try {
+        const videoResponse = await fetch(videoUrl);
+        if (!videoResponse.ok) {
+          throw new Error(`Failed to download video: ${videoResponse.status} ${videoResponse.statusText}`);
+        }
+        
+        const arrayBuffer = await videoResponse.arrayBuffer();
+        videoBuffer = Buffer.from(arrayBuffer);
+        videoSize = videoBuffer.length;
+        
+        console.log(`🎵 Video downloaded successfully: ${(videoSize / (1024 * 1024)).toFixed(2)} MB`);
+      } catch (downloadError) {
+        console.error("Failed to download video for TikTok upload:", downloadError);
+        throw new Error(`Failed to download video for TikTok: ${downloadError instanceof Error ? downloadError.message : 'Unknown error'}`);
+      }
+
+      // TikTok has a minimum video size requirement (around 1KB) and max of 4GB
+      if (videoSize < 1024) {
+        throw new Error("Video file is too small for TikTok upload");
+      }
+      if (videoSize > 4 * 1024 * 1024 * 1024) {
+        throw new Error("Video file exceeds TikTok's 4GB limit");
+      }
+
+      // Initialize video post using FILE_UPLOAD method
+      console.log("🎵 Initializing TikTok FILE_UPLOAD...");
+      
       const initResponse = await fetch(
         "https://open.tiktokapis.com/v2/post/publish/video/init/",
         {
@@ -1342,8 +1376,10 @@ export class SocialMediaService {
               disable_stitch: options?.disableStitch ?? false,
             },
             source_info: {
-              source: "PULL_FROM_URL",
-              video_url: videoUrl,
+              source: "FILE_UPLOAD",
+              video_size: videoSize,
+              chunk_size: videoSize, // Upload as single chunk for simplicity
+              total_chunk_count: 1,
             },
           }),
         },
@@ -1365,14 +1401,38 @@ export class SocialMediaService {
       const initResult = await initResponse.json();
       
       if (initResult.error?.code !== "ok") {
+        console.error("TikTok init error response:", initResult);
         throw new Error(initResult.error?.message || "TikTok video init failed");
       }
 
       const publishId = initResult.data.publish_id;
+      const uploadUrl = initResult.data.upload_url;
+      
       console.log("🎵 TikTok video init successful, publish_id:", publishId);
+      console.log("🎵 Upload URL received, uploading video...");
+
+      // Upload the video binary to TikTok's upload URL
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Length": videoSize.toString(),
+          "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
+        },
+        body: videoBuffer,
+      });
+
+      if (!uploadResponse.ok) {
+        const uploadError = await uploadResponse.text();
+        console.error("TikTok video upload failed:", uploadError);
+        throw new Error(`TikTok video upload failed: ${uploadResponse.status} ${uploadError}`);
+      }
+
+      console.log("🎵 Video uploaded successfully to TikTok!");
 
       // Check post status
       const statusResult = await this.checkTikTokPostStatus(accessToken, publishId);
+      console.log("🎵 TikTok post status:", statusResult);
 
       return {
         publishId,
