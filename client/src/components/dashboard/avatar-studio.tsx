@@ -1641,7 +1641,7 @@ export function AvatarStudio() {
               data-testid="button-toggle-activity-log"
             >
               <Terminal className="w-4 h-4" />
-              {showActivityPanel ? 'Hide' : 'Show'} Log
+              {showActivityPanel ? 'Hide' : 'Show'} Curious
             </Button>
           </div>
         </CardHeader>
