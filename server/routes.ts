@@ -2204,6 +2204,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
 
+        // Debug: Log incoming request data
+        console.log(`📤 Social post request:`, {
+          platform,
+          platforms,
+          mediaType,
+          mediaId,
+          hasContent: !!postContent,
+          contentLength: postContent?.length,
+        });
+
         // Fetch media URLs from database if media attachment is specified
         if (mediaType && mediaId) {
           if (mediaType === "avatar") {
@@ -2237,6 +2247,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
+
+        // Debug: Log resolved media URLs
+        console.log(`📤 Resolved media URLs:`, {
+          photoUrls: mediaUrls.photoUrls,
+          videoUrls: mediaUrls.videoUrls,
+        });
 
         if (platform) {
           // Single platform posting (existing functionality)
@@ -2518,12 +2534,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               } else if (targetPlatform.toLowerCase() === "tiktok") {
                 const videoUrl = mediaUrls.videoUrls[0];
                 if (!videoUrl) {
+                  console.log(`❌ TikTok post skipped - no video URL found in mediaUrls:`, mediaUrls);
                   errors.push({
                     platform: targetPlatform,
-                    error: "TikTok requires a video URL from a verified domain",
+                    error: "TikTok requires a video. Please select a video from your media library.",
                   });
                   continue;
                 }
+                console.log(`🎵 TikTok posting with video URL: ${videoUrl}`);
                 const title = req.body.title || postContent.substring(0, 2200);
                 const tiktokResult = await socialMediaService.postToTikTok(
                   user.id,
