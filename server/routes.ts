@@ -1841,14 +1841,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const tokenData = await tokenResponse.json();
-          const accessToken = tokenData.access_token;
-          const refreshToken = tokenData.refresh_token;
-          const openId = tokenData.open_id;
+          
+          // TikTok API returns tokens nested inside a 'data' object
+          const data = tokenData.data || tokenData;
+          const accessToken = data.access_token;
+          const refreshToken = data.refresh_token;
+          const openId = data.open_id;
 
+          console.log("🎵 TikTok OAuth token exchange response:", JSON.stringify(tokenData, null, 2));
           console.log("🎵 TikTok OAuth token exchange successful", {
             hasAccessToken: !!accessToken,
             hasRefreshToken: !!refreshToken,
             hasOpenId: !!openId,
+            accessTokenLength: accessToken?.length || 0,
           });
 
           // Get user from database using userId from state parameter
