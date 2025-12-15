@@ -166,8 +166,6 @@ export function AvatarStudio() {
   const [showVideoDialog, setShowVideoDialog] = useState(false);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [showQuickUpload, setShowQuickUpload] = useState(false);
-  const [showLookPopup, setShowLookPopup] = useState(false);
-  const [popupLookIndex, setPopupLookIndex] = useState(0);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [hoveredLookId, setHoveredLookId] = useState<string | null>(null);
   
@@ -1171,7 +1169,7 @@ export function AvatarStudio() {
       return;
     }
 
-    const currentLook = availableLooks[popupLookIndex];
+    const currentLook = availableLooks.find(look => (look.avatar_id || look.id) === selectedAvatarLook) || availableLooks[0];
     const avatarId = currentLook?.id || currentLook?.avatar_id;
     
     if (!avatarId) {
@@ -1830,6 +1828,21 @@ export function AvatarStudio() {
                               <Copy className="h-4 w-4 mr-2" />
                               Copy Avatar ID
                             </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                retrainMutation.mutate({
+                                  groupId: group.group_id,
+                                  groupName: group.name,
+                                  previewImage: group.preview_image
+                                });
+                              }}
+                              disabled={retrainMutation.isPending || group.train_status === "processing"}
+                              data-testid={`menu-retrain-${group.group_id}`}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Retrain
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <Button
@@ -1872,31 +1885,6 @@ export function AvatarStudio() {
                             {group.num_looks} look{(group.num_looks || 0) > 1 ? "s" : ""}
                           </span>
                         )}
-                        {/* Retrain button */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs text-[#D4AF37] hover:bg-[#D4AF37]/10 ml-auto"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            retrainMutation.mutate({
-                              groupId: group.group_id,
-                              groupName: group.name,
-                              previewImage: group.preview_image
-                            });
-                          }}
-                          disabled={retrainMutation.isPending || group.train_status === "processing"}
-                          data-testid={`button-retrain-${group.group_id}`}
-                        >
-                          {retrainMutation.isPending ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <>
-                              <RefreshCw className="h-3 w-3 mr-1" />
-                              Retrain
-                            </>
-                          )}
-                        </Button>
                       </div>
                     </div>
                   ))}
@@ -1956,14 +1944,7 @@ export function AvatarStudio() {
                           role="button"
                           tabIndex={0}
                           onClick={() => {
-                            setPopupLookIndex(index);
                             setSelectedAvatarLook(lookId);
-                            setShowLookPopup(true);
-                          }}
-                          onDoubleClick={(e) => {
-                            e.preventDefault();
-                            setSelectedAvatarLook(lookId);
-                            setShowLookPopup(false);
                             toast({
                               title: "Avatar Selected",
                               description: "Now proceed to choose a voice for your video.",
@@ -1972,9 +1953,11 @@ export function AvatarStudio() {
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
-                              setPopupLookIndex(index);
                               setSelectedAvatarLook(lookId);
-                              setShowLookPopup(true);
+                              toast({
+                                title: "Avatar Selected",
+                                description: "Now proceed to choose a voice for your video.",
+                              });
                             }
                           }}
                           onMouseEnter={() => setHoveredLookId(lookId)}
@@ -2923,149 +2906,6 @@ export function AvatarStudio() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showLookPopup} onOpenChange={setShowLookPopup}>
-        <DialogContent 
-          className="max-w-lg p-0 gap-0 overflow-hidden bg-white dark:bg-gray-900 rounded-2xl"
-          data-testid="dialog-avatar-look-popup"
-        >
-          {availableLooks.length > 0 && availableLooks[popupLookIndex] && (
-            <>
-              <div className="flex items-center justify-between px-6 py-4 border-b">
-                <DialogTitle className="text-lg font-semibold">
-                  {selectedGroup?.name || "Avatar Look"} - Look {popupLookIndex + 1}
-                </DialogTitle>
-              </div>
-
-              <div className="relative flex items-center justify-center bg-gray-50 dark:bg-gray-800">
-                {availableLooks.length > 1 && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      const newIndex = popupLookIndex === 0 ? availableLooks.length - 1 : popupLookIndex - 1;
-                      setPopupLookIndex(newIndex);
-                      const prevLook = availableLooks[newIndex];
-                      setSelectedAvatarLook(prevLook?.avatar_id || prevLook?.id || "");
-                    }}
-                    className="absolute left-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
-                    data-testid="button-prev-look"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </Button>
-                )}
-
-                <div className="p-6">
-                  <div className="w-72 h-96 mx-auto rounded-xl overflow-hidden shadow-lg border-2 border-gray-100 dark:border-gray-700 relative">
-                    {/* Motion badge in popup */}
-                    {availableLooks[popupLookIndex]?.is_motion && availableLooks[popupLookIndex]?.motion_preview_url && (
-                      <div className="absolute top-2 left-2 bg-purple-600 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 z-10">
-                        <Play className="h-3 w-3" />
-                        Motion Avatar
-                      </div>
-                    )}
-                    
-                    {/* Show motion video if available, otherwise show image */}
-                    {availableLooks[popupLookIndex]?.is_motion && availableLooks[popupLookIndex]?.motion_preview_url ? (
-                      <video
-                        src={availableLooks[popupLookIndex].motion_preview_url}
-                        className="w-full h-full object-cover"
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        data-testid="video-popup-avatar"
-                      />
-                    ) : (
-                      <img
-                        src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
-                        alt={availableLooks[popupLookIndex]?.name || `Avatar Look ${popupLookIndex + 1}`}
-                        className="w-full h-full object-cover"
-                        data-testid="img-popup-avatar"
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {availableLooks.length > 1 && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      const newIndex = popupLookIndex === availableLooks.length - 1 ? 0 : popupLookIndex + 1;
-                      setPopupLookIndex(newIndex);
-                      const nextLook = availableLooks[newIndex];
-                      setSelectedAvatarLook(nextLook?.avatar_id || nextLook?.id || "");
-                    }}
-                    className="absolute right-4 z-10 h-10 w-10 rounded-full bg-white dark:bg-gray-800 shadow-lg border-gray-200"
-                    data-testid="button-next-look"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </Button>
-                )}
-              </div>
-
-              <div className="flex items-center justify-center gap-3 px-6 py-4 border-t bg-white dark:bg-gray-900">
-                <Button
-                  variant="outline"
-                  className="flex items-center gap-2 border-purple-300 hover:bg-purple-50 text-purple-700"
-                  onClick={() => {
-                    setShowMotionDialog(true);
-                    setMotionTab("templates");
-                    setSelectedMotionTemplate("talking_naturally");
-                    const defaultTemplate = MOTION_TEMPLATES.find(t => t.id === "talking_naturally");
-                    setMotionPrompt(defaultTemplate?.prompt || "");
-                    setMotionStatus("");
-                    setMotionVideoUrl(null);
-                    setMotionProgress(0);
-                    setMotionDialogStep("motion");
-                    setMotionVoiceScript("");
-                    setSelectedMotionVoice("119caed25533477ba63822d5d1552d25");
-                    setLipSyncStatus("");
-                    setLipSyncProgress(0);
-                    setFinalVideoUrl(null);
-                  }}
-                  data-testid="button-add-motion"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  Add Motion
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex items-center gap-2"
-                  onClick={() => {
-                    if (isDemo) {
-                      setShowEditLookResult(true);
-                    } else {
-                      toast({
-                        title: "Coming Soon",
-                        description: "Look editing will be available in a future update.",
-                      });
-                    }
-                  }}
-                  data-testid="button-edit-look"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Edit Look
-                </Button>
-                <Button
-                  className="btn-golden flex items-center gap-2 relative overflow-hidden"
-                  onClick={() => {
-                    setShowLookPopup(false);
-                    toast({
-                      title: "Avatar Selected",
-                      description: "Now proceed to choose a voice for your video.",
-                    });
-                  }}
-                  data-testid="button-select-avatar"
-                >
-                  <Video className="h-4 w-4" />
-                  Create with AI Studio
-                </Button>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Motion Generation Dialog - Multi-step: Motion → Voice → Final */}
       <Dialog open={showMotionDialog} onOpenChange={setShowMotionDialog}>
@@ -3121,7 +2961,7 @@ export function AvatarStudio() {
                 <div className="flex-shrink-0">
                   <div className="w-48 h-64 rounded-lg overflow-hidden border-2 border-cyan-400 shadow-lg bg-gradient-to-b from-cyan-50 to-white dark:from-cyan-950/30 dark:to-gray-900">
                     <img
-                      src={availableLooks[popupLookIndex]?.image_url || availableLooks[popupLookIndex]?.image || ""}
+                      src={(availableLooks.find(look => (look.avatar_id || look.id) === selectedAvatarLook) || availableLooks[0])?.image_url || (availableLooks.find(look => (look.avatar_id || look.id) === selectedAvatarLook) || availableLooks[0])?.image || ""}
                       alt="Selected Avatar"
                       className="w-full h-full object-cover"
                       data-testid="img-motion-preview"
