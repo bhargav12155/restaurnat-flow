@@ -499,6 +499,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // =====================================================
+  // TIKTOK DOMAIN VERIFICATION
+  // =====================================================
+  app.get("/tiktokHZDg3yBpAzeIOPIIdDfO5vOvb37704m6.txt", (req, res) => {
+    res.type("text/plain").send("tiktok-developers-site-verification=HZDg3yBpAzeIOPIIdDfO5vOvb37704m6");
+  });
+
+  // =====================================================
   // AUTHENTICATION ROUTES
   // =====================================================
   app.use("/api/auth", authRoutes);
