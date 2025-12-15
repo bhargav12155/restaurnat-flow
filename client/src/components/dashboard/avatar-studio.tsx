@@ -1880,11 +1880,6 @@ export function AvatarStudio() {
                         >
                           {group.train_status || group.status || "pending"}
                         </Badge>
-                        {(group.num_looks || 0) > 0 && (
-                          <span className="text-xs text-gray-500">
-                            {group.num_looks} look{(group.num_looks || 0) > 1 ? "s" : ""}
-                          </span>
-                        )}
                       </div>
                     </div>
                   ))}
