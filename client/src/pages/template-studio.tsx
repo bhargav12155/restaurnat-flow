@@ -32,8 +32,10 @@ import {
   Clock,
   Video,
   CheckCircle2,
-  Loader2
+  Loader2,
+  Wand2
 } from "lucide-react";
+import { useLocation } from "wouter";
 
 interface TemplateVariable {
   id: string;
@@ -460,6 +462,10 @@ function TemplateDetailModal({
 }
 
 function GeneratedVideoCard({ video }: { video: GeneratedVideo }) {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [showScript, setShowScript] = useState(false);
+  
   const statusColors: Record<string, string> = {
     draft: "bg-yellow-500/10 text-yellow-600 border-yellow-200",
     processing: "bg-blue-500/10 text-blue-600 border-blue-200",
@@ -467,32 +473,72 @@ function GeneratedVideoCard({ video }: { video: GeneratedVideo }) {
     failed: "bg-red-500/10 text-red-600 border-red-200",
   };
   
+  const handleCreateVideo = () => {
+    localStorage.setItem("templateScript", video.generatedScript);
+    localStorage.setItem("templateTitle", video.title);
+    toast({
+      title: "Script Ready",
+      description: "Opening Avatar Studio with your script...",
+    });
+    navigate("/video-studio");
+  };
+  
   return (
-    <Card className="hover:shadow-md transition-shadow" data-testid={`generated-video-${video.id}`}>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-base">{video.title}</CardTitle>
-          <Badge variant="outline" className={`capitalize text-xs ${statusColors[video.status] || ""}`}>
-            {video.status}
-          </Badge>
-        </div>
-        <CardDescription className="text-xs flex items-center gap-2">
-          <Clock className="h-3 w-3" />
-          {new Date(video.createdAt).toLocaleDateString()}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground line-clamp-2">
-          {video.generatedScript.substring(0, 100)}...
-        </p>
-      </CardContent>
-      <CardFooter className="pt-0">
-        <Button variant="ghost" size="sm" className="w-full">
-          <Video className="mr-2 h-4 w-4" />
-          View Script
-        </Button>
-      </CardFooter>
-    </Card>
+    <>
+      <Card className="hover:shadow-md transition-shadow" data-testid={`generated-video-${video.id}`}>
+        <CardHeader className="pb-2">
+          <div className="flex items-start justify-between">
+            <CardTitle className="text-base">{video.title}</CardTitle>
+            <Badge variant="outline" className={`capitalize text-xs ${statusColors[video.status] || ""}`}>
+              {video.status}
+            </Badge>
+          </div>
+          <CardDescription className="text-xs flex items-center gap-2">
+            <Clock className="h-3 w-3" />
+            {new Date(video.createdAt).toLocaleDateString()}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground line-clamp-2">
+            {video.generatedScript.substring(0, 100)}...
+          </p>
+        </CardContent>
+        <CardFooter className="pt-0 flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setShowScript(true)} data-testid={`button-view-script-${video.id}`}>
+            <Eye className="mr-2 h-4 w-4" />
+            View
+          </Button>
+          <Button 
+            size="sm" 
+            onClick={handleCreateVideo}
+            className="flex-1 bg-primary hover:bg-primary/90"
+            data-testid={`button-create-video-${video.id}`}
+          >
+            <Wand2 className="mr-2 h-4 w-4" />
+            Create Video
+          </Button>
+        </CardFooter>
+      </Card>
+      
+      <Dialog open={showScript} onOpenChange={setShowScript}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>{video.title}</DialogTitle>
+            <DialogDescription>Generated script from template</DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[400px] rounded-md border p-4">
+            <pre className="whitespace-pre-wrap text-sm">{video.generatedScript}</pre>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowScript(false)}>Close</Button>
+            <Button onClick={handleCreateVideo}>
+              <Wand2 className="mr-2 h-4 w-4" />
+              Create Video with Avatar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

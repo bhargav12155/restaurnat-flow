@@ -414,6 +414,30 @@ export function AvatarStudio() {
   const elevenLabsConfigured = elevenLabsData?.configured ?? false;
   const elevenLabsVoices = elevenLabsData?.voices ?? [];
 
+  // Load script from Template Studio if available
+  useEffect(() => {
+    const templateScript = localStorage.getItem("templateScript");
+    const templateTitle = localStorage.getItem("templateTitle");
+    
+    if (templateScript) {
+      setScript(templateScript);
+      localStorage.removeItem("templateScript");
+      
+      if (templateTitle) {
+        setVideoTitle(templateTitle);
+        localStorage.removeItem("templateTitle");
+      }
+      
+      // Auto-advance to step 3 if script is loaded
+      setCurrentStep(3);
+      
+      toast({
+        title: "Script Loaded",
+        description: "Your template script has been loaded. Select an avatar and voice to create your video.",
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (customVoices.length === 0) return;
 
