@@ -1084,6 +1084,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               state
             )}`
           : null,
+        tiktok: process.env.TIKTOK_CLIENT_KEY
+          ? `https://www.tiktok.com/v2/auth/authorize/?client_key=${
+              process.env.TIKTOK_CLIENT_KEY
+            }&response_type=code&scope=user.info.basic,video.publish,video.upload&redirect_uri=${encodeURIComponent(
+              baseUrl + "/api/social/callback/tiktok"
+            )}&state=${encodeURIComponent(state)}`
+          : null,
       };
 
       const authUrl = oauthUrls[platform];
@@ -1763,6 +1770,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
           `);
         } catch (fetchError) {
           console.error("Twitter OAuth error:", fetchError);
+          return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
+        }
+      } else if (platform.toLowerCase() === "tiktok") {
+        const clientKey = process.env.TIKTOK_CLIENT_KEY;
+        const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+        const redirectUri = `${baseUrl}/api/social/callback/tiktok`;
+
+        if (!clientKey || !clientSecret) {
+          return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
+        }
+
+        try {
+          // Exchange code for access token using TikTok OAuth
+          const tokenResponse = await fetch(
+            "https://open.tiktokapis.com/v2/oauth/token/",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                client_key: clientKey,
+                client_secret: clientSecret,
+                code: code as string,
+                grant_type: "authorization_code",
+                redirect_uri: redirectUri,
+              }),
+            }
+          );
+
+          if (!tokenResponse.ok) {
+            const errorData = await tokenResponse.text();
+            console.error("TikTok token exchange failed:", errorData);
+            return res.redirect(
+              `${baseUrl}/?oauth_error=token_exchange_failed`
+            );
+          }
+
+          const tokenData = await tokenResponse.json();
+          const accessToken = tokenData.access_token;
+          const refreshToken = tokenData.refresh_token;
+          const openId = tokenData.open_id;
+
+          console.log("🎵 TikTok OAuth token exchange successful", {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            hasOpenId: !!openId,
+          });
+
+          // Get user from database using userId from state parameter
+          const user = await storage.getUser(String(userId));
+          if (!user) {
+            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
+          }
+
+          console.log("🎵 TikTok OAuth callback for user:", {
+            userId: user.id,
+            email: user.email,
+          });
+
+          // Save access token to database
+          const existingAccounts = await storage.getSocialMediaAccounts(
+            user.id
+          );
+          const tiktokAccount = existingAccounts.find(
+            (acc) => acc.platform.toLowerCase() === "tiktok"
+          );
+
+          if (tiktokAccount) {
+            // Update existing account
+            await storage.updateSocialMediaAccount(tiktokAccount.id, {
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+              lastSync: new Date(),
+            });
+            console.log(
+              `🔄 Updated existing TikTok account ${tiktokAccount.id} for user ${user.id}`
+            );
+          } else {
+            // Create new account
+            await storage.createSocialMediaAccount({
+              userId: user.id,
+              platform: "tiktok",
+              accountId: openId || "tiktok_account",
+              accessToken,
+              refreshToken: refreshToken || undefined,
+              isConnected: true,
+            });
+            console.log(
+              `➕ Created new TikTok account for user ${user.id} with platform 'tiktok'`
+            );
+          }
+
+          console.log("✅ TikTok tokens stored", {
+            accessTokenLength: accessToken ? String(accessToken).length : 0,
+            refreshTokenLength: refreshToken ? String(refreshToken).length : 0,
+          });
+
+          // Success! Show confirmation and close window
+          res.send(`
+            <html>
+              <body>
+                <h1>✅ TikTok Connected Successfully!</h1>
+                <p>Your TikTok account has been connected. You can now post videos directly.</p>
+                <script>
+                  window.opener?.postMessage({ success: true, platform: 'tiktok' }, '*');
+                  setTimeout(() => window.close(), 2000);
+                </script>
+              </body>
+            </html>
+          `);
+        } catch (fetchError) {
+          console.error("TikTok OAuth error:", fetchError);
           return res.redirect(`${baseUrl}/?oauth_error=token_exchange_error`);
         }
       } else {
