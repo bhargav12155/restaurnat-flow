@@ -2298,6 +2298,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 photoUrl || mediaUrls.videoUrls[0] || undefined,
                 youtubeToken
               );
+            } else if (platform.toLowerCase() === "tiktok") {
+              // For TikTok, we need a video URL from a verified domain
+              const videoUrl = mediaUrls.videoUrls[0];
+              if (!videoUrl) {
+                return res.status(400).json({
+                  error: "TikTok requires a video URL from a verified domain to post",
+                });
+              }
+              const title = req.body.title || postContent.substring(0, 2200);
+              const tiktokResult = await socialMediaService.postToTikTok(
+                user.id,
+                title,
+                videoUrl,
+                {
+                  privacyLevel: req.body.privacyLevel || "SELF_ONLY",
+                  disableComment: req.body.disableComment,
+                  disableDuet: req.body.disableDuet,
+                  disableStitch: req.body.disableStitch,
+                }
+              );
+              postResult = { postId: tiktokResult.publishId };
             } else {
               throw new Error(`Unsupported platform: ${platform}`);
             }
@@ -2435,6 +2456,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   mediaUrls.videoUrls[0],
                   youtubeToken
                 );
+              } else if (targetPlatform.toLowerCase() === "tiktok") {
+                const videoUrl = mediaUrls.videoUrls[0];
+                if (!videoUrl) {
+                  errors.push({
+                    platform: targetPlatform,
+                    error: "TikTok requires a video URL from a verified domain",
+                  });
+                  continue;
+                }
+                const title = req.body.title || postContent.substring(0, 2200);
+                const tiktokResult = await socialMediaService.postToTikTok(
+                  user.id,
+                  title,
+                  videoUrl,
+                  {
+                    privacyLevel: req.body.privacyLevel || "SELF_ONLY",
+                  }
+                );
+                postResult = { postId: tiktokResult.publishId };
               } else {
                 errors.push({
                   platform: targetPlatform,
