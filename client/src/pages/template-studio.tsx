@@ -480,7 +480,7 @@ function GeneratedVideoCard({ video }: { video: GeneratedVideo }) {
       title: "Script Ready",
       description: "Opening Avatar Studio with your script...",
     });
-    navigate("/video-studio");
+    navigate("/videos");
   };
   
   return (
