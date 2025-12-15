@@ -373,12 +373,10 @@ export function VideoStudio() {
         localStorage.removeItem("templateTitle");
       }
       
-      // Move to step 2 (script step) so user sees the pre-filled script
-      setStep(2);
-      
+      // Stay on step 1 (avatar selection) - script is pre-filled for step 2
       toast({
         title: "Script Loaded",
-        description: "Your template script has been loaded. Select an avatar to create your video.",
+        description: "Your template script is ready. Select an avatar to continue.",
       });
     }
   }, [toast]);
