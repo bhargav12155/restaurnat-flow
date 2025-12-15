@@ -1929,8 +1929,40 @@ export function AvatarStudio() {
               {selectedAvatarGroup && availableLooks.length > 0 && (
                 <div className="mt-6">
                   <Label className="text-sm font-medium mb-3 block">
-                    Select an Avatar Look <span className="text-gray-400 font-normal">(click to preview, double-click to select)</span>
+                    Select an Avatar Look <span className="text-gray-400 font-normal">(hover for preview, click to select)</span>
                   </Label>
+                  
+                  {hoveredLookId && (
+                    <div className="mb-4 flex justify-center">
+                      <div className="relative w-64 h-80 rounded-xl overflow-hidden border-2 border-[#D4AF37] shadow-xl bg-gray-100 dark:bg-gray-800">
+                        {(() => {
+                          const hoveredLook = availableLooks.find(l => (l.avatar_id || l.id) === hoveredLookId);
+                          const hasMotion = hoveredLook?.is_motion && hoveredLook?.motion_preview_url;
+                          const imageUrl = hoveredLook?.image_url || hoveredLook?.image || "";
+                          return hasMotion ? (
+                            <video
+                              src={hoveredLook.motion_preview_url}
+                              className="w-full h-full object-cover"
+                              autoPlay
+                              loop
+                              muted
+                              playsInline
+                            />
+                          ) : (
+                            <img
+                              src={imageUrl}
+                              alt="Preview"
+                              className="w-full h-full object-cover"
+                            />
+                          );
+                        })()}
+                        <div className="absolute bottom-2 left-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded text-center">
+                          Click to select this look
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {availableLooks.map((look, index) => {
                       const lookId = look.avatar_id || look.id;
