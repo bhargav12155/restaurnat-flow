@@ -501,8 +501,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // =====================================================
   // TIKTOK DOMAIN VERIFICATION
   // =====================================================
+  // Sandbox verification
   app.get("/tiktokHZDg3yBpAzeIOPIIdDfO5vOvb37704m6.txt", (req, res) => {
     res.type("text/plain").send("tiktok-developers-site-verification=HZDg3yBpAzeIOPIIdDfO5vOvb37704m6");
+  });
+  
+  // Production verification
+  app.get("/tiktokf3X4X4cD804z5bwoEuSVOcG0BZjc4SpV.txt", (req, res) => {
+    res.type("text/plain").send("tiktok-developers-site-verification=f3X4X4cD804z5bwoEuSVOcG0BZjc4SpV");
   });
 
   // =====================================================
