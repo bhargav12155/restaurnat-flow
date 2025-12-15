@@ -359,6 +359,30 @@ export function VideoStudio() {
     }
   }, [voicesData, selectedVoice]);
 
+  // Load script from Template Studio if available
+  useEffect(() => {
+    const templateScript = localStorage.getItem("templateScript");
+    const templateTitle = localStorage.getItem("templateTitle");
+    
+    if (templateScript) {
+      setScript(templateScript);
+      localStorage.removeItem("templateScript");
+      
+      if (templateTitle) {
+        setTitle(templateTitle);
+        localStorage.removeItem("templateTitle");
+      }
+      
+      // Move to step 2 (script step) so user sees the pre-filled script
+      setStep(2);
+      
+      toast({
+        title: "Script Loaded",
+        description: "Your template script has been loaded. Select an avatar to create your video.",
+      });
+    }
+  }, [toast]);
+
   const handleGenerateScript = () => {
     if (!topic.trim()) {
       toast({
