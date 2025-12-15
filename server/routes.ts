@@ -8138,6 +8138,79 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
+  // Persist all avatar images to permanent storage
+  app.post("/api/photo-avatars/persist-all-images", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log(`🔄 Starting image persistence for user ${userId}`);
+      
+      // Get all avatar groups for this user
+      const groups = await storage.listPhotoAvatarGroups(userId);
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      
+      const results: { groupId: string; name: string; persisted: boolean; url?: string; error?: string }[] = [];
+      
+      for (const group of groups) {
+        const groupId = group.heygenGroupId;
+        
+        // Skip if already has persisted image
+        if (group.s3ImageUrl && !group.s3ImageUrl.includes('heygen')) {
+          results.push({ groupId, name: group.name, persisted: true, url: group.s3ImageUrl });
+          continue;
+        }
+        
+        try {
+          // Fetch looks from HeyGen to get image URL
+          const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
+          
+          if (looks?.avatar_list && looks.avatar_list.length > 0) {
+            const heygenImageUrl = looks.avatar_list[0].image_url;
+            
+            if (heygenImageUrl) {
+              const filename = `${groupId}-preview.jpg`;
+              const persistedUrl = await persistImageFromUrl(heygenImageUrl, filename);
+              
+              if (persistedUrl) {
+                // Save to database
+                await storage.updatePhotoAvatarGroup(group.id, {
+                  s3ImageUrl: persistedUrl,
+                });
+                results.push({ groupId, name: group.name, persisted: true, url: persistedUrl });
+                console.log(`✅ Persisted image for "${group.name}"`);
+              } else {
+                results.push({ groupId, name: group.name, persisted: false, error: "Failed to download image" });
+              }
+            } else {
+              results.push({ groupId, name: group.name, persisted: false, error: "No image URL from HeyGen" });
+            }
+          } else {
+            results.push({ groupId, name: group.name, persisted: false, error: "No looks available" });
+          }
+        } catch (err: any) {
+          results.push({ groupId, name: group.name, persisted: false, error: err?.message || "Unknown error" });
+          console.warn(`⚠️ Failed to persist image for group ${groupId}:`, err);
+        }
+      }
+      
+      const successCount = results.filter(r => r.persisted).length;
+      console.log(`✅ Persisted ${successCount}/${groups.length} avatar images`);
+      
+      res.json({ 
+        success: true, 
+        persisted: successCount, 
+        total: groups.length,
+        results 
+      });
+    } catch (error: any) {
+      console.error("Failed to persist images:", error);
+      res.status(500).json({ error: "Failed to persist images", details: error?.message });
+    }
+  });
+
   // Delete individual avatar
   app.delete("/api/photo-avatars/:avatarId", requireAuth, async (req, res) => {
     try {

@@ -830,6 +830,32 @@ export function AvatarStudio() {
     },
   });
 
+  // Persist all avatar images to permanent storage
+  const persistImagesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest(
+        "POST",
+        "/api/photo-avatars/persist-all-images",
+        {}
+      );
+      return response;
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Images Fixed!",
+        description: `${data.persisted}/${data.total} avatar images saved permanently.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Fix Images",
+        description: error?.message || "Could not persist images",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Copy avatar ID to clipboard
   const copyAvatarId = (groupId: string) => {
     navigator.clipboard.writeText(groupId);
@@ -1732,16 +1758,33 @@ export function AvatarStudio() {
             <div className="space-y-6" data-testid="step-1-content">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Select Your Avatar</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowQuickUpload(true)}
-                  className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10"
-                  data-testid="button-quick-upload"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Quick Upload
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => persistImagesMutation.mutate()}
+                    disabled={persistImagesMutation.isPending}
+                    className="border-gray-300 text-gray-600 hover:bg-gray-100"
+                    data-testid="button-fix-images"
+                  >
+                    {persistImagesMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Fix Images
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowQuickUpload(true)}
+                    className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10"
+                    data-testid="button-quick-upload"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Quick Upload
+                  </Button>
+                </div>
               </div>
 
               {groupsLoading ? (
