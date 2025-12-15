@@ -20,7 +20,7 @@ import { nanoid } from "nanoid";
 import path from "path";
 import { db } from "./db";
 import { requireAuth } from "./middleware/auth";
-import { ObjectNotFoundError, ObjectStorageService } from "./objectStorage";
+import { ObjectNotFoundError, ObjectStorageService, persistImageFromUrl } from "./objectStorage";
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
 import demoRoutes from "./routes/demo";
@@ -7392,8 +7392,25 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
               }
 
               // Use first avatar's image if no preview available
-              if (!previewImage) {
-                previewImage = heygenFirstLook.image_url;
+              if (!previewImage && heygenFirstLook.image_url) {
+                // Persist the HeyGen image to our own storage for production reliability
+                const filename = `${groupId}-preview.jpg`;
+                const persistedUrl = await persistImageFromUrl(heygenFirstLook.image_url, filename);
+                if (persistedUrl) {
+                  previewImage = persistedUrl;
+                  // Save to database for future use
+                  try {
+                    await storage.updatePhotoAvatarGroup(dbGroup.id, {
+                      s3ImageUrl: persistedUrl,
+                    });
+                    console.log(`✅ Saved persistent image URL for group ${groupId}`);
+                  } catch (saveErr) {
+                    console.warn(`⚠️ Failed to save image URL to DB:`, saveErr);
+                  }
+                } else {
+                  // Fallback to HeyGen URL (will expire)
+                  previewImage = heygenFirstLook.image_url;
+                }
               }
             }
           } catch (e) {
