@@ -954,68 +954,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      // CRITICAL FIX: Resolve the authenticated user to their UUID
-      let userId = String(req.user.id);
+      // CRITICAL FIX: Use the stable database user ID directly
+      // Do NOT convert to MemStorage UUID - that causes persistence issues on page refresh
+      const userId = String(req.user.id);
       console.log(
-        `🔍 Looking up user by DB ID: "${userId}" and email: "${req.user.email}"`
-      );
-
-      // Try to find user by ID first
-      let user = await storage.getUser(userId);
-      console.log(
-        `   → getUser(${userId}):`,
-        user ? `✅ Found ${user.username}` : "❌ Not found"
-      );
-
-      // If not found by ID, try by email (critical for DB-authenticated users)
-      if (!user && req.user.email) {
-        console.log(`   → Trying to find by email: "${req.user.email}"`);
-        user = await storage.getUserByEmail(req.user.email);
-        console.log(
-          `   → Email search:`,
-          user ? `✅ Found ${user.id}` : "❌ Not found"
-        );
-      }
-
-      // If not found by email, try by username as fallback
-      if (!user && req.user.username) {
-        console.log(`   → Trying getUserByUsername("${req.user.username}")`);
-        user = await storage.getUserByUsername(req.user.username);
-        console.log(
-          `   → getUserByUsername:`,
-          user ? `✅ Found ${user.id}` : "❌ Not found"
-        );
-      }
-
-      // If user still not found, create them ONCE in MemStorage
-      if (!user) {
-        console.log(
-          `   → User not in MemStorage, creating with auto-generated UUID...`
-        );
-        user = await storage.createUser({
-          username:
-            req.user.username ||
-            req.user.email?.split("@")[0] ||
-            `user_${userId}`,
-          email: req.user.email || undefined,
-          password: "", // Not needed for OAuth-only users
-          name: req.user.email || `User ${userId}`,
-          role: (req.user.type === "agent" ? "agent" : "public") as
-            | "agent"
-            | "public"
-            | "team_lead",
-        });
-        console.log(
-          `   ✅ Created user in MemStorage: ${user.id} (DB ID was: ${userId})`
-        );
-      } else {
-        console.log(`   ✅ Reusing existing MemStorage user: ${user.id}`);
-      }
-
-      // Use the MemStorage UUID for all social account operations
-      userId = user.id;
-      console.log(
-        `✅ OAuth connect for user: ${userId} (${user.email || user.username})`
+        `✅ OAuth connect using stable DB user ID: ${userId} (email: ${req.user.email})`
       );
 
       // Read credentials from Replit Secrets (environment variables)
@@ -1312,15 +1255,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const tokenData = await tokenResponse.json();
           const accessToken = tokenData.access_token;
 
-          // Get user from database using userId from state parameter
-          const user = await storage.getUser(String(userId));
-          if (!user) {
-            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
-          }
+          // CRITICAL FIX: Use stable database user ID directly from state
+          // Do NOT lookup MemStorage - the userId from state IS the stable database ID
+          const stableUserId = String(userId);
+          console.log(
+            `✅ LinkedIn token exchange successful for stable DB user ${stableUserId}`
+          );
 
-          // Save access token to database
+          // Save access token to database using stable database user ID
           const existingAccounts = await storage.getSocialMediaAccounts(
-            user.id
+            stableUserId
           );
           const linkedinAccount = existingAccounts.find(
             (acc) => acc.platform.toLowerCase() === "linkedin"
@@ -1328,20 +1272,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (linkedinAccount) {
             // Update existing account
+            console.log(
+              `🔄 Updating existing LinkedIn account: ${linkedinAccount.id}`
+            );
             await storage.updateSocialMediaAccount(linkedinAccount.id, {
               accessToken,
               isConnected: true,
               lastSync: new Date(),
             });
+            console.log(`✅ LinkedIn account updated successfully`);
           } else {
-            // Create new account
+            // Create new account with stable database user ID
+            console.log(`➕ Creating new LinkedIn account for stable DB user ${stableUserId}`);
             await storage.createSocialMediaAccount({
-              userId: user.id,
+              userId: stableUserId,
               platform: "linkedin",
               accountId: "linkedin_account",
               accessToken,
               isConnected: true,
             });
+            console.log(`✅ LinkedIn account created successfully`);
           }
 
           // Success! Show confirmation and close window
@@ -1421,21 +1371,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             throw new Error("Facebook token response missing access_token");
           }
 
-          const user = await storage.getUser(String(userId));
-          if (!user) {
-            return res.send(`
-              <html>
-                <body>
-                  <h1>User Not Found</h1>
-                  <p>We could not locate your session user. Please restart the connection flow.</p>
-                  <script>
-                    window.opener?.postMessage({ success: false, platform: 'facebook', error: 'user_not_found' }, '*');
-                    setTimeout(() => window.close(), 4000);
-                  </script>
-                </body>
-              </html>
-            `);
-          }
+          // CRITICAL FIX: Use stable database user ID directly from state
+          // Do NOT lookup MemStorage - the userId from state IS the stable database ID
+          const stableUserId = String(userId);
+          console.log(
+            `✅ Facebook token exchange successful for stable DB user ${stableUserId}`
+          );
 
           let profile: any = null;
           try {
@@ -1450,10 +1391,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const existingAccounts = await storage.getSocialMediaAccounts(
-            user.id
+            stableUserId
           );
           console.log(
-            `🔍 Facebook OAuth - Found ${existingAccounts.length} existing accounts for user ${user.id}`
+            `🔍 Facebook OAuth - Found ${existingAccounts.length} existing accounts for stable DB user ${stableUserId}`
           );
           console.log(
             `   → Platforms: ${existingAccounts
@@ -1486,9 +1427,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
             console.log(`✅ Facebook account updated successfully`);
           } else {
-            console.log(`➕ Creating new Facebook account for user ${user.id}`);
+            console.log(`➕ Creating new Facebook account for stable DB user ${stableUserId}`);
             const newAccount = await storage.createSocialMediaAccount({
-              userId: user.id,
+              userId: stableUserId,
               platform: "facebook",
               accountId: profile?.id || "facebook_account",
               accessToken,
@@ -1564,29 +1505,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const tokenData = await tokenResponse.json();
           const accessToken = tokenData.access_token;
           const refreshToken = tokenData.refresh_token; // YouTube provides refresh tokens
+
+          // CRITICAL FIX: Use stable database user ID directly from state
+          // Do NOT lookup MemStorage - the userId from state IS the stable database ID
+          const stableUserId = String(userId);
           console.log("🎥 YouTube OAuth token exchange successful", {
             hasAccessToken: !!accessToken,
             hasRefreshToken: !!refreshToken,
+            stableUserId,
           });
 
-          // Get user from database using userId from state parameter
-          const user = await storage.getUser(String(userId));
-          if (!user) {
-            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
-          }
-
-          console.log("🎥 YouTube OAuth callback for user:", {
-            userId: user.id,
-            email: user.email,
-            username: user.username,
-          });
-
-          // Save access token and refresh token to database
+          // Save access token and refresh token to database using stable database user ID
           const existingAccounts = await storage.getSocialMediaAccounts(
-            user.id
+            stableUserId
           );
           console.log(
-            "   Existing social accounts:",
+            `📊 Existing social accounts for stable DB user ${stableUserId}:`,
             existingAccounts.map((a) => ({
               id: a.id,
               platform: a.platform,
@@ -1600,28 +1534,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (youtubeAccount) {
             // Update existing account
+            console.log(
+              `🔄 Updating existing YouTube account: ${youtubeAccount.id}`
+            );
             await storage.updateSocialMediaAccount(youtubeAccount.id, {
               accessToken,
               refreshToken: refreshToken || undefined,
               isConnected: true,
               lastSync: new Date(),
             });
-            console.log(
-              `🔄 Updated existing YouTube account ${youtubeAccount.id} for user ${user.id}`
-            );
+            console.log(`✅ YouTube account updated successfully`);
           } else {
-            // Create new account
+            // Create new account with stable database user ID
+            console.log(`➕ Creating new YouTube account for stable DB user ${stableUserId}`);
             await storage.createSocialMediaAccount({
-              userId: user.id,
+              userId: stableUserId,
               platform: "youtube",
               accountId: "youtube_account",
               accessToken,
               refreshToken: refreshToken || undefined,
               isConnected: true,
             });
-            console.log(
-              `➕ Created new YouTube account for user ${user.id} with platform 'youtube'`
-            );
+            console.log(`✅ YouTube account created successfully`);
           }
 
           console.log("✅ YouTube tokens stored", {
@@ -1714,29 +1648,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const accessToken = tokenData.access_token;
           const refreshToken = tokenData.refresh_token;
 
+          // CRITICAL FIX: Use stable database user ID directly from state
+          // Do NOT lookup MemStorage - the userId from state IS the stable database ID
+          const stableUserId = String(userId);
           console.log(
-            `✅ Twitter token exchange successful for user ${userId}`
+            `✅ Twitter token exchange successful for stable DB user ${stableUserId}`
           );
           console.log(
             "   Access token (debug only, rotate after testing):",
             accessToken || "MISSING"
           );
 
-          // Get user from database using userId from state parameter
-          const user = await storage.getUser(String(userId));
-          if (!user) {
-            console.error(`❌ User not found: ${userId}`);
-            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
-          }
-
-          console.log(`✅ Found user: ${user.id} (${user.email})`);
-
-          // Save access token and refresh token to database
-          const existingAccounts = await storage.getSocialMediaAccounts(
-            user.id
-          );
+          // Save access token and refresh token to database using stable database user ID
+          const existingAccounts = await storage.getSocialMediaAccounts(stableUserId);
           console.log(
-            `📊 Existing social accounts for user ${user.id}:`,
+            `📊 Existing social accounts for stable DB user ${stableUserId}:`,
             existingAccounts.map((a) => a.platform)
           );
 
@@ -1759,10 +1685,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
             console.log(`✅ Twitter account updated successfully`);
           } else {
-            // Create new account
-            console.log(`➕ Creating new Twitter account for user ${user.id}`);
+            // Create new account with stable database user ID
+            console.log(`➕ Creating new Twitter account for stable DB user ${stableUserId}`);
             const newAccount = await storage.createSocialMediaAccount({
-              userId: user.id,
+              userId: stableUserId,
               platform: "x",
               accountId: "x_account",
               accessToken,
@@ -1863,21 +1789,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             accessTokenLength: accessToken?.length || 0,
           });
 
-          // Get user from database using userId from state parameter
-          const user = await storage.getUser(String(userId));
-          if (!user) {
-            return res.redirect(`${baseUrl}/?oauth_error=user_not_found`);
-          }
+          // CRITICAL FIX: Use stable database user ID directly from state
+          // Do NOT lookup MemStorage - the userId from state IS the stable database ID
+          const stableUserId = String(userId);
+          console.log("🎵 TikTok OAuth callback for stable DB user ID:", stableUserId);
 
-          console.log("🎵 TikTok OAuth callback for user:", {
-            userId: user.id,
-            email: user.email,
-          });
-
-          // Save access token to database
-          const existingAccounts = await storage.getSocialMediaAccounts(
-            user.id
-          );
+          // Save access token to database using stable database user ID
+          const existingAccounts = await storage.getSocialMediaAccounts(stableUserId);
           const tiktokAccount = existingAccounts.find(
             (acc) => acc.platform.toLowerCase() === "tiktok"
           );
@@ -1891,12 +1809,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               lastSync: new Date(),
             });
             console.log(
-              `🔄 Updated existing TikTok account ${tiktokAccount.id} for user ${user.id}`
+              `🔄 Updated existing TikTok account ${tiktokAccount.id} for stable DB user ${stableUserId}`
             );
           } else {
-            // Create new account
+            // Create new account with stable database user ID
             await storage.createSocialMediaAccount({
-              userId: user.id,
+              userId: stableUserId,
               platform: "tiktok",
               accountId: openId || "tiktok_account",
               accessToken,
@@ -1904,7 +1822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isConnected: true,
             });
             console.log(
-              `➕ Created new TikTok account for user ${user.id} with platform 'tiktok'`
+              `➕ Created new TikTok account for stable DB user ${stableUserId} with platform 'tiktok'`
             );
           }
 
@@ -1956,24 +1874,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      // Resolve DB user ID to MemStorage UUID (same logic as connect endpoint)
-      let userId = String(req.user.id);
-      let user = await storage.getUser(userId);
+      // CRITICAL FIX: Use the stable database user ID directly
+      // Do NOT convert to MemStorage UUID - that causes persistence issues on page refresh
+      const userId = String(req.user.id);
+      console.log(`[SOCIAL] Fetching social accounts for stable DB user ID: ${userId}`);
 
-      // If not found by ID, try by email
-      if (!user && req.user.email) {
-        user = await storage.getUserByEmail(req.user.email);
-      }
-
-      // If not found by email, try by username
-      if (!user && req.user.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
-
-      // Get social media accounts (empty if user not found)
-      const socialAccounts = user
-        ? await storage.getSocialMediaAccounts(user.id)
-        : [];
+      // Get social media accounts using stable database user ID
+      const socialAccounts = await storage.getSocialMediaAccounts(userId);
 
       // Create a map of platforms to their account data
       const accountMap = new Map(
@@ -2060,27 +1967,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const finalAccountId =
         accountId || providerId || `test_${platform}_${Date.now()}`;
 
-      // Resolve DB user ID to MemStorage UUID
-      let userId = String(req.user.id);
-      let user = await storage.getUser(userId);
+      // CRITICAL FIX: Use the stable database user ID directly
+      // Do NOT convert to MemStorage UUID - that causes persistence issues on page refresh
+      const userId = String(req.user.id);
+      console.log(`[SOCIAL] Creating/updating social account for stable DB user ID: ${userId}`);
 
-      if (!user && req.user.email) {
-        user = await storage.getUserByEmail(req.user.email);
-      }
-
-      if (!user && req.user.username) {
-        user = await storage.getUserByUsername(req.user.username);
-      }
-
-      if (!user) {
-        return res.status(404).json({
-          error: "User not found",
-          message: "Could not find user in storage",
-        });
-      }
-
-      // Check if account already exists
-      const existingAccounts = await storage.getSocialMediaAccounts(user.id);
+      // Check if account already exists using stable database user ID
+      const existingAccounts = await storage.getSocialMediaAccounts(userId);
       const existingAccount = existingAccounts.find(
         (acc) => acc.platform.toLowerCase() === platform.toLowerCase()
       );
@@ -2095,9 +1988,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastSync: isConnected ? new Date() : null,
         });
       } else {
-        // Create new account
+        // Create new account with stable database user ID
         account = await storage.createSocialMediaAccount({
-          userId: user.id,
+          userId: userId,
           platform: platform.toLowerCase(),
           accountId: finalAccountId, // Required field in database
           isConnected: isConnected ?? true,
@@ -2109,7 +2002,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(
         `✅ Social account ${
           existingAccount ? "updated" : "created"
-        } for ${platform}`
+        } for ${platform} (user: ${userId})`
       );
 
       res.json({
@@ -2183,26 +2076,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "User not authenticated" });
         }
 
-        // Resolve DB user ID to MemStorage UUID
-        let userId = String(sessionId);
-        let user = await storage.getUser(userId);
-
-        // If not found by ID, try by email (CRITICAL for DB-authenticated users)
-        if (!user && req.user?.email) {
-          user = await storage.getUserByEmail(req.user.email);
-        }
-
-        // If not found by email, try by username
-        if (!user && req.user?.username) {
-          user = await storage.getUserByUsername(req.user.username);
-        }
-
-        if (!user) {
-          return res.status(404).json({
-            error:
-              "User not found in storage. Please reconnect your social accounts.",
-          });
-        }
+        // CRITICAL FIX: Use the stable database user ID directly
+        // Do NOT convert to MemStorage UUID - that causes persistence issues on page refresh
+        const userId = String(sessionId);
+        console.log(`[SOCIAL POST] Using stable DB user ID: ${userId}`);
 
         // Debug: Log incoming request data
         console.log(`📤 Social post request:`, {
@@ -2269,10 +2146,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.status(400).json({ error: validationResult.message });
           }
 
-          // Get user's social accounts to check if platform is connected
-          const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+          // Get user's social accounts to check if platform is connected (using stable DB user ID)
+          const socialAccounts = await storage.getSocialMediaAccounts(userId);
           console.log(
-            `Found ${socialAccounts.length} social accounts for user ${user.id}`
+            `Found ${socialAccounts.length} social accounts for stable DB user ${userId}`
           );
           console.log(
             "Social accounts:",
@@ -2354,7 +2231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               );
             } else if (platform.toLowerCase() === "x") {
               postResult = await socialMediaService.postToTwitter(
-                user.id,
+                userId,
                 postContent,
                 mediaUrls.photoUrls[0],
                 mediaOptions
@@ -2383,7 +2260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
               const title = req.body.title || postContent.substring(0, 2200);
               const tiktokResult = await socialMediaService.postToTikTok(
-                user.id,
+                userId,
                 title,
                 videoUrl,
                 {
@@ -2406,9 +2283,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
 
-          // Create a record of the successful post
+          // Create a record of the successful post (using stable DB user ID)
           const scheduledPost = await storage.createScheduledPost({
-            userId: user.id,
+            userId: userId,
             platform: platform.toLowerCase(),
             content: postContent,
             scheduledFor: new Date(), // Posted immediately
@@ -2420,9 +2297,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             neighborhood: null,
           });
 
-          // Send real-time notification
+          // Send real-time notification (using stable DB user ID)
           realtimeService.notifySocialPostScheduled(
-            user.id,
+            userId,
             scheduledPost.id,
             platform,
             new Date().toISOString()
@@ -2461,7 +2338,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
 
-          const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+          // Get social accounts using stable DB user ID
+          const socialAccounts = await storage.getSocialMediaAccounts(userId);
           const results: any[] = [];
           const errors: any[] = [];
 
@@ -2515,7 +2393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 );
               } else if (targetPlatform.toLowerCase() === "x") {
                 postResult = await socialMediaService.postToTwitter(
-                  user.id,
+                  userId,
                   postContent,
                   mediaUrls.photoUrls[0],
                   mediaOptions
@@ -2544,7 +2422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`🎵 TikTok posting with video URL: ${videoUrl}`);
                 const title = req.body.title || postContent.substring(0, 2200);
                 const tiktokResult = await socialMediaService.postToTikTok(
-                  user.id,
+                  userId,
                   title,
                   videoUrl,
                   {
@@ -2560,9 +2438,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 continue;
               }
 
-              // Create record of successful post
+              // Create record of successful post (using stable DB user ID)
               await storage.createScheduledPost({
-                userId: user.id,
+                userId: userId,
                 platform: targetPlatform.toLowerCase(),
                 content: postContent,
                 scheduledFor: new Date(),
