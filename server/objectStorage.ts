@@ -327,3 +327,48 @@ async function signObjectURL({
   const { signed_url: signedURL } = await response.json();
   return signedURL;
 }
+
+export async function persistImageFromUrl(
+  imageUrl: string,
+  filename: string
+): Promise<string | null> {
+  try {
+    const objectStorage = new ObjectStorageService();
+    if (!objectStorage.isConfigured()) {
+      console.warn("Object storage not configured, cannot persist image");
+      return null;
+    }
+
+    console.log(`📥 Downloading image to persist: ${filename}`);
+    const response = await fetch(imageUrl);
+    if (!response.ok) {
+      console.error(`Failed to download image: ${response.status}`);
+      return null;
+    }
+
+    const imageBuffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+
+    const publicPaths = objectStorage.getPublicObjectSearchPaths();
+    const basePath = publicPaths[0];
+    const fullPath = `${basePath}/avatars/${filename}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    await file.save(imageBuffer, {
+      contentType,
+      resumable: false,
+      metadata: {
+        cacheControl: "public, max-age=31536000",
+      },
+    });
+
+    console.log(`✅ Image persisted to: ${fullPath}`);
+    return `/public-objects/avatars/${filename}`;
+  } catch (error) {
+    console.error("Failed to persist image:", error);
+    return null;
+  }
+}
