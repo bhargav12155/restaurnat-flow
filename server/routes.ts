@@ -2220,6 +2220,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             } else if (video && video.thumbnailUrl) {
               mediaUrls.photoUrls.push(video.thumbnailUrl);
             }
+          } else if (mediaType === "asset" || mediaType === "media") {
+            // Handle media library uploads
+            const asset = await storage.getMediaAssetById(mediaId);
+            if (asset && asset.url) {
+              // Check if it's a video based on mimeType or file extension
+              const isVideo = asset.mimeType?.startsWith("video/") || 
+                             asset.url.match(/\.(mp4|mov|avi|webm|mkv)$/i);
+              if (isVideo) {
+                mediaUrls.videoUrls.push(asset.url);
+                console.log(`📹 Using media asset as video: ${asset.url}`);
+              } else {
+                mediaUrls.photoUrls.push(asset.url);
+                console.log(`🖼️ Using media asset as photo: ${asset.url}`);
+              }
+            }
           }
         }
 
