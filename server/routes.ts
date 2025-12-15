@@ -8174,6 +8174,110 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
+  // Upload photos as looks to existing avatar group (preserves original face)
+  // This is the correct way to add looks - by uploading actual photos of the user
+  app.post(
+    "/api/photo-avatars/groups/:groupId/upload-looks",
+    requireAuth,
+    upload.array("photos", 4), // Max 4 photos per HeyGen API limit
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const userId = String(req.user?.id);
+        const { names } = req.body; // Optional: array of names for each look
+
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+
+        // Ownership check
+        const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+          groupId,
+          userId
+        );
+        if (!dbGroup) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+          return res.status(400).json({ error: "At least one photo is required" });
+        }
+
+        console.log(`📸 Uploading ${files.length} look photos for group ${groupId}`);
+
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const uploadResults: Array<{ imageKey: string; name: string; success: boolean }> = [];
+
+        // Parse names if provided as JSON string
+        let lookNames: string[] = [];
+        if (names) {
+          try {
+            lookNames = typeof names === 'string' ? JSON.parse(names) : names;
+          } catch {
+            lookNames = [];
+          }
+        }
+
+        // Upload each photo to HeyGen
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const lookName = lookNames[i] || `Look ${i + 1}`;
+          
+          try {
+            // Read file buffer
+            const fileBuffer = fs.readFileSync(file.path);
+            
+            // Upload to HeyGen
+            const imageKey = await photoAvatarService.uploadCustomPhoto(
+              fileBuffer,
+              file.mimetype || "image/jpeg"
+            );
+
+            // Add look to the group
+            await photoAvatarService.addLooks({
+              groupId,
+              imageKeys: [imageKey],
+              name: lookName,
+            });
+
+            uploadResults.push({
+              imageKey,
+              name: lookName,
+              success: true,
+            });
+
+            console.log(`✅ Uploaded and added look "${lookName}" with key: ${imageKey}`);
+          } catch (error) {
+            console.error(`Failed to upload look ${i + 1}:`, error);
+            uploadResults.push({
+              imageKey: "",
+              name: lookName,
+              success: false,
+            });
+          } finally {
+            // Clean up temp file
+            try {
+              fs.unlinkSync(file.path);
+            } catch {}
+          }
+        }
+
+        const successCount = uploadResults.filter(r => r.success).length;
+        console.log(`📸 Look upload complete: ${successCount}/${files.length} successful`);
+
+        res.json({
+          success: successCount > 0,
+          message: `Added ${successCount} of ${files.length} looks to avatar group`,
+          results: uploadResults,
+        });
+      } catch (error) {
+        console.error("Failed to upload looks:", error);
+        res.status(500).json({ error: "Failed to upload looks" });
+      }
+    }
+  );
+
   // Add sound effect to photo avatar
   app.post(
     "/api/photo-avatars/:avatarId/add-sound-effect",
