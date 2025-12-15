@@ -289,11 +289,12 @@ export class HeyGenPhotoAvatarService {
   }
 
   // Look configurations - 4 professional real estate agent styles
+  // Prompts focus on outfit and background only - HeyGen preserves the original person's face
   static readonly LOOK_CONFIGS = [
     {
       label: "professional-executive",
       name: "Executive",
-      prompt: "Professional executive attire, wearing a tailored navy blue suit with crisp white shirt, standing in modern corporate office with floor-to-ceiling windows and city skyline view, confident and authoritative expression, executive portrait lighting, clean and polished luxury real estate agent appearance",
+      prompt: "Same person wearing professional executive attire, tailored navy blue suit with crisp white shirt, standing in modern corporate office with floor-to-ceiling windows and city skyline view, confident expression, executive portrait lighting",
       orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
@@ -301,7 +302,7 @@ export class HeyGenPhotoAvatarService {
     {
       label: "professional-friendly",
       name: "Friendly Agent",
-      prompt: "Professional business casual, wearing a sharp charcoal blazer over light blue dress shirt no tie, warm and welcoming smile, standing in elegant home foyer with grand staircase, approachable real estate agent helping families find their dream home, soft natural lighting",
+      prompt: "Same person wearing professional business casual, charcoal blazer over light blue dress shirt, warm smile, standing in elegant home foyer with grand staircase, soft natural lighting",
       orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
@@ -309,7 +310,7 @@ export class HeyGenPhotoAvatarService {
     {
       label: "professional-outdoor",
       name: "Property Tour",
-      prompt: "Professional outdoor attire, wearing a smart tan sport coat with white shirt, standing in front of beautiful suburban home with manicured lawn, confident welcoming smile, golden hour natural sunlight, real estate agent showing property, professional but approachable",
+      prompt: "Same person wearing smart tan sport coat with white shirt, standing in front of beautiful suburban home with manicured lawn, welcoming smile, golden hour natural sunlight",
       orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
@@ -317,7 +318,7 @@ export class HeyGenPhotoAvatarService {
     {
       label: "professional-modern",
       name: "Modern Professional",
-      prompt: "Contemporary professional style, wearing a sleek black blazer with subtle pattern dress shirt, standing in modern open-concept kitchen with marble countertops, professional confident expression, bright airy interior lighting, luxury home specialist real estate agent",
+      prompt: "Same person wearing sleek black blazer with subtle pattern dress shirt, standing in modern open-concept kitchen with marble countertops, confident expression, bright airy interior lighting",
       orientation: "vertical" as const,
       pose: "half_body" as const,
       style: "Realistic",
