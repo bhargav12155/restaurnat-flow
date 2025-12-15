@@ -7506,7 +7506,29 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         const photoAvatarService = new HeyGenPhotoAvatarService();
         const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
 
-        res.json(looks);
+        // Also fetch completed look generation jobs from database
+        // HeyGen look generation creates images that are NOT added to the avatar group
+        // They're stored in the look_generation_jobs table with resultImageUrl
+        const completedJobs = await storage.getLookGenerationJobsByGroup(groupId, userId);
+        
+        // Transform completed jobs into look format and add to avatar_list
+        const jobLooks = completedJobs
+          .filter((job) => job.status === "completed" && job.resultImageUrl)
+          .map((job) => ({
+            id: job.id,
+            avatar_id: job.resultAvatarId || job.id,
+            image_url: job.resultImageUrl,
+            image: job.resultImageUrl,
+            status: "completed",
+            is_motion: false,
+            name: job.lookName || job.lookLabel,
+          }));
+
+        // Merge HeyGen looks with job-generated looks
+        const heygenLooks = looks?.avatar_list || [];
+        const allLooks = [...heygenLooks, ...jobLooks];
+
+        res.json({ avatar_list: allLooks });
       } catch (error) {
         console.error("Failed to get avatar looks:", error);
         res.status(500).json({ error: "Failed to get avatar looks" });
@@ -7716,7 +7738,11 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
                 // Check status from HeyGen response
                 const status = statusResponse?.status || statusResponse?.state;
                 const avatarId = statusResponse?.avatar_id || statusResponse?.id;
-                const imageUrl = statusResponse?.image_url || statusResponse?.preview_image_url || statusResponse?.url;
+                // HeyGen returns image_url_list (array) for look generation, take first image
+                const imageUrlList = statusResponse?.image_url_list;
+                const imageUrl = Array.isArray(imageUrlList) && imageUrlList.length > 0 
+                  ? imageUrlList[0] 
+                  : (statusResponse?.image_url || statusResponse?.preview_image_url || statusResponse?.url);
                 
                 if (status === "completed" || status === "success" || status === "done") {
                   const updatedJob = await storage.updateLookGenerationJob(job.id, {
@@ -7725,7 +7751,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
                     resultImageUrl: imageUrl || undefined,
                     completedAt: new Date(),
                   });
-                  console.log(`✅ Job ${job.id} (${job.lookLabel}) completed via HeyGen API`);
+                  console.log(`✅ Job ${job.id} (${job.lookLabel}) completed via HeyGen API, imageUrl: ${imageUrl}`);
                   return updatedJob || job;
                 } else if (status === "failed" || status === "error") {
                   const errorMsg = statusResponse?.error || statusResponse?.message || "Generation failed";
