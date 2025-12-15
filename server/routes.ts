@@ -1044,6 +1044,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         )}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
       }
 
+      // Generate PKCE parameters for TikTok (required by TikTok OAuth 2.0)
+      let tiktokUrl: string | null = null;
+      if (platform === "tiktok" && process.env.TIKTOK_CLIENT_KEY) {
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = generateCodeChallenge(codeVerifier);
+
+        // Store code verifier in database with state as key (expires in 10 minutes)
+        await storePKCE(state, codeVerifier, 10 * 60 * 1000);
+
+        tiktokUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${
+          process.env.TIKTOK_CLIENT_KEY
+        }&response_type=code&scope=user.info.basic,video.publish,video.upload&redirect_uri=${encodeURIComponent(
+          baseUrl + "/api/social/callback/tiktok"
+        )}&state=${encodeURIComponent(state)}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+      }
+
       const facebookClientId =
         process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
 
@@ -1084,13 +1100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               state
             )}`
           : null,
-        tiktok: process.env.TIKTOK_CLIENT_KEY
-          ? `https://www.tiktok.com/v2/auth/authorize/?client_key=${
-              process.env.TIKTOK_CLIENT_KEY
-            }&response_type=code&scope=user.info.basic,video.publish,video.upload&redirect_uri=${encodeURIComponent(
-              baseUrl + "/api/social/callback/tiktok"
-            )}&state=${encodeURIComponent(state)}`
-          : null,
+        tiktok: tiktokUrl,
       };
 
       const authUrl = oauthUrls[platform];
@@ -1781,8 +1791,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.redirect(`${baseUrl}/?oauth_error=missing_credentials`);
         }
 
+        // Retrieve PKCE code verifier from database
+        const pkceData = decodedStateString
+          ? await retrievePKCE(decodedStateString)
+          : null;
+        if (!pkceData) {
+          console.error(
+            "TikTok OAuth: PKCE code verifier not found for state:",
+            state
+          );
+          return res.redirect(
+            `${baseUrl}/?oauth_error=pkce_verifier_not_found`
+          );
+        }
+
+        if (pkceData.expiresAt.getTime() < Date.now()) {
+          console.error("TikTok OAuth: PKCE code verifier expired");
+          return res.redirect(`${baseUrl}/?oauth_error=pkce_verifier_expired`);
+        }
+
+        const codeVerifier = pkceData.codeVerifier;
+
         try {
-          // Exchange code for access token using TikTok OAuth
+          // Exchange code for access token using TikTok OAuth with PKCE
           const tokenResponse = await fetch(
             "https://open.tiktokapis.com/v2/oauth/token/",
             {
@@ -1796,6 +1827,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 code: code as string,
                 grant_type: "authorization_code",
                 redirect_uri: redirectUri,
+                code_verifier: codeVerifier,
               }),
             }
           );
