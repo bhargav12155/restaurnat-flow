@@ -8426,7 +8426,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Generate Avatar IV video
+  // Generate Avatar IV video (with background job support)
   app.post("/api/avatar-iv/generate", requireAuth, async (req, res) => {
     try {
       const userId = String(req.user?.id);
@@ -8445,6 +8445,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         enhanceCustomMotionPrompt,
         audioUrl,
         audioAssetId,
+        runInBackground, // New param: if true, creates a background job
       } = req.body;
 
       if (!imageKey) {
@@ -8457,6 +8458,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.log(`🎬 Avatar IV generate for user ${userId}`);
       console.log(`🎬 Image Key: ${imageKey}`);
       console.log(`🎬 Title: ${videoTitle}`);
+      console.log(`🎬 Background: ${runInBackground ? 'yes' : 'no'}`);
 
       const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
       const avatarIVService = new HeyGenAvatarIVService();
@@ -8496,13 +8498,87 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         });
       }
 
-      res.json({
-        success: true,
-        videoId: result.video_id,
-      });
+      // If background mode, create a job for the worker to track
+      if (runInBackground) {
+        const job = await storage.createVideoGenerationJob({
+          userId,
+          source: "avatar_iv",
+          heygenVideoId: result.video_id,
+          title: videoTitle,
+          status: "processing",
+          progress: 0,
+          metadata: {
+            avatarId: imageKey,
+            voiceId,
+            script,
+          },
+        });
+
+        console.log(`📋 Created background job ${job.id} for video ${result.video_id}`);
+
+        res.json({
+          success: true,
+          videoId: result.video_id,
+          jobId: job.id,
+          isBackground: true,
+          message: "Video generation started. You'll be notified when it's ready.",
+        });
+      } else {
+        res.json({
+          success: true,
+          videoId: result.video_id,
+        });
+      }
     } catch (error: any) {
       console.error("Avatar IV generate failed:", error);
       res.status(500).json({ error: "Failed to generate video", details: error?.message });
+    }
+  });
+
+  // =====================================================
+  // VIDEO GENERATION JOBS (Background Processing)
+  // =====================================================
+  
+  // Get user's video generation jobs
+  app.get("/api/video-jobs", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const jobs = await storage.getVideoGenerationJobsByUser(userId);
+      res.json({ jobs });
+    } catch (error: any) {
+      console.error("Failed to get video jobs:", error);
+      res.status(500).json({ error: "Failed to get video jobs" });
+    }
+  });
+
+  // Get a specific video job by ID
+  app.get("/api/video-jobs/:jobId", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { jobId } = req.params;
+      const job = await storage.getVideoGenerationJob(jobId);
+      
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      
+      // Verify the job belongs to this user
+      if (job.userId !== userId) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      res.json({ job });
+    } catch (error: any) {
+      console.error("Failed to get video job:", error);
+      res.status(500).json({ error: "Failed to get video job" });
     }
   });
 
