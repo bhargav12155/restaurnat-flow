@@ -1,0 +1,95 @@
+Jump to Content
+HeyGen API Documentation
+Log In
+v4.0.8
+Home
+Developer Guide
+Recipes
+API Reference
+Updates
+Discussions
+Tools
+Feature Requests
+Community
+Help
+Getting Started
+Quick Start
+Generate Videos
+Create Avatar Videos (V2)
+
+Create Avatar IV Videos
+Generate Video from Template
+
+HeyGen's Webhook Events
+
+Photo Avatars API
+
+Video Avatars API
+Generate Voice Audio Preview
+Translate Videos
+Video Translate API
+streaming with interactive avatars
+Streaming API Overview
+
+Streaming Avatar SDK
+
+Demo: Create a Vite Project with Streaming SDK
+
+Demo: Create an iOS App featuring Interactive Avatar
+Firewall Configuration
+Automate with HeyGen API
+Zapier Integration
+
+Integrations Workflow
+
+Bulk Video Translation
+API Workflow
+
+Other guides
+HeyGen OAuth
+
+HeyGen MCP Server
+Powered by 
+
+Generate Voice Audio Preview
+Preview how a voice sounds before generating full videos
+
+The Generate Voice Audio Preview API lets you synthesize a short audio clip using a selected voice and sample text, allowing you to test tone, pronunciation, and pacing before finalizing your voice selection for video generation.
+
+📘
+Note:
+
+This APIs is Enterprise-only and consumes API credits.
+
+1. Provide a Voice ID and Sample Text
+To generate an audio preview, you need to provide:
+
+A valid voice_id, which can be retrieved from the List All Voices (V2) endpoint.
+A short text sample (or SSML input) that you’d like to preview.
+The API will generate an audio clip and return a playback URL along with additional details such as the duration and word-level timestamps.
+
+2. Generating Preview
+Once you’ve selected your preferred voice from the list of available voices, you can use its voice_id to generate a preview. In the request body, provide:
+
+The voice_id of the chosen voice.
+The text you want to synthesize.
+Optionally, specify text_type as plain or ssml depending on your input format.
+
+The API responds with an audio_url for the generated preview and metadata such as preview duration, timestamps, and job status.
+
+For further information about request and response parameters, see detailed API reference: Generate Voice Audio Preview
+
+Conclusion
+The Generate Voice Audio Preview endpoint helps you fine-tune voice selection with quick, lightweight previews. It’s an essential step before video generation, ensuring your chosen voice delivers the desired style and tone across all your avatar videos.
+
+.
+
+Updated 13 days ago
+
+Video Avatars API
+Video Translate API
+Did this page help you?
+Table of Contents
+1. Provide a Voice ID and Sample Text
+2. Generating Preview
+Conclusion

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -24,15 +25,19 @@ import {
   ChevronRight,
   ChevronLeft,
   X,
+  Volume2,
 } from "lucide-react";
 
-const PROFESSIONAL_VOICES = [
-  { id: "119caed25533477ba63822d5d1552d25", name: "Neutral - Balanced" },
-  { id: "92c93dc0dff2428ab0bea258ba68f173", name: "Professional Male - Confident" },
-  { id: "f577da968446491289b53bceb77e5092", name: "Professional Male - Warm" },
-  { id: "73c0b6a2e29d4d38aca41454bf58c955", name: "Professional Female - Clear" },
-  { id: "1c7c897eeb2d4b5fb17d3c6c70250b24", name: "Professional Female - Friendly" },
-  { id: "9f2e8c4a7b5d4f6e8a1c3d5b7e9f2a4c", name: "Energetic - Enthusiastic" },
+interface Voice {
+  voice_id: string;
+  name: string;
+  language: string;
+  gender: string;
+  preview_audio?: string;
+}
+
+const FALLBACK_VOICES = [
+  { voice_id: "119caed25533477ba63822d5d1552d25", name: "Default Voice", language: "English", gender: "female" },
 ];
 
 const MOTION_PROMPTS = [
@@ -61,6 +66,7 @@ interface VideoStatus {
 export function AvatarIVStudio() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   const [currentStep, setCurrentStep] = useState(1);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
@@ -69,19 +75,48 @@ export function AvatarIVStudio() {
   
   const [videoTitle, setVideoTitle] = useState("");
   const [script, setScript] = useState("");
-  const [selectedVoice, setSelectedVoice] = useState(PROFESSIONAL_VOICES[0].id);
+  const [selectedVoice, setSelectedVoice] = useState("");
   const [selectedMotion, setSelectedMotion] = useState(MOTION_PROMPTS[0].id);
   const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
+  const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   
   const [generatingVideoId, setGeneratingVideoId] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Fetch available voices from HeyGen
+  const { data: voicesData, isLoading: voicesLoading } = useQuery<{ voices: Voice[] }>({
+    queryKey: ["/api/avatar-iv/voices"],
+  });
+
+  const voices = voicesData?.voices || FALLBACK_VOICES;
+  
+  // Set default voice when voices load
+  useEffect(() => {
+    if (voices.length > 0 && !selectedVoice) {
+      setSelectedVoice(voices[0].voice_id);
+    }
+  }, [voices, selectedVoice]);
 
   useEffect(() => {
     return () => {
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [pollInterval]);
+
+  const playVoicePreview = (previewUrl: string, voiceId: string) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    if (playingPreview === voiceId) {
+      setPlayingPreview(null);
+      return;
+    }
+    audioRef.current = new Audio(previewUrl);
+    audioRef.current.play();
+    setPlayingPreview(voiceId);
+    audioRef.current.onended = () => setPlayingPreview(null);
+  };
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -461,19 +496,54 @@ export function AvatarIVStudio() {
 
                 <div className="space-y-4">
                   <div>
-                    <Label>Voice</Label>
+                    <Label className="flex items-center gap-2">
+                      Voice
+                      {voicesLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                      <Badge variant="secondary" className="text-xs">
+                        {voices.length} available
+                      </Badge>
+                    </Label>
                     <Select value={selectedVoice} onValueChange={setSelectedVoice}>
                       <SelectTrigger className="mt-1" data-testid="select-voice">
                         <SelectValue placeholder="Select voice" />
                       </SelectTrigger>
                       <SelectContent>
-                        {PROFESSIONAL_VOICES.map((voice) => (
-                          <SelectItem key={voice.id} value={voice.id}>
-                            {voice.name}
-                          </SelectItem>
-                        ))}
+                        <ScrollArea className="h-[300px]">
+                          {voices.map((voice) => (
+                            <SelectItem key={voice.voice_id} value={voice.voice_id}>
+                              <div className="flex items-center justify-between w-full gap-2">
+                                <span>{voice.name}</span>
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="outline" className="text-xs">
+                                    {voice.language}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs">
+                                    {voice.gender}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </ScrollArea>
                       </SelectContent>
                     </Select>
+                    {selectedVoice && voices.find(v => v.voice_id === selectedVoice)?.preview_audio && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mt-1"
+                        onClick={() => {
+                          const voice = voices.find(v => v.voice_id === selectedVoice);
+                          if (voice?.preview_audio) {
+                            playVoicePreview(voice.preview_audio, voice.voice_id);
+                          }
+                        }}
+                        data-testid="button-preview-voice"
+                      >
+                        <Volume2 className="h-4 w-4 mr-1" />
+                        {playingPreview === selectedVoice ? "Playing..." : "Preview Voice"}
+                      </Button>
+                    )}
                   </div>
 
                   <div>

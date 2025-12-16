@@ -230,10 +230,12 @@ export class HeyGenAvatarIVService {
   }
 
   /**
-   * Get available voices
+   * Get available voices (v2 API)
    */
   async getVoices(): Promise<any[]> {
-    const response = await fetch(`${this.apiBaseUrl}/v1/voices`, {
+    console.log("🎤 Fetching voices from HeyGen v2 API...");
+    
+    const response = await fetch(`${this.apiBaseUrl}/v2/voices`, {
       method: "GET",
       headers: {
         "X-Api-Key": this.apiKey,
@@ -247,6 +249,7 @@ export class HeyGenAvatarIVService {
     }
 
     const result = await response.json();
+    console.log(`✅ Retrieved ${result.data?.voices?.length || 0} voices`);
     return result.data?.voices || [];
   }
 }
