@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Search, Home, MapPin, Bed, Bath, Square, DollarSign, Calendar, Eye } from "lucide-react";
+import { Search, Home, MapPin, Bed, Bath, Square, DollarSign, Calendar, Eye, Loader2, X, CheckCircle, AlertCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Property {
   id: string;
@@ -38,6 +39,7 @@ interface PropertySelectorProps {
 const GOOGLE_MAPS_API_KEY = "AIzaSyABw7DX0sg8fmhPt9H6JdlIGO-GikNgWhI";
 
 export function PropertySelector({ onSelectProperty, selectedProperty }: PropertySelectorProps) {
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useState({
     city: "",
     state: "NE",
@@ -54,6 +56,7 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
   const [retryCount, setRetryCount] = useState(0);
   const [searchMessage, setSearchMessage] = useState('');
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [autoFoundProperty, setAutoFoundProperty] = useState<Property | null>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
@@ -102,6 +105,11 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
 
   // Function to fetch property details from GBCMA API
   const fetchPropertyDetails = async (address: string) => {
+    if (!address || address.trim().length < 5) return;
+    
+    setIsSearchingAddress(true);
+    setAutoFoundProperty(null);
+    
     try {
       console.log('Fetching property details for address:', address);
       const response = await fetch('/api/property/details-by-address', {
@@ -117,23 +125,15 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
         console.log('GBCMA property details for address:', address, propertyData);
         
         // Auto-fill search parameters with GBCMA data
-        if (propertyData) {
+        if (propertyData && (propertyData.ListingKey || propertyData.UnparsedAddress)) {
           setSearchParams(prev => ({
             ...prev,
             mlsNumber: propertyData.ListAgentMlsId || propertyData.mlsNumber || prev.mlsNumber,
             listingAgent: propertyData.ListAgentFullName || propertyData.ListingAgent || propertyData.listingAgent || prev.listingAgent,
             city: propertyData.City || prev.city,
             neighborhood: propertyData.SubdivisionName || propertyData.Neighborhood || prev.neighborhood,
-            // Also update the address to the complete formatted address if available
             address: propertyData.UnparsedAddress || prev.address
           }));
-          console.log('Form auto-filled with:', {
-            mlsNumber: propertyData.ListAgentMlsId,
-            listingAgent: propertyData.ListAgentFullName,
-            city: propertyData.City,
-            neighborhood: propertyData.SubdivisionName,
-            address: propertyData.UnparsedAddress
-          });
           
           // Create a property object for auto-selection
           const foundProperty: Property = {
@@ -156,12 +156,34 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
             agentName: propertyData.ListAgentFullName || null
           };
           setAutoFoundProperty(foundProperty);
+          toast({
+            title: "Property Found",
+            description: `Found: ${foundProperty.address}`,
+          });
+        } else {
+          toast({
+            title: "No Match",
+            description: "No property found for that address. Try a different search.",
+            variant: "destructive",
+          });
         }
       } else {
         console.log('No property details found for address:', address);
+        toast({
+          title: "Search Failed",
+          description: "Could not find property. Check the address and try again.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('Error fetching property details:', error);
+      toast({
+        title: "Connection Error",
+        description: "Unable to search. Please check your connection.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearchingAddress(false);
     }
   };
 
@@ -252,10 +274,29 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
       console.log('Auto-selecting found property:', autoFoundProperty);
       onSelectProperty(autoFoundProperty);
       setShowDialog(false);
+      toast({
+        title: "Property Selected",
+        description: autoFoundProperty.address,
+      });
       return;
     }
     
     refetch();
+  };
+
+  // Clear all search fields
+  const clearForm = () => {
+    setSearchParams({
+      city: "",
+      state: "NE",
+      neighborhood: "",
+      propertyType: "",
+      mlsNumber: "",
+      address: "",
+      listingAgent: "",
+    });
+    setAutoFoundProperty(null);
+    setSearchMessage('');
   };
 
   // Helper functions for address handling
@@ -423,7 +464,19 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[80vh] bg-white dark:bg-gray-900 border-2 border-golden-accent/30 shadow-2xl overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Select Property from MLS</DialogTitle>
+              <div className="flex items-center justify-between">
+                <DialogTitle>Select Property from MLS</DialogTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearForm}
+                  className="text-muted-foreground hover:text-foreground"
+                  data-testid="button-clear-form"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              </div>
             </DialogHeader>
 
             {/* Search Filters */}
@@ -440,73 +493,88 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">Address</label>
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      Address
+                      {isSearchingAddress && (
+                        <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
+                      )}
+                    </label>
                     <div className="flex items-center gap-2 text-xs">
-                      {googleMapsStatus === 'loading' && (
+                      {isSearchingAddress ? (
                         <span className="text-blue-600 flex items-center gap-1">
-                          <div className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                          Loading...
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Searching...
+                        </span>
+                      ) : autoFoundProperty ? (
+                        <span className="text-green-600 flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          Found
+                        </span>
+                      ) : (
+                        <span className="text-gray-500 flex items-center gap-1">
+                          Type address to search
                         </span>
                       )}
-                      <span className="text-green-600 flex items-center gap-1">
-                        <div className="w-3 h-3 bg-green-600 rounded-full"></div>
-                        Auto-search Ready
-                      </span>
-                      {googleMapsStatus === 'error' && (
-                        <span className="text-red-600 flex items-center gap-1">
-                          <div className="w-3 h-3 bg-red-600 rounded-full"></div>
-                          Error
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setManualAddressMode(!manualAddressMode)}
-                        className="text-blue-600 hover:text-blue-700 underline"
-                      >
-                        {manualAddressMode ? 'Use Autocomplete' : 'Manual Entry'}
-                      </button>
                     </div>
                   </div>
-                  <input
-                    ref={addressInputRef}
-                    value={searchParams.address}
-                    onChange={(e) => {
-                      const newAddress = e.target.value;
-                      setSearchParams(prev => ({ ...prev, address: newAddress }));
-                      console.log('Address input changed:', newAddress);
-                      
-                      // Clear existing search timeout
-                      if (searchTimeoutRef.current) {
-                        clearTimeout(searchTimeoutRef.current);
-                      }
-                      
-                      // Only search after user stops typing for 2 seconds and has enough characters
-                      if (newAddress && newAddress.trim().length > 8) {
-                        searchTimeoutRef.current = setTimeout(() => {
-                          console.log('Auto-searching after typing stopped:', newAddress);
-                          fetchPropertyDetails(newAddress);
-                        }, 2000);
-                      }
-                    }}
-                    onFocus={() => console.log('Address input focused')}
-                    onBlur={() => {
-                      // When user finishes typing and clicks away, search for property details
-                      if (searchParams.address && searchParams.address.trim().length > 5) {
-                        console.log('Address input blur - searching for property details:', searchParams.address);
-                        fetchPropertyDetails(searchParams.address);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      // When user presses Enter, search for property details
-                      if (e.key === 'Enter' && searchParams.address && searchParams.address.trim().length > 5) {
-                        console.log('Enter pressed - searching for property details:', searchParams.address);
-                        fetchPropertyDetails(searchParams.address);
-                      }
-                    }}
-                    placeholder="Type address (e.g. 19863 cottonwood) - auto-search after 2 seconds or press Enter"
-                    data-testid="input-address"
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  />
+                  <div className="relative">
+                    <input
+                      ref={addressInputRef}
+                      value={searchParams.address}
+                      onChange={(e) => {
+                        const newAddress = e.target.value;
+                        setSearchParams(prev => ({ ...prev, address: newAddress }));
+                        setAutoFoundProperty(null);
+                        
+                        // Clear existing search timeout
+                        if (searchTimeoutRef.current) {
+                          clearTimeout(searchTimeoutRef.current);
+                        }
+                        
+                        // Only search after user stops typing for 1.5 seconds and has enough characters
+                        if (newAddress && newAddress.trim().length > 5) {
+                          searchTimeoutRef.current = setTimeout(() => {
+                            fetchPropertyDetails(newAddress);
+                          }, 1500);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // When user presses Enter, search immediately
+                        if (e.key === 'Enter' && searchParams.address && searchParams.address.trim().length > 5) {
+                          e.preventDefault();
+                          if (searchTimeoutRef.current) {
+                            clearTimeout(searchTimeoutRef.current);
+                          }
+                          fetchPropertyDetails(searchParams.address);
+                        }
+                      }}
+                      placeholder="Type address and press Enter (e.g. 19863 cottonwood)"
+                      data-testid="input-address"
+                      disabled={isSearchingAddress}
+                      className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        autoFoundProperty ? 'border-green-500 ring-1 ring-green-500/20' : 'border-input'
+                      }`}
+                    />
+                    {searchParams.address && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchParams(prev => ({ ...prev, address: '' }));
+                          setAutoFoundProperty(null);
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        data-testid="button-clear-address"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {autoFoundProperty && (
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" />
+                      Found: {autoFoundProperty.address} - Click "Select Property" below
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -544,11 +612,36 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
                 </div>
               </div>
 
-              <div className="flex justify-center">
-                <Button onClick={handleSearch} disabled={isLoading} data-testid="button-search-properties">
-                  <Search className="mr-2 h-4 w-4" />
-                  {isLoading ? "Searching..." : "Search Properties"}
-                </Button>
+              <div className="flex justify-center gap-3">
+                {autoFoundProperty ? (
+                  <Button 
+                    onClick={handleSearch} 
+                    disabled={isLoading || isSearchingAddress}
+                    className="bg-green-600 hover:bg-green-700"
+                    data-testid="button-select-found-property"
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Select This Property
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={handleSearch} 
+                    disabled={isLoading || isSearchingAddress} 
+                    data-testid="button-search-properties"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="mr-2 h-4 w-4" />
+                        Search Properties
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
 
