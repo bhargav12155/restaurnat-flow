@@ -133,7 +133,7 @@ export function AvatarIVStudio() {
         enhanceCustomMotionPrompt: true,
       });
 
-      return response;
+      return response.json();
     },
     onSuccess: (data: any) => {
       console.log("Generate response:", data);
