@@ -8280,6 +8280,162 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // ============================================
+  // Avatar IV Routes (Simplified Video Generation)
+  // ============================================
+
+  // Upload photo and get image_key for Avatar IV
+  app.post("/api/avatar-iv/upload", requireAuth, memoryUpload.single("image"), async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No image file provided" });
+      }
+
+      console.log(`📤 Avatar IV upload for user ${userId}`);
+      console.log(`📤 File: ${req.file.originalname}, ${req.file.size} bytes`);
+
+      const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
+      const avatarIVService = new HeyGenAvatarIVService();
+
+      const uploadResult = await avatarIVService.uploadPhoto(
+        req.file.buffer,
+        req.file.mimetype || "image/jpeg"
+      );
+
+      res.json({
+        success: true,
+        imageKey: uploadResult.image_key,
+        imageUrl: uploadResult.url,
+        assetId: uploadResult.id,
+      });
+    } catch (error: any) {
+      console.error("Avatar IV upload failed:", error);
+      res.status(500).json({ error: "Failed to upload image", details: error?.message });
+    }
+  });
+
+  // Generate Avatar IV video
+  app.post("/api/avatar-iv/generate", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const {
+        imageKey,
+        videoTitle,
+        script,
+        voiceId,
+        videoOrientation,
+        fit,
+        customMotionPrompt,
+        enhanceCustomMotionPrompt,
+        audioUrl,
+        audioAssetId,
+      } = req.body;
+
+      if (!imageKey) {
+        return res.status(400).json({ error: "imageKey is required" });
+      }
+      if (!videoTitle) {
+        return res.status(400).json({ error: "videoTitle is required" });
+      }
+
+      console.log(`🎬 Avatar IV generate for user ${userId}`);
+      console.log(`🎬 Image Key: ${imageKey}`);
+      console.log(`🎬 Title: ${videoTitle}`);
+
+      const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
+      const avatarIVService = new HeyGenAvatarIVService();
+
+      let result;
+
+      if (audioUrl || audioAssetId) {
+        // Generate with custom audio
+        result = await avatarIVService.generateVideoWithAudio({
+          imageKey,
+          videoTitle,
+          audioUrl,
+          audioAssetId,
+          videoOrientation: videoOrientation || "landscape",
+          fit: fit || "cover",
+          customMotionPrompt,
+          enhanceCustomMotionPrompt,
+        });
+      } else {
+        // Generate with script and voice
+        if (!script) {
+          return res.status(400).json({ error: "script is required when not using custom audio" });
+        }
+        if (!voiceId) {
+          return res.status(400).json({ error: "voiceId is required when not using custom audio" });
+        }
+
+        result = await avatarIVService.generateVideo({
+          imageKey,
+          videoTitle,
+          script,
+          voiceId,
+          videoOrientation: videoOrientation || "landscape",
+          fit: fit || "cover",
+          customMotionPrompt,
+          enhanceCustomMotionPrompt,
+        });
+      }
+
+      res.json({
+        success: true,
+        videoId: result.video_id,
+      });
+    } catch (error: any) {
+      console.error("Avatar IV generate failed:", error);
+      res.status(500).json({ error: "Failed to generate video", details: error?.message });
+    }
+  });
+
+  // Check Avatar IV video status
+  app.get("/api/avatar-iv/status/:videoId", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { videoId } = req.params;
+
+      console.log(`🔍 Avatar IV status check: ${videoId}`);
+
+      const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
+      const avatarIVService = new HeyGenAvatarIVService();
+
+      const status = await avatarIVService.getVideoStatus(videoId);
+      res.json(status);
+    } catch (error: any) {
+      console.error("Avatar IV status check failed:", error);
+      res.status(500).json({ error: "Failed to get video status", details: error?.message });
+    }
+  });
+
+  // Get available voices for Avatar IV
+  app.get("/api/avatar-iv/voices", requireAuth, async (req, res) => {
+    try {
+      const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
+      const avatarIVService = new HeyGenAvatarIVService();
+
+      const voices = await avatarIVService.getVoices();
+      res.json({ voices });
+    } catch (error: any) {
+      console.error("Failed to get voices:", error);
+      res.status(500).json({ error: "Failed to get voices", details: error?.message });
+    }
+  });
+
   // Edit/Generate new look with custom prompt
   app.post("/api/heygen/avatars/:groupId/generate-look", requireAuth, async (req, res) => {
     try {
