@@ -482,6 +482,27 @@ export class SocialMediaService {
   }
 
   /**
+   * Resolve a potentially relative URL to an absolute URL
+   */
+  private resolveMediaUrl(url: string): string {
+    if (!url) return url;
+    
+    // Already absolute
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    
+    // Relative URL - resolve using REPLIT_DEV_DOMAIN or fallback
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : process.env.BASE_URL || "http://localhost:5000";
+    
+    // Ensure url starts with /
+    const path = url.startsWith("/") ? url : `/${url}`;
+    return `${baseUrl}${path}`;
+  }
+
+  /**
    * Upload an image to LinkedIn and return the asset URN
    * LinkedIn requires a 3-step process:
    * 1. Register the upload to get an upload URL
@@ -493,7 +514,9 @@ export class SocialMediaService {
     accessToken: string,
     authorUrn: string,
   ): Promise<string> {
-    console.log("Uploading image to LinkedIn:", imageUrl);
+    // Resolve relative URLs to absolute
+    const resolvedUrl = this.resolveMediaUrl(imageUrl);
+    console.log("Uploading image to LinkedIn:", resolvedUrl, "(original:", imageUrl, ")");
 
     // Step 1: Register the upload
     const registerResponse = await fetch(
@@ -527,10 +550,11 @@ export class SocialMediaService {
     }
 
     const registerData = await registerResponse.json();
-    const uploadUrl =
-      registerData.value?.uploadMechanism?.[
-        "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
-      ]?.uploadUrl;
+    const uploadMechanism = registerData.value?.uploadMechanism?.[
+      "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+    ];
+    const uploadUrl = uploadMechanism?.uploadUrl;
+    const uploadHeaders = uploadMechanism?.headers || {};
     const asset = registerData.value?.asset;
 
     if (!uploadUrl || !asset) {
@@ -541,21 +565,25 @@ export class SocialMediaService {
     console.log("LinkedIn upload URL obtained, asset:", asset);
 
     // Step 2: Download the image from the source URL
-    const imageResponse = await fetch(imageUrl);
+    const imageResponse = await fetch(resolvedUrl);
     if (!imageResponse.ok) {
-      throw new Error(`Failed to fetch image from: ${imageUrl}`);
+      throw new Error(`Failed to fetch image from: ${resolvedUrl} (status: ${imageResponse.status})`);
     }
 
     const imageBuffer = await imageResponse.arrayBuffer();
     const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
 
     // Step 3: Upload the image binary to LinkedIn
+    // Use headers from LinkedIn's response, plus our required headers
+    const uploadResponseHeaders: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": contentType,
+      ...uploadHeaders,
+    };
+
     const uploadResponse = await fetch(uploadUrl, {
       method: "PUT",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": contentType,
-      },
+      headers: uploadResponseHeaders,
       body: imageBuffer,
     });
 
@@ -607,6 +635,7 @@ export class SocialMediaService {
 
       // Step 2: Upload images if present
       const mediaAssets: { status: string; media: string; description?: { text: string } }[] = [];
+      const uploadErrors: string[] = [];
       
       if (shareMediaCategory === "IMAGE" && options?.photoUrls?.length) {
         console.log(`Uploading ${options.photoUrls.length} images to LinkedIn...`);
@@ -622,15 +651,24 @@ export class SocialMediaService {
               },
             });
           } catch (uploadError) {
-            console.error("Failed to upload image to LinkedIn:", uploadError);
+            const errorMsg = uploadError instanceof Error ? uploadError.message : "Unknown error";
+            console.error("Failed to upload image to LinkedIn:", errorMsg);
+            uploadErrors.push(errorMsg);
             // Continue with other images if one fails
           }
         }
         
-        // If no images uploaded successfully, fall back to text-only
+        // If no images uploaded successfully, throw error instead of silent fallback
         if (mediaAssets.length === 0) {
-          console.warn("All image uploads failed, posting text-only");
-          shareMediaCategory = "NONE";
+          const errorSummary = uploadErrors.length > 0 
+            ? uploadErrors[0] 
+            : "All image uploads failed";
+          throw new Error(`LinkedIn image upload failed: ${errorSummary}. Post not created.`);
+        }
+        
+        // Log partial success
+        if (uploadErrors.length > 0 && mediaAssets.length > 0) {
+          console.warn(`${uploadErrors.length} of ${options.photoUrls.length} images failed to upload, proceeding with ${mediaAssets.length} images`);
         }
       }
 
