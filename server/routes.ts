@@ -8439,6 +8439,17 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const avatarIVService = new HeyGenAvatarIVService();
 
       const status = await avatarIVService.getVideoStatus(videoId);
+      
+      // If video is completed, save it to object storage
+      if (status.status === "completed" && status.video_url) {
+        const { persistVideoFromUrl } = await import("./objectStorage");
+        const filename = `user-${userId}-${videoId}.mp4`;
+        const savedPath = await persistVideoFromUrl(status.video_url, filename);
+        console.log(`💾 Video saved: ${savedPath || 'failed'}`);
+        // Add saved path to response
+        (status as any).saved_path = savedPath;
+      }
+      
       res.json(status);
     } catch (error: any) {
       console.error("Avatar IV status check failed:", error);
