@@ -328,6 +328,87 @@ async function signObjectURL({
   return signedURL;
 }
 
+export async function persistVideoFromUrl(
+  videoUrl: string,
+  filename: string
+): Promise<string | null> {
+  try {
+    const objectStorage = new ObjectStorageService();
+    if (!objectStorage.isConfigured()) {
+      console.warn("Object storage not configured, cannot persist video");
+      return null;
+    }
+
+    console.log(`📥 Downloading video to persist: ${filename}`);
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      console.error(`Failed to download video: ${response.status}`);
+      return null;
+    }
+
+    const videoBuffer = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get("content-type") || "video/mp4";
+
+    const privateDir = objectStorage.getPrivateObjectDir();
+    const fullPath = `${privateDir}/videos/${filename}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    await file.save(videoBuffer, {
+      contentType,
+      resumable: false,
+      metadata: {
+        cacheControl: "private, max-age=31536000",
+      },
+    });
+
+    console.log(`✅ Video persisted to: ${fullPath}`);
+    return `/objects/videos/${filename}`;
+  } catch (error) {
+    console.error("Failed to persist video:", error);
+    return null;
+  }
+}
+
+export async function persistImageBuffer(
+  imageBuffer: Buffer,
+  filename: string,
+  contentType: string = "image/jpeg"
+): Promise<string | null> {
+  try {
+    const objectStorage = new ObjectStorageService();
+    if (!objectStorage.isConfigured()) {
+      console.warn("Object storage not configured, cannot persist image");
+      return null;
+    }
+
+    console.log(`📥 Saving image buffer to storage: ${filename}`);
+    
+    const privateDir = objectStorage.getPrivateObjectDir();
+    const fullPath = `${privateDir}/photos/${filename}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    await file.save(imageBuffer, {
+      contentType,
+      resumable: false,
+      metadata: {
+        cacheControl: "private, max-age=31536000",
+      },
+    });
+
+    console.log(`✅ Image saved to: ${fullPath}`);
+    return `/objects/photos/${filename}`;
+  } catch (error) {
+    console.error("Failed to persist image buffer:", error);
+    return null;
+  }
+}
+
 export async function persistImageFromUrl(
   imageUrl: string,
   filename: string
