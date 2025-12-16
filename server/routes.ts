@@ -8322,11 +8322,20 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         req.file.mimetype || "image/jpeg"
       );
 
+      // Save photo to object storage as backup
+      const { persistImageBuffer } = await import("./objectStorage");
+      const timestamp = Date.now();
+      const ext = req.file.originalname.split('.').pop() || 'jpg';
+      const filename = `user-${userId}-${timestamp}.${ext}`;
+      const savedPath = await persistImageBuffer(req.file.buffer, filename, req.file.mimetype || "image/jpeg");
+      console.log(`💾 Photo backup saved: ${savedPath || 'failed'}`);
+
       res.json({
         success: true,
         imageKey: uploadResult.image_key,
         imageUrl: uploadResult.url,
         assetId: uploadResult.id,
+        savedPath,
       });
     } catch (error: any) {
       console.error("Avatar IV upload failed:", error);
