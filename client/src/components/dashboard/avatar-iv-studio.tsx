@@ -229,7 +229,7 @@ export function AvatarIVStudio() {
         description: "Your video is being created. This usually takes 1-3 minutes.",
       });
       setCurrentStep(3);
-      startPolling(videoId);
+      startPolling(videoId, videoTitle || "My Video", script);
     },
     onError: (error: any) => {
       toast({
@@ -240,7 +240,7 @@ export function AvatarIVStudio() {
     },
   });
 
-  const startPolling = (videoId: string) => {
+  const startPolling = (videoId: string, vidTitle?: string, vidScript?: string) => {
     if (!videoId) {
       console.error("Cannot start polling without a video ID");
       return;
@@ -251,7 +251,13 @@ export function AvatarIVStudio() {
     
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/avatar-iv/status/${videoId}`, {
+        // Pass title and script as query params for saving to library
+        const params = new URLSearchParams();
+        if (vidTitle) params.set("title", vidTitle);
+        if (vidScript) params.set("script", vidScript);
+        const queryString = params.toString();
+        
+        const response = await fetch(`/api/avatar-iv/status/${videoId}${queryString ? `?${queryString}` : ""}`, {
           credentials: "include",
         });
         
@@ -265,9 +271,12 @@ export function AvatarIVStudio() {
           setPollInterval(null);
           
           if (status.status === "completed") {
+            // Invalidate quick posts library so video appears there
+            queryClient.invalidateQueries({ queryKey: ["/api/quick-posts"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/generated-videos"] });
             toast({
               title: "Video Ready!",
-              description: "Your video has been generated successfully.",
+              description: "Your video has been generated and saved to your library.",
             });
           } else {
             toast({
