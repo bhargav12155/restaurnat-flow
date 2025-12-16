@@ -58,3 +58,37 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+// Download file utility - handles cross-origin URLs properly
+export async function downloadFile(url: string, filename?: string): Promise<void> {
+  try {
+    // Fetch the file as a blob
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Download failed');
+    
+    const blob = await response.blob();
+    
+    // Create a blob URL and trigger download
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    
+    // Extract filename from URL if not provided
+    if (!filename) {
+      const urlParts = url.split('/');
+      filename = urlParts[urlParts.length - 1].split('?')[0] || 'download';
+    }
+    
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up blob URL
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+  } catch (error) {
+    console.error('Download error:', error);
+    // Fallback: open in new tab
+    window.open(url, '_blank');
+  }
+}
