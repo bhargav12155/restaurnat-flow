@@ -183,6 +183,21 @@ const memoryVideoUpload = multer({
   },
 });
 
+// Configure multer with memory storage for image uploads (for Avatar IV)
+const memoryImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit for images
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed"));
+    }
+  },
+});
+
 function generateFallbackScript(
   topic: string,
   neighborhood: string,
@@ -8285,7 +8300,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   // ============================================
 
   // Upload photo and get image_key for Avatar IV
-  app.post("/api/avatar-iv/upload", requireAuth, memoryUpload.single("image"), async (req, res) => {
+  app.post("/api/avatar-iv/upload", requireAuth, memoryImageUpload.single("image"), async (req, res) => {
     try {
       const userId = String(req.user?.id);
       if (!userId) {
