@@ -9,8 +9,11 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient, downloadFile } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import { useLocation } from "wouter";
 import {
   Upload,
@@ -31,6 +34,8 @@ import {
   Square,
   Trash2,
   Share2,
+  Clock,
+  ExternalLink,
 } from "lucide-react";
 
 interface Voice {
@@ -80,8 +85,18 @@ interface VideoStatus {
   error?: string;
 }
 
+interface VideoJob {
+  id: number;
+  videoId: string;
+  title: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  createdAt: string;
+  videoUrl?: string;
+}
+
 export function AvatarIVStudio() {
   const { toast } = useToast();
+  const { user, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -99,6 +114,9 @@ export function AvatarIVStudio() {
   const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   
+  // Background generation mode
+  const [runInBackground, setRunInBackground] = useState(false);
+  
   // Audio recording state
   const [inputMode, setInputMode] = useState<"text" | "audio">("text");
   const [isRecording, setIsRecording] = useState(false);
@@ -111,6 +129,58 @@ export function AvatarIVStudio() {
   const [generatingVideoId, setGeneratingVideoId] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // WebSocket for background job notifications
+  const handleWebSocketMessage = (message: any) => {
+    if (message.type === "video_generation_complete") {
+      const { videoId, title, videoUrl } = message.data;
+      queryClient.invalidateQueries({ queryKey: ["/api/video-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/quick-posts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/generated-videos"] });
+      toast({
+        title: "🎉 Video Ready!",
+        description: `"${title || 'Your video'}" has finished generating.`,
+        action: (
+          <Button
+            size="sm"
+            onClick={() => setLocation(`/videos?id=${videoId}`)}
+            data-testid="toast-view-video"
+          >
+            <ExternalLink className="h-4 w-4 mr-1" />
+            View Video
+          </Button>
+        ),
+        duration: 10000,
+      });
+    } else if (message.type === "video_generation_failed") {
+      const { title, error } = message.data;
+      queryClient.invalidateQueries({ queryKey: ["/api/video-jobs"] });
+      toast({
+        title: "Video Generation Failed",
+        description: `"${title || 'Your video'}" failed: ${error || 'Unknown error'}`,
+        variant: "destructive",
+        duration: 8000,
+      });
+    }
+  };
+
+  const { isConnected } = useWebSocket({
+    userId: user?.id?.toString() || undefined,
+    onMessage: handleWebSocketMessage,
+    autoConnect: isAuthenticated && !!user?.id,
+    showToast: false,
+  });
+
+  // Fetch active video jobs
+  const { data: videoJobsData, isLoading: jobsLoading } = useQuery<{ jobs: VideoJob[] }>({
+    queryKey: ["/api/video-jobs"],
+    refetchInterval: 30000,
+    enabled: isAuthenticated,
+  });
+
+  const activeJobs = videoJobsData?.jobs?.filter(
+    (job) => job.status === "pending" || job.status === "processing"
+  ) || [];
 
   // Fetch photo library
   const { data: photosData, isLoading: photosLoading, refetch: refetchPhotos } = useQuery<{ photos: PhotoAsset[] }>({
@@ -333,6 +403,7 @@ export function AvatarIVStudio() {
         fit: "cover",
         customMotionPrompt: motionPrompt,
         enhanceCustomMotionPrompt: true,
+        runInBackground,
       };
 
       if (inputMode === "audio" && uploadedAudioUrl) {
@@ -356,14 +427,32 @@ export function AvatarIVStudio() {
         });
         return;
       }
-      setGeneratingVideoId(videoId);
-      setVideoStatus({ video_id: videoId, status: "pending" });
-      toast({
-        title: "Video Generation Started!",
-        description: "Your video is being created. This usually takes 1-3 minutes.",
-      });
-      setCurrentStep(3);
-      startPolling(videoId, videoTitle || "My Video", inputMode === "audio" ? "(Audio recording)" : script);
+      
+      // Handle background mode differently
+      if (runInBackground) {
+        queryClient.invalidateQueries({ queryKey: ["/api/video-jobs"] });
+        toast({
+          title: "Video Generation Started!",
+          description: "You'll receive a notification when it's ready. Feel free to continue working.",
+          duration: 5000,
+        });
+        // Reset form but stay on step 2 for quick new generations
+        setVideoTitle("");
+        setScript("");
+        setAudioBlob(null);
+        setAudioUrl(null);
+        setUploadedAudioUrl(null);
+      } else {
+        // Foreground mode - show polling UI
+        setGeneratingVideoId(videoId);
+        setVideoStatus({ video_id: videoId, status: "pending" });
+        toast({
+          title: "Video Generation Started!",
+          description: "Your video is being created. This usually takes 1-3 minutes.",
+        });
+        setCurrentStep(3);
+        startPolling(videoId, videoTitle || "My Video", inputMode === "audio" ? "(Audio recording)" : script);
+      }
     },
     onError: (error: any) => {
       toast({
@@ -481,6 +570,48 @@ export function AvatarIVStudio() {
 
   return (
     <div className="space-y-6">
+      {/* Active Background Jobs Section */}
+      {activeJobs.length > 0 && (
+        <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Clock className="h-4 w-4 text-blue-600 animate-pulse" />
+              <span>Background Jobs</span>
+              <Badge variant="secondary" className="ml-auto">
+                {activeJobs.length} generating
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-2">
+              {activeJobs.map((job) => (
+                <div
+                  key={job.id}
+                  className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border"
+                  data-testid={`job-item-${job.id}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{job.title}</p>
+                      <p className="text-xs text-gray-500 capitalize">{job.status}</p>
+                    </div>
+                  </div>
+                  <Badge variant={job.status === "processing" ? "default" : "secondary"}>
+                    {job.status === "processing" ? "Processing..." : "Queued"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-3 text-center">
+              You'll receive a notification when each video is ready
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -957,6 +1088,25 @@ export function AvatarIVStudio() {
                 </div>
               </div>
 
+              {/* Background Generation Toggle */}
+              <div className="flex items-center justify-center gap-3 py-4 px-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                <Switch
+                  id="background-mode"
+                  checked={runInBackground}
+                  onCheckedChange={setRunInBackground}
+                  data-testid="switch-background-mode"
+                />
+                <Label htmlFor="background-mode" className="flex items-center gap-2 cursor-pointer">
+                  <Clock className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium">Generate in Background</span>
+                </Label>
+                {runInBackground && (
+                  <Badge variant="secondary" className="text-xs">
+                    You can navigate away
+                  </Badge>
+                )}
+              </div>
+
               <div className="flex justify-between pt-4">
                 <Button
                   variant="outline"
@@ -980,6 +1130,11 @@ export function AvatarIVStudio() {
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Starting...
+                    </>
+                  ) : runInBackground ? (
+                    <>
+                      <Clock className="h-4 w-4 mr-2" />
+                      Start Background Generation
                     </>
                   ) : (
                     <>

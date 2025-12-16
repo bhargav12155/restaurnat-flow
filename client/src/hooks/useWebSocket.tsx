@@ -12,7 +12,9 @@ interface WebSocketMessage {
     | "avatar_group_created"
     | "motion_added"
     | "sound_effect_added"
-    | "avatar_ready";
+    | "avatar_ready"
+    | "video_generation_complete"
+    | "video_generation_failed";
   data: any;
   timestamp: string;
   userId?: number;
