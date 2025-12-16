@@ -30,6 +30,8 @@ The backend uses Express.js with TypeScript (ESM) and Replit's OpenID Connect fo
 - **Hover-to-Play Motion Preview**: Displays a "Motion" badge and auto-plays motion videos on hover for motion-enabled avatars in the avatar grid.
 - **Save Motion Button**: Allows downloading motion videos before voice generation to prevent work loss.
 - **Multi-Mode Voice Input System for Motion Avatars**: Provides TTS (ElevenLabs/Kling), browser recording, and audio file upload options for adding voice to motion avatars, bypassing Kling TTS issues and offering flexibility.
+- **Background Video Generation**: Allows users to start video generation and navigate away. A background worker polls HeyGen for status updates, and WebSocket notifications alert users when videos are complete. Users can toggle between foreground (wait for video) and background (continue working) modes.
+- **LinkedIn Image Upload**: Full LinkedIn media support with 3-step image upload process (register → upload → post), enabling property photos to attach correctly to LinkedIn posts.
 
 ### System Design Choices
 - **Database**: PostgreSQL with Drizzle ORM, supporting main users (agents) and public users (clients) with multi-tenancy.
