@@ -481,6 +481,94 @@ export class SocialMediaService {
     }
   }
 
+  /**
+   * Upload an image to LinkedIn and return the asset URN
+   * LinkedIn requires a 3-step process:
+   * 1. Register the upload to get an upload URL
+   * 2. Upload the binary image data
+   * 3. Return the asset URN for use in posts
+   */
+  async uploadLinkedInImage(
+    imageUrl: string,
+    accessToken: string,
+    authorUrn: string,
+  ): Promise<string> {
+    console.log("Uploading image to LinkedIn:", imageUrl);
+
+    // Step 1: Register the upload
+    const registerResponse = await fetch(
+      "https://api.linkedin.com/v2/assets?action=registerUpload",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+        body: JSON.stringify({
+          registerUploadRequest: {
+            recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+            owner: authorUrn,
+            serviceRelationships: [
+              {
+                relationshipType: "OWNER",
+                identifier: "urn:li:userGeneratedContent",
+              },
+            ],
+          },
+        }),
+      },
+    );
+
+    if (!registerResponse.ok) {
+      const errorText = await registerResponse.text();
+      console.error("LinkedIn image register failed:", errorText);
+      throw new Error(`Failed to register LinkedIn image upload: ${errorText}`);
+    }
+
+    const registerData = await registerResponse.json();
+    const uploadUrl =
+      registerData.value?.uploadMechanism?.[
+        "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+      ]?.uploadUrl;
+    const asset = registerData.value?.asset;
+
+    if (!uploadUrl || !asset) {
+      console.error("LinkedIn register response missing data:", registerData);
+      throw new Error("Failed to get LinkedIn upload URL");
+    }
+
+    console.log("LinkedIn upload URL obtained, asset:", asset);
+
+    // Step 2: Download the image from the source URL
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to fetch image from: ${imageUrl}`);
+    }
+
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+
+    // Step 3: Upload the image binary to LinkedIn
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": contentType,
+      },
+      body: imageBuffer,
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error("LinkedIn image upload failed:", errorText);
+      throw new Error(`Failed to upload image to LinkedIn: ${errorText}`);
+    }
+
+    console.log("✅ LinkedIn image uploaded successfully:", asset);
+    return asset;
+  }
+
   async postToLinkedIn(
     content: string,
     accessToken: string,
@@ -510,14 +598,50 @@ export class SocialMediaService {
       console.log("LinkedIn author URN:", authorUrn);
 
       // Determine media category based on provided URLs
-      let shareMediaCategory = "NONE";
+      let shareMediaCategory: "NONE" | "IMAGE" | "VIDEO" = "NONE";
       if (options?.photoUrls?.length) {
         shareMediaCategory = "IMAGE";
       } else if (options?.videoUrls?.length) {
         shareMediaCategory = "VIDEO";
       }
 
-      // Step 2: Create post on LinkedIn
+      // Step 2: Upload images if present
+      const mediaAssets: { status: string; media: string; description?: { text: string } }[] = [];
+      
+      if (shareMediaCategory === "IMAGE" && options?.photoUrls?.length) {
+        console.log(`Uploading ${options.photoUrls.length} images to LinkedIn...`);
+        
+        for (const photoUrl of options.photoUrls) {
+          try {
+            const asset = await this.uploadLinkedInImage(photoUrl, accessToken, authorUrn);
+            mediaAssets.push({
+              status: "READY",
+              media: asset,
+              description: {
+                text: "Property photo",
+              },
+            });
+          } catch (uploadError) {
+            console.error("Failed to upload image to LinkedIn:", uploadError);
+            // Continue with other images if one fails
+          }
+        }
+        
+        // If no images uploaded successfully, fall back to text-only
+        if (mediaAssets.length === 0) {
+          console.warn("All image uploads failed, posting text-only");
+          shareMediaCategory = "NONE";
+        }
+      }
+
+      // Note: Video upload is more complex and requires chunked upload
+      // For now, we only support images
+      if (shareMediaCategory === "VIDEO") {
+        console.warn("LinkedIn video upload not yet implemented, posting text-only");
+        shareMediaCategory = "NONE";
+      }
+
+      // Step 3: Create post on LinkedIn
       const postData: any = {
         author: authorUrn,
         lifecycleState: "PUBLISHED",
@@ -534,16 +658,9 @@ export class SocialMediaService {
         },
       };
 
-      // Note: LinkedIn media upload requires a separate multi-step process
-      // For now, we only support text-only posts
-      // TODO: Implement LinkedIn media upload flow (register upload -> upload media -> create post with media)
-      if (shareMediaCategory !== "NONE") {
-        console.warn(
-          "LinkedIn media upload not yet implemented, posting text-only",
-        );
-        postData.specificContent[
-          "com.linkedin.ugc.ShareContent"
-        ].shareMediaCategory = "NONE";
+      // Add media to post if we have uploaded assets
+      if (mediaAssets.length > 0) {
+        postData.specificContent["com.linkedin.ugc.ShareContent"].media = mediaAssets;
       }
 
       const postResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
