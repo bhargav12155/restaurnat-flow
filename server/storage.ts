@@ -44,6 +44,7 @@ import {
   type InsertVideoAvatar,
   type InsertVideoContent,
   type InsertVideoTemplate,
+  type InsertVideoGenerationJob,
   type LookGenerationJob,
   lookGenerationJobs,
   type MarketData,
@@ -67,6 +68,8 @@ import {
   videoAvatars,
   type VideoContent,
   videoContent as videoContentTable,
+  type VideoGenerationJob,
+  videoGenerationJobs as videoGenerationJobsTable,
   type VideoTemplate,
   videoTemplates as videoTemplatesTable,
 } from "@shared/schema";
@@ -2162,6 +2165,58 @@ export class MemStorage implements IStorage {
       .select()
       .from(lookGenerationJobs)
       .where(eq(lookGenerationJobs.status, "pending"));
+  }
+
+  // Video Generation Jobs (Background Processing)
+  async createVideoGenerationJob(job: InsertVideoGenerationJob): Promise<VideoGenerationJob> {
+    const [newJob] = await db
+      .insert(videoGenerationJobsTable)
+      .values(job)
+      .returning();
+    return newJob;
+  }
+
+  async getVideoGenerationJob(id: string): Promise<VideoGenerationJob | undefined> {
+    const [job] = await db
+      .select()
+      .from(videoGenerationJobsTable)
+      .where(eq(videoGenerationJobsTable.id, id));
+    return job;
+  }
+
+  async getVideoGenerationJobsByUser(userId: string): Promise<VideoGenerationJob[]> {
+    return await db
+      .select()
+      .from(videoGenerationJobsTable)
+      .where(eq(videoGenerationJobsTable.userId, userId))
+      .orderBy(desc(videoGenerationJobsTable.createdAt));
+  }
+
+  async getPendingVideoGenerationJobs(): Promise<VideoGenerationJob[]> {
+    return await db
+      .select()
+      .from(videoGenerationJobsTable)
+      .where(
+        eq(videoGenerationJobsTable.status, "pending")
+      );
+  }
+
+  async getProcessingVideoGenerationJobs(): Promise<VideoGenerationJob[]> {
+    return await db
+      .select()
+      .from(videoGenerationJobsTable)
+      .where(
+        eq(videoGenerationJobsTable.status, "processing")
+      );
+  }
+
+  async updateVideoGenerationJob(id: string, updates: Partial<VideoGenerationJob>): Promise<VideoGenerationJob | undefined> {
+    const [updated] = await db
+      .update(videoGenerationJobsTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(videoGenerationJobsTable.id, id))
+      .returning();
+    return updated;
   }
 }
 

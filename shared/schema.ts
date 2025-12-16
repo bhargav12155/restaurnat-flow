@@ -1306,3 +1306,41 @@ export type TemplateVariable = typeof templateVariables.$inferSelect;
 export type InsertTemplateVariable = z.infer<typeof insertTemplateVariableSchema>;
 export type GeneratedVideo = typeof generatedVideos.$inferSelect;
 export type InsertGeneratedVideo = z.infer<typeof insertGeneratedVideoSchema>;
+
+// =====================================================
+// VIDEO GENERATION JOBS TABLE (Background Processing)
+// =====================================================
+export const videoGenerationJobs = pgTable("video_generation_jobs", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  source: text("source").notNull(), // 'avatar_iv', 'video_studio', 'template'
+  heygenVideoId: text("heygen_video_id"),
+  title: text("title"),
+  status: text("status").notNull().default("pending"), // 'pending', 'processing', 'completed', 'failed'
+  progress: integer("progress").default(0),
+  videoUrl: text("video_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata").$type<{
+    avatarId?: string;
+    voiceId?: string;
+    script?: string;
+    templateId?: string;
+  }>(),
+  notificationSent: boolean("notification_sent").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertVideoGenerationJobSchema = createInsertSchema(videoGenerationJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true,
+});
+
+export type VideoGenerationJob = typeof videoGenerationJobs.$inferSelect;
+export type InsertVideoGenerationJob = z.infer<typeof insertVideoGenerationJobSchema>;
