@@ -8379,6 +8379,46 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // Upload audio for Avatar IV (returns URL for HeyGen)
+  app.post("/api/avatar-iv/upload-audio", requireAuth, memoryImageUpload.single("audio"), async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file provided" });
+      }
+
+      console.log(`🎙️ Avatar IV audio upload for user ${userId}`);
+      console.log(`🎙️ File: ${req.file.originalname || 'recording'}, ${req.file.size} bytes, ${req.file.mimetype}`);
+
+      // Save audio to object storage
+      const { uploadToObjectStorage } = await import("./objectStorage");
+      const timestamp = Date.now();
+      const ext = req.file.mimetype?.includes("webm") ? "webm" : req.file.mimetype?.includes("mp3") ? "mp3" : "wav";
+      const filename = `audio-${userId}-${timestamp}.${ext}`;
+      
+      const audioUrl = await uploadToObjectStorage(req.file.buffer, filename, req.file.mimetype || "audio/webm");
+      
+      if (!audioUrl) {
+        return res.status(500).json({ error: "Failed to save audio file" });
+      }
+
+      console.log(`✅ Audio uploaded: ${audioUrl}`);
+
+      res.json({
+        success: true,
+        audioUrl,
+        filename,
+      });
+    } catch (error: any) {
+      console.error("Avatar IV audio upload failed:", error);
+      res.status(500).json({ error: "Failed to upload audio", details: error?.message });
+    }
+  });
+
   // Generate Avatar IV video
   app.post("/api/avatar-iv/generate", requireAuth, async (req, res) => {
     try {
