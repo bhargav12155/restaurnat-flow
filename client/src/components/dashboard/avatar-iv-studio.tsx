@@ -169,11 +169,32 @@ export function AvatarIVStudio() {
     audioRef.current.onended = () => setPlayingPreview(null);
   };
 
-  // Audio recording functions
+  // Audio recording functions - detect best supported format
+  const getSupportedMimeType = () => {
+    const types = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+      "audio/wav",
+      ""  // Fallback to browser default
+    ];
+    for (const type of types) {
+      if (type === "" || MediaRecorder.isTypeSupported(type)) {
+        return type;
+      }
+    }
+    return "";
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mimeType = getSupportedMimeType();
+      console.log("Using audio format:", mimeType || "browser default");
+      
+      const options: MediaRecorderOptions = mimeType ? { mimeType } : {};
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -184,7 +205,8 @@ export function AvatarIVStudio() {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const recordedMime = mediaRecorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: recordedMime });
         setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         stream.getTracks().forEach(track => track.stop());
@@ -197,9 +219,10 @@ export function AvatarIVStudio() {
         description: "Speak now. Click stop when finished.",
       });
     } catch (error: any) {
+      console.error("Recording error:", error);
       toast({
         title: "Recording Failed",
-        description: error?.message || "Could not access microphone",
+        description: error?.message || "Could not access microphone. Make sure you're using HTTPS and have granted microphone permission.",
         variant: "destructive",
       });
     }
@@ -222,7 +245,12 @@ export function AvatarIVStudio() {
   const audioUploadMutation = useMutation({
     mutationFn: async (blob: Blob) => {
       const formData = new FormData();
-      formData.append("audio", blob, "recording.webm");
+      // Determine file extension from mime type
+      let ext = "webm";
+      if (blob.type.includes("mp4") || blob.type.includes("m4a")) ext = "m4a";
+      else if (blob.type.includes("ogg")) ext = "ogg";
+      else if (blob.type.includes("wav")) ext = "wav";
+      formData.append("audio", blob, `recording.${ext}`);
 
       const response = await fetch("/api/avatar-iv/upload-audio", {
         method: "POST",
