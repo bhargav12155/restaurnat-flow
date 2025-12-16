@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload,
@@ -34,6 +34,18 @@ interface Voice {
   language: string;
   gender: string;
   preview_audio?: string;
+}
+
+interface PhotoAsset {
+  id: string;
+  url: string;
+  thumbnailUrl?: string;
+  title?: string;
+  metadata?: {
+    imageKey: string;
+    heygenAssetId: string;
+  };
+  createdAt?: string;
 }
 
 const FALLBACK_VOICES = [
@@ -72,6 +84,7 @@ export function AvatarIVStudio() {
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageKey, setImageKey] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(true);
   
   const [videoTitle, setVideoTitle] = useState("");
   const [script, setScript] = useState("");
@@ -83,6 +96,13 @@ export function AvatarIVStudio() {
   const [generatingVideoId, setGeneratingVideoId] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Fetch photo library
+  const { data: photosData, isLoading: photosLoading, refetch: refetchPhotos } = useQuery<{ photos: PhotoAsset[] }>({
+    queryKey: ["/api/avatar-iv/photos"],
+  });
+
+  const photoLibrary = photosData?.photos || [];
 
   // Fetch available voices from HeyGen
   const { data: voicesData, isLoading: voicesLoading } = useQuery<{ voices: Voice[] }>({
@@ -97,6 +117,25 @@ export function AvatarIVStudio() {
       setSelectedVoice(voices[0].voice_id);
     }
   }, [voices, selectedVoice]);
+
+  // Select photo from library
+  const selectFromLibrary = (photo: PhotoAsset) => {
+    if (photo.metadata?.imageKey) {
+      setImageKey(photo.metadata.imageKey);
+      setImagePreview(photo.url);
+      toast({
+        title: "Photo Selected",
+        description: "Using photo from your library. Now write your script.",
+      });
+      setCurrentStep(2);
+    } else {
+      toast({
+        title: "Invalid Photo",
+        description: "This photo is missing required data. Please upload a new one.",
+        variant: "destructive",
+      });
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -138,9 +177,11 @@ export function AvatarIVStudio() {
     },
     onSuccess: (data) => {
       setImageKey(data.imageKey);
+      setImagePreview(data.imageUrl);
+      queryClient.invalidateQueries({ queryKey: ["/api/avatar-iv/photos"] });
       toast({
         title: "Photo Uploaded!",
-        description: "Your photo is ready. Now write your script.",
+        description: "Your photo is ready and saved to your library. Now write your script.",
       });
       setCurrentStep(2);
     },
@@ -369,42 +410,137 @@ export function AvatarIVStudio() {
           {currentStep === 1 && (
             <div className="space-y-6" data-testid="step-1-content">
               <div className="text-center">
-                <h3 className="text-lg font-semibold mb-2">Upload Your Photo</h3>
-                <p className="text-gray-500 text-sm mb-6">
-                  Upload a clear photo of yourself or any person you want to animate
+                <h3 className="text-lg font-semibold mb-2">Select Your Photo</h3>
+                <p className="text-gray-500 text-sm mb-4">
+                  Choose from your library or upload a new photo
                 </p>
               </div>
 
-              {!imagePreview ? (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed rounded-xl p-12 text-center cursor-pointer hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 transition-all"
-                  data-testid="upload-dropzone"
+              <div className="flex justify-center gap-2 mb-4">
+                <Button
+                  variant={showLibrary ? "default" : "outline"}
+                  onClick={() => setShowLibrary(true)}
+                  className={showLibrary ? "bg-[#D4AF37] hover:bg-[#D4AF37]/90" : ""}
+                  data-testid="tab-library"
                 >
-                  <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                  <p className="text-gray-500 mb-2">Click to upload or drag and drop</p>
-                  <p className="text-xs text-gray-400">PNG, JPG up to 10MB</p>
+                  <Image className="h-4 w-4 mr-2" />
+                  My Library ({photoLibrary.length})
+                </Button>
+                <Button
+                  variant={!showLibrary ? "default" : "outline"}
+                  onClick={() => setShowLibrary(false)}
+                  className={!showLibrary ? "bg-[#D4AF37] hover:bg-[#D4AF37]/90" : ""}
+                  data-testid="tab-upload"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload New
+                </Button>
+              </div>
+
+              {showLibrary ? (
+                <div className="space-y-4">
+                  {photosLoading ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="h-8 w-8 animate-spin text-[#D4AF37]" />
+                    </div>
+                  ) : photoLibrary.length === 0 ? (
+                    <div className="text-center py-8 border-2 border-dashed rounded-xl">
+                      <Image className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-500 mb-2">No photos in your library yet</p>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowLibrary(false)}
+                        data-testid="button-upload-first"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Your First Photo
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                      {photoLibrary.map((photo) => (
+                        <div
+                          key={photo.id}
+                          onClick={() => selectFromLibrary(photo)}
+                          className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all hover:border-[#D4AF37] hover:shadow-lg ${
+                            imageKey === photo.metadata?.imageKey
+                              ? "border-[#D4AF37] ring-2 ring-[#D4AF37]"
+                              : "border-gray-200 dark:border-gray-700"
+                          }`}
+                          data-testid={`photo-library-${photo.id}`}
+                        >
+                          <img
+                            src={photo.thumbnailUrl || photo.url}
+                            alt={photo.title || "Photo"}
+                            className="w-full aspect-square object-cover"
+                          />
+                          {imageKey === photo.metadata?.imageKey && (
+                            <div className="absolute inset-0 bg-[#D4AF37]/20 flex items-center justify-center">
+                              <Check className="h-8 w-8 text-[#D4AF37]" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="relative max-w-md mx-auto">
-                  <img
-                    src={imagePreview}
-                    alt="Preview"
-                    className="w-full rounded-xl shadow-lg"
-                  />
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2 right-2"
-                    onClick={() => {
-                      setUploadedImage(null);
-                      setImagePreview(null);
-                      setImageKey(null);
-                    }}
-                    data-testid="button-remove-image"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-4">
+                  {!imagePreview ? (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed rounded-xl p-12 text-center cursor-pointer hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 transition-all"
+                      data-testid="upload-dropzone"
+                    >
+                      <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-500 mb-2">Click to upload or drag and drop</p>
+                      <p className="text-xs text-gray-400">PNG, JPG up to 10MB</p>
+                    </div>
+                  ) : (
+                    <div className="relative max-w-md mx-auto">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="w-full rounded-xl shadow-lg"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2"
+                        onClick={() => {
+                          setUploadedImage(null);
+                          setImagePreview(null);
+                          setImageKey(null);
+                        }}
+                        data-testid="button-remove-image"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {uploadedImage && !imageKey && (
+                    <div className="flex justify-center">
+                      <Button
+                        onClick={handleUpload}
+                        disabled={uploadMutation.isPending}
+                        className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white px-8"
+                        data-testid="button-upload"
+                      >
+                        {uploadMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload Photo
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -416,29 +552,6 @@ export function AvatarIVStudio() {
                 onChange={handleFileSelect}
                 data-testid="input-file"
               />
-
-              {uploadedImage && !imageKey && (
-                <div className="flex justify-center">
-                  <Button
-                    onClick={handleUpload}
-                    disabled={uploadMutation.isPending}
-                    className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white px-8"
-                    data-testid="button-upload"
-                  >
-                    {uploadMutation.isPending ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload Photo
-                      </>
-                    )}
-                  </Button>
-                </div>
-              )}
 
               {imageKey && (
                 <div className="flex justify-center">

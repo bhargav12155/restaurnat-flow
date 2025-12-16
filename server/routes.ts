@@ -8299,6 +8299,22 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   // Avatar IV Routes (Simplified Video Generation)
   // ============================================
 
+  // Get user's photo library for Avatar IV
+  app.get("/api/avatar-iv/photos", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const photos = await storage.getMediaAssets(userId, "avatar-photo");
+      res.json({ photos });
+    } catch (error: any) {
+      console.error("Failed to get photo library:", error);
+      res.status(500).json({ error: "Failed to get photos", details: error?.message });
+    }
+  });
+
   // Upload photo and get image_key for Avatar IV
   app.post("/api/avatar-iv/upload", requireAuth, memoryImageUpload.single("image"), async (req, res) => {
     try {
@@ -8330,12 +8346,32 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const savedPath = await persistImageBuffer(req.file.buffer, filename, req.file.mimetype || "image/jpeg");
       console.log(`💾 Photo backup saved: ${savedPath || 'failed'}`);
 
+      // Save to media assets library for reuse
+      const photoTitle = req.body.title || req.file.originalname || "Uploaded Photo";
+      const mediaAsset = await storage.createMediaAsset({
+        userId,
+        type: "avatar-photo",
+        source: "upload",
+        url: uploadResult.url,
+        thumbnailUrl: uploadResult.url,
+        title: photoTitle,
+        mimeType: req.file.mimetype || "image/jpeg",
+        fileSize: req.file.size,
+        metadata: {
+          imageKey: uploadResult.image_key,
+          heygenAssetId: uploadResult.id,
+          savedPath,
+        },
+      });
+      console.log(`📚 Photo saved to library: ${mediaAsset.id}`);
+
       res.json({
         success: true,
         imageKey: uploadResult.image_key,
         imageUrl: uploadResult.url,
         assetId: uploadResult.id,
         savedPath,
+        libraryId: mediaAsset.id,
       });
     } catch (error: any) {
       console.error("Avatar IV upload failed:", error);
