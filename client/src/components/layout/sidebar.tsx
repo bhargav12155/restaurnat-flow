@@ -131,9 +131,9 @@ const navigationItems = [
 ];
 
 const quickActions = [
-  { icon: Plus, label: "New Blog Post", href: "#new-blog" },
-  { icon: Camera, label: "Social Post", href: "#new-social" },
-  { icon: Home, label: "Property Feature", href: "#new-property" },
+  { icon: Plus, label: "New Blog Post", href: "/dashboard?type=blog#ai-content", contentType: "blog" },
+  { icon: Camera, label: "Social Post", href: "/dashboard?type=social#ai-content", contentType: "social" },
+  { icon: Home, label: "Property Feature", href: "/dashboard?type=property_feature#ai-content", contentType: "property_feature" },
 ];
 
 interface SidebarProps {
@@ -176,20 +176,45 @@ function SidebarContent({
   const navigateTo = (href: string, e: React.MouseEvent) => {
     e.preventDefault();
     
-    if (href.includes('#')) {
-      const [path, hash] = href.split('#');
-      const currentPath = window.location.pathname;
-      
+    // Parse the href to extract path, query params, and hash
+    const hashIndex = href.indexOf('#');
+    const queryIndex = href.indexOf('?');
+    
+    let path = href;
+    let queryString = '';
+    let hash = '';
+    
+    if (hashIndex !== -1) {
+      hash = href.substring(hashIndex + 1);
+      path = href.substring(0, hashIndex);
+    }
+    
+    if (queryIndex !== -1) {
+      const endOfQuery = hashIndex !== -1 ? hashIndex : href.length;
+      queryString = href.substring(queryIndex, endOfQuery);
+      path = href.substring(0, queryIndex);
+    }
+    
+    const currentPath = window.location.pathname;
+    const fullPath = path + queryString;
+    
+    if (hash) {
       if (currentPath === path || (currentPath === '/' && path === '/dashboard')) {
+        // Same page, just update query and hash
+        if (queryString) {
+          window.history.pushState({}, '', fullPath + '#' + hash);
+          window.dispatchEvent(new Event('popstate'));
+        }
         window.location.hash = hash;
       } else {
-        setLocation(path);
+        // Navigate to new page with query params, then set hash
+        setLocation(fullPath);
         setTimeout(() => {
           window.location.hash = hash;
         }, 50);
       }
     } else {
-      setLocation(href);
+      setLocation(fullPath);
       if (window.location.hash) {
         window.location.hash = '';
       }
@@ -372,7 +397,7 @@ function SidebarContent({
                   data-testid={`quick-${action.label
                     .toLowerCase()
                     .replace(/\s+/g, "-")}`}
-                  onClick={handleNavClick}
+                  onClick={(e) => navigateTo(action.href, e)}
                 >
                   <action.icon className="mr-3 h-4 w-4" />
                   {action.label}
