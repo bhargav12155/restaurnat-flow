@@ -211,6 +211,7 @@ export function AvatarIVStudio() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    console.log("File selected:", file?.name, file?.type, file?.size);
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -224,7 +225,14 @@ export function AvatarIVStudio() {
 
     setUploadedImage(file);
     const reader = new FileReader();
-    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      console.log("FileReader result length:", result?.length);
+      setImagePreview(result);
+    };
+    reader.onerror = (err) => {
+      console.error("FileReader error:", err);
+    };
     reader.readAsDataURL(file);
   };
 
