@@ -8397,7 +8397,14 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       // Save audio to object storage
       const { uploadToObjectStorage } = await import("./objectStorage");
       const timestamp = Date.now();
-      const ext = req.file.mimetype?.includes("webm") ? "webm" : req.file.mimetype?.includes("mp3") ? "mp3" : "wav";
+      // Detect audio format from mimetype
+      let ext = "webm";
+      const mime = req.file.mimetype || "";
+      if (mime.includes("mp4") || mime.includes("m4a")) ext = "m4a";
+      else if (mime.includes("mp3") || mime.includes("mpeg")) ext = "mp3";
+      else if (mime.includes("ogg")) ext = "ogg";
+      else if (mime.includes("wav")) ext = "wav";
+      else if (mime.includes("webm")) ext = "webm";
       const filename = `audio-${userId}-${timestamp}.${ext}`;
       
       const audioUrl = await uploadToObjectStorage(req.file.buffer, filename, req.file.mimetype || "audio/webm");
