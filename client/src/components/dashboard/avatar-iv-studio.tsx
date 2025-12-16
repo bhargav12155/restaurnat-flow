@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import {
   Upload,
   Wand2,
@@ -29,6 +30,7 @@ import {
   Mic,
   Square,
   Trash2,
+  Share2,
 } from "lucide-react";
 
 interface Voice {
@@ -80,6 +82,7 @@ interface VideoStatus {
 
 export function AvatarIVStudio() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
@@ -1009,7 +1012,7 @@ export function AvatarIVStudio() {
                       className="w-full rounded-xl shadow-lg"
                       data-testid="video-player"
                     />
-                    <div className="flex justify-center gap-4">
+                    <div className="flex flex-wrap justify-center gap-3">
                       <Button
                         variant="outline"
                         asChild
@@ -1021,12 +1024,29 @@ export function AvatarIVStudio() {
                         </a>
                       </Button>
                       <Button
+                        onClick={() => {
+                          // Navigate to content generator with video pre-selected
+                          const videoUrl = encodeURIComponent(videoStatus.video_url || "");
+                          const title = encodeURIComponent(videoTitle || "My Video");
+                          setLocation(`/dashboard?quickPost=video&videoUrl=${videoUrl}&videoTitle=${title}`);
+                          toast({
+                            title: "Ready to Post",
+                            description: "Your video is ready for quick posting!",
+                          });
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        data-testid="button-quick-post"
+                      >
+                        <Share2 className="h-4 w-4 mr-2" />
+                        Quick Post
+                      </Button>
+                      <Button
                         onClick={resetStudio}
                         className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
                         data-testid="button-create-new"
                       >
                         <RefreshCw className="h-4 w-4 mr-2" />
-                        Create New Video
+                        Create New
                       </Button>
                     </div>
                   </div>
