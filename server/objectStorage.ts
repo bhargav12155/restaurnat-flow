@@ -409,6 +409,46 @@ export async function persistImageBuffer(
   }
 }
 
+export async function uploadToObjectStorage(
+  buffer: Buffer,
+  filename: string,
+  contentType: string = "audio/webm"
+): Promise<string | null> {
+  try {
+    const objectStorage = new ObjectStorageService();
+    if (!objectStorage.isConfigured()) {
+      console.warn("Object storage not configured, cannot upload file");
+      return null;
+    }
+
+    console.log(`📤 Uploading to object storage: ${filename}`);
+    
+    const publicPaths = objectStorage.getPublicObjectSearchPaths();
+    const basePath = publicPaths[0];
+    const fullPath = `${basePath}/audio/${filename}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    await file.save(buffer, {
+      contentType,
+      resumable: false,
+      metadata: {
+        cacheControl: "public, max-age=31536000",
+      },
+    });
+
+    // Get the public URL
+    const publicUrl = `https://storage.googleapis.com/${bucketName}/${objectName}`;
+    console.log(`✅ File uploaded to: ${publicUrl}`);
+    return publicUrl;
+  } catch (error) {
+    console.error("Failed to upload to object storage:", error);
+    return null;
+  }
+}
+
 export async function persistImageFromUrl(
   imageUrl: string,
   filename: string
