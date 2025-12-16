@@ -136,14 +136,24 @@ export function AvatarIVStudio() {
       return response;
     },
     onSuccess: (data: any) => {
-      setGeneratingVideoId(data.videoId);
-      setVideoStatus({ video_id: data.videoId, status: "pending" });
+      console.log("Generate response:", data);
+      const videoId = data.videoId;
+      if (!videoId) {
+        toast({
+          title: "Generation Error",
+          description: "No video ID returned from server",
+          variant: "destructive",
+        });
+        return;
+      }
+      setGeneratingVideoId(videoId);
+      setVideoStatus({ video_id: videoId, status: "pending" });
       toast({
         title: "Video Generation Started!",
         description: "Your video is being created. This usually takes 1-3 minutes.",
       });
       setCurrentStep(3);
-      startPolling(data.videoId);
+      startPolling(videoId);
     },
     onError: (error: any) => {
       toast({
@@ -155,7 +165,13 @@ export function AvatarIVStudio() {
   });
 
   const startPolling = (videoId: string) => {
+    if (!videoId) {
+      console.error("Cannot start polling without a video ID");
+      return;
+    }
     if (pollInterval) clearInterval(pollInterval);
+    
+    console.log("Starting status polling for video:", videoId);
     
     const interval = setInterval(async () => {
       try {
