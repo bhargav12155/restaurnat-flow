@@ -157,11 +157,13 @@ async function processJob(job: VideoGenerationJob): Promise<void> {
         type: newStatus === "completed" ? "video_generation_complete" : "video_generation_failed",
         data: {
           jobId: job.id,
+          videoId: job.heygenVideoId, // HeyGen video ID for navigation
           title: job.title,
           videoUrl: statusResult.video_url || null,
           source: job.source,
           status: newStatus,
           thumbnailUrl: statusResult.thumbnail_url || null,
+          error: statusResult.error || null, // Error message for failed jobs
         },
         timestamp: new Date().toISOString(),
       });
