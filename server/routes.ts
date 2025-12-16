@@ -8468,6 +8468,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       }
 
       const { videoId } = req.params;
+      const { title, script } = req.query;
 
       console.log(`🔍 Avatar IV status check: ${videoId}`);
 
@@ -8476,14 +8477,34 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const status = await avatarIVService.getVideoStatus(videoId);
       
-      // If video is completed, save it to object storage
+      // If video is completed, save it to object storage and quick posts library
       if (status.status === "completed" && status.video_url) {
+        // Save to object storage
         const { persistVideoFromUrl } = await import("./objectStorage");
         const filename = `user-${userId}-${videoId}.mp4`;
         const savedPath = await persistVideoFromUrl(status.video_url, filename);
-        console.log(`💾 Video saved: ${savedPath || 'failed'}`);
-        // Add saved path to response
+        console.log(`💾 Video saved to storage: ${savedPath || 'failed'}`);
         (status as any).saved_path = savedPath;
+        
+        // Check if already in quick posts library
+        const existingVideos = await storage.getGeneratedVideos(userId);
+        const alreadySaved = existingVideos.some(v => v.heygenVideoId === videoId);
+        
+        if (!alreadySaved) {
+          // Save to quick posts library (generatedVideos table)
+          const generatedVideo = await storage.createGeneratedVideo({
+            userId,
+            title: (title as string) || "Avatar IV Video",
+            generatedScript: (script as string) || "",
+            status: "completed",
+            heygenVideoId: videoId,
+            videoUrl: status.video_url,
+            thumbnailUrl: status.thumbnail_url || "",
+            duration: status.duration || 0,
+          });
+          console.log(`📚 Video saved to quick posts library: ${generatedVideo.id}`);
+          (status as any).library_id = generatedVideo.id;
+        }
       }
       
       res.json(status);
