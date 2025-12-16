@@ -26,6 +26,9 @@ import {
   ChevronLeft,
   X,
   Volume2,
+  Mic,
+  Square,
+  Trash2,
 } from "lucide-react";
 
 interface Voice {
@@ -93,6 +96,15 @@ export function AvatarIVStudio() {
   const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   
+  // Audio recording state
+  const [inputMode, setInputMode] = useState<"text" | "audio">("text");
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [uploadedAudioUrl, setUploadedAudioUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  
   const [generatingVideoId, setGeneratingVideoId] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
@@ -157,6 +169,90 @@ export function AvatarIVStudio() {
     audioRef.current.onended = () => setPlayingPreview(null);
   };
 
+  // Audio recording functions
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        setAudioBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      toast({
+        title: "Recording Started",
+        description: "Speak now. Click stop when finished.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Recording Failed",
+        description: error?.message || "Could not access microphone",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const clearRecording = () => {
+    setAudioBlob(null);
+    setAudioUrl(null);
+    setUploadedAudioUrl(null);
+  };
+
+  // Upload recorded audio
+  const audioUploadMutation = useMutation({
+    mutationFn: async (blob: Blob) => {
+      const formData = new FormData();
+      formData.append("audio", blob, "recording.webm");
+
+      const response = await fetch("/api/avatar-iv/upload-audio", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Audio upload failed");
+      }
+
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setUploadedAudioUrl(data.audioUrl);
+      toast({
+        title: "Audio Uploaded",
+        description: "Your recording is ready for video generation.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Upload Failed",
+        description: error?.message || "Could not upload audio",
+        variant: "destructive",
+      });
+    },
+  });
+
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
@@ -198,17 +294,24 @@ export function AvatarIVStudio() {
     mutationFn: async () => {
       const motionPrompt = MOTION_PROMPTS.find(m => m.id === selectedMotion)?.prompt;
       
-      const response = await apiRequest("POST", "/api/avatar-iv/generate", {
+      // Build payload based on input mode
+      const payload: any = {
         imageKey,
         videoTitle: videoTitle || "My Video",
-        script,
-        voiceId: selectedVoice,
         videoOrientation,
         fit: "cover",
         customMotionPrompt: motionPrompt,
         enhanceCustomMotionPrompt: true,
-      });
+      };
 
+      if (inputMode === "audio" && uploadedAudioUrl) {
+        payload.audioUrl = uploadedAudioUrl;
+      } else {
+        payload.script = script;
+        payload.voiceId = selectedVoice;
+      }
+      
+      const response = await apiRequest("POST", "/api/avatar-iv/generate", payload);
       return response.json();
     },
     onSuccess: (data: any) => {
@@ -229,7 +332,7 @@ export function AvatarIVStudio() {
         description: "Your video is being created. This usually takes 1-3 minutes.",
       });
       setCurrentStep(3);
-      startPolling(videoId, videoTitle || "My Video", script);
+      startPolling(videoId, videoTitle || "My Video", inputMode === "audio" ? "(Audio recording)" : script);
     },
     onError: (error: any) => {
       toast({
@@ -580,10 +683,32 @@ export function AvatarIVStudio() {
           {currentStep === 2 && (
             <div className="space-y-6" data-testid="step-2-content">
               <div className="text-center mb-6">
-                <h3 className="text-lg font-semibold mb-2">Write Your Script</h3>
+                <h3 className="text-lg font-semibold mb-2">Add Your Voice</h3>
                 <p className="text-gray-500 text-sm">
-                  Enter what you want your avatar to say and customize the voice
+                  Type a script or record your own voice
                 </p>
+              </div>
+
+              {/* Input Mode Toggle */}
+              <div className="flex justify-center gap-2 mb-4">
+                <Button
+                  variant={inputMode === "text" ? "default" : "outline"}
+                  onClick={() => setInputMode("text")}
+                  className={inputMode === "text" ? "bg-[#D4AF37] hover:bg-[#D4AF37]/90" : ""}
+                  data-testid="button-text-mode"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Type Script
+                </Button>
+                <Button
+                  variant={inputMode === "audio" ? "default" : "outline"}
+                  onClick={() => setInputMode("audio")}
+                  className={inputMode === "audio" ? "bg-[#D4AF37] hover:bg-[#D4AF37]/90" : ""}
+                  data-testid="button-audio-mode"
+                >
+                  <Mic className="h-4 w-4 mr-2" />
+                  Record Audio
+                </Button>
               </div>
 
               <div className="grid md:grid-cols-2 gap-6">
@@ -600,73 +725,161 @@ export function AvatarIVStudio() {
                     />
                   </div>
 
-                  <div>
-                    <Label htmlFor="script">Script (max 1500 characters)</Label>
-                    <Textarea
-                      id="script"
-                      value={script}
-                      onChange={(e) => setScript(e.target.value.slice(0, 1500))}
-                      placeholder="Hello! Welcome to my video. I'm excited to share..."
-                      className="mt-1 min-h-[150px]"
-                      data-testid="input-script"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      {script.length}/1500 characters
-                    </p>
-                  </div>
+                  {inputMode === "text" ? (
+                    <div>
+                      <Label htmlFor="script">Script (max 1500 characters)</Label>
+                      <Textarea
+                        id="script"
+                        value={script}
+                        onChange={(e) => setScript(e.target.value.slice(0, 1500))}
+                        placeholder="Hello! Welcome to my video. I'm excited to share..."
+                        className="mt-1 min-h-[150px]"
+                        data-testid="input-script"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        {script.length}/1500 characters
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <Label>Record Your Voice</Label>
+                      
+                      {!audioBlob ? (
+                        <div className="flex flex-col items-center gap-4 p-6 border-2 border-dashed rounded-lg">
+                          {isRecording ? (
+                            <>
+                              <div className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center animate-pulse">
+                                <Mic className="h-8 w-8 text-white" />
+                              </div>
+                              <p className="text-sm text-gray-500">Recording...</p>
+                              <Button
+                                onClick={stopRecording}
+                                variant="destructive"
+                                data-testid="button-stop-recording"
+                              >
+                                <Square className="h-4 w-4 mr-2" />
+                                Stop Recording
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                                <Mic className="h-8 w-8 text-gray-400" />
+                              </div>
+                              <p className="text-sm text-gray-500">Click to start recording</p>
+                              <Button
+                                onClick={startRecording}
+                                className="bg-[#D4AF37] hover:bg-[#D4AF37]/90"
+                                data-testid="button-start-recording"
+                              >
+                                <Mic className="h-4 w-4 mr-2" />
+                                Start Recording
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                              <Check className="h-5 w-5 text-green-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-medium">Recording Ready</p>
+                              <p className="text-sm text-gray-500">
+                                {uploadedAudioUrl ? "Uploaded and ready" : "Click upload to continue"}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {audioUrl && (
+                            <audio controls src={audioUrl} className="w-full" data-testid="audio-preview" />
+                          )}
+                          
+                          <div className="flex gap-2">
+                            {!uploadedAudioUrl && (
+                              <Button
+                                onClick={() => audioBlob && audioUploadMutation.mutate(audioBlob)}
+                                disabled={audioUploadMutation.isPending}
+                                className="bg-[#D4AF37] hover:bg-[#D4AF37]/90"
+                                data-testid="button-upload-audio"
+                              >
+                                {audioUploadMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                ) : (
+                                  <Upload className="h-4 w-4 mr-2" />
+                                )}
+                                Upload Recording
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              onClick={clearRecording}
+                              data-testid="button-clear-recording"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Clear
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4">
-                  <div>
-                    <Label className="flex items-center gap-2">
-                      Voice
-                      {voicesLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-                      <Badge variant="secondary" className="text-xs">
-                        {voices.length} available
-                      </Badge>
-                    </Label>
-                    <Select value={selectedVoice} onValueChange={setSelectedVoice}>
-                      <SelectTrigger className="mt-1" data-testid="select-voice">
-                        <SelectValue placeholder="Select voice" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <ScrollArea className="h-[300px]">
-                          {voices.map((voice) => (
-                            <SelectItem key={voice.voice_id} value={voice.voice_id}>
-                              <div className="flex items-center justify-between w-full gap-2">
-                                <span>{voice.name}</span>
-                                <div className="flex items-center gap-1">
-                                  <Badge variant="outline" className="text-xs">
-                                    {voice.language}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs">
-                                    {voice.gender}
-                                  </Badge>
+                  {inputMode === "text" && (
+                    <div>
+                      <Label className="flex items-center gap-2">
+                        Voice
+                        {voicesLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                        <Badge variant="secondary" className="text-xs">
+                          {voices.length} available
+                        </Badge>
+                      </Label>
+                      <Select value={selectedVoice} onValueChange={setSelectedVoice}>
+                        <SelectTrigger className="mt-1" data-testid="select-voice">
+                          <SelectValue placeholder="Select voice" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <ScrollArea className="h-[300px]">
+                            {voices.map((voice) => (
+                              <SelectItem key={voice.voice_id} value={voice.voice_id}>
+                                <div className="flex items-center justify-between w-full gap-2">
+                                  <span>{voice.name}</span>
+                                  <div className="flex items-center gap-1">
+                                    <Badge variant="outline" className="text-xs">
+                                      {voice.language}
+                                    </Badge>
+                                    <Badge variant="outline" className="text-xs">
+                                      {voice.gender}
+                                    </Badge>
+                                  </div>
                                 </div>
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </ScrollArea>
-                      </SelectContent>
-                    </Select>
-                    {selectedVoice && voices.find(v => v.voice_id === selectedVoice)?.preview_audio && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="mt-1"
-                        onClick={() => {
-                          const voice = voices.find(v => v.voice_id === selectedVoice);
-                          if (voice?.preview_audio) {
-                            playVoicePreview(voice.preview_audio, voice.voice_id);
-                          }
-                        }}
-                        data-testid="button-preview-voice"
-                      >
-                        <Volume2 className="h-4 w-4 mr-1" />
-                        {playingPreview === selectedVoice ? "Playing..." : "Preview Voice"}
-                      </Button>
-                    )}
-                  </div>
+                              </SelectItem>
+                            ))}
+                          </ScrollArea>
+                        </SelectContent>
+                      </Select>
+                      {selectedVoice && voices.find(v => v.voice_id === selectedVoice)?.preview_audio && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mt-1"
+                          onClick={() => {
+                            const voice = voices.find(v => v.voice_id === selectedVoice);
+                            if (voice?.preview_audio) {
+                              playVoicePreview(voice.preview_audio, voice.voice_id);
+                            }
+                          }}
+                          data-testid="button-preview-voice"
+                        >
+                          <Volume2 className="h-4 w-4 mr-1" />
+                          {playingPreview === selectedVoice ? "Playing..." : "Preview Voice"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <Label>Motion Style</Label>
@@ -724,7 +937,11 @@ export function AvatarIVStudio() {
                 </Button>
                 <Button
                   onClick={() => generateMutation.mutate()}
-                  disabled={!script.trim() || generateMutation.isPending}
+                  disabled={
+                    generateMutation.isPending || 
+                    (inputMode === "text" && !script.trim()) ||
+                    (inputMode === "audio" && !uploadedAudioUrl)
+                  }
                   className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white px-8"
                   data-testid="button-generate"
                 >
