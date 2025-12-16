@@ -12,7 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, downloadFile } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   CheckCircle,
@@ -1070,11 +1070,17 @@ export function VideoStudio() {
                       data-testid="video-player"
                     />
                     <div className="flex gap-2">
-                      <Button asChild className="flex-1" data-testid="button-download">
-                        <a href={videoStatus.videoUrl} download target="_blank" rel="noopener noreferrer">
-                          <Download className="w-4 h-4 mr-2" />
-                          Download Video
-                        </a>
+                      <Button 
+                        className="flex-1" 
+                        onClick={() => {
+                          if (videoStatus.videoUrl) {
+                            downloadFile(videoStatus.videoUrl, `video-${Date.now()}.mp4`);
+                          }
+                        }}
+                        data-testid="button-download"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Video
                       </Button>
                       <Button variant="outline" onClick={resetStudio} data-testid="button-create-new">
                         Create Another
@@ -1205,11 +1211,18 @@ export function VideoStudio() {
                         </p>
                         <div className="flex gap-2">
                           {video.videoUrl && video.status === "ready" && (
-                            <Button asChild size="sm" className="flex-1" data-testid={`button-download-${video.id}`}>
-                              <a href={video.videoUrl} download target="_blank" rel="noopener noreferrer">
-                                <Download className="w-4 h-4 mr-2" />
-                                Download
-                              </a>
+                            <Button 
+                              size="sm" 
+                              className="flex-1" 
+                              onClick={() => {
+                                if (video.videoUrl) {
+                                  downloadFile(video.videoUrl, `${video.title || 'video'}-${Date.now()}.mp4`);
+                                }
+                              }}
+                              data-testid={`button-download-${video.id}`}
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              Download
                             </Button>
                           )}
                           <Button

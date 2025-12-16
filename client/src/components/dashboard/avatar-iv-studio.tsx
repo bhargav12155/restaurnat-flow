@@ -9,7 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, downloadFile } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import {
@@ -1015,13 +1015,20 @@ export function AvatarIVStudio() {
                     <div className="flex flex-wrap justify-center gap-3">
                       <Button
                         variant="outline"
-                        asChild
+                        onClick={() => {
+                          if (videoStatus.video_url) {
+                            const filename = `${videoTitle || 'video'}-${Date.now()}.mp4`;
+                            downloadFile(videoStatus.video_url, filename);
+                            toast({
+                              title: "Downloading...",
+                              description: "Your video will be saved shortly.",
+                            });
+                          }
+                        }}
                         data-testid="button-download"
                       >
-                        <a href={videoStatus.video_url} download target="_blank" rel="noopener noreferrer">
-                          <Download className="h-4 w-4 mr-2" />
-                          Download
-                        </a>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
                       </Button>
                       <Button
                         onClick={() => {
