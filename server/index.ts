@@ -111,6 +111,10 @@ app.use((req, res, next) => {
   const postScheduler = new PostScheduler(storage, socialMediaService);
   postScheduler.start();
 
+  // Initialize background video job worker
+  const { startVideoJobWorker } = await import("./services/videoJobWorker.js");
+  startVideoJobWorker();
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
