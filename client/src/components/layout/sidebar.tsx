@@ -13,7 +13,6 @@ import { cn, getUserDisplayName, getUserInitials } from "@/lib/utils";
 import {
   BarChart3,
   Bot,
-  Calendar,
   CalendarDays,
   Camera,
   ChevronDown,
@@ -53,17 +52,10 @@ const navigationItems = [
     isPageLink: true,
   },
   {
-    icon: Calendar,
-    label: "Content Calendar",
-    href: "/dashboard#calendar",
-    key: "calendar",
-    isPageLink: true,
-  },
-  {
     icon: CalendarDays,
-    label: "Event Calendar",
-    href: "/events",
-    key: "events",
+    label: "Content Calendar",
+    href: "/calendar",
+    key: "calendar",
     isPageLink: true,
   },
   {
