@@ -1,0 +1,54 @@
+
+Console Logo
+Search (/) for resources, docs, products, and more
+
+You are now incurring charges in your billing account My Billing Account, as of November 15, 2025. Learn more
+Google Auth Platform
+/
+Branding
+App information
+This shows in the consent screen, and helps end users know who you are and contact you
+
+App name
+GoldenBrick
+The name of the app asking for consent
+User support email
+bhargav12155@gmail.com
+For users to contact you with questions about their consent. Learn more 
+App logo
+This is your logo. It helps people recognize your app and is displayed on the OAuth consent screen.
+After you upload a logo, you will need to submit your app for verification unless the app is configured for internal use only or has a publishing status of "Testing". Learn more 
+
+Current App logo
+
+Change logo
+App domain
+To protect you and your users, Google only allows apps using OAuth to use Authorized Domains. The following information will be shown to your users on the consent screen.
+
+Application home page
+Provide users a link to your home page
+Application privacy policy link
+Provide users a link to your public privacy policy
+Application terms of service link
+Provide users a link to your public terms of service
+
+Authorized domains
+When a domain is used on the consent screen or in an OAuth client’s configuration, it must be pre-registered here. If your app needs to go through verification, please go to the Google Search Console to check if your domains are authorized. Learn more  about the authorized domain limit.
+Authorized domain 1 
+realty-flow-mikebjork.replit.app
+Authorized domain 2 
+287db4a3-c866-4401-95b5-d5a0805fcd5e-00-1ve3wv1codjy9.kirk.replit.dev
+Authorized domain 3 
+596fe8f7-6151-4b60-9a63-924b1ec27201-00-2po7zhxr512nn.janeway.replit.dev
+Authorized domain 4 
+multi-users-realtyflow.replit.app
+Authorized domain 5 
+imakepage.com
+Developer contact information
+Email addresses 
+These email addresses are for Google to notify you about any changes to your project.
+Verification status
+ Your branding has not been published. You can submit it in the Verification Center to show to users.
+
+
+Branding changes saved!
