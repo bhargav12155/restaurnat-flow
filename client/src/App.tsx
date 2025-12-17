@@ -15,6 +15,7 @@ import ProfilePage from "@/pages/profile";
 import MobileUploadPage from "@/pages/mobile-upload";
 import VideosPage from "@/pages/videos";
 import EventsCalendarPage from "@/pages/events-calendar";
+import UnifiedCalendarPage from "@/pages/unified-calendar";
 import TemplateStudioPage from "@/pages/template-studio";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
@@ -64,6 +65,11 @@ function Router() {
       <Route path="/events">
         <ProtectedRoute>
           <EventsCalendarPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/calendar">
+        <ProtectedRoute>
+          <UnifiedCalendarPage />
         </ProtectedRoute>
       </Route>
       <Route path="/templates">
