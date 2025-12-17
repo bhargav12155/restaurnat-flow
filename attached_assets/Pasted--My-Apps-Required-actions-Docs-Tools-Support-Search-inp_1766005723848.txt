@@ -1,0 +1,69 @@
+
+My Apps
+Required actions
+Docs
+Tools
+Support
+Search input
+​
+Search...
+Facebook
+Request for App Review
+Verification
+App settings
+Allowed usage
+Data handling
+Reviewer instructions
+Auto-saved
+Data handling
+The following questions ask about your data handling practices. We recommend you consult legal, policy and data handling experts within your organization for guidance on how to answer these questions. Learn about our data handling guidelines.
+“Personal data” is any data you receive from Meta that is related to an identifiable person. For examples, refer to the definitions in the General Data Protection Regulation (GDPR) and the UK Information Commissioner's Office.
+processor-0
+Do you have data processors or service providers, including your own companies, that will have access to the Platform Data that you obtain from Meta?
+Data processors or service providers are separate entities that, on your behalf, process the Platform Data made accessible to you in order to provide you with a service. Please provide the names of any processors that will have access to the Platform Data made accessible to you through the requested permissions and features.
+
+“Platform Data” is any data that you receive from Meta (e.g., Meta user ID, email address, profile picture, Meta API user access token, and app secret).
+
+Yes
+
+No
+responsible-1
+Who is the person or entity that will be responsible for all Platform Data Meta shares with you?
+Please provide the name of the legal entity that will control the data (i.e., determine the purposes and means of processing the data) made available to you by Meta through the requested permissions and/or features. This could be a natural or legal person, a public authority, an agency or other entity. In some regions this is called a data controller.
+Start typing here...
+responsible-2
+Select the country where this person or entity is located.
+Select from the dropdown
+Select one
+​
+requests-3
+Have you provided the personal data or personal information of users to public authorities in response to national security requests in the past 12 months?
+This does not include requests related to search warrants or court orders associated with criminal investigations.
+
+Personal data or personal information is any data you receive from Meta that relates to an identified or identifiable person.
+
+No
+
+Yes, we have shared the personal data or personal information of approximately 10 or fewer users.
+
+Yes, we have shared the personal data or personal information of about 11–100 users.
+
+Yes, we have shared the personal data or personal information of about 101–1,000 users.
+
+Yes, we have shared the personal data or personal information of more than 1,000 users.
+
+We are prohibited by law or company policy from answering this question.
+requests-4
+Which of the following policies or processes do you have in place regarding requests from public authorities for the personal data or personal information of users? Check all that apply.
+
+Required review of the legality of these requests.
+
+Provisions for challenging these requests if they are considered unlawful.
+
+Data minimization policy—the ability to disclose the minimum information necessary.
+
+Documentation of these requests, including your responses to the requests and the legal reasoning and actors involved.
+
+None of the above.
+
+We are prohibited by law or company policy from answering this question.
