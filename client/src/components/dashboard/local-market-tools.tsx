@@ -185,8 +185,8 @@ export function LocalMarketTools() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <CardContent className="overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
           {/* Market Stats */}
           <div>
             <h3 className="text-sm font-medium text-foreground mb-3">Market Overview</h3>
