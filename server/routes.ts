@@ -627,6 +627,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       }
 
+      // Track content published from scheduled posts
+      try {
+        const { scheduledPosts } = await import("@shared/schema");
+        const { count, eq, and, gte, lt } = await import("drizzle-orm");
+
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const firstDayOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+        // Count posts with status='posted' this month
+        const currentMonthPosted = await db
+          .select({ count: count() })
+          .from(scheduledPosts)
+          .where(
+            and(
+              eq(scheduledPosts.userId, users.id),
+              eq(scheduledPosts.status, "posted"),
+              gte(scheduledPosts.updatedAt, firstDayOfMonth)
+            )
+          );
+
+        // Count posts with status='posted' last month
+        const lastMonthPosted = await db
+          .select({ count: count() })
+          .from(scheduledPosts)
+          .where(
+            and(
+              eq(scheduledPosts.userId, users.id),
+              eq(scheduledPosts.status, "posted"),
+              gte(scheduledPosts.updatedAt, firstDayOfLastMonth),
+              lt(scheduledPosts.updatedAt, firstDayOfMonth)
+            )
+          );
+
+        const currentPosted = currentMonthPosted[0]?.count || 0;
+        const lastPosted = lastMonthPosted[0]?.count || 0;
+
+        // Calculate change percentage
+        let contentChange = 0;
+        if (lastPosted > 0) {
+          contentChange = ((currentPosted - lastPosted) / lastPosted) * 100;
+        } else if (currentPosted > 0) {
+          contentChange = 100;
+        }
+
+        overview.content_published = currentPosted;
+        overview.content_published_change = Math.round(contentChange * 10) / 10;
+
+        // Also get posts by platform breakdown
+        const platformBreakdown = await db
+          .select({ 
+            platform: scheduledPosts.platform, 
+            count: count() 
+          })
+          .from(scheduledPosts)
+          .where(
+            and(
+              eq(scheduledPosts.userId, users.id),
+              eq(scheduledPosts.status, "posted")
+            )
+          )
+          .groupBy(scheduledPosts.platform);
+
+        overview.posts_by_platform = platformBreakdown.reduce((acc: any, row) => {
+          acc[row.platform] = row.count;
+          return acc;
+        }, {});
+
+        console.log(`📝 Dashboard: ${currentPosted} posts published this month (${contentChange >= 0 ? '+' : ''}${contentChange.toFixed(1)}% vs last month)`);
+      } catch (error) {
+        console.warn("Failed to fetch content published stats:", error);
+      }
+
       res.json(overview);
     } catch (error) {
       console.error("Dashboard overview error:", error);
