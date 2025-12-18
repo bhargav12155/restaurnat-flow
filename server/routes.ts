@@ -3978,6 +3978,152 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // =====================================================
+  // GOOGLE SEARCH CONSOLE OAUTH ROUTES
+  // =====================================================
+  
+  app.get("/api/search-console/connect", requireAuth, async (req: any, res) => {
+    try {
+      const { searchConsoleService } = await import("./services/searchConsole");
+      
+      const baseUrl = `https://${req.get("host")}`;
+      const redirectUri = `${baseUrl}/api/search-console/callback`;
+      const state = String(req.user.id);
+      
+      const authUrl = searchConsoleService.getAuthUrl(redirectUri, state);
+      res.json({ authUrl });
+    } catch (error: any) {
+      console.error("Search Console connect error:", error);
+      res.status(500).json({ error: error.message || "Failed to initiate Search Console connection" });
+    }
+  });
+  
+  app.get("/api/search-console/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      
+      if (!code || typeof code !== 'string') {
+        return res.redirect("/?oauth_error=no_auth_code");
+      }
+      
+      const userId = state as string;
+      const { searchConsoleService } = await import("./services/searchConsole");
+      
+      const baseUrl = `https://${req.get("host")}`;
+      const redirectUri = `${baseUrl}/api/search-console/callback`;
+      
+      const tokens = await searchConsoleService.exchangeCodeForTokens(code, redirectUri);
+      
+      // Get list of verified sites
+      const sites = await searchConsoleService.getSiteList(tokens.accessToken);
+      
+      // Store the connection
+      const existingAccounts = await storage.getSocialMediaAccounts(userId);
+      const existingAccount = existingAccounts.find(acc => acc.platform === 'search_console');
+      
+      if (existingAccount) {
+        await storage.updateSocialMediaAccount(existingAccount.id, {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          tokenExpiresAt: tokens.expiresAt,
+          isConnected: true,
+          accountUsername: sites[0] || 'Connected',
+          lastSynced: new Date(),
+        });
+      } else {
+        await storage.createSocialMediaAccount({
+          userId,
+          platform: 'search_console',
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          tokenExpiresAt: tokens.expiresAt,
+          isConnected: true,
+          accountUsername: sites[0] || 'Connected',
+        });
+      }
+      
+      console.log(`✅ Search Console connected for user ${userId}, sites: ${sites.join(', ')}`);
+      
+      res.send(`
+        <html>
+          <body>
+            <h1>Google Search Console Connected! ✅</h1>
+            <p>Found ${sites.length} verified site(s): ${sites.join(', ') || 'None'}</p>
+            <p>Redirecting you back to the app...</p>
+            <script>window.location.href = '/';</script>
+          </body>
+        </html>
+      `);
+    } catch (error: any) {
+      console.error("Search Console callback error:", error);
+      res.status(500).send(`Search Console connection failed: ${error.message}`);
+    }
+  });
+  
+  app.get("/api/search-console/sites", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user.id);
+      const accounts = await storage.getSocialMediaAccounts(userId);
+      const scAccount = accounts.find(acc => acc.platform === 'search_console');
+      
+      if (!scAccount?.accessToken) {
+        return res.status(400).json({ error: "Search Console not connected" });
+      }
+      
+      const { searchConsoleService } = await import("./services/searchConsole");
+      const sites = await searchConsoleService.getSiteList(scAccount.accessToken);
+      
+      res.json({ sites });
+    } catch (error: any) {
+      console.error("Get Search Console sites error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  app.get("/api/search-console/metrics", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user.id);
+      const { siteUrl } = req.query;
+      
+      const accounts = await storage.getSocialMediaAccounts(userId);
+      const scAccount = accounts.find(acc => acc.platform === 'search_console');
+      
+      if (!scAccount?.accessToken) {
+        return res.status(400).json({ error: "Search Console not connected" });
+      }
+      
+      const { searchConsoleService } = await import("./services/searchConsole");
+      
+      // Use provided site or the first connected site
+      let targetSite = siteUrl as string;
+      if (!targetSite) {
+        const sites = await searchConsoleService.getSiteList(scAccount.accessToken);
+        targetSite = sites[0];
+      }
+      
+      if (!targetSite) {
+        return res.status(400).json({ error: "No verified sites found" });
+      }
+      
+      // Get last 30 days of data
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+      
+      const metrics = await searchConsoleService.getSearchMetrics(
+        scAccount.accessToken,
+        targetSite,
+        startDate.toISOString().split('T')[0],
+        endDate.toISOString().split('T')[0]
+      );
+      
+      res.json({ siteUrl: targetSite, metrics });
+    } catch (error: any) {
+      console.error("Get Search Console metrics error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // SEO endpoints
   app.get("/api/seo/keywords", requireAuth, async (req: any, res) => {
     try {
