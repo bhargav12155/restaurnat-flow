@@ -1,6 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, Edit, Search, Heart } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Users, Edit, Search, Heart, ExternalLink } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface OverviewData {
   monthly_leads: number;
@@ -45,6 +48,7 @@ const cards = [
     format: (value: number) => (value / 10).toFixed(1),
     isConnected: false,
     connectHint: "Connect Search Console",
+    connectAction: "search_console",
   },
   {
     title: "Social Engagement",
@@ -60,9 +64,40 @@ const cards = [
 ];
 
 export function OverviewCards() {
+  const { toast } = useToast();
   const { data: overview, isLoading } = useQuery<OverviewData>({
     queryKey: ["/api/dashboard/overview"],
   });
+
+  const connectSearchConsoleMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/search-console/connect", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to initiate connection");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Connection Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleConnect = (action: string) => {
+    if (action === "search_console") {
+      connectSearchConsoleMutation.mutate();
+    }
+  };
 
   if (isLoading) {
     return (
@@ -135,7 +170,21 @@ export function OverviewCards() {
               </div>
               <div className="mt-3 sm:mt-4 flex items-center text-xs sm:text-sm">
                 {showConnectHint ? (
-                  <span className="text-amber-600 font-medium truncate">{card.connectHint}</span>
+                  (card as any).connectAction ? (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-amber-600 hover:text-amber-700 font-medium"
+                      onClick={() => handleConnect((card as any).connectAction)}
+                      disabled={connectSearchConsoleMutation.isPending}
+                      data-testid={`button-connect-${card.key}`}
+                    >
+                      {connectSearchConsoleMutation.isPending ? "Connecting..." : card.connectHint}
+                      <ExternalLink className="ml-1 h-3 w-3" />
+                    </Button>
+                  ) : (
+                    <span className="text-amber-600 font-medium truncate">{card.connectHint}</span>
+                  )
                 ) : (
                   <>
                     <span className={`${getChangeColor(changeText, changeValue)} font-medium`}>{changeText}</span>
