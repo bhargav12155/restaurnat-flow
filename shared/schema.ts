@@ -1344,3 +1344,24 @@ export const insertVideoGenerationJobSchema = createInsertSchema(videoGeneration
 
 export type VideoGenerationJob = typeof videoGenerationJobs.$inferSelect;
 export type InsertVideoGenerationJob = z.infer<typeof insertVideoGenerationJobSchema>;
+
+// =====================================================
+// PLATFORM SETTINGS TABLE (Admin-level integrations)
+// =====================================================
+export const platformSettings = pgTable("platform_settings", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  key: text("key").notNull().unique(),
+  value: jsonb("value"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by"),
+});
+
+export const insertPlatformSettingSchema = createInsertSchema(platformSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
