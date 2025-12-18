@@ -71,7 +71,7 @@ export function OverviewCards() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
       {cards.map((card) => {
         const value = overview?.[card.key] || 0;
         const formattedValue = card.format ? card.format(value) : value.toLocaleString();
@@ -109,22 +109,22 @@ export function OverviewCards() {
         };
         
         return (
-          <Card key={card.title}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{card.title}</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid={`metric-${card.key.replace('_', '-')}`}>
+          <Card key={card.title} className="min-w-0">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">{card.title}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-foreground truncate" data-testid={`metric-${card.key.replace('_', '-')}`}>
                     {formattedValue}
                   </p>
                 </div>
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[#304652] bg-[#2d4450]">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-[#304652] bg-[#2d4450] flex-shrink-0">
                   <card.icon className={`${card.color} h-4 w-4`} />
                 </div>
               </div>
-              <div className="mt-4 flex items-center text-sm">
+              <div className="mt-3 sm:mt-4 flex items-center text-xs sm:text-sm">
                 <span className={`${getChangeColor(changeText, changeValue)} font-medium`}>{changeText}</span>
-                <span className="text-muted-foreground ml-1">{card.changeLabel}</span>
+                <span className="text-muted-foreground ml-1 truncate">{card.changeLabel}</span>
               </div>
             </CardContent>
           </Card>
