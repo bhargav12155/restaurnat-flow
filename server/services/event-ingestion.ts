@@ -442,6 +442,9 @@ export class EventIngestionService {
         case 'calendar_wiz':
           events = this.scrapeCalendarWiz(html, config.scrapeUrl);
           break;
+        case 'eventbrite':
+          events = this.scrapeEventbrite(html, config.scrapeUrl);
+          break;
         default:
           events = this.scrapeGenericCalendar(html, config.scrapeUrl);
       }
@@ -687,6 +690,99 @@ export class EventIngestionService {
     }
 
     // Deduplicate events by title
+    const seen = new Set<string>();
+    return events.filter(e => {
+      const key = `${e.title}-${e.date.toDateString()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private scrapeEventbrite(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
+    const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
+    
+    try {
+      // Eventbrite embeds JSON-LD structured data in script tags
+      const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi);
+      
+      for (const match of jsonLdMatches) {
+        try {
+          const jsonData = JSON.parse(match[1]);
+          
+          // Handle array of events or single event
+          const items = Array.isArray(jsonData) ? jsonData : [jsonData];
+          
+          for (const item of items) {
+            if (item['@type'] === 'Event' || item['@type'] === 'EventSeries') {
+              const title = item.name;
+              const startDate = item.startDate ? new Date(item.startDate) : null;
+              const location = item.location?.name || item.location?.address?.addressLocality || 'Omaha, NE';
+              const description = item.description;
+              const url = item.url;
+              
+              if (title && startDate && !isNaN(startDate.getTime())) {
+                events.push({
+                  title,
+                  date: startDate,
+                  location,
+                  description: description?.substring(0, 500),
+                  url,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          // JSON parse error, continue to next match
+        }
+      }
+      
+      // Also try to extract from inline JSON data that Eventbrite uses
+      const eventJsonMatch = html.match(/"events":\s*(\[[\s\S]*?\])/);
+      if (eventJsonMatch) {
+        try {
+          const eventsData = JSON.parse(eventJsonMatch[1]);
+          for (const evt of eventsData) {
+            if (evt.name && evt.start_date) {
+              events.push({
+                title: evt.name,
+                date: new Date(evt.start_date),
+                location: evt.venue?.name || 'Omaha, NE',
+                url: evt.url || baseUrl,
+              });
+            }
+          }
+        } catch (e) { }
+      }
+      
+      // Parse from visible content as fallback
+      const $ = cheerio.load(html);
+      $('[data-testid="event-card"], .eds-event-card, .search-event-card').each((_, elem) => {
+        try {
+          const $elem = $(elem);
+          const title = $elem.find('[data-testid="event-card-title"], .eds-event-card__formatted-name--is-clamped, h2, h3').first().text().trim();
+          const dateText = $elem.find('[data-testid="event-card-date"], .eds-event-card-content__sub-title, time').first().text().trim();
+          const locationText = $elem.find('[data-testid="event-card-location"], .card-text--truncated__one').first().text().trim();
+          const linkHref = $elem.find('a').first().attr('href');
+          
+          if (title && dateText) {
+            const parsedDate = this.parseFlexibleDate(dateText);
+            if (parsedDate) {
+              events.push({
+                title,
+                date: parsedDate,
+                location: locationText || 'Omaha, NE',
+                url: linkHref ? (linkHref.startsWith('http') ? linkHref : new URL(linkHref, baseUrl).href) : baseUrl,
+              });
+            }
+          }
+        } catch (e) { }
+      });
+    } catch (e) {
+      console.error('Eventbrite scraping error:', e);
+    }
+    
+    // Deduplicate
     const seen = new Set<string>();
     return events.filter(e => {
       const key = `${e.title}-${e.date.toDateString()}`;
