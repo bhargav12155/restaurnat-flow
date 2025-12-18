@@ -983,11 +983,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Read credentials from Replit Secrets (environment variables)
+      // Use request host for production deployments
       const baseUrl =
         process.env.BASE_URL ||
         (process.env.REPLIT_DEV_DOMAIN
           ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : "http://localhost:5000");
+          : `https://${req.get("host")}`);
 
       // Create state parameter with userId for OAuth callback
       const state = Buffer.from(JSON.stringify({ userId, platform })).toString(
@@ -1176,11 +1177,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : undefined;
 
       // Use production URL for Replit deployments
+      // Use request host for production deployments
       const baseUrl =
         process.env.BASE_URL ||
         (process.env.REPLIT_DEV_DOMAIN
           ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-          : "http://localhost:5000");
+          : `https://${req.get("host")}`);
 
       if (error) {
         return res.redirect(`${baseUrl}/?oauth_error=${error}`);
