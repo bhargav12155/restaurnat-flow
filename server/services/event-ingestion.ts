@@ -566,46 +566,134 @@ export class EventIngestionService {
     const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
     const $ = cheerio.load(html);
 
-    // CalendarWiz has a specific structure with table-based or div-based calendars
-    $('td.calDay, .event, .cw-event, tr[class*="event"]').each((_, elem) => {
+    // OmahaRealtors CalendarWiz uses list view with day headers followed by event entries
+    // Look for day headers like "Monday, December 1st" or "Tuesday, December 2nd"
+    const dayPattern = /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?/gi;
+    const fullText = $('body').text();
+    
+    // Find all day headers in the HTML
+    let match;
+    const dayHeaders: { day: string; month: string; date: number; position: number }[] = [];
+    while ((match = dayPattern.exec(fullText)) !== null) {
+      dayHeaders.push({
+        day: match[1],
+        month: match[2],
+        date: parseInt(match[3]),
+        position: match.index
+      });
+    }
+
+    // Parse events from structured elements
+    // CalendarWiz uses various containers for events
+    $('div[class*="cw-"], .event-item, .cal-event, table tr').each((_, elem) => {
       try {
         const $elem = $(elem);
-        const eventLinks = $elem.find('a');
+        const text = $elem.text();
         
-        eventLinks.each((_, linkElem) => {
-          const $link = $(linkElem);
-          const title = $link.text().trim();
-          const href = $link.attr('href');
+        // Look for Time: pattern which indicates an event entry
+        const timeMatch = text.match(/Time:\s*(\d{1,2}:\d{2}(?:am|pm)?)\s*-\s*(\d{1,2}:\d{2}(?:am|pm)?)/i);
+        if (timeMatch) {
+          // Find the event title (usually in a bold or heading before Time:)
+          const title = $elem.find('b, strong, h3, h4, .event-title').first().text().trim() ||
+                       text.split('Time:')[0].replace(/Category.*$/i, '').trim().split('\n').pop()?.trim();
           
-          // Try to find date from parent cell or data attributes
-          const dateCell = $elem.closest('td.calDay, [data-date]');
-          const dateAttr = dateCell.attr('data-date') || dateCell.attr('id');
+          // Find location
+          const locationMatch = text.match(/Location(?:\s+Details)?:\s*([^,\n]+(?:,[^,\n]+)?)/i);
+          const location = locationMatch ? locationMatch[1].trim() : undefined;
           
-          if (title && href) {
-            // Parse date from URL parameters or nearby elements
-            const urlMatch = href.match(/date=(\d{4}-\d{2}-\d{2})/);
-            let date: Date | null = null;
-            
-            if (urlMatch) {
-              date = new Date(urlMatch[1]);
-            } else if (dateAttr) {
-              date = this.parseFlexibleDate(dateAttr);
-            }
-            
-            if (date) {
-              events.push({
-                title,
-                date,
-                location: 'Omaha, NE',
-                url: href.startsWith('http') ? href : new URL(href, baseUrl).href,
-              });
-            }
+          // Find more info URL
+          const moreInfoLink = $elem.find('a[href*="zoom"], a[href*="calendly"], a[href*="register"]').first().attr('href');
+          
+          if (title && title.length > 3) {
+            events.push({
+              title: title.replace(/^More Info\s*/i, '').trim(),
+              date: new Date(), // Will be parsed with day context below
+              location: location || 'OABR, Omaha, NE',
+              url: moreInfoLink || baseUrl,
+            });
           }
-        });
+        }
       } catch (e) { }
     });
 
-    return events;
+    // Alternative: Parse events by looking for common CalendarWiz event patterns in text
+    // Many CalendarWiz sites render as plain text with specific patterns
+    const textBlocks = fullText.split(/(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),/i);
+    
+    for (let i = 1; i < textBlocks.length; i++) {
+      const block = textBlocks[i];
+      // Extract date from start of block
+      const dateMatch = block.match(/^\s*(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?/i);
+      if (!dateMatch) continue;
+      
+      const month = dateMatch[1];
+      const day = parseInt(dateMatch[2]);
+      const currentYear = new Date().getFullYear();
+      const nextYear = currentYear + 1;
+      
+      // Determine year based on month
+      const monthNames: Record<string, number> = {
+        january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+        july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
+      };
+      const monthNum = monthNames[month.toLowerCase()];
+      if (monthNum === undefined) continue;
+      
+      // Use next year if month is before current month
+      const now = new Date();
+      const year = (monthNum < now.getMonth()) ? nextYear : currentYear;
+      const eventDate = new Date(year, monthNum, day);
+      
+      // Find events in this day's block by looking for Time: patterns
+      const eventMatches = block.matchAll(/([^\n]+?)\s*Time:\s*(\d{1,2}:\d{2}(?:am|pm)?)\s*-\s*(\d{1,2}:\d{2}(?:am|pm)?)/gi);
+      
+      for (const eventMatch of eventMatches) {
+        const rawTitle = eventMatch[1].replace(/Category.*?(?=\S)/gi, '').trim();
+        // Clean up title - remove "More Info" and URLs
+        const title = rawTitle
+          .replace(/More Info\s*https?:\/\/[^\s]+/gi, '')
+          .replace(/https?:\/\/[^\s]+/gi, '')
+          .trim()
+          .split('\n').pop()?.trim() || '';
+        
+        const startTime = eventMatch[2];
+        
+        if (title && title.length > 3 && !title.match(/^(Category|Location|Contact)/i)) {
+          // Parse start time
+          const timeMatch = startTime.match(/(\d{1,2}):(\d{2})(am|pm)?/i);
+          if (timeMatch) {
+            let hours = parseInt(timeMatch[1]);
+            const minutes = parseInt(timeMatch[2]);
+            const ampm = timeMatch[3]?.toLowerCase();
+            
+            if (ampm === 'pm' && hours !== 12) hours += 12;
+            if (ampm === 'am' && hours === 12) hours = 0;
+            
+            eventDate.setHours(hours, minutes, 0, 0);
+          }
+          
+          // Extract location from block
+          const locationMatch = block.match(/Location(?:\s+Details)?[:\s]+([^\n]+)/i);
+          const location = locationMatch ? locationMatch[1].trim().split(',')[0] : 'OABR, Omaha, NE';
+          
+          events.push({
+            title,
+            date: new Date(eventDate),
+            location,
+            url: baseUrl,
+          });
+        }
+      }
+    }
+
+    // Deduplicate events by title
+    const seen = new Set<string>();
+    return events.filter(e => {
+      const key = `${e.title}-${e.date.toDateString()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   private scrapeGenericCalendar(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
