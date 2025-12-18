@@ -3406,26 +3406,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        // Resolve DB user ID to MemStorage UUID (same logic as other endpoints)
-        let userId = String(req.user.id);
-        let user = await storage.getUser(userId);
-
-        // If not found by ID, try by email (CRITICAL for DB-authenticated users)
-        if (!user && req.user?.email) {
-          user = await storage.getUserByEmail(req.user.email);
-        }
-
-        // If not found by email, try by username
-        if (!user && req.user?.username) {
-          user = await storage.getUserByUsername(req.user.username);
-        }
-
-        if (!user) {
-          return res.status(404).json({
-            error:
-              "User not found in storage. Please reconnect your Twitter account.",
-          });
-        }
+        // Use stable DB user ID directly - social accounts are stored with this ID
+        const stableUserId = String(req.user.id);
 
         // Support both JSON (from old frontend) and FormData (from new frontend)
         let content = req.body.content;
@@ -3433,7 +3415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Debug logging
         console.log("📝 Twitter post request:", {
-          userId: user.id,
+          userId: stableUserId,
           contentType: req.get("content-type"),
           bodyKeys: Object.keys(req.body),
           content: content ? content.substring(0, 50) + "..." : "MISSING",
@@ -3453,9 +3435,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const baseUrl = `${req.protocol}://${req.get("host")}`;
         const fullPhotoUrl = photoUrl ? baseUrl + photoUrl : undefined;
 
-        // Pass userId to use OAuth 2.0 token from database
+        // Pass stable user ID to use OAuth 2.0 token from database
         const postResult = await socialMediaService.postToTwitter(
-          user.id,
+          stableUserId,
           content,
           fullPhotoUrl
         );
