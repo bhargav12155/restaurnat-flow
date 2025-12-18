@@ -30,7 +30,7 @@ const cards = [
     bgColor: "bg-chart-2/10",
     changeLabel: "vs last month",
     isConnected: false,
-    connectHint: "Connect social accounts to track",
+    connectHint: "Connect socials",
   },
   {
     title: "SEO Ranking",
@@ -41,7 +41,7 @@ const cards = [
     changeLabel: "avg position",
     format: (value: number) => (value / 10).toFixed(1),
     isConnected: false,
-    connectHint: "Connect Google Search Console",
+    connectHint: "Connect Search Console",
   },
   {
     title: "Social Engagement",
@@ -52,7 +52,7 @@ const cards = [
     changeLabel: "this week",
     format: (value: number) => `${(value / 1000).toFixed(1)}K`,
     isConnected: false,
-    connectHint: "Connect social accounts to track",
+    connectHint: "Connect socials",
   },
 ];
 
