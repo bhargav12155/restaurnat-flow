@@ -19,7 +19,7 @@ import multer from "multer";
 import { nanoid } from "nanoid";
 import path from "path";
 import { db } from "./db";
-import { requireAuth } from "./middleware/auth";
+import { requireAuth, createRequireAdmin, optionalAuth } from "./middleware/auth";
 import { ObjectNotFoundError, ObjectStorageService, persistImageFromUrl } from "./objectStorage";
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
@@ -406,6 +406,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     return Boolean(value);
   };
+
+  // Create admin middleware with storage access
+  const requireAdmin = createRequireAdmin(storage);
 
   // Helper function to ensure S3 URLs are properly formatted
   const ensureS3Url = (urlOrKey: string | null | undefined): string | null => {
@@ -3979,18 +3982,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // =====================================================
-  // GOOGLE SEARCH CONSOLE OAUTH ROUTES
+  // GOOGLE SEARCH CONSOLE OAUTH ROUTES (Admin-Only)
+  // Platform-level integration - one connection for all users
   // =====================================================
   
-  app.get("/api/search-console/connect", requireAuth, async (req: any, res) => {
+  // Admin-only: Initiate Search Console OAuth connection
+  app.get("/api/search-console/connect", requireAdmin, async (req: any, res) => {
     try {
       const { searchConsoleService } = await import("./services/searchConsole");
       
       const baseUrl = `https://${req.get("host")}`;
       const redirectUri = `${baseUrl}/api/search-console/callback`;
-      const state = String(req.user.id);
       
-      const authUrl = searchConsoleService.getAuthUrl(redirectUri, state);
+      // Generate a cryptographically random state nonce for CSRF protection
+      const stateNonce = crypto.randomBytes(32).toString('hex');
+      const adminUserId = req.user.id;
+      
+      // Store the state in platform_settings for validation in callback
+      const stateData = {
+        nonce: stateNonce,
+        adminUserId: adminUserId,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 minute expiry
+      };
+      
+      await db.execute(sql`
+        INSERT INTO platform_settings (key, value, updated_at, updated_by)
+        VALUES ('search_console_oauth_state', ${JSON.stringify(stateData)}::jsonb, NOW(), ${adminUserId})
+        ON CONFLICT (key) DO UPDATE SET
+          value = ${JSON.stringify(stateData)}::jsonb,
+          updated_at = NOW(),
+          updated_by = ${adminUserId}
+      `);
+      
+      const authUrl = searchConsoleService.getAuthUrl(redirectUri, stateNonce);
       res.json({ authUrl });
     } catch (error: any) {
       console.error("Search Console connect error:", error);
@@ -3998,6 +4023,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // OAuth callback - stores tokens in platform_settings (platform-level)
   app.get("/api/search-console/callback", async (req, res) => {
     try {
       const { code, state } = req.query;
@@ -4006,7 +4032,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect("/?oauth_error=no_auth_code");
       }
       
-      const userId = state as string;
+      if (!state || typeof state !== 'string') {
+        return res.redirect("/?oauth_error=invalid_state");
+      }
+      
+      // Retrieve and validate the stored state from platform_settings
+      const storedStateResult = await db.execute(sql`
+        SELECT value FROM platform_settings WHERE key = 'search_console_oauth_state'
+      `);
+      
+      if (storedStateResult.rows.length === 0) {
+        console.error("Search Console callback: No stored state found");
+        return res.redirect("/?oauth_error=invalid_state");
+      }
+      
+      const storedState = storedStateResult.rows[0].value as any;
+      
+      // Validate the state matches what we stored
+      if (storedState.nonce !== state) {
+        console.error("Search Console callback: State mismatch - possible CSRF attack");
+        return res.redirect("/?oauth_error=invalid_state");
+      }
+      
+      // Check if state has expired (10 minute window)
+      if (new Date(storedState.expiresAt) < new Date()) {
+        console.error("Search Console callback: State expired");
+        // Delete expired state
+        await db.execute(sql`DELETE FROM platform_settings WHERE key = 'search_console_oauth_state'`);
+        return res.redirect("/?oauth_error=state_expired");
+      }
+      
+      const adminUserId = storedState.adminUserId;
+      
+      // Delete the state immediately after successful validation (one-time use)
+      await db.execute(sql`DELETE FROM platform_settings WHERE key = 'search_console_oauth_state'`);
+      
       const { searchConsoleService } = await import("./services/searchConsole");
       
       const baseUrl = `https://${req.get("host")}`;
@@ -4017,38 +4077,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get list of verified sites
       const sites = await searchConsoleService.getSiteList(tokens.accessToken);
       
-      // Store the connection
-      const existingAccounts = await storage.getSocialMediaAccounts(userId);
-      const existingAccount = existingAccounts.find(acc => acc.platform === 'search_console');
+      // Store tokens in platform_settings (central storage for all users)
+      const settingValue = {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: tokens.expiresAt.toISOString(),
+        connectedBy: adminUserId,
+        connectedAt: new Date().toISOString(),
+        sites: sites,
+      };
       
-      if (existingAccount) {
-        await storage.updateSocialMediaAccount(existingAccount.id, {
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          tokenExpiresAt: tokens.expiresAt,
-          isConnected: true,
-          accountUsername: sites[0] || 'Connected',
-          lastSynced: new Date(),
-        });
-      } else {
-        await storage.createSocialMediaAccount({
-          userId,
-          platform: 'search_console',
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          tokenExpiresAt: tokens.expiresAt,
-          isConnected: true,
-          accountUsername: sites[0] || 'Connected',
-        });
-      }
+      await db.execute(sql`
+        INSERT INTO platform_settings (key, value, updated_at, updated_by)
+        VALUES ('search_console', ${JSON.stringify(settingValue)}::jsonb, NOW(), ${adminUserId})
+        ON CONFLICT (key) DO UPDATE SET
+          value = ${JSON.stringify(settingValue)}::jsonb,
+          updated_at = NOW(),
+          updated_by = ${adminUserId}
+      `);
       
-      console.log(`✅ Search Console connected for user ${userId}, sites: ${sites.join(', ')}`);
+      console.log(`✅ Search Console connected platform-wide by admin ${adminUserId}, sites: ${sites.join(', ')}`);
       
       res.send(`
         <html>
           <body>
             <h1>Google Search Console Connected! ✅</h1>
             <p>Found ${sites.length} verified site(s): ${sites.join(', ') || 'None'}</p>
+            <p>SEO metrics will now be available to all agents.</p>
             <p>Redirecting you back to the app...</p>
             <script>window.location.href = '/';</script>
           </body>
@@ -4060,46 +4115,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.get("/api/search-console/sites", requireAuth, async (req: any, res) => {
+  // Check Search Console connection status (available to all users, including unauthenticated)
+  app.get("/api/search-console/status", optionalAuth, async (req: any, res) => {
     try {
-      const userId = String(req.user.id);
-      const accounts = await storage.getSocialMediaAccounts(userId);
-      const scAccount = accounts.find(acc => acc.platform === 'search_console');
+      const result = await db.execute(sql`
+        SELECT value FROM platform_settings WHERE key = 'search_console'
+      `);
       
-      if (!scAccount?.accessToken) {
-        return res.status(400).json({ error: "Search Console not connected" });
+      if (result.rows.length === 0) {
+        return res.json({ connected: false });
       }
       
-      const { searchConsoleService } = await import("./services/searchConsole");
-      const sites = await searchConsoleService.getSiteList(scAccount.accessToken);
+      const settings = result.rows[0].value as any;
+      res.json({
+        connected: true,
+        sites: settings.sites || [],
+        connectedAt: settings.connectedAt,
+      });
+    } catch (error: any) {
+      console.error("Get Search Console status error:", error);
+      // Return graceful default instead of error for unauthenticated users
+      res.json({ connected: false });
+    }
+  });
+  
+  // Get Search Console sites (available to all users, reads from platform_settings)
+  app.get("/api/search-console/sites", requireAuth, async (req: any, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT value FROM platform_settings WHERE key = 'search_console'
+      `);
       
-      res.json({ sites });
+      if (result.rows.length === 0) {
+        return res.status(400).json({ error: "Search Console not connected by admin" });
+      }
+      
+      const settings = result.rows[0].value as any;
+      res.json({ sites: settings.sites || [] });
     } catch (error: any) {
       console.error("Get Search Console sites error:", error);
       res.status(500).json({ error: error.message });
     }
   });
   
+  // Get Search Console metrics (available to all users)
   app.get("/api/search-console/metrics", requireAuth, async (req: any, res) => {
     try {
-      const userId = String(req.user.id);
       const { siteUrl } = req.query;
       
-      const accounts = await storage.getSocialMediaAccounts(userId);
-      const scAccount = accounts.find(acc => acc.platform === 'search_console');
+      // Get platform-level tokens from platform_settings
+      const result = await db.execute(sql`
+        SELECT value FROM platform_settings WHERE key = 'search_console'
+      `);
       
-      if (!scAccount?.accessToken) {
-        return res.status(400).json({ error: "Search Console not connected" });
+      if (result.rows.length === 0) {
+        return res.status(400).json({ error: "Search Console not connected. Ask your admin to connect." });
+      }
+      
+      const settings = result.rows[0].value as any;
+      let accessToken = settings.accessToken;
+      
+      // Refresh token if expired
+      if (new Date(settings.expiresAt) < new Date()) {
+        const { searchConsoleService } = await import("./services/searchConsole");
+        accessToken = await searchConsoleService.refreshAccessToken(settings.refreshToken);
+        
+        // Update stored token
+        settings.accessToken = accessToken;
+        settings.expiresAt = new Date(Date.now() + 3600000).toISOString();
+        await db.execute(sql`
+          UPDATE platform_settings SET value = ${JSON.stringify(settings)}::jsonb, updated_at = NOW()
+          WHERE key = 'search_console'
+        `);
       }
       
       const { searchConsoleService } = await import("./services/searchConsole");
       
       // Use provided site or the first connected site
-      let targetSite = siteUrl as string;
-      if (!targetSite) {
-        const sites = await searchConsoleService.getSiteList(scAccount.accessToken);
-        targetSite = sites[0];
-      }
+      let targetSite = siteUrl as string || settings.sites?.[0];
       
       if (!targetSite) {
         return res.status(400).json({ error: "No verified sites found" });
@@ -4111,7 +4204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       startDate.setDate(startDate.getDate() - 30);
       
       const metrics = await searchConsoleService.getSearchMetrics(
-        scAccount.accessToken,
+        accessToken,
         targetSite,
         startDate.toISOString().split('T')[0],
         endDate.toISOString().split('T')[0]
@@ -4121,6 +4214,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Get Search Console metrics error:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Check if current user is admin (for frontend display logic)
+  // Uses optionalAuth so unauthenticated users get graceful default
+  app.get("/api/user/is-admin", optionalAuth, async (req: any, res) => {
+    try {
+      // If no user is authenticated, return false
+      if (!req.user || !req.user.id) {
+        return res.json({ isAdmin: false });
+      }
+      const user = await storage.getUser(String(req.user.id));
+      res.json({ isAdmin: user?.role === 'admin' });
+    } catch (error: any) {
+      res.json({ isAdmin: false });
     }
   });
 

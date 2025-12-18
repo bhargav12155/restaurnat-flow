@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Edit, Search, Heart, ExternalLink } from "lucide-react";
+import { Users, Edit, Search, Heart, ExternalLink, CheckCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,6 +13,16 @@ interface OverviewData {
   posts_by_platform?: Record<string, number>;
   seo_ranking: number;
   social_engagement: number;
+}
+
+interface SearchConsoleStatus {
+  connected: boolean;
+  sites?: string[];
+  connectedAt?: string;
+}
+
+interface AdminStatus {
+  isAdmin: boolean;
 }
 
 const cards = [
@@ -68,6 +78,19 @@ export function OverviewCards() {
   const { data: overview, isLoading } = useQuery<OverviewData>({
     queryKey: ["/api/dashboard/overview"],
   });
+
+  // Check if user is admin
+  const { data: adminStatus } = useQuery<AdminStatus>({
+    queryKey: ["/api/user/is-admin"],
+  });
+
+  // Check if Search Console is connected platform-wide
+  const { data: scStatus } = useQuery<SearchConsoleStatus>({
+    queryKey: ["/api/search-console/status"],
+  });
+
+  const isAdmin = adminStatus?.isAdmin ?? false;
+  const isSearchConsoleConnected = scStatus?.connected ?? false;
 
   const connectSearchConsoleMutation = useMutation({
     mutationFn: async () => {
@@ -161,7 +184,7 @@ export function OverviewCards() {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">{card.title}</p>
                   <p className="text-xl sm:text-2xl font-bold text-foreground truncate" data-testid={`metric-${card.key.replace('_', '-')}`}>
-                    {card.isConnected ? formattedValue : '--'}
+                    {(card.isConnected || ((card as any).connectAction === "search_console" && isSearchConsoleConnected)) ? formattedValue : '--'}
                   </p>
                 </div>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-[#304652] bg-[#2d4450] flex-shrink-0">
@@ -170,7 +193,28 @@ export function OverviewCards() {
               </div>
               <div className="mt-3 sm:mt-4 flex items-center text-xs sm:text-sm">
                 {showConnectHint ? (
-                  (card as any).connectAction ? (
+                  (card as any).connectAction === "search_console" ? (
+                    isSearchConsoleConnected ? (
+                      <span className="text-green-600 font-medium flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" />
+                        Connected
+                      </span>
+                    ) : isAdmin ? (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto p-0 text-amber-600 hover:text-amber-700 font-medium"
+                        onClick={() => handleConnect((card as any).connectAction)}
+                        disabled={connectSearchConsoleMutation.isPending}
+                        data-testid={`button-connect-${card.key}`}
+                      >
+                        {connectSearchConsoleMutation.isPending ? "Connecting..." : card.connectHint}
+                        <ExternalLink className="ml-1 h-3 w-3" />
+                      </Button>
+                    ) : (
+                      <span className="text-muted-foreground font-medium truncate">Admin connects this</span>
+                    )
+                  ) : (card as any).connectAction ? (
                     <Button
                       variant="link"
                       size="sm"
