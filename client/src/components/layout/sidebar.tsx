@@ -493,7 +493,7 @@ export function Sidebar({ activeView = "dashboard" }: SidebarProps) {
       {/* Desktop Sidebar */}
       <aside
         className={cn(
-          "hidden lg:flex flex-col bg-card border-r border-border transition-all duration-300 ease-in-out relative",
+          "hidden lg:flex flex-col bg-card border-r border-border transition-all duration-300 ease-in-out relative flex-shrink-0",
           isCollapsed ? "w-20" : "w-64"
         )}
       >
