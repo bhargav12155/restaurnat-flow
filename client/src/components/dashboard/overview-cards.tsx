@@ -6,6 +6,8 @@ interface OverviewData {
   monthly_leads: number;
   monthly_leads_change?: number;
   content_published: number;
+  content_published_change?: number;
+  posts_by_platform?: Record<string, number>;
   seo_ranking: number;
   social_engagement: number;
 }
@@ -25,12 +27,13 @@ const cards = [
   {
     title: "Content Published",
     key: "content_published" as keyof OverviewData,
+    changeKey: "content_published_change" as keyof OverviewData,
     icon: Edit,
     color: "text-chart-2",
     bgColor: "bg-chart-2/10",
     changeLabel: "vs last month",
-    isConnected: false,
-    connectHint: "Connect socials",
+    isConnected: true,
+    connectHint: "Post content to track",
   },
   {
     title: "SEO Ranking",
