@@ -1635,7 +1635,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (!tokenResponse.ok) {
             const errorData = await tokenResponse.text();
-            console.error("Twitter token exchange failed:", errorData);
+            console.error("❌ Twitter token exchange failed:");
+            console.error("   Status:", tokenResponse.status);
+            console.error("   Response:", errorData);
+            console.error("   Redirect URI used:", redirectUri);
+            console.error("   Client ID:", clientId?.substring(0, 10) + "...");
             return res.redirect(
               `${baseUrl}/?oauth_error=token_exchange_failed`
             );
