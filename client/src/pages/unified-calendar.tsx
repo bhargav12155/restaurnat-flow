@@ -24,6 +24,7 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { AiGeneratedBadge } from "@/components/shared/ai-generated-badge";
 import { useAuth } from "@/hooks/useAuth";
+import { Sidebar } from "@/components/layout/sidebar";
 
 interface EventSource {
   id: string;
@@ -643,257 +644,246 @@ export default function UnifiedCalendarPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <Link href="/dashboard">
-            <Button variant="ghost" size="icon" data-testid="btn-back-dashboard">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="page-title">
-              <CalendarDays className="w-8 h-8" />
-              Content & Event Calendar
-            </h1>
-            <p className="text-muted-foreground">
-              Manage events, schedule posts, and generate AI content in one place
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => syncAllMutation.mutate()}
-            disabled={syncAllMutation.isPending}
-            data-testid="btn-sync-all"
-          >
-            {syncAllMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
-            Sync Events
-          </Button>
-          <Dialog open={showAddEventDialog} onOpenChange={(open) => {
-            setShowAddEventDialog(open);
-            if (!open) eventForm.reset();
-          }}>
-            <DialogTrigger asChild>
-              <Button data-testid="btn-add-event">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Event
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      <Sidebar activeView="calendar" />
+      <main className="flex-1 overflow-y-auto">
+        <div className="container mx-auto p-6 max-w-7xl">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="page-title">
+                <CalendarDays className="w-8 h-8" />
+                Content & Event Calendar
+              </h1>
+              <p className="text-muted-foreground">
+                Manage events, schedule posts, and generate AI content in one place
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => syncAllMutation.mutate()}
+                disabled={syncAllMutation.isPending}
+                data-testid="btn-sync-all"
+              >
+                {syncAllMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                )}
+                Sync Events
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Manual Event</DialogTitle>
-                <DialogDescription>
-                  Add a local event to generate posts for
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...eventForm}>
-                <form onSubmit={eventForm.handleSubmit(handleAddEvent)} className="space-y-4">
-                  <FormField
-                    control={eventForm.control}
-                    name="title"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Event Title</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="Omaha Farmer's Market"
-                            data-testid="input-event-title"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={eventForm.control}
-                    name="isAllDay"
-                    render={({ field }) => (
-                      <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                        <div className="space-y-0.5">
-                          <FormLabel>All-Day Event</FormLabel>
-                          <FormDescription className="text-xs">
-                            Toggle if this event runs the entire day
-                          </FormDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                            data-testid="switch-all-day"
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={eventForm.control}
-                    name="date"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Date</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="date"
-                            data-testid="input-event-date"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {!eventForm.watch("isAllDay") && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={eventForm.control}
-                        name="startTime"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Start Time</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                type="time"
-                                data-testid="input-start-time"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={eventForm.control}
-                        name="endTime"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>End Time (optional)</FormLabel>
-                            <FormControl>
-                              <Input
-                                {...field}
-                                type="time"
-                                data-testid="input-end-time"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  )}
-
-                  <FormField
-                    control={eventForm.control}
-                    name="location"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Location (optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="Old Market, Omaha"
-                            data-testid="input-event-location"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={eventForm.control}
-                    name="category"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Category</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-event-category">
-                              <SelectValue placeholder="Select category" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="community">Community</SelectItem>
-                            <SelectItem value="real_estate">Real Estate</SelectItem>
-                            <SelectItem value="market">Market</SelectItem>
-                            <SelectItem value="festival">Festival</SelectItem>
-                            <SelectItem value="networking">Networking</SelectItem>
-                            <SelectItem value="entertainment">Entertainment</SelectItem>
-                            <SelectItem value="sports">Sports</SelectItem>
-                            <SelectItem value="education">Education</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={eventForm.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Description (optional)</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            {...field}
-                            placeholder="Describe the event..."
-                            data-testid="input-event-description"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    disabled={createEventMutation.isPending}
-                    className="w-full"
-                    data-testid="btn-create-event"
-                  >
-                    {createEventMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Plus className="w-4 h-4 mr-2" />
-                    )}
-                    Create Event
+              <Dialog open={showAddEventDialog} onOpenChange={(open) => {
+                setShowAddEventDialog(open);
+                if (!open) eventForm.reset();
+              }}>
+                <DialogTrigger asChild>
+                  <Button data-testid="btn-add-event">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Event
                   </Button>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add Manual Event</DialogTitle>
+                    <DialogDescription>
+                      Add a local event to generate posts for
+                    </DialogDescription>
+                  </DialogHeader>
+                  <Form {...eventForm}>
+                    <form onSubmit={eventForm.handleSubmit(handleAddEvent)} className="space-y-4">
+                      <FormField
+                        control={eventForm.control}
+                        name="title"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Event Title</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                placeholder="Omaha Farmer's Market"
+                                data-testid="input-event-title"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={eventForm.control}
+                        name="isAllDay"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="space-y-0.5">
+                              <FormLabel>All-Day Event</FormLabel>
+                              <FormDescription className="text-xs">
+                                Toggle if this event runs the entire day
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                data-testid="switch-all-day"
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={eventForm.control}
+                        name="date"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Date</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                type="date"
+                                data-testid="input-event-date"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {!eventForm.watch("isAllDay") && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={eventForm.control}
+                            name="startTime"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Start Time</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    type="time"
+                                    data-testid="input-start-time"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={eventForm.control}
+                            name="endTime"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>End Time (optional)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    type="time"
+                                    data-testid="input-end-time"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      )}
+                      <FormField
+                        control={eventForm.control}
+                        name="location"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Location (optional)</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                placeholder="Old Market, Omaha"
+                                data-testid="input-event-location"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={eventForm.control}
+                        name="category"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Category</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-event-category">
+                                  <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="community">Community</SelectItem>
+                                <SelectItem value="real_estate">Real Estate</SelectItem>
+                                <SelectItem value="market">Market</SelectItem>
+                                <SelectItem value="festival">Festival</SelectItem>
+                                <SelectItem value="networking">Networking</SelectItem>
+                                <SelectItem value="entertainment">Entertainment</SelectItem>
+                                <SelectItem value="sports">Sports</SelectItem>
+                                <SelectItem value="education">Education</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={eventForm.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description (optional)</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                {...field}
+                                placeholder="Describe the event..."
+                                data-testid="input-event-description"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        disabled={createEventMutation.isPending}
+                        className="w-full"
+                        data-testid="btn-create-event"
+                      >
+                        {createEventMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Plus className="w-4 h-4 mr-2" />
+                        )}
+                        Create Event
+                      </Button>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="calendar" className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            Calendar View
-          </TabsTrigger>
-          <TabsTrigger value="ai-planner" className="flex items-center gap-2">
-            <Wand2 className="w-4 h-4" />
-            AI Planner
-          </TabsTrigger>
-          <TabsTrigger value="events" className="flex items-center gap-2">
-            <ListChecks className="w-4 h-4" />
-            Upcoming Events
-          </TabsTrigger>
-          <TabsTrigger value="sources" className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            Event Sources
-          </TabsTrigger>
-        </TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="calendar" className="flex items-center gap-2">
+                <Calendar className="w-4 h-4" />
+                Calendar View
+              </TabsTrigger>
+              <TabsTrigger value="ai-planner" className="flex items-center gap-2">
+                <Wand2 className="w-4 h-4" />
+                AI Planner
+              </TabsTrigger>
+              <TabsTrigger value="events" className="flex items-center gap-2">
+                <ListChecks className="w-4 h-4" />
+                Upcoming Events
+              </TabsTrigger>
+              <TabsTrigger value="sources" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Event Sources
+              </TabsTrigger>
+            </TabsList>
 
         <TabsContent value="calendar">
           <Card>
@@ -1645,6 +1635,8 @@ export default function UnifiedCalendarPage() {
           )}
         </DialogContent>
       </Dialog>
+        </div>
+      </main>
     </div>
   );
 }
