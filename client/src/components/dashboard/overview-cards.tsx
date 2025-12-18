@@ -19,6 +19,8 @@ const cards = [
     color: "text-chart-1",
     bgColor: "bg-chart-1/10",
     changeLabel: "vs last month",
+    isConnected: true,
+    connectHint: "Engagement tracking active",
   },
   {
     title: "Content Published",
@@ -26,8 +28,9 @@ const cards = [
     icon: Edit,
     color: "text-chart-2",
     bgColor: "bg-chart-2/10",
-    change: "+8.3%",
     changeLabel: "vs last month",
+    isConnected: false,
+    connectHint: "Connect social accounts to track",
   },
   {
     title: "SEO Ranking",
@@ -35,9 +38,10 @@ const cards = [
     icon: Search,
     color: "text-chart-3",
     bgColor: "bg-chart-3/10",
-    change: "+0.8",
     changeLabel: "avg position",
     format: (value: number) => (value / 10).toFixed(1),
+    isConnected: false,
+    connectHint: "Connect Google Search Console",
   },
   {
     title: "Social Engagement",
@@ -45,9 +49,10 @@ const cards = [
     icon: Heart,
     color: "text-chart-4",
     bgColor: "bg-chart-4/10",
-    change: "+15.2%",
     changeLabel: "this week",
     format: (value: number) => `${(value / 1000).toFixed(1)}K`,
+    isConnected: false,
+    connectHint: "Connect social accounts to track",
   },
 ];
 
@@ -76,9 +81,10 @@ export function OverviewCards() {
         const value = overview?.[card.key] || 0;
         const formattedValue = card.format ? card.format(value) : value.toLocaleString();
         
-        // Get change value (either from API or hardcoded)
-        let changeText = card.change || "";
+        // Get change value (either from API or show connect hint)
+        let changeText = "";
         let changeValue: number | undefined;
+        let showConnectHint = false;
         
         if (card.changeKey && overview) {
           changeValue = overview[card.changeKey] as number | undefined;
@@ -88,6 +94,8 @@ export function OverviewCards() {
           } else if (value === 0) {
             changeText = "No data";
           }
+        } else if (!card.isConnected) {
+          showConnectHint = true;
         }
         
         // Determine color based on positive/negative change
@@ -115,7 +123,7 @@ export function OverviewCards() {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate">{card.title}</p>
                   <p className="text-xl sm:text-2xl font-bold text-foreground truncate" data-testid={`metric-${card.key.replace('_', '-')}`}>
-                    {formattedValue}
+                    {card.isConnected ? formattedValue : '--'}
                   </p>
                 </div>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-[#304652] bg-[#2d4450] flex-shrink-0">
@@ -123,8 +131,14 @@ export function OverviewCards() {
                 </div>
               </div>
               <div className="mt-3 sm:mt-4 flex items-center text-xs sm:text-sm">
-                <span className={`${getChangeColor(changeText, changeValue)} font-medium`}>{changeText}</span>
-                <span className="text-muted-foreground ml-1 truncate">{card.changeLabel}</span>
+                {showConnectHint ? (
+                  <span className="text-amber-600 font-medium truncate">{card.connectHint}</span>
+                ) : (
+                  <>
+                    <span className={`${getChangeColor(changeText, changeValue)} font-medium`}>{changeText}</span>
+                    <span className="text-muted-foreground ml-1 truncate">{card.changeLabel}</span>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
