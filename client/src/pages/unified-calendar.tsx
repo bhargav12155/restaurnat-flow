@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, ArrowLeft, Wand2, ListChecks, CheckCircle2, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, ChevronDown, Filter } from "lucide-react";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
@@ -459,6 +459,15 @@ export default function UnifiedCalendarPage() {
   const events = eventsData?.events || [];
   const suggestions = suggestionsData?.suggestions || [];
   const templates = templatesData?.templates || [];
+
+  // Auto-sync event sources on page load if sources exist
+  const hasAutoSynced = useRef(false);
+  useEffect(() => {
+    if (sources.length > 0 && !hasAutoSynced.current && !syncAllMutation.isPending) {
+      hasAutoSynced.current = true;
+      syncAllMutation.mutate();
+    }
+  }, [sources.length]);
 
   const calendarGrid = useMemo(() => generateCalendarDays(selectedDate), [selectedDate]);
 
