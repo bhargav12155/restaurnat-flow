@@ -3534,13 +3534,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Content is required" });
         }
 
-        const user = await resolveMemStorageUser(req);
-        if (!user) {
+        // Use authenticated user ID directly (same as OAuth callback stores)
+        const userId = String(req.user?.id);
+        if (!userId) {
           return res.status(401).json({ error: "Authentication required" });
         }
+        console.log("📸 Instagram post using stable user ID:", userId);
 
         // Get connected Instagram account
-        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        const socialAccounts = await storage.getSocialMediaAccounts(userId);
         const instagramAccount = socialAccounts.find(
           (acc) => acc.platform.toLowerCase() === "instagram" && acc.isConnected
         );
@@ -3601,7 +3603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
         const scheduledPost = await storage.createScheduledPost({
-          userId: user.id,
+          userId,
           platform: "instagram",
           content,
           scheduledFor: new Date(),
@@ -3614,7 +3616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         realtimeService.notifySocialPostScheduled(
-          user.id,
+          userId,
           scheduledPost.id,
           "instagram",
           new Date().toISOString()
