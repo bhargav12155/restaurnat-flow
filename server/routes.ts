@@ -3256,12 +3256,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Content is required" });
         }
 
-        const user = await resolveMemStorageUser(req);
-        if (!user) {
-          return res.status(401).json({ error: "Authentication required" });
-        }
+        // Use authenticated user ID directly - CRITICAL: don't use resolveMemStorageUser
+        const userId = String(req.user.id);
+        console.log(`[FB POST] Using authenticated user ID: ${userId}`);
 
-        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        const socialAccounts = await storage.getSocialMediaAccounts(userId);
         const facebookAccount = socialAccounts.find(
           (acc) => acc.platform.toLowerCase() === "facebook"
         );
@@ -3315,7 +3314,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
         const scheduledPost = await storage.createScheduledPost({
-          userId: user.id,
+          userId: userId,
           platform: "facebook",
           content,
           scheduledFor: new Date(),
@@ -3328,7 +3327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         realtimeService.notifySocialPostScheduled(
-          user.id,
+          userId,
           scheduledPost.id,
           "facebook",
           new Date().toISOString()
