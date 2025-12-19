@@ -267,22 +267,21 @@ export function LocalMarketTools() {
                 </div>
               ) : contentOpportunities.length > 0 ? (
                 contentOpportunities.slice(0, 5).map((opportunity) => (
-                  <Button
+                  <div
                     key={opportunity.id}
-                    variant="ghost"
-                    className={`w-full p-3 ${getPriorityColor(opportunity.priority)} rounded-lg text-left justify-start hover:opacity-80 transition-opacity border`}
+                    className={`w-full p-3 ${getPriorityColor(opportunity.priority)} rounded-lg text-left hover:opacity-80 transition-opacity border cursor-pointer`}
                     data-testid={`opportunity-${opportunity.id}`}
                   >
-                    <div className="text-left w-full">
-                      <div className="text-sm font-medium flex items-center justify-between">
-                        <span>{opportunity.title}</span>
+                    <div className="text-left w-full overflow-hidden">
+                      <div className="text-sm font-medium flex items-start justify-between gap-2">
+                        <span className="break-words">{opportunity.title}</span>
                         {opportunity.searchSignal >= 70 && (
-                          <Badge variant="secondary" className="text-xs ml-2">High demand</Badge>
+                          <Badge variant="secondary" className="text-xs shrink-0">High demand</Badge>
                         )}
                       </div>
-                      <div className="text-xs opacity-80 mt-1">{opportunity.description}</div>
+                      <div className="text-xs opacity-80 mt-1 break-words">{opportunity.description}</div>
                     </div>
-                  </Button>
+                  </div>
                 ))
               ) : (
                 <div className="text-center py-6 px-4 border-2 border-dashed rounded-lg bg-muted/30">
