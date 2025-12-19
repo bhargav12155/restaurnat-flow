@@ -389,10 +389,7 @@ function SidebarContent({
                   data-testid={`quick-${action.label
                     .toLowerCase()
                     .replace(/\s+/g, "-")}`}
-                  onClick={() => {
-                    handleNavClick();
-                    window.location.href = action.href;
-                  }}
+                  onClick={(e) => navigateTo(action.href, e)}
                 >
                   <action.icon className="mr-3 h-4 w-4" />
                   {action.label}
