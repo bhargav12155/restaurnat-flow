@@ -1413,21 +1413,27 @@ ${agentName} | ${brokerageName}
             </div>
           </div>
 
-          {/* Facebook Page Selector */}
+          {/* Facebook Page Selector - Highlighted Card */}
           {selectedPlatforms.includes("facebook") &&
             facebookPages.length > 0 && (
-              <div className="space-y-2">
-                <Label
-                  htmlFor="facebook-page-select"
-                  className="text-sm font-medium"
-                >
-                  Facebook Page
-                </Label>
+              <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Facebook className="h-5 w-5 text-blue-600" />
+                  <Label
+                    htmlFor="facebook-page-select"
+                    className="text-sm font-semibold text-blue-900 dark:text-blue-100"
+                  >
+                    Select Your Facebook Page
+                  </Label>
+                </div>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Choose which Facebook Page you want to post to
+                </p>
                 <select
                   id="facebook-page-select"
                   value={selectedFacebookPage}
                   onChange={(e) => setSelectedFacebookPage(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex h-10 w-full rounded-md border-2 border-blue-300 bg-white dark:bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                   data-testid="select-facebook-page"
                 >
                   <option value="">Select a Facebook Page to post to...</option>
@@ -1438,8 +1444,13 @@ ${agentName} | ${brokerageName}
                   ))}
                 </select>
                 {!selectedFacebookPage && (
-                  <p className="text-xs text-amber-600">
-                    ⚠️ Please select a Facebook Page before posting
+                  <p className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                    <span>⚠️</span> Please select a Facebook Page before posting
+                  </p>
+                )}
+                {selectedFacebookPage && (
+                  <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                    <span>✓</span> Ready to post to: {facebookPages.find((p: any) => p.id === selectedFacebookPage)?.name}
                   </p>
                 )}
               </div>
