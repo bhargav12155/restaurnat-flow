@@ -1668,26 +1668,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
             tokenType: "bearer",
           };
 
+          // Store Instagram Business Account ID in account_username field as: "igBusinessId:username"
+          const accountUsernameWithId = `${igUserId}:@${igUsername}`;
+          
           if (instagramAccount) {
             console.log(`🔄 Updating existing Instagram account ${instagramAccount.id}`);
             await storage.updateSocialMediaAccount(instagramAccount.id, {
               accessToken: pageAccessToken || accessToken,
-              metadata,
+              accountUsername: accountUsernameWithId,
               isConnected: true,
               lastSync: new Date(),
             });
-            console.log(`✅ Instagram account updated successfully`);
+            console.log(`✅ Instagram account updated successfully (ID: ${igUserId}, @${igUsername})`);
           } else {
             console.log(`➕ Creating new Instagram account for stable DB user ${stableUserId}`);
             await storage.createSocialMediaAccount({
               userId: stableUserId,
               platform: "instagram",
-              accountId: igUserId,
               accessToken: pageAccessToken || accessToken,
-              metadata,
+              accountUsername: accountUsernameWithId,
               isConnected: true,
             });
-            console.log(`✅ Instagram account created successfully`);
+            console.log(`✅ Instagram account created successfully (ID: ${igUserId}, @${igUsername})`);
           }
 
           return res.send(`
@@ -3524,18 +3526,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     upload.single("photo"),
     async (req: any, res) => {
       try {
-        const { content, instagramBusinessAccountId } = req.body;
+        const { content } = req.body;
+        let { instagramBusinessAccountId } = req.body;
         const photo = req.file;
 
         if (!content) {
           return res.status(400).json({ error: "Content is required" });
-        }
-
-        if (!instagramBusinessAccountId) {
-          return res.status(400).json({
-            error:
-              "Instagram Business Account ID is required. Please select an Instagram account.",
-          });
         }
 
         const user = await resolveMemStorageUser(req);
@@ -3543,17 +3539,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        // Instagram uses Facebook's Graph API, so we need the Facebook token
+        // Get connected Instagram account
         const socialAccounts = await storage.getSocialMediaAccounts(user.id);
-        const facebookAccount = socialAccounts.find(
-          (acc) => acc.platform.toLowerCase() === "facebook"
+        const instagramAccount = socialAccounts.find(
+          (acc) => acc.platform.toLowerCase() === "instagram" && acc.isConnected
         );
+        
+        // Auto-resolve Instagram Business Account ID from connected account
+        // Format is stored as "igBusinessId:@username" in account_username field
+        if (!instagramBusinessAccountId && instagramAccount?.accountUsername) {
+          const parts = instagramAccount.accountUsername.split(':');
+          if (parts.length >= 1 && parts[0]) {
+            instagramBusinessAccountId = parts[0];
+            console.log("📸 Auto-resolved Instagram Business Account ID from account_username:", instagramBusinessAccountId);
+          }
+        }
 
-        const metadata = (facebookAccount?.metadata as any) || {};
-        const resolvedToken =
-          metadata?.pageAccessToken ||
-          facebookAccount?.accessToken ||
-          process.env.FACEBOOK_USER_TOKEN;
+        if (!instagramBusinessAccountId) {
+          return res.status(400).json({
+            error:
+              "Instagram Business Account ID not found. Please disconnect and reconnect your Instagram account.",
+          });
+        }
+
+        // Get Instagram access token (stored from OAuth)
+        const resolvedToken = instagramAccount?.accessToken || process.env.FACEBOOK_USER_TOKEN;
+        console.log("📸 Using Instagram token:", resolvedToken ? "Token available" : "No token");
 
         if (!resolvedToken) {
           return res.status(400).json({
