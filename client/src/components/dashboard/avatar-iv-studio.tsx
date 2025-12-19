@@ -1010,12 +1010,21 @@ export function AvatarIVStudio() {
                                 <div className="flex items-center justify-between w-full gap-2">
                                   <span>{voice.name}</span>
                                   <div className="flex items-center gap-1">
-                                    <Badge variant="outline" className="text-xs">
-                                      {voice.language}
-                                    </Badge>
-                                    <Badge variant="outline" className="text-xs">
-                                      {voice.gender}
-                                    </Badge>
+                                    {voice.language && voice.language !== "unknown" && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {voice.language}
+                                      </Badge>
+                                    )}
+                                    {voice.gender && voice.gender !== "unknown" && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {voice.gender}
+                                      </Badge>
+                                    )}
+                                    {(!voice.language || voice.language === "unknown") && (!voice.gender || voice.gender === "unknown") && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        Custom
+                                      </Badge>
+                                    )}
                                   </div>
                                 </div>
                               </SelectItem>
