@@ -1119,8 +1119,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               state
             )}`
           : null,
-        instagram: (process.env.INSTAGRAM_CLIENT_ID || facebookClientId)
-          ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${process.env.INSTAGRAM_CLIENT_ID || facebookClientId}&redirect_uri=${encodeURIComponent(
+        instagram: facebookClientId
+          ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/instagram"
             )}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement&state=${encodeURIComponent(
               state
@@ -1541,11 +1541,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } else if (platform.toLowerCase() === "instagram") {
         // Instagram uses Facebook OAuth (Meta owns Instagram)
-        // Support dedicated Instagram credentials or fallback to Facebook credentials
+        // Use Facebook credentials since Instagram is part of Meta
         const clientId =
-          process.env.INSTAGRAM_CLIENT_ID || process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+          process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
         const clientSecret =
-          process.env.INSTAGRAM_CLIENT_SECRET || process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET;
+          process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET;
         const redirectUri = `${baseUrl}/api/social/callback/instagram`;
 
         if (!clientId || !clientSecret) {
