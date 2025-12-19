@@ -3070,13 +3070,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Facebook-specific endpoints
   app.get("/api/facebook/pages", requireAuth, async (req: any, res) => {
     try {
-      const user = await resolveMemStorageUser(req);
+      // Use authenticated user ID directly (same as OAuth callback stores)
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
 
-      const socialAccounts = user
-        ? await storage.getSocialMediaAccounts(user.id)
-        : [];
+      const socialAccounts = await storage.getSocialMediaAccounts(userId);
       const facebookAccount = socialAccounts.find(
-        (acc) => acc.platform.toLowerCase() === "facebook"
+        (acc) => acc.platform.toLowerCase() === "facebook" && acc.isConnected
       );
 
       const metadata = (facebookAccount?.metadata as any) || {};
@@ -3110,14 +3112,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all Instagram Business Accounts linked to user's Facebook Pages
   app.get("/api/instagram/accounts", requireAuth, async (req: any, res) => {
     try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
+      // Use authenticated user ID directly (same as OAuth callback stores)
+      const userId = String(req.user?.id);
+      if (!userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+      const socialAccounts = await storage.getSocialMediaAccounts(userId);
       const facebookAccount = socialAccounts.find(
-        (acc) => acc.platform.toLowerCase() === "facebook"
+        (acc) => acc.platform.toLowerCase() === "facebook" && acc.isConnected
       );
 
       const metadata = (facebookAccount?.metadata as any) || {};
