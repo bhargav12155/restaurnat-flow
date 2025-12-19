@@ -3757,20 +3757,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: "Video title is required" });
         }
 
-        // Resolve user ID to MemStorage UUID
-        let userId = String(req.user.id);
-        let user = await storage.getUser(userId);
+        // Use the same user ID that OAuth uses (consistent with social account storage)
+        const userId = String(req.user.id);
 
-        if (!user && req.user.email) {
-          user = await storage.getUserByEmail(req.user.email);
-        }
-
-        if (!user) {
-          return res.status(404).json({ error: "User not found" });
-        }
-
-        // Get YouTube account from storage
-        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        // Get YouTube account from storage using the same ID that OAuth stored it under
+        const socialAccounts = await storage.getSocialMediaAccounts(userId);
         const youtubeAccount = socialAccounts.find(
           (acc) => acc.platform === "youtube"
         );
