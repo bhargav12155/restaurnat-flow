@@ -1,8 +1,9 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
-import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, ArrowLeft, Wand2, ListChecks, CheckCircle2, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, ChevronDown, Filter } from "lucide-react";
-import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
+import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, ArrowLeft, Wand2, ListChecks, CheckCircle2, Eye, Home, MoreHorizontal, Heart, MessageCircle, Send, Bookmark, Edit2, Save, Upload, ChevronDown, Filter, AlertCircle, Image, XCircle, AlertTriangle } from "lucide-react";
+import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube, FaTiktok } from "react-icons/fa";
+import { FaXTwitter } from "react-icons/fa6";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,8 @@ import { format } from "date-fns";
 import { AiGeneratedBadge } from "@/components/shared/ai-generated-badge";
 import { useAuth } from "@/hooks/useAuth";
 import { Sidebar } from "@/components/layout/sidebar";
+import { Progress } from "@/components/ui/progress";
+import { CharacterCounter, getPlatformConfig } from "@/components/ui/character-counter";
 
 interface EventSource {
   id: string;
@@ -211,6 +214,13 @@ export default function UnifiedCalendarPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [viewFilter, setViewFilter] = useState<"all" | "events" | "posts">("all");
   const [weeklyPlanSuggestions, setWeeklyPlanSuggestions] = useState<WeeklyPlanSuggestion[]>([]);
+  const [postManagerPlatformFilter, setPostManagerPlatformFilter] = useState<string>("all");
+  const [postManagerStatusFilter, setPostManagerStatusFilter] = useState<string>("all");
+  const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
+  const [editContent, setEditContent] = useState<string>("");
+  const [editImageUrl, setEditImageUrl] = useState<string>("");
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const rawName = user?.name || user?.email?.split('@')[0];
   const userName = rawName 
@@ -453,6 +463,34 @@ export default function UnifiedCalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
       setShowPreview(false);
       setPreviewContent(null);
+    },
+  });
+
+  const updatePostMutation = useMutation({
+    mutationFn: async ({ id, content, metadata }: { id: string; content?: string; metadata?: any }) => {
+      const body: any = {};
+      if (content !== undefined) body.content = content;
+      if (metadata !== undefined) body.metadata = metadata;
+      const res = await apiRequest("PATCH", `/api/scheduled-posts/${id}`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Post Updated",
+        description: "Your scheduled post has been updated successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      setShowEditDialog(false);
+      setEditingPost(null);
+      setEditContent("");
+      setEditImageUrl("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
