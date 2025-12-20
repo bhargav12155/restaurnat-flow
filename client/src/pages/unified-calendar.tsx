@@ -617,12 +617,16 @@ export default function UnifiedCalendarPage() {
   }
 
   const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case "facebook": return "FB";
-      case "instagram": return "IG";
-      case "linkedin": return "LI";
-      case "x": return "X";
-      default: return platform.charAt(0).toUpperCase();
+    const iconClass = "w-5 h-5";
+    switch (platform.toLowerCase()) {
+      case "facebook": return <FaFacebook className={`${iconClass} text-blue-600`} />;
+      case "instagram": return <FaInstagram className={`${iconClass} text-pink-500`} />;
+      case "linkedin": return <FaLinkedin className={`${iconClass} text-blue-700`} />;
+      case "x": 
+      case "twitter": return <FaXTwitter className={`${iconClass} text-black dark:text-white`} />;
+      case "youtube": return <FaYoutube className={`${iconClass} text-red-600`} />;
+      case "tiktok": return <FaTiktok className={`${iconClass} text-black dark:text-white`} />;
+      default: return <span className="text-sm font-medium">{platform.charAt(0).toUpperCase()}</span>;
     }
   };
 
