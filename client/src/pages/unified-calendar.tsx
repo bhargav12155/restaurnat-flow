@@ -466,6 +466,29 @@ export default function UnifiedCalendarPage() {
     },
   });
 
+  const deleteAllPostsMutation = useMutation({
+    mutationFn: async () => {
+      const posts = apiScheduledPosts.filter(p => p.status === 'scheduled');
+      for (const post of posts) {
+        await apiRequest("DELETE", `/api/scheduled-posts/${post.id}`);
+      }
+    },
+    onSuccess: () => {
+      toast({
+        title: "All Posts Deleted",
+        description: "All scheduled posts have been deleted.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+    },
+    onError: () => {
+      toast({
+        title: "Delete Failed",
+        description: "Could not delete all posts. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const updatePostMutation = useMutation({
     mutationFn: async ({ id, content, metadata }: { id: string; content?: string; metadata?: any }) => {
       const body: any = {};
@@ -1070,6 +1093,9 @@ export default function UnifiedCalendarPage() {
                   <CardTitle className="flex items-center gap-2">
                     <ListChecks className="w-5 h-5" />
                     Scheduled Posts Manager
+                    {apiScheduledPosts.length > 0 && (
+                      <Badge variant="secondary">{apiScheduledPosts.length} posts</Badge>
+                    )}
                   </CardTitle>
                   <CardDescription>
                     Preview, edit, and optimize your scheduled posts
@@ -1101,6 +1127,26 @@ export default function UnifiedCalendarPage() {
                       <SelectItem value="failed">Failed</SelectItem>
                     </SelectContent>
                   </Select>
+                  {apiScheduledPosts.filter(p => p.status === 'scheduled').length > 0 && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm('Delete all scheduled posts? This cannot be undone.')) {
+                          deleteAllPostsMutation.mutate();
+                        }
+                      }}
+                      disabled={deleteAllPostsMutation.isPending}
+                      data-testid="btn-delete-all-posts"
+                    >
+                      {deleteAllPostsMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                      ) : (
+                        <Trash2 className="w-4 h-4 mr-1" />
+                      )}
+                      Delete All
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
