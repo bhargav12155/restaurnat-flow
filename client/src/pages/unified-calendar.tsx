@@ -1061,6 +1061,312 @@ export default function UnifiedCalendarPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Scheduled Posts Manager Section */}
+          <Card className="mt-6">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <ListChecks className="w-5 h-5" />
+                    Scheduled Posts Manager
+                  </CardTitle>
+                  <CardDescription>
+                    Preview, edit, and optimize your scheduled posts
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={postManagerPlatformFilter} onValueChange={setPostManagerPlatformFilter}>
+                    <SelectTrigger className="w-32" data-testid="select-post-platform-filter">
+                      <SelectValue placeholder="Platform" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Platforms</SelectItem>
+                      <SelectItem value="facebook">Facebook</SelectItem>
+                      <SelectItem value="instagram">Instagram</SelectItem>
+                      <SelectItem value="linkedin">LinkedIn</SelectItem>
+                      <SelectItem value="x">Twitter/X</SelectItem>
+                      <SelectItem value="youtube">YouTube</SelectItem>
+                      <SelectItem value="tiktok">TikTok</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={postManagerStatusFilter} onValueChange={setPostManagerStatusFilter}>
+                    <SelectTrigger className="w-32" data-testid="select-post-status-filter">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="scheduled">Scheduled</SelectItem>
+                      <SelectItem value="posted">Posted</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {postsLoading ? (
+                <div className="flex justify-center p-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : apiScheduledPosts.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No scheduled posts yet</p>
+                  <p className="text-sm">Use AI Generate to create content</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {apiScheduledPosts
+                    .filter(post => postManagerPlatformFilter === "all" || post.platform.toLowerCase() === postManagerPlatformFilter)
+                    .filter(post => postManagerStatusFilter === "all" || post.status.toLowerCase() === postManagerStatusFilter)
+                    .map((post) => {
+                      const platformLimits: Record<string, { optimal: number; max: number }> = {
+                        x: { optimal: 280, max: 280 },
+                        twitter: { optimal: 280, max: 280 },
+                        facebook: { optimal: 500, max: 63206 },
+                        instagram: { optimal: 2000, max: 2200 },
+                        linkedin: { optimal: 1500, max: 3000 },
+                        youtube: { optimal: 3000, max: 5000 },
+                        tiktok: { optimal: 2000, max: 4000 },
+                      };
+                      const limit = platformLimits[post.platform.toLowerCase()] || { optimal: 500, max: 2000 };
+                      const charCount = post.content.length;
+                      const charPercent = Math.min((charCount / limit.max) * 100, 100);
+                      const charColor = charCount <= limit.optimal ? "bg-green-500" : charCount <= limit.max ? "bg-yellow-500" : "bg-red-500";
+                      
+                      const checkCompliance = (content: string): { status: 'compliant' | 'warning' | 'error'; issues: string[] } => {
+                        const issues: { message: string; severity: 'warning' | 'error' }[] = [];
+                        const lowerContent = content.toLowerCase();
+                        
+                        const advertisingIndicators = [
+                          'just listed', 'just sold', 'open house', 'for sale', 'price reduced',
+                          'new listing', 'coming soon', 'pending', 'under contract', 'sold!',
+                          'featured property', 'dream home', 'call me', 'contact me', 'dm me',
+                          'reach out', 'schedule a showing', 'home buyer', 'home seller',
+                          'real estate', 'property tour', 'market update', 'mortgage',
+                          'investment property', 'first time buyer'
+                        ];
+                        const isAdvertising = advertisingIndicators.some(indicator => lowerContent.includes(indicator));
+                        
+                        if (isAdvertising) {
+                          const hasBranding = lowerContent.includes('bhhs') || 
+                            lowerContent.includes('berkshire') || 
+                            lowerContent.includes('bhhs ambassador') ||
+                            lowerContent.includes('ambassador real estate');
+                          if (!hasBranding) {
+                            issues.push({ message: 'Missing BHHS branding (required for ads)', severity: 'error' });
+                          }
+                        }
+                        
+                        const prohibitedTerms = ['brokerage owner', 'principal broker'];
+                        prohibitedTerms.forEach(term => {
+                          if (lowerContent.includes(term)) {
+                            issues.push({ message: `Term "${term}" requires broker license`, severity: 'error' });
+                          }
+                        });
+                        
+                        if (issues.length === 0) return { status: 'compliant', issues: [] };
+                        const hasError = issues.some(i => i.severity === 'error');
+                        return { 
+                          status: hasError ? 'error' : 'warning', 
+                          issues: issues.map(i => i.message) 
+                        };
+                      };
+                      
+                      const compliance = checkCompliance(post.content);
+                      const scheduledDate = new Date(post.scheduledFor);
+
+                      return (
+                        <div 
+                          key={post.id} 
+                          className="p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                          data-testid={`post-row-${post.id}`}
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="flex-shrink-0">
+                              {getPlatformIcon(post.platform)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant={post.status === 'scheduled' ? 'default' : post.status === 'posted' ? 'secondary' : 'destructive'}>
+                                  {post.status}
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">
+                                  {format(scheduledDate, "MMM d, yyyy 'at' h:mm a")}
+                                </span>
+                                {post.isAiGenerated && <AiGeneratedBadge size="sm" />}
+                              </div>
+                              
+                              {editingPost?.id === post.id ? (
+                                <div className="space-y-3">
+                                  <Textarea
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    className="min-h-[100px]"
+                                    data-testid="textarea-edit-post"
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="file"
+                                      ref={fileInputRef}
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          try {
+                                            const formData = new FormData();
+                                            formData.append('image', file);
+                                            formData.append('postId', post.id);
+                                            const response = await fetch('/api/scheduled-posts/upload-image', {
+                                              method: 'POST',
+                                              credentials: 'include',
+                                              body: formData,
+                                            });
+                                            if (response.ok) {
+                                              const data = await response.json();
+                                              setEditImageUrl(data.imageUrl);
+                                              toast({ title: "Image Uploaded", description: "Image attached successfully" });
+                                            } else {
+                                              throw new Error('Upload failed');
+                                            }
+                                          } catch (err) {
+                                            toast({ title: "Upload Failed", description: "Could not upload image", variant: "destructive" });
+                                          }
+                                        }
+                                      }}
+                                    />
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => fileInputRef.current?.click()}
+                                      data-testid="btn-upload-media"
+                                    >
+                                      <Upload className="w-4 h-4 mr-2" />
+                                      Add Image
+                                    </Button>
+                                    {editImageUrl && (
+                                      <div className="relative">
+                                        <img src={editImageUrl} alt="Preview" className="h-12 w-12 object-cover rounded" />
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="absolute -top-2 -right-2 h-5 w-5 p-0 rounded-full bg-red-500 text-white"
+                                          onClick={() => setEditImageUrl("")}
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        updatePostMutation.mutate({
+                                          id: post.id,
+                                          content: editContent,
+                                          metadata: { ...post.metadata, imageUrl: editImageUrl || undefined }
+                                        });
+                                      }}
+                                      disabled={updatePostMutation.isPending}
+                                      data-testid="btn-save-edit"
+                                    >
+                                      {updatePostMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                                      Save
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setEditingPost(null);
+                                        setEditContent("");
+                                        setEditImageUrl("");
+                                      }}
+                                      data-testid="btn-cancel-edit"
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <p className="text-sm line-clamp-2 mb-2">{post.content}</p>
+                                  {post.metadata?.imageUrl && (
+                                    <img src={post.metadata.imageUrl} alt="Post media" className="h-16 w-16 object-cover rounded mb-2" />
+                                  )}
+                                </>
+                              )}
+                              
+                              <div className="flex items-center gap-4 mt-3">
+                                {/* Character Count */}
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className="text-muted-foreground">{charCount}/{limit.max}</span>
+                                  <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
+                                    <div className={`h-full ${charColor}`} style={{ width: `${charPercent}%` }} />
+                                  </div>
+                                </div>
+                                
+                                {/* Compliance Status */}
+                                <div className="flex items-center gap-1">
+                                  {compliance.status === 'compliant' && (
+                                    <Badge variant="outline" className="text-green-600 border-green-600">
+                                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                                      Compliant
+                                    </Badge>
+                                  )}
+                                  {compliance.status === 'warning' && (
+                                    <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                                      <AlertTriangle className="w-3 h-3 mr-1" />
+                                      {compliance.issues[0]}
+                                    </Badge>
+                                  )}
+                                  {compliance.status === 'error' && (
+                                    <Badge variant="outline" className="text-red-600 border-red-600">
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      {compliance.issues[0]}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex-shrink-0 flex gap-1">
+                              {editingPost?.id !== post.id && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingPost(post);
+                                      setEditContent(post.content);
+                                      setEditImageUrl(post.metadata?.imageUrl || "");
+                                    }}
+                                    data-testid={`btn-edit-post-${post.id}`}
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deletePostMutation.mutate(post.id)}
+                                    disabled={deletePostMutation.isPending}
+                                    data-testid={`btn-delete-post-${post.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-500" />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="ai-planner">
