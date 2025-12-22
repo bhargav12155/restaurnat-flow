@@ -142,21 +142,32 @@ export const requirePublicUser = (
  * Factory function to create admin middleware with storage access
  * Must be called with storage instance from routes.ts
  */
-export const createRequireAdmin = (storage: { getUser: (id: string) => Promise<any> }) => {
+export const createRequireAdmin = (storage: { 
+  getUser: (id: string) => Promise<any>;
+  getPublicUserById: (id: number) => Promise<{ role?: string | null } | undefined>;
+}) => {
   return (req: Request, res: Response, next: NextFunction) => {
     extractUserId(req, res, async (err) => {
       if (err) return;
       
-      if (req.userType !== "agent") {
-        return res.status(403).json({ error: "Admin access required" });
-      }
-      
       try {
-        const user = await storage.getUser(String(req.userId));
-        if (!user || user.role !== "admin") {
-          return res.status(403).json({ error: "Admin access required" });
+        // Check agent users
+        if (req.userType === "agent") {
+          const user = await storage.getUser(String(req.userId));
+          if (user?.role === "admin") {
+            return next();
+          }
         }
-        next();
+        
+        // Check public users
+        if (req.userType === "public") {
+          const publicUser = await storage.getPublicUserById(Number(req.userId));
+          if (publicUser?.role === "admin") {
+            return next();
+          }
+        }
+        
+        return res.status(403).json({ error: "Admin access required" });
       } catch (error) {
         console.error("Admin auth check failed:", error);
         return res.status(500).json({ error: "Failed to verify admin access" });
