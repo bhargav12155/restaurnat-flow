@@ -223,14 +223,27 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
   // Handle URL parameters for quick actions (e.g., ?type=blog)
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const typeParam = urlParams.get('type');
-    if (typeParam && ['blog', 'social', 'property_feature'].includes(typeParam)) {
-      setContentType(typeParam);
-      // Clear the URL parameter after using it
-      const newUrl = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, '', newUrl);
-    }
+    const handleUrlChange = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const typeParam = urlParams.get('type');
+      if (typeParam && ['blog', 'social', 'property_feature'].includes(typeParam)) {
+        setContentType(typeParam);
+        setCurrentStep(1); // Reset to first step when switching content type
+        // Clear the URL parameter after using it
+        const newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+      }
+    };
+
+    // Check on mount
+    handleUrlChange();
+    
+    // Also listen for popstate (back/forward) and custom navigation
+    window.addEventListener('popstate', handleUrlChange);
+    
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+    };
   }, []);
   const [topic, setTopic] = useState("");
   const [aiPrompt, setAiPrompt] = useState(
