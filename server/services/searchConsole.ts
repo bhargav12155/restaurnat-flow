@@ -1,4 +1,5 @@
 import { google } from '@googleapis/youtube';
+import { OAuth2Client } from 'google-auth-library';
 
 const SEARCH_CONSOLE_SCOPES = [
   'https://www.googleapis.com/auth/webmasters.readonly'
@@ -43,7 +44,6 @@ export class SearchConsoleService {
       return;
     }
     
-    const { OAuth2Client } = require('google-auth-library');
     this.oauth2Client = new OAuth2Client(clientId, clientSecret);
   }
   
