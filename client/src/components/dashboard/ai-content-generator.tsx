@@ -301,13 +301,13 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
   // Google Places autocomplete states
   const [addressAutocomplete, setAddressAutocomplete] =
-    useState<google.maps.places.AutocompleteService | null>(null);
+    useState<any | null>(null);
   const [googleMapsStatus, setGoogleMapsStatus] = useState<
     "loading" | "ready" | "error"
   >("loading");
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState<
-    google.maps.places.QueryAutocompletePrediction[]
+    Array<{ description: string; place_id: string }>
   >([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const addressInputRef = useRef<HTMLInputElement>(null);
@@ -329,9 +329,9 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
   });
 
   // Get agent name and brokerage with smart defaults
-  const agentName = companyProfile?.agentName || "[Your Name]";
-  const brokerageName = companyProfile?.brokerageName || "[Your Brokerage]";
-  const businessName = companyProfile?.businessName || "[Your Business]";
+  const agentName = (companyProfile as any)?.agentName || "[Your Name]";
+  const brokerageName = (companyProfile as any)?.brokerageName || "[Your Brokerage]";
+  const businessName = (companyProfile as any)?.businessName || "[Your Business]";
 
   // Facebook Pages hook for page selection
   const {
@@ -379,7 +379,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
         // Initialize AutocompleteService for dropdown suggestions
         if (!addressAutocomplete) {
-          const service = new window.google.maps.places.AutocompleteService();
+          const service = new (window.google.maps.places as any).AutocompleteService();
           setAddressAutocomplete(service);
         }
       } else {
@@ -477,7 +477,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
       addressAutocomplete.getPlacePredictions(
         request,
         (
-          predictions: google.maps.places.QueryAutocompletePrediction[] | null
+          predictions: Array<{ description: string; place_id: string }> | null
         ) => {
           if (predictions) {
             setAddressSuggestions(predictions);
@@ -492,7 +492,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
   // Handle address suggestion selection
   const selectAddressSuggestion = async (
-    suggestion: google.maps.places.QueryAutocompletePrediction
+    suggestion: { description: string; place_id: string }
   ) => {
     const address = suggestion.description;
     setPropertySearchParams((prev) => ({ ...prev, address }));
@@ -573,19 +573,14 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
           state: "NE",
           zipCode: propertyData.PostalCode || "",
           price: Number(propertyData.ListPrice) || 0,
-          listPrice: Number(propertyData.ListPrice) || 0,
           bedrooms: Number(propertyData.BedroomsTotal) || 0,
           bathrooms: Number(propertyData.BathroomsTotal) || 0,
           squareFootage: Number(propertyData.LivingArea) || 0,
           yearBuilt: Number(propertyData.YearBuilt) || 0,
           propertyType: "Residential",
-          listingStatus: propertyData.MlsStatus || "",
           description: propertyData.PublicRemarks || "",
-          features: [],
-          photoUrls:
-            propertyData.Media?.slice(0, 3)?.map((m: any) => m.MediaURL) || [],
-          neighborhood: propertyData.SubdivisionName || null,
-          agentName: propertyData.ListAgentFullName || null,
+          listingAgent: propertyData.ListAgentFullName || undefined,
+          photos: propertyData.Media?.slice(0, 3)?.map((m: any) => m.MediaURL) || [],
         };
 
         return [property];
@@ -865,8 +860,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     // For Facebook and Instagram, show dialog to select page/account
     if (platform.toLowerCase() === "facebook" || platform.toLowerCase() === "instagram") {
       // Pre-fill dialog with current defaults from hooks for better UX
-      setSelectedPageForPosting(selectedPageId);
-      setSelectedInstagramForPosting(selectedInstagramAccountId);
+      setSelectedPageForPosting(selectedPageId || null);
+      setSelectedInstagramForPosting(selectedInstagramAccountId || null);
       setPlatformToPost(platform);
       setShowPostingDialog(true);
     } else {
@@ -2095,7 +2090,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               </div>
 
               <div className="space-y-2">
-                {getPlatformSuggestions(lastGenerated, marketData).map(
+                {getPlatformSuggestions(lastGenerated, marketData as any[]).map(
                   (suggestion, index) => {
                     const IconComponent = suggestion.icon;
                     return (
@@ -2298,7 +2293,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   <div className="flex items-center gap-3 p-3">
                     <div className="w-10 h-10 bg-golden-accent rounded-full flex items-center justify-center">
                       <span className="text-sm font-bold text-golden-foreground">
-                        {agentName.split(' ').map(n => n.charAt(0)).join('').substring(0, 2)}
+                        {agentName.split(' ').map((n: string) => n.charAt(0)).join('').substring(0, 2)}
                       </span>
                     </div>
                     <div className="flex-1">
@@ -2502,7 +2497,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-golden-accent rounded-full flex items-center justify-center">
                       <span className="text-sm font-bold text-golden-foreground">
-                        {agentName.split(' ').map(n => n.charAt(0)).join('').substring(0, 2)}
+                        {agentName.split(' ').map((n: string) => n.charAt(0)).join('').substring(0, 2)}
                       </span>
                     </div>
                     <div className="flex-1">
@@ -2572,7 +2567,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-golden-accent rounded-full flex items-center justify-center">
                       <span className="text-sm font-bold text-golden-foreground">
-                        {agentName.split(' ').map(n => n.charAt(0)).join('').substring(0, 2)}
+                        {agentName.split(' ').map((n: string) => n.charAt(0)).join('').substring(0, 2)}
                       </span>
                     </div>
                     <div className="flex-1">
