@@ -4407,8 +4407,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!req.user || !req.user.id) {
         return res.json({ isAdmin: false });
       }
+      
+      // Check users table first (agents)
       const user = await storage.getUser(String(req.user.id));
-      res.json({ isAdmin: user?.role === 'admin' });
+      if (user?.role === 'admin') {
+        return res.json({ isAdmin: true });
+      }
+      
+      // Check public_users table
+      const publicUser = await storage.getPublicUserById(Number(req.user.id));
+      if (publicUser?.role === 'admin') {
+        return res.json({ isAdmin: true });
+      }
+      
+      res.json({ isAdmin: false });
     } catch (error: any) {
       res.json({ isAdmin: false });
     }

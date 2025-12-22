@@ -53,6 +53,7 @@ export const publicUsers = pgTable(
     email: text("email").notNull(),
     name: text("name"),
     agentSlug: text("agent_slug").notNull(),
+    role: text("role").default("user"),
     preferences: jsonb("preferences"), // Store user preferences
     lastLogin: timestamp("last_login"),
     createdAt: timestamp("created_at").defaultNow(),

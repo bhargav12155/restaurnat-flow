@@ -84,6 +84,9 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  
+  // Public Users
+  getPublicUserById(id: number): Promise<{ id: number; email: string; role?: string | null } | undefined>;
 
   // Content
   getContentPieces(userId: string): Promise<ContentPiece[]>;
@@ -501,6 +504,22 @@ export class MemStorage implements IStorage {
 
     console.log(`[STORAGE] getUser(${id}) - Not found`);
     return undefined;
+  }
+
+  async getPublicUserById(id: number): Promise<{ id: number; email: string; role?: string | null } | undefined> {
+    try {
+      const { db } = await import("./db");
+      const { publicUsers } = await import("@shared/schema");
+      const result = await db.select({
+        id: publicUsers.id,
+        email: publicUsers.email,
+        role: publicUsers.role,
+      }).from(publicUsers).where(eq(publicUsers.id, id)).limit(1);
+      return result[0];
+    } catch (error) {
+      console.error(`[STORAGE] getPublicUserById(${id}) - Error:`, error);
+      return undefined;
+    }
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
