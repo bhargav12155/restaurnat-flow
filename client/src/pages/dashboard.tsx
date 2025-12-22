@@ -78,7 +78,7 @@ export default function Dashboard() {
     const hasSeenPrompt = localStorage.getItem("socialLinksPromptShown");
     const urlParams = new URLSearchParams(window.location.search);
     const isFromNebraska = urlParams.get("source") === "nebraska-home-hub";
-    const isDemo = user?.isDemo === true;
+    const isDemo = (user as any)?.isDemo === true;
 
     if (!hasSeenPrompt && !isFromNebraska && !isDemo) {
       setShowSocialLinksPrompt(true);
