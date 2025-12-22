@@ -1283,8 +1283,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     <p className="text-sm text-muted-foreground">{type.description}</p>
                     {isSelected && (
                       <div className="absolute top-3 right-3">
-                        <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                          <Check className="h-4 w-4 text-primary-foreground" />
+                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg ring-2 ring-primary/30 ring-offset-2">
+                          <Check className="h-5 w-5 text-primary-foreground stroke-[3]" />
                         </div>
                       </div>
                     )}
