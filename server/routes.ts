@@ -20,7 +20,8 @@ import { nanoid } from "nanoid";
 import path from "path";
 import { db } from "./db";
 import { requireAuth, createRequireAdmin, optionalAuth } from "./middleware/auth";
-import { ObjectNotFoundError, ObjectStorageService, persistImageFromUrl } from "./objectStorage";
+// S3 is now the primary storage - ObjectStorageService kept only for legacy PDF analysis
+import { ObjectNotFoundError, ObjectStorageService } from "./objectStorage";
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
 import demoRoutes from "./routes/demo";
@@ -7896,17 +7897,28 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
               // Use first avatar's image if no preview available
               if (!previewImage && heygenFirstLook.image_url) {
-                // Persist the HeyGen image to our own storage for production reliability
+                // Persist the HeyGen image to S3 and record in media_assets
+                const { persistImageFromUrlAndRecord } = await import("./services/mediaAssetUploader");
                 const filename = `${groupId}-preview.jpg`;
-                const persistedUrl = await persistImageFromUrl(heygenFirstLook.image_url, filename);
-                if (persistedUrl) {
-                  previewImage = persistedUrl;
+                const result = await persistImageFromUrlAndRecord(
+                  heygenFirstLook.image_url,
+                  filename,
+                  'avatars',
+                  {
+                    userId: dbGroup.userId,
+                    type: 'avatar',
+                    source: 'heygen',
+                    title: dbGroup.name,
+                  }
+                );
+                if (result) {
+                  previewImage = result.url;
                   // Save to database for future use
                   try {
                     await storage.updatePhotoAvatarGroup(dbGroup.id, {
-                      s3ImageUrl: persistedUrl,
+                      s3ImageUrl: result.url,
                     });
-                    console.log(`✅ Saved persistent image URL for group ${groupId}`);
+                    console.log(`✅ Saved persistent image URL for group ${groupId}, media asset: ${result.mediaAsset.id}`);
                   } catch (saveErr) {
                     console.warn(`⚠️ Failed to save image URL to DB:`, saveErr);
                   }
@@ -8675,15 +8687,26 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
             
             if (heygenImageUrl) {
               const filename = `${groupId}-preview.jpg`;
-              const persistedUrl = await persistImageFromUrl(heygenImageUrl, filename);
+              const { persistImageFromUrlAndRecord } = await import("./services/mediaAssetUploader");
+              const result = await persistImageFromUrlAndRecord(
+                heygenImageUrl,
+                filename,
+                'avatars',
+                {
+                  userId,
+                  type: 'avatar',
+                  source: 'heygen',
+                  title: group.name,
+                }
+              );
               
-              if (persistedUrl) {
+              if (result) {
                 // Save to database
                 await storage.updatePhotoAvatarGroup(group.id, {
-                  s3ImageUrl: persistedUrl,
+                  s3ImageUrl: result.url,
                 });
-                results.push({ groupId, name: group.name, persisted: true, url: persistedUrl });
-                console.log(`✅ Persisted image for "${group.name}"`);
+                results.push({ groupId, name: group.name, persisted: true, url: result.url });
+                console.log(`✅ Persisted image for "${group.name}", media asset: ${result.mediaAsset.id}`);
               } else {
                 results.push({ groupId, name: group.name, persisted: false, error: "Failed to download image" });
               }
@@ -9088,13 +9111,25 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const status = await avatarIVService.getVideoStatus(videoId);
       
-      // If video is completed, save it to object storage and quick posts library
+      // If video is completed, save it to S3 with media_assets tracking and quick posts library
       if (status.status === "completed" && status.video_url) {
-        // Save to object storage
-        const { persistVideoFromUrl } = await import("./objectStorage");
+        // Save to S3 and record in media_assets
+        const { persistVideoFromUrlAndRecord } = await import("./services/mediaAssetUploader");
         const filename = `user-${userId}-${videoId}.mp4`;
-        const savedPath = await persistVideoFromUrl(status.video_url, filename);
-        console.log(`💾 Video saved to storage: ${savedPath || 'failed'}`);
+        const result = await persistVideoFromUrlAndRecord(
+          status.video_url,
+          filename,
+          'videos',
+          {
+            userId,
+            type: 'video',
+            source: 'heygen',
+            title: (title as string) || 'Avatar IV Video',
+            durationSeconds: status.duration,
+          }
+        );
+        const savedPath = result?.url || null;
+        console.log(`💾 Video saved to S3: ${savedPath || 'failed'}${result ? `, media asset: ${result.mediaAsset.id}` : ''}`);
         (status as any).saved_path = savedPath;
         
         // Check if already in quick posts library
