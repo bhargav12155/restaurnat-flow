@@ -3804,38 +3804,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(401).json({ error: "Authentication required" });
         }
 
-        // Resolve DB user ID to MemStorage UUID (same pattern as Twitter)
-        let userId = String(req.user.id);
-        let user = await storage.getUser(userId);
+        // Use stable DB user ID directly - same pattern as Twitter and upload-video
+        const userId = String(req.user.id);
 
-        if (!user && req.user?.email) {
-          user = await storage.getUserByEmail(req.user.email);
-        }
-
-        if (!user && req.user?.username) {
-          user = await storage.getUserByUsername(req.user.username);
-        }
-
-        if (!user) {
-          console.error(
-            "❌ YouTube post: user not found in storage for session id",
-            userId
-          );
-          return res.status(404).json({
-            error:
-              "User not found in storage. Please reconnect your YouTube account.",
-          });
-        }
-
-        console.log("✅ YouTube post resolved user:", {
-          userId: user.id,
-          email: user.email,
-          username: user.username,
+        console.log("✅ YouTube post using stable user ID:", {
+          userId,
+          email: req.user.email,
         });
 
-        const socialAccounts = await storage.getSocialMediaAccounts(user.id);
+        const socialAccounts = await storage.getSocialMediaAccounts(userId);
         console.log(
-          `📊 Social accounts for user ${user.id}:`,
+          `📊 Social accounts for user ${userId}:`,
           socialAccounts.map((a) => ({
             id: a.id,
             platform: a.platform,
