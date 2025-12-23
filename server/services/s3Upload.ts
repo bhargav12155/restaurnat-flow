@@ -130,4 +130,71 @@ export class S3UploadService {
 
     return presignedUrl;
   }
+
+  /**
+   * Download an image from a URL and persist it to S3
+   * Returns the S3 URL of the uploaded file
+   */
+  async persistImageFromUrl(imageUrl: string, filename: string, folder: string = 'avatars'): Promise<string | null> {
+    try {
+      console.log(`📥 Downloading image to persist to S3: ${filename}`);
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        console.error(`Failed to download image: ${response.status}`);
+        return null;
+      }
+
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      const key = `${folder}/${filename}`;
+
+      const s3Url = await this.uploadBuffer(imageBuffer, key, contentType);
+      console.log(`✅ Image persisted to S3: ${s3Url}`);
+      return s3Url;
+    } catch (error) {
+      console.error('Failed to persist image to S3:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Upload a file and store metadata in database
+   */
+  async uploadWithMetadata(
+    userId: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    contentType: string,
+    folder: string = 'uploads'
+  ): Promise<{ url: string; key: string }> {
+    const key = `user-${userId}/${folder}/${fileName}`;
+    const url = await this.uploadBuffer(fileBuffer, key, contentType);
+    return { url, key };
+  }
+
+  /**
+   * Download a video from a URL and persist it to S3
+   * Returns the S3 URL of the uploaded file
+   */
+  async persistVideoFromUrl(videoUrl: string, filename: string, folder: string = 'videos'): Promise<string | null> {
+    try {
+      console.log(`📥 Downloading video to persist to S3: ${filename}`);
+      const response = await fetch(videoUrl);
+      if (!response.ok) {
+        console.error(`Failed to download video: ${response.status}`);
+        return null;
+      }
+
+      const videoBuffer = Buffer.from(await response.arrayBuffer());
+      const contentType = response.headers.get('content-type') || 'video/mp4';
+      const key = `${folder}/${filename}`;
+
+      const s3Url = await this.uploadBuffer(videoBuffer, key, contentType);
+      console.log(`✅ Video persisted to S3: ${s3Url}`);
+      return s3Url;
+    } catch (error) {
+      console.error('Failed to persist video to S3:', error);
+      return null;
+    }
+  }
 }
