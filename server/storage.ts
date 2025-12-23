@@ -49,6 +49,7 @@ import {
   lookGenerationJobs,
   type MarketData,
   type MediaAsset,
+  mediaAssets,
   type MobileUploadSession,
   type PhotoAvatar,
   type PhotoAvatarGroup,
@@ -1735,39 +1736,48 @@ export class MemStorage implements IStorage {
     type?: string,
     source?: string
   ): Promise<MediaAsset[]> {
-    let assets = Array.from(this.mediaAssets.values()).filter(
-      (asset) => asset.userId === userId
-    );
-
+    // Use database for persistent storage with proper conditional filtering
+    const conditions = [eq(mediaAssets.userId, userId)];
+    
     if (type) {
-      assets = assets.filter((asset) => asset.type === type);
+      conditions.push(eq(mediaAssets.type, type));
     }
-
+    
     if (source) {
-      assets = assets.filter((asset) => asset.source === source);
+      conditions.push(eq(mediaAssets.source, source));
     }
-
-    return assets.sort((a, b) => {
-      const aTime = a.createdAt?.getTime() || 0;
-      const bTime = b.createdAt?.getTime() || 0;
-      return bTime - aTime;
-    });
+    
+    // Drizzle's and() handles arrays properly
+    const assets = await db
+      .select()
+      .from(mediaAssets)
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .orderBy(desc(mediaAssets.createdAt));
+    
+    return assets;
   }
 
   async getMediaAssetById(id: string): Promise<MediaAsset | undefined> {
-    return this.mediaAssets.get(id);
+    const [asset] = await db
+      .select()
+      .from(mediaAssets)
+      .where(eq(mediaAssets.id, id))
+      .limit(1);
+    return asset;
   }
 
   async createMediaAsset(asset: InsertMediaAsset): Promise<MediaAsset> {
-    const newAsset: MediaAsset = {
-      id: randomUUID(),
-      ...asset,
-      title: asset.title ?? null,
-      description: asset.description ?? null,
-      metadata: asset.metadata ?? null,
-      createdAt: new Date(),
-    };
-    this.mediaAssets.set(newAsset.id, newAsset);
+    const [newAsset] = await db
+      .insert(mediaAssets)
+      .values({
+        id: randomUUID(),
+        ...asset,
+        title: asset.title ?? null,
+        description: asset.description ?? null,
+        metadata: asset.metadata ?? null,
+        createdAt: new Date(),
+      })
+      .returning();
     return newAsset;
   }
 
@@ -1775,16 +1785,20 @@ export class MemStorage implements IStorage {
     id: string,
     updates: Partial<MediaAsset>
   ): Promise<MediaAsset | undefined> {
-    const asset = this.mediaAssets.get(id);
-    if (!asset) return undefined;
-
-    const updated = { ...asset, ...updates };
-    this.mediaAssets.set(id, updated);
+    const [updated] = await db
+      .update(mediaAssets)
+      .set(updates)
+      .where(eq(mediaAssets.id, id))
+      .returning();
     return updated;
   }
 
   async deleteMediaAsset(id: string): Promise<boolean> {
-    return this.mediaAssets.delete(id);
+    const result = await db
+      .delete(mediaAssets)
+      .where(eq(mediaAssets.id, id))
+      .returning();
+    return result.length > 0;
   }
 
   async createPostMedia(postMedias: InsertPostMedia[]): Promise<PostMedia[]> {

@@ -10736,7 +10736,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Get all user videos from database
+  // Get all user videos from database (merged from video_content and video_generation_jobs)
   app.get("/api/videos", requireAuth, async (req, res) => {
     try {
       const userId = req.user?.id;
@@ -10749,17 +10749,67 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         status
       );
 
-      const videos = await storage.getVideoContent(String(userId), status);
+      // Get videos from video_content table
+      const videoContentList = await storage.getVideoContent(String(userId), status);
+      
+      // Get videos from video_generation_jobs table (Avatar IV videos)
+      const videoJobs = await storage.getVideoGenerationJobs(String(userId));
 
-      // Ensure all video URLs are properly formatted
-      const videosWithUrls = videos.map((video) => ({
-        ...video,
+      // Format video_content videos
+      const formattedVideoContent = videoContentList.map((video) => ({
+        id: video.id,
+        title: video.title,
+        script: video.script,
         videoUrl: ensureS3Url(video.videoUrl),
+        video_url: ensureS3Url(video.videoUrl),
         thumbnailUrl: ensureS3Url(video.thumbnailUrl),
+        status: video.status || 'ready',
+        createdAt: video.createdAt,
+        created_at: video.createdAt,
+        source: 'video_content',
       }));
+      
+      // Format video_generation_jobs as videos (only include completed jobs with valid URLs)
+      // Processing jobs are shown via separate polling UI, not in the main video list
+      const formattedJobVideos = videoJobs
+        .filter((job) => {
+          // Only include completed jobs with valid video URLs
+          if (job.status !== 'completed' || !job.videoUrl) {
+            return false;
+          }
+          // Apply status filter if provided - job videos map to 'ready' status
+          // If filtering for 'ready' or no filter, include completed jobs
+          // If filtering for any other status, exclude job videos (they're all 'ready')
+          if (!status || status === 'ready') {
+            return true;
+          }
+          // For any other status filter (e.g., 'failed', 'processing'), exclude completed job videos
+          return false;
+        })
+        .map((job) => ({
+          id: job.id,
+          title: job.title || 'Generated Video',
+          script: job.script || '',
+          videoUrl: ensureS3Url(job.videoUrl!),
+          video_url: ensureS3Url(job.videoUrl!),
+          thumbnailUrl: job.thumbnailUrl ? ensureS3Url(job.thumbnailUrl) : null,
+          status: 'ready',
+          createdAt: job.createdAt,
+          created_at: job.createdAt,
+          heygenVideoId: job.heygenVideoId,
+          source: 'avatar_iv',
+        }));
 
-      console.log("✅ Backend: Found", videos.length, "videos");
-      res.json(videosWithUrls);
+      // Merge and sort by creation date (newest first)
+      const allVideos = [...formattedVideoContent, ...formattedJobVideos]
+        .sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+
+      console.log("✅ Backend: Found", allVideos.length, "videos (", formattedVideoContent.length, "content +", formattedJobVideos.length, "jobs)");
+      res.json(allVideos);
     } catch (error: any) {
       console.error("❌ Backend: Failed to get videos");
       console.error("❌ Backend: Error message:", error?.message);
