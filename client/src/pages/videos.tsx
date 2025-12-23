@@ -23,15 +23,17 @@ interface GeneratedVideo {
 export default function VideosPage() {
   const [selectedVideo, setSelectedVideo] = useState<GeneratedVideo | null>(null);
 
-  const { data: videosResponse, isLoading } = useQuery<{
-    videos?: GeneratedVideo[];
-    data?: GeneratedVideo[];
-  }>({
+  const { data: videosResponse, isLoading } = useQuery<
+    GeneratedVideo[] | { videos?: GeneratedVideo[]; data?: GeneratedVideo[] }
+  >({
     queryKey: ["/api/videos"],
     refetchInterval: 5000,
   });
 
-  const videos = videosResponse?.videos || videosResponse?.data || [];
+  // Handle both array response and object-wrapped response
+  const videos = Array.isArray(videosResponse) 
+    ? videosResponse 
+    : (videosResponse?.videos || videosResponse?.data || []);
 
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
