@@ -33,7 +33,10 @@ import {
   Upload,
   Image,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Loader2,
+  Wand2,
+  ChevronDown
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth } from "date-fns";
 import { 
@@ -58,6 +61,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
 import { CharacterCounter, PlatformTip } from "@/components/ui/character-counter";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface ScheduledPost {
   id: string;
@@ -125,6 +129,27 @@ export function ScheduledPostsManager() {
 
   const { data: scheduledPosts = [], isLoading } = useQuery<ScheduledPost[]>({
     queryKey: ["/api/scheduled-posts"],
+  });
+
+  const generateContentPlanMutation = useMutation({
+    mutationFn: async (weeks: number) => {
+      const response = await apiRequest('POST', '/api/content/generate-plan', { weeks });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Content Plan Generated!",
+        description: `Created ${data.posts?.length || 0} posts for the next ${data.weeks} week(s).`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Generation Failed",
+        description: error.message || "Could not generate content plan. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const queryClient = useQueryClient();
@@ -291,6 +316,37 @@ export function ScheduledPostsManager() {
             Scheduled Posts Calendar
           </CardTitle>
           <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  disabled={generateContentPlanMutation.isPending}
+                  data-testid="button-ai-generate"
+                >
+                  {generateContentPlanMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-4 w-4 mr-2" />
+                  )}
+                  AI Generate
+                  <ChevronDown className="h-4 w-4 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => generateContentPlanMutation.mutate(1)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  1 Week Plan
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => generateContentPlanMutation.mutate(2)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  2 Week Plan
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => generateContentPlanMutation.mutate(4)}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  4 Week Plan
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="outline"
               size="sm"
