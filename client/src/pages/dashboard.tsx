@@ -132,7 +132,6 @@ export default function Dashboard() {
         return (
           <>
             <OverviewCards />
-            <ContentCalendar />
             <ScheduledPostsManager />
           </>
         );
