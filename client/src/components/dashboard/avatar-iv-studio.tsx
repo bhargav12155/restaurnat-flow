@@ -156,7 +156,7 @@ export function AvatarIVStudio() {
         action: (
           <Button
             size="sm"
-            onClick={() => setLocation(`/videos?id=${videoId}`)}
+            onClick={() => setLocation(`/dashboard?tab=video-generator&videoId=${videoId}`)}
             data-testid="toast-view-video"
           >
             <ExternalLink className="h-4 w-4 mr-1" />
