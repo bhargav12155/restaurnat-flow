@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -85,6 +85,44 @@ const STEPS = [
   { id: 3, title: "Generate Video", icon: Video },
 ];
 
+// Isolated textarea component to prevent parent re-renders on typing
+interface ScriptTextareaHandle {
+  getValue: () => string;
+  setValue: (value: string) => void;
+}
+
+const ScriptTextarea = memo(forwardRef<ScriptTextareaHandle, {
+  initialValue: string;
+  onBlur: (value: string) => void;
+  placeholder?: string;
+}>(({ initialValue, onBlur, placeholder }, ref) => {
+  const [localValue, setLocalValue] = useState(initialValue);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  useImperativeHandle(ref, () => ({
+    getValue: () => localValue,
+    setValue: (value: string) => setLocalValue(value),
+  }));
+  
+  return (
+    <div>
+      <textarea
+        ref={textareaRef}
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value.slice(0, 1500))}
+        onBlur={() => onBlur(localValue)}
+        placeholder={placeholder}
+        maxLength={1500}
+        className="flex min-h-[150px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        data-testid="input-script"
+      />
+      <p className="text-xs text-gray-400 mt-1">
+        {localValue.length}/1500 characters
+      </p>
+    </div>
+  );
+}));
+
 interface VideoStatus {
   video_id: string;
   status: "pending" | "processing" | "completed" | "failed";
@@ -118,10 +156,8 @@ export function AvatarIVStudio() {
   
   const [videoTitle, setVideoTitle] = useState("");
   const [script, setScript] = useState("");
-  const [scriptLength, setScriptLength] = useState(0);
-  const [scriptKey, setScriptKey] = useState(0); // Key to force textarea remount on AI generation
   const [scriptStyle, setScriptStyle] = useState(SCRIPT_STYLES[0].id);
-  const scriptDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const scriptTextareaRef = useRef<ScriptTextareaHandle>(null);
   const [selectedVoice, setSelectedVoice] = useState("");
   const [selectedMotion, setSelectedMotion] = useState(MOTION_PROMPTS[0].id);
   const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
@@ -216,26 +252,11 @@ export function AvatarIVStudio() {
     }
   }, [voices, selectedVoice]);
 
-  // Debounced script update to prevent typing lag
-  const handleScriptChange = useCallback((value: string) => {
-    const trimmed = value.slice(0, 1500);
-    setScriptLength(trimmed.length);
-    
-    if (scriptDebounceRef.current) {
-      clearTimeout(scriptDebounceRef.current);
+  // Sync script from textarea ref when needed
+  const syncScriptFromRef = useCallback(() => {
+    if (scriptTextareaRef.current) {
+      setScript(scriptTextareaRef.current.getValue());
     }
-    scriptDebounceRef.current = setTimeout(() => {
-      setScript(trimmed);
-    }, 150);
-  }, []);
-
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => {
-      if (scriptDebounceRef.current) {
-        clearTimeout(scriptDebounceRef.current);
-      }
-    };
   }, []);
 
   // Select photo from library
@@ -448,8 +469,10 @@ export function AvatarIVStudio() {
     onSuccess: (data) => {
       const generatedScript = data.script?.slice(0, 1500) || "";
       setScript(generatedScript);
-      setScriptLength(generatedScript.length);
-      setScriptKey(k => k + 1); // Force textarea to remount with new content
+      // Update the textarea ref with the new script
+      if (scriptTextareaRef.current) {
+        scriptTextareaRef.current.setValue(generatedScript);
+      }
       toast({
         title: "Script Generated!",
         description: "AI has created a script for your video. Feel free to edit it.",
@@ -630,8 +653,9 @@ export function AvatarIVStudio() {
     setImageKey(null);
     setVideoTitle("");
     setScript("");
-    setScriptLength(0);
-    setScriptKey(k => k + 1);
+    if (scriptTextareaRef.current) {
+      scriptTextareaRef.current.setValue("");
+    }
     setGeneratingVideoId(null);
     setVideoStatus(null);
     if (pollInterval) {
@@ -988,7 +1012,10 @@ export function AvatarIVStudio() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => generateScriptMutation.mutate()}
+                            onClick={() => {
+                              syncScriptFromRef();
+                              generateScriptMutation.mutate();
+                            }}
                             disabled={generateScriptMutation.isPending || !videoTitle.trim() || !imageKey}
                             title={!imageKey ? "Upload a photo first" : !videoTitle.trim() ? "Enter a video title first" : "Generate script with AI"}
                             data-testid="button-ai-generate-script"
@@ -997,20 +1024,12 @@ export function AvatarIVStudio() {
                             {generateScriptMutation.isPending ? "Generating..." : "AI Generate"}
                           </Button>
                         </div>
-                        <Textarea
-                          id="script"
-                          defaultValue={script}
-                          key={scriptKey}
-                          onChange={(e) => handleScriptChange(e.target.value)}
-                          onBlur={(e) => setScript(e.target.value.slice(0, 1500))}
+                        <ScriptTextarea
+                          ref={scriptTextareaRef}
+                          initialValue={script}
+                          onBlur={(value) => setScript(value)}
                           placeholder="Hello! Welcome to my video. I'm excited to share..."
-                          className="min-h-[150px]"
-                          maxLength={1500}
-                          data-testid="input-script"
                         />
-                        <p className="text-xs text-gray-400 mt-1">
-                          {scriptLength || script.length}/1500 characters
-                        </p>
                       </div>
                     </div>
                   ) : (
