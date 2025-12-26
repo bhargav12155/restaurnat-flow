@@ -2757,18 +2757,19 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   const response = await fetch("/api/objects/upload", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contentType: "image/jpeg" }),
+                    credentials: "include",
                   });
                   const data = await response.json();
                   return {
                     method: "PUT" as const,
                     url: data.uploadURL,
+                    fileUrl: data.fileUrl, // S3 file URL
                   };
                 }}
                 onComplete={(uploadedFileUrl) => {
-                  // Convert Google Cloud Storage URL to local /objects/ endpoint
-                  const fileName = uploadedFileUrl.split("/").pop();
-                  const localImageUrl = `/objects/${fileName}`;
-                  setPhotoPreview(localImageUrl);
+                  // Use the S3 URL directly
+                  setPhotoPreview(uploadedFileUrl);
                   setShowPhotoUpload(false);
                   toast({
                     title: "Photo uploaded successfully",

@@ -11637,22 +11637,24 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Get upload URL for object entities
-  app.post("/api/objects/upload", async (req, res) => {
+  // Get upload URL for object entities (uses S3 for reliable uploads)
+  app.post("/api/objects/upload", requireAuth, async (req, res) => {
     try {
-      // Check if private object directory is configured
-      if (!objectStorageService.hasPrivateDir()) {
-        console.warn("Private object directory not configured for uploads");
-        return res.status(503).json({
-          error: "Object storage service unavailable",
-          message: "PRIVATE_OBJECT_DIR environment variable is not configured",
-        });
-      }
-
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
+      const userId = String(req.user!.id);
+      const { contentType = 'image/jpeg', fileName } = req.body;
+      
+      // Generate unique file name
+      const timestamp = Date.now();
+      const uniqueFileName = fileName || `upload-${timestamp}.jpg`;
+      const key = `user-${userId}/uploads/${timestamp}-${uniqueFileName}`;
+      
+      // Get S3 presigned URL for direct upload
+      const uploadURL = await s3UploadService.getPresignedPutUrl(key, contentType, 900);
+      const fileUrl = s3UploadService.getS3Url(key);
+      
+      res.json({ uploadURL, fileUrl, key });
     } catch (error) {
-      console.error("Error getting upload URL:", error);
+      console.error("Error getting S3 upload URL:", error);
       res.status(500).json({ error: "Failed to get upload URL" });
     }
   });

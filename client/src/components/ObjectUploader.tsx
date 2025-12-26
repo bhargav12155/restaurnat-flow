@@ -11,6 +11,7 @@ interface ObjectUploaderProps {
   onGetUploadParameters: () => Promise<{
     method: "PUT";
     url: string;
+    fileUrl?: string; // Optional: the actual file URL (for S3 presigned URLs)
   }>;
   onComplete?: (uploadedFileUrl: string) => void;
   buttonClassName?: string;
@@ -68,6 +69,11 @@ export function ObjectUploader({
 
       if (!response.ok) {
         throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      // If fileUrl was provided (e.g., S3 presigned URL), use it directly
+      if (uploadParams.fileUrl) {
+        return uploadParams.fileUrl;
       }
 
       // Try to parse JSON response which may contain the actual file URL

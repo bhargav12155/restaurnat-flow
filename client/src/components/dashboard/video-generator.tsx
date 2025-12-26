@@ -1287,18 +1287,18 @@ export function VideoGenerator() {
                     const response = await apiRequest(
                       "POST",
                       "/api/objects/upload",
-                      {},
+                      { contentType: "video/mp4" },
                     );
                     const data = await response.json();
                     return {
                       method: "PUT" as const,
                       url: data.uploadURL,
+                      fileUrl: data.fileUrl, // S3 file URL
                     };
                   }}
                   onComplete={(uploadedFileUrl: string) => {
-                    const fileName = uploadedFileUrl.split("/").pop();
-                    const localVideoUrl = `/objects/${fileName}`;
-                    setUploadedVideo(localVideoUrl);
+                    // Use S3 URL directly
+                    setUploadedVideo(uploadedFileUrl);
                     toast({
                       title: "Video Uploaded",
                       description:
