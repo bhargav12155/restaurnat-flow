@@ -13007,6 +13007,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   });
 
   // Import company profile from template or external app (for iframe embedding)
+  // Only fills in EMPTY fields - never overwrites user-edited data
   app.post("/api/company/profile/import", requireAuth, async (req, res) => {
     try {
       const userId = req.user?.id;
@@ -13016,14 +13017,54 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       console.log("📥 Importing company profile template for user:", userId);
 
-      // Accept template data from external app or manual import
       const templateData = req.body;
+      const source = templateData.source || "unknown";
 
-      // Validate and merge with userId
-      const validation = insertCompanyProfileSchema.safeParse({
-        ...templateData,
+      // Fetch existing profile to preserve user-edited data
+      const existingProfile = await storage.getCompanyProfile(String(userId));
+      
+      // Only fill in empty fields - never overwrite existing data
+      const profileData: Record<string, any> = {
         userId,
-      });
+        companyName: existingProfile?.companyName || templateData.companyName || "My Company",
+      };
+
+      // Only set field if existing is empty/null AND template has value
+      if (!existingProfile?.phone && templateData.phone) {
+        profileData.phone = templateData.phone;
+      } else if (existingProfile?.phone) {
+        profileData.phone = existingProfile.phone;
+      }
+      
+      if (!existingProfile?.email && templateData.email) {
+        profileData.email = templateData.email;
+      } else if (existingProfile?.email) {
+        profileData.email = existingProfile.email;
+      }
+      
+      if (!existingProfile?.website && templateData.website) {
+        profileData.website = templateData.website;
+      } else if (existingProfile?.website) {
+        profileData.website = existingProfile.website;
+      }
+      
+      if (!existingProfile?.bio && templateData.bio) {
+        profileData.bio = templateData.bio;
+      } else if (existingProfile?.bio) {
+        profileData.bio = existingProfile.bio;
+      }
+
+      // Merge social links - only add missing ones
+      if (templateData.socialLinks || existingProfile?.socialLinks) {
+        const existingSocial = (existingProfile?.socialLinks as Record<string, string>) || {};
+        const templateSocial = templateData.socialLinks || {};
+        profileData.socialLinks = {
+          ...templateSocial, // Template values as base
+          ...existingSocial, // Existing values take priority
+        };
+      }
+
+      const validation = insertCompanyProfileSchema.safeParse(profileData);
 
       if (!validation.success) {
         console.error(
@@ -13037,11 +13078,49 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       }
 
       const profile = await storage.upsertCompanyProfile(validation.data);
-      console.log("✅ Company profile imported successfully");
+      console.log(`✅ Company profile imported from ${source} for user:`, userId);
+
+      let brandSettingsUpdated = false;
+      if (templateData.colors || templateData.socialConnections) {
+        try {
+          const existingBrand = await storage.getBrandSettings(userId);
+          const brandData: Record<string, any> = {
+            userId,
+          };
+
+          if (templateData.colors) {
+            // Merge colors - existing values take priority over template
+            const existingColors = (existingBrand?.colors as Record<string, string>) || {};
+            brandData.colors = {
+              primary: existingColors.primary || templateData.colors.primary || "#daa520",
+              accent: existingColors.accent || templateData.colors.accent || "#ffd700",
+              text: existingColors.text || templateData.colors.text || "#333333",
+              secondary: existingColors.secondary || templateData.colors.primary || "#b8860b",
+              background: existingColors.background || "#ffffff",
+            };
+          }
+
+          if (templateData.socialConnections) {
+            // Merge social connections - existing values take priority
+            const existingSocialConn = (existingBrand?.socialConnections as Record<string, any>) || {};
+            brandData.socialConnections = {
+              ...templateData.socialConnections,
+              ...existingSocialConn, // Existing values override template
+            };
+          }
+
+          await storage.upsertBrandSettings(brandData);
+          brandSettingsUpdated = true;
+          console.log("✅ Brand settings updated from import");
+        } catch (brandError) {
+          console.error("⚠️ Failed to update brand settings:", brandError);
+        }
+      }
 
       res.json({
         success: true,
         profile,
+        brandSettingsUpdated,
         message: "Company profile imported successfully",
       });
     } catch (error) {
