@@ -3298,11 +3298,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const useSampleImage = toBoolean(req.body.useSampleImage);
         const photo = req.file;
+        const mediaUrl = req.body.mediaUrl; // Image URL from S3 or external source
         let photoUrl: string | null = null;
         let usedSampleImage = false;
 
         if (photo) {
           photoUrl = `/uploads/${path.basename(photo.path)}`;
+        } else if (mediaUrl) {
+          // Use the provided media URL (e.g., from S3 upload)
+          photoUrl = mediaUrl;
+          console.log(`📸 Facebook Post Debug - Using mediaUrl: ${mediaUrl.substring(0, 50)}...`);
         } else if (useSampleImage) {
           photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
           usedSampleImage = true;
@@ -3582,8 +3587,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const mediaUrl = req.body.mediaUrl; // Image URL from S3 or external source
         const useSampleImage = toBoolean(
-          req.body.useSampleImage ?? (!photo ? "true" : "false")
+          req.body.useSampleImage ?? (!photo && !mediaUrl ? "true" : "false")
         );
 
         let photoUrl: string | null = null;
@@ -3591,6 +3597,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (photo) {
           photoUrl = `${baseUrl}/uploads/${path.basename(photo.path)}`;
+        } else if (mediaUrl) {
+          // Use the provided media URL (e.g., from S3 upload)
+          photoUrl = mediaUrl;
+          console.log(`📸 Instagram Post Debug - Using mediaUrl: ${mediaUrl.substring(0, 50)}...`);
         } else if (useSampleImage) {
           photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
           usedSampleImage = true;

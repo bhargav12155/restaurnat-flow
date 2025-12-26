@@ -745,6 +745,10 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
         if (pageId) {
           payload.pageId = pageId;
         }
+        // Include image URL if one was uploaded/selected
+        if (photoPreview) {
+          payload.mediaUrl = photoPreview;
+        }
         
         const response = await fetch("/api/facebook/post", {
           method: "POST",
@@ -774,6 +778,10 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
         formData.append("instagramBusinessAccountId", instagramAccountId);
         if (photo) {
           formData.append("photo", photo);
+        }
+        // Include image URL if one was uploaded/selected via S3
+        if (photoPreview && !photo) {
+          formData.append("mediaUrl", photoPreview);
         }
 
         const response = await fetch("/api/instagram/post", {
