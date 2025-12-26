@@ -13025,7 +13025,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       
       // Only fill in empty fields - never overwrite existing data
       const profileData: Record<string, any> = {
-        userId,
+        userId: String(userId), // Convert to string for database
         companyName: existingProfile?.companyName || templateData.companyName || "My Company",
       };
 
