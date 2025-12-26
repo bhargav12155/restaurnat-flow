@@ -1,0 +1,189 @@
+
+Time
+Deployment
+Source
+Log
+2025-12-26 01:38:03.79
+ec2f76ee
+User
+🔌 WebSocket client connection attempt
+2025-12-26 01:39:00.65
+17eb38de
+User
+7:39:00 AM [express] • Dashboard: GET /api/dashboard/overview
+2025-12-26 01:39:00.81
+17eb38de
+User
+✓ Template "Just Listed" already exists
+2025-12-26 01:39:00.85
+17eb38de
+User
+✓ Template "Open House Invitation" already exists
+2025-12-26 01:39:00.88
+17eb38de
+User
+✓ Template "Market Update" already exists
+2025-12-26 01:39:00.92
+17eb38de
+User
+✓ Template "Agent Introduction" already exists
+2025-12-26 01:39:00.95
+17eb38de
+User
+🎬 Video templates seeding complete!
+2025-12-26 01:39:00.95
+17eb38de
+User
+✓ Template "Neighborhood Spotlight" already exists
+2025-12-26 01:39:19.30
+ec2f76ee
+User
+🔌 WebSocket client disconnected
+2025-12-26 01:39:22.58
+ec2f76ee
+User
+⏰ Checking for scheduled posts due at 2025-12-26T07:39:22.587Z
+2025-12-26 01:39:31.58
+17eb38de
+User
+🔗 Integration request from nebraska-home-hub - domain: www.imakepage.com, agent: undefined
+2025-12-26 01:39:32.45
+17eb38de
+User
+7:39:32 AM [express] GET /api/auth/check 200 in 4ms :: {"success":true,"authenticated":true,"user":{…
+2025-12-26 01:39:32.57
+17eb38de
+User
+id: 1,
+2025-12-26 01:39:32.57
+17eb38de
+User
+🔐 [AUTH] Token decoded: {
+2025-12-26 01:39:32.57
+17eb38de
+User
+username: undefined
+2025-12-26 01:39:32.57
+17eb38de
+User
+}
+2025-12-26 01:39:32.57
+17eb38de
+User
+type: 'public',
+2025-12-26 01:39:32.57
+17eb38de
+User
+email: 'bhargav12155@gmail.com',
+2025-12-26 01:39:32.57
+17eb38de
+User
+🔐 [AUTH] Public user authenticated: 1
+2025-12-26 01:39:32.57
+17eb38de
+User
+📥 Importing company profile template for user: 1
+2025-12-26 01:39:32.58
+17eb38de
+User
+7:39:32 AM [express] POST /api/auth/login 200 in 75ms :: {"success":true,"message":"Welcome back!","…
+2025-12-26 01:39:32.60
+17eb38de
+User
+message: 'Expected string, received number'
+2025-12-26 01:39:32.60
+17eb38de
+User
+}
+2025-12-26 01:39:32.60
+17eb38de
+User
+{
+2025-12-26 01:39:32.60
+17eb38de
+User
+path: [ 'userId' ],
+2025-12-26 01:39:32.60
+17eb38de
+User
+expected: 'string',
+2025-12-26 01:39:32.60
+17eb38de
+User
+]
+2025-12-26 01:39:32.60
+17eb38de
+User
+received: 'number',
+2025-12-26 01:39:32.60
+17eb38de
+User
+code: 'invalid_type',
+2025-12-26 01:39:32.60
+17eb38de
+User
+❌ Template validation failed: [
+2025-12-26 01:39:32.60
+17eb38de
+User
+7:39:32 AM [express] POST /api/company/profile/import 400 in 39ms :: {"error":"Invalid template data…
+2025-12-26 01:39:32.68
+17eb38de
+User
+[STORAGE] getUserByUsername(mikebjork) - Found in memory: 82f0946d-0bc3-4d45-bdec-6270802d990e
+2025-12-26 01:39:32.69
+17eb38de
+User
+email: 'mygoldenbrick2@gmail.com',
+2025-12-26 01:39:32.69
+17eb38de
+User
+}
+2025-12-26 01:39:32.69
+17eb38de
+User
+id: 17,
+2025-12-26 01:39:32.69
+17eb38de
+User
+🔐 [AUTH] Public user authenticated: 17
+2025-12-26 01:39:32.69
+17eb38de
+User
+username: undefined
+2025-12-26 01:39:32.69
+17eb38de
+User
+🔐 [AUTH] Token decoded: {
+2025-12-26 01:39:32.69
+17eb38de
+User
+type: 'public',
+2025-12-26 01:39:32.70
+17eb38de
+User
+🔐 [AUTH] Public user authenticated: 17
+2025-12-26 01:39:32.70
+17eb38de
+User
+username: undefined
+2025-12-26 01:39:32.70
+17eb38de
+User
+type: 'public',
+2025-12-26 01:39:32.70
+17eb38de
+User
+🔐 [AUTH] Token decoded: {
+2025-12-26 01:39:32.70
+17eb38de
+User
+[SOCIAL] Fetching social accounts for stable DB user ID: 17
+2025-12-26 01:39:32.70
+17eb38de
+User
+email: 'mygoldenbrick2@gmail.com',
+2025-12-26 01:39:32.70
+17eb38de
+User
+}
