@@ -2781,12 +2781,18 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   // Use the S3 URL directly
                   setPhotoPreview(uploadedFileUrl);
                   setShowPhotoUpload(false);
-                  toast({
-                    title: "Photo uploaded successfully",
-                    description: savedToLibrary === false 
-                      ? "Your photo has been added to the content." 
-                      : "Your photo has been added to the content and saved to your library.",
-                  });
+                  if (savedToLibrary === false) {
+                    toast({
+                      title: "Photo uploaded",
+                      description: "Your photo has been added to the content but could not be saved to your library.",
+                      variant: "destructive",
+                    });
+                  } else {
+                    toast({
+                      title: "Photo uploaded successfully",
+                      description: "Your photo has been added to the content and saved to your library.",
+                    });
+                  }
                 }}
               >
                 <div className="flex items-center gap-2">
