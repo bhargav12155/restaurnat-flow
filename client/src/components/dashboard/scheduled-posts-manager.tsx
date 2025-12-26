@@ -1063,18 +1063,19 @@ export function ScheduledPostsManager() {
                   maxNumberOfFiles={1}
                   maxFileSize={10485760}
                   onGetUploadParameters={async () => {
-                    const response = await apiRequest("POST", "/api/objects/upload", {});
+                    const response = await apiRequest("POST", "/api/objects/upload", {
+                      contentType: "image/jpeg"
+                    });
                     const data = await response.json();
                     return {
                       method: "PUT" as const,
                       url: data.uploadURL,
+                      fileUrl: data.fileUrl, // S3 file URL
                     };
                   }}
                   onComplete={(uploadedFileUrl: string) => {
-                    // Convert to local endpoint
-                    const fileName = uploadedFileUrl.split('/').pop();
-                    const localImageUrl = `/objects/${fileName}`;
-                    setSelectedPhoto(localImageUrl);
+                    // Use the S3 URL directly
+                    setSelectedPhoto(uploadedFileUrl);
                     toast({
                       title: "Photo Uploaded",
                       description: "Photo is ready to be attached to your post",

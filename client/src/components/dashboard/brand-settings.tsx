@@ -362,9 +362,14 @@ export function BrandSettings() {
 
   const handleGetUploadParameters = async () => {
     try {
-      const response = await fetch('/api/objects/upload', { method: 'POST' });
+      const response = await fetch('/api/objects/upload', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentType: 'image/jpeg' }),
+        credentials: 'include',
+      });
       const data = await response.json();
-      return { method: 'PUT' as const, url: data.uploadURL };
+      return { method: 'PUT' as const, url: data.uploadURL, fileUrl: data.fileUrl };
     } catch (error) {
       console.error('Failed to get upload parameters:', error);
       throw error;
