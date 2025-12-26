@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { DemoProvider } from "@/contexts/DemoContext";
+import { useTemplateDataImport } from "@/hooks/useTemplateDataImport";
 import Dashboard from "@/pages/dashboard";
 import SocialMediaPage from "@/pages/social-media";
 import SettingsPage from "@/pages/settings";
@@ -19,6 +20,11 @@ import TemplateStudioPage from "@/pages/template-studio";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 import { DemoModeBanner } from "@/components/shared/demo-mode-banner";
+
+function TemplateDataImporter() {
+  useTemplateDataImport();
+  return null;
+}
 
 function Router() {
   return (
@@ -80,6 +86,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <TemplateDataImporter />
         <DemoProvider>
           <TooltipProvider>
             <DemoModeBanner />
