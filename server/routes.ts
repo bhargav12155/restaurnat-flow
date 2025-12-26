@@ -36,6 +36,9 @@ import { MLSService } from "./services/mls";
 import { getAPIKeyStatus, openaiService } from "./services/openai";
 import { S3UploadService } from "./services/s3Upload";
 import { seoService } from "./services/seo";
+
+// S3 upload service instance for presigned URL uploads
+const s3UploadService = new S3UploadService();
 import { SocialMediaError, socialMediaService } from "./services/socialMedia";
 import { seedVideoTemplates } from "./services/template-seeder";
 import { storage } from "./storage";
