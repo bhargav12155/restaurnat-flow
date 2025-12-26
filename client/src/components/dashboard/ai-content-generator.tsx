@@ -745,8 +745,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
         if (pageId) {
           payload.pageId = pageId;
         }
-        // Include image URL if one was uploaded/selected
-        if (photoPreview) {
+        // Include image URL only if it's a remote URL (S3), not a local data URL
+        if (photoPreview && photoPreview.startsWith('https://')) {
           payload.mediaUrl = photoPreview;
         }
         
@@ -779,8 +779,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
         if (photo) {
           formData.append("photo", photo);
         }
-        // Include image URL if one was uploaded/selected via S3
-        if (photoPreview && !photo) {
+        // Include image URL only if it's a remote URL (S3), not a local data URL
+        if (photoPreview && !photo && photoPreview.startsWith('https://')) {
           formData.append("mediaUrl", photoPreview);
         }
 
