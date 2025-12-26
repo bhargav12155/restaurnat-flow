@@ -751,14 +751,22 @@ export function ContentCalendar() {
     };
   };
   
-  const handlePhotoComplete = (uploadedUrl: string) => {
+  const handlePhotoComplete = (uploadedUrl: string, savedToLibrary?: boolean) => {
     if (uploadedUrl) {
       setPhotoPreview(uploadedUrl);
       setSavedPhotoUrl(uploadedUrl);
-      toast({
-        title: "Photo Uploaded",
-        description: "Your property photo has been uploaded successfully",
-      });
+      if (savedToLibrary === false) {
+        toast({
+          title: "Photo Uploaded",
+          description: "Your property photo has been uploaded but could not be saved to your library",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Photo Uploaded",
+          description: "Your property photo has been uploaded and saved to your library",
+        });
+      }
     }
   };
   
