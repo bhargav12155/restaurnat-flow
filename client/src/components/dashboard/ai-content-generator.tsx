@@ -2761,6 +2761,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               <ObjectUploader
                 maxNumberOfFiles={1}
                 maxFileSize={10485760}
+                saveToLibrary={true}
+                libraryType="photo"
                 onGetUploadParameters={async () => {
                   const response = await fetch("/api/objects/upload", {
                     method: "POST",
@@ -2775,13 +2777,15 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     fileUrl: data.fileUrl, // S3 file URL
                   };
                 }}
-                onComplete={(uploadedFileUrl) => {
+                onComplete={(uploadedFileUrl, savedToLibrary) => {
                   // Use the S3 URL directly
                   setPhotoPreview(uploadedFileUrl);
                   setShowPhotoUpload(false);
                   toast({
                     title: "Photo uploaded successfully",
-                    description: "Your photo has been added to the content.",
+                    description: savedToLibrary === false 
+                      ? "Your photo has been added to the content." 
+                      : "Your photo has been added to the content and saved to your library.",
                   });
                 }}
               >

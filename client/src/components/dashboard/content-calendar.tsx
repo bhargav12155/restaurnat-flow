@@ -1289,6 +1289,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="h-8 w-8 p-0 bg-black/50 hover:bg-black/70"
@@ -1305,6 +1307,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
@@ -1373,6 +1377,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="h-8 w-8 p-0 bg-black/50 hover:bg-black/70"
@@ -1389,6 +1395,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
@@ -1471,6 +1479,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="h-8 w-8 p-0 bg-black/50 hover:bg-black/70"
@@ -1581,6 +1591,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="h-8 w-8 p-0 bg-black/50 hover:bg-black/70"
@@ -1597,6 +1609,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
@@ -1663,6 +1677,8 @@ export function ContentCalendar() {
                           <ObjectUploader
                             maxNumberOfFiles={1}
                             maxFileSize={10485760}
+                            saveToLibrary={true}
+                            libraryType="photo"
                             onGetUploadParameters={handlePhotoUpload}
                             onComplete={handlePhotoComplete}
                             buttonClassName="h-8 w-8 p-0 bg-black/50 hover:bg-black/70"

@@ -13,10 +13,13 @@ interface ObjectUploaderProps {
     url: string;
     fileUrl?: string; // Optional: the actual file URL (for S3 presigned URLs)
   }>;
-  onComplete?: (uploadedFileUrl: string) => void;
+  onComplete?: (uploadedFileUrl: string, savedToLibrary?: boolean) => void;
   buttonClassName?: string;
   children: ReactNode;
   disabled?: boolean;
+  saveToLibrary?: boolean; // Whether to save the uploaded file to the user's media library
+  libraryType?: string; // Type for media library (e.g., 'photo', 'avatar', 'video')
+  libraryTitle?: string; // Title for the media library entry
 }
 
 export function ObjectUploader({
@@ -28,6 +31,9 @@ export function ObjectUploader({
   buttonClassName,
   children,
   disabled = false,
+  saveToLibrary = false,
+  libraryType = "photo",
+  libraryTitle,
 }: ObjectUploaderProps) {
   const [showModal, setShowModal] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -100,19 +106,53 @@ export function ObjectUploader({
     setUploadProgress(0);
     
     try {
-      let uploadedUrl = '';
+      const uploadedUrls: { file: File; url: string }[] = [];
       
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
-        uploadedUrl = await uploadFile(file);
+        const url = await uploadFile(file);
+        uploadedUrls.push({ file, url });
         setUploadProgress(((i + 1) / selectedFiles.length) * 100);
       }
 
       setUploadComplete(true);
       
-      // Call completion callback with the last uploaded file URL
+      // Save each uploaded file to media library if requested
+      let allSavedSuccessfully = true;
+      if (saveToLibrary) {
+        for (const { file, url } of uploadedUrls) {
+          if (url && url.startsWith('https://')) {
+            try {
+              const response = await fetch('/api/media/save-from-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  url,
+                  type: libraryType,
+                  source: 'upload',
+                  title: libraryTitle || file?.name || `Upload ${Date.now()}`,
+                  mimeType: file?.type || 'image/jpeg',
+                }),
+              });
+              
+              if (response.ok) {
+                console.log('📚 Saved to media library:', url.substring(0, 50));
+              } else {
+                console.warn('Failed to save to media library - server returned error');
+                allSavedSuccessfully = false;
+              }
+            } catch (err) {
+              console.warn('Failed to save to media library:', err);
+              allSavedSuccessfully = false;
+            }
+          }
+        }
+      }
+      
+      // Call completion callback with the last uploaded file URL and library save status
+      const uploadedUrl = uploadedUrls.length > 0 ? uploadedUrls[uploadedUrls.length - 1].url : '';
       if (onComplete && uploadedUrl) {
-        onComplete(uploadedUrl);
+        onComplete(uploadedUrl, saveToLibrary ? allSavedSuccessfully : undefined);
       }
 
       // Reset after a short delay
