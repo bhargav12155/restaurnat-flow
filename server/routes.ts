@@ -13712,6 +13712,51 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
+  // Save S3 URL to media library (for files uploaded directly to S3)
+  app.post("/api/media/save-from-url", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      const { url, type = "photo", source = "upload", title, description, mimeType } = req.body;
+
+      if (!url) {
+        return res.status(400).json({ error: "URL is required" });
+      }
+
+      // Validate URL is a valid HTTP(S) URL
+      if (!url.startsWith("https://") && !url.startsWith("http://")) {
+        return res.status(400).json({ error: "Invalid URL - must be HTTP(S)" });
+      }
+
+      console.log(`📚 Saving S3 URL to media library: ${url.substring(0, 50)}...`);
+
+      const mediaAsset = await storage.createMediaAsset({
+        userId,
+        type,
+        source,
+        url,
+        thumbnailUrl: url,
+        title: title || `Upload ${Date.now()}`,
+        description: description || null,
+        avatarId: null,
+        mimeType: mimeType || "image/jpeg",
+        fileSize: null,
+        width: null,
+        height: null,
+        durationSeconds: null,
+        metadata: null,
+      });
+
+      console.log(`✅ Saved to media library: ${mediaAsset.id}`);
+      res.json(mediaAsset);
+    } catch (error: any) {
+      console.error("❌ Failed to save URL to media library:", error?.message);
+      res.status(500).json({
+        error: "Failed to save to media library",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   // Direct file upload endpoint (used by ObjectUploader component)
   // This endpoint accepts file uploads directly and stores them in S3
   app.put("/api/upload-placeholder", async (req, res) => {
