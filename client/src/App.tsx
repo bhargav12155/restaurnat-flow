@@ -13,7 +13,6 @@ import IntegrationPage from "@/pages/integration";
 import VoiceLibrary from "@/pages/VoiceLibrary";
 import ProfilePage from "@/pages/profile";
 import MobileUploadPage from "@/pages/mobile-upload";
-import VideosPage from "@/pages/videos";
 import EventsCalendarPage from "@/pages/events-calendar";
 import UnifiedCalendarPage from "@/pages/unified-calendar";
 import TemplateStudioPage from "@/pages/template-studio";
@@ -55,11 +54,6 @@ function Router() {
       <Route path="/profile">
         <ProtectedRoute>
           <ProfilePage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/videos">
-        <ProtectedRoute>
-          <VideosPage />
         </ProtectedRoute>
       </Route>
       <Route path="/events">
