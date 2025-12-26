@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -118,7 +118,10 @@ export function AvatarIVStudio() {
   
   const [videoTitle, setVideoTitle] = useState("");
   const [script, setScript] = useState("");
+  const [scriptLength, setScriptLength] = useState(0);
+  const [scriptKey, setScriptKey] = useState(0); // Key to force textarea remount on AI generation
   const [scriptStyle, setScriptStyle] = useState(SCRIPT_STYLES[0].id);
+  const scriptDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [selectedVoice, setSelectedVoice] = useState("");
   const [selectedMotion, setSelectedMotion] = useState(MOTION_PROMPTS[0].id);
   const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
@@ -212,6 +215,28 @@ export function AvatarIVStudio() {
       setSelectedVoice(voices[0].voice_id);
     }
   }, [voices, selectedVoice]);
+
+  // Debounced script update to prevent typing lag
+  const handleScriptChange = useCallback((value: string) => {
+    const trimmed = value.slice(0, 1500);
+    setScriptLength(trimmed.length);
+    
+    if (scriptDebounceRef.current) {
+      clearTimeout(scriptDebounceRef.current);
+    }
+    scriptDebounceRef.current = setTimeout(() => {
+      setScript(trimmed);
+    }, 150);
+  }, []);
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (scriptDebounceRef.current) {
+        clearTimeout(scriptDebounceRef.current);
+      }
+    };
+  }, []);
 
   // Select photo from library
   const selectFromLibrary = (photo: PhotoAsset) => {
@@ -423,6 +448,8 @@ export function AvatarIVStudio() {
     onSuccess: (data) => {
       const generatedScript = data.script?.slice(0, 1500) || "";
       setScript(generatedScript);
+      setScriptLength(generatedScript.length);
+      setScriptKey(k => k + 1); // Force textarea to remount with new content
       toast({
         title: "Script Generated!",
         description: "AI has created a script for your video. Feel free to edit it.",
@@ -603,6 +630,8 @@ export function AvatarIVStudio() {
     setImageKey(null);
     setVideoTitle("");
     setScript("");
+    setScriptLength(0);
+    setScriptKey(k => k + 1);
     setGeneratingVideoId(null);
     setVideoStatus(null);
     if (pollInterval) {
@@ -970,14 +999,17 @@ export function AvatarIVStudio() {
                         </div>
                         <Textarea
                           id="script"
-                          value={script}
-                          onChange={(e) => setScript(e.target.value.slice(0, 1500))}
+                          defaultValue={script}
+                          key={scriptKey}
+                          onChange={(e) => handleScriptChange(e.target.value)}
+                          onBlur={(e) => setScript(e.target.value.slice(0, 1500))}
                           placeholder="Hello! Welcome to my video. I'm excited to share..."
                           className="min-h-[150px]"
+                          maxLength={1500}
                           data-testid="input-script"
                         />
                         <p className="text-xs text-gray-400 mt-1">
-                          {script.length}/1500 characters
+                          {scriptLength || script.length}/1500 characters
                         </p>
                       </div>
                     </div>
