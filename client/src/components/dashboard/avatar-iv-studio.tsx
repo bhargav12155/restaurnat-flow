@@ -36,6 +36,7 @@ import {
   Share2,
   Clock,
   ExternalLink,
+  Sparkles,
 } from "lucide-react";
 
 interface Voice {
@@ -68,6 +69,14 @@ const MOTION_PROMPTS = [
   { id: "enthusiastic", label: "Enthusiastic", prompt: "enthusiastic and energetic with expressive hand gestures" },
   { id: "calm", label: "Calm", prompt: "calm and thoughtful, speaking slowly" },
   { id: "friendly", label: "Friendly", prompt: "friendly customer service representative" },
+];
+
+const SCRIPT_STYLES = [
+  { id: "property_tour", label: "Property Tour", description: "Showcase property features and highlights" },
+  { id: "listing_spotlight", label: "Listing Spotlight", description: "Quick attention-grabbing listing preview" },
+  { id: "market_update", label: "Market Update", description: "Local real estate market insights" },
+  { id: "agent_intro", label: "Agent Introduction", description: "Professional self-introduction" },
+  { id: "neighborhood_guide", label: "Neighborhood Guide", description: "Area highlights and amenities" },
 ];
 
 const STEPS = [
@@ -109,6 +118,7 @@ export function AvatarIVStudio() {
   
   const [videoTitle, setVideoTitle] = useState("");
   const [script, setScript] = useState("");
+  const [scriptStyle, setScriptStyle] = useState(SCRIPT_STYLES[0].id);
   const [selectedVoice, setSelectedVoice] = useState("");
   const [selectedMotion, setSelectedMotion] = useState(MOTION_PROMPTS[0].id);
   const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
@@ -386,6 +396,42 @@ export function AvatarIVStudio() {
       toast({
         title: "Upload Failed",
         description: error?.message || "Could not upload photo",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // AI Script generation mutation
+  const generateScriptMutation = useMutation({
+    mutationFn: async () => {
+      const trimmedTitle = videoTitle.trim();
+      if (!trimmedTitle) {
+        throw new Error("Please enter a video title first");
+      }
+      if (!imageKey) {
+        throw new Error("Please upload or select a photo first");
+      }
+      const response = await apiRequest("POST", "/api/generate-script", {
+        topic: trimmedTitle,
+        neighborhood: "Omaha",
+        videoType: scriptStyle,
+        platform: "Social Media",
+        duration: 30,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const generatedScript = data.script?.slice(0, 1500) || "";
+      setScript(generatedScript);
+      toast({
+        title: "Script Generated!",
+        description: "AI has created a script for your video. Feel free to edit it.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Script Generation Failed",
+        description: error.message || "Could not generate script",
         variant: "destructive",
       });
     },
@@ -888,19 +934,52 @@ export function AvatarIVStudio() {
                   </div>
 
                   {inputMode === "text" ? (
-                    <div>
-                      <Label htmlFor="script">Script (max 1500 characters)</Label>
-                      <Textarea
-                        id="script"
-                        value={script}
-                        onChange={(e) => setScript(e.target.value.slice(0, 1500))}
-                        placeholder="Hello! Welcome to my video. I'm excited to share..."
-                        className="mt-1 min-h-[150px]"
-                        data-testid="input-script"
-                      />
-                      <p className="text-xs text-gray-400 mt-1">
-                        {script.length}/1500 characters
-                      </p>
+                    <div className="space-y-3">
+                      <div>
+                        <Label htmlFor="scriptStyle">Script Style</Label>
+                        <Select value={scriptStyle} onValueChange={setScriptStyle}>
+                          <SelectTrigger className="mt-1" data-testid="select-script-style">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SCRIPT_STYLES.map((style) => (
+                              <SelectItem key={style.id} value={style.id}>
+                                <div className="flex flex-col">
+                                  <span>{style.label}</span>
+                                  <span className="text-xs text-gray-500">{style.description}</span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <Label htmlFor="script">Script (max 1500 characters)</Label>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => generateScriptMutation.mutate()}
+                            disabled={generateScriptMutation.isPending || !videoTitle.trim() || !imageKey}
+                            title={!imageKey ? "Upload a photo first" : !videoTitle.trim() ? "Enter a video title first" : "Generate script with AI"}
+                            data-testid="button-ai-generate-script"
+                          >
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            {generateScriptMutation.isPending ? "Generating..." : "AI Generate"}
+                          </Button>
+                        </div>
+                        <Textarea
+                          id="script"
+                          value={script}
+                          onChange={(e) => setScript(e.target.value.slice(0, 1500))}
+                          placeholder="Hello! Welcome to my video. I'm excited to share..."
+                          className="min-h-[150px]"
+                          data-testid="input-script"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                          {script.length}/1500 characters
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-4">
