@@ -72,13 +72,19 @@ export function useTemplateDataImport() {
     }
 
     const handleMessage = async (event: MessageEvent<PostMessageData>) => {
+      console.log("📬 Received postMessage:", event.data?.type, "from:", event.origin);
+      
       if (!ALLOWED_ORIGINS.includes(event.origin)) {
+        console.log("❌ Origin not allowed:", event.origin);
         return;
       }
 
       if (event.data?.type !== "AISEO_TEMPLATE_DATA" || !event.data.template) {
+        console.log("⏭️ Not a template data message, skipping");
         return;
       }
+      
+      console.log("✅ Valid template data received:", event.data.template);
 
       if (isImportingRef.current) {
         return;
