@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Search, Globe, Smartphone, Sparkles, Loader2, Calendar } from "lucide-react";
+import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Search, Globe, Smartphone, Sparkles, Loader2, Calendar, Info } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -99,6 +99,19 @@ export function SEOOptimizer() {
 
   const isLoading = keywordsLoading || healthLoading;
   const displayKeywords = aiGeneratedKeywords || keywords;
+  const hasGeneratedRef = useRef(false);
+  
+  // Auto-generate AI keywords on first load if we only have fallback data
+  useEffect(() => {
+    if (!hasGeneratedRef.current && keywords && keywords.length > 0 && !aiGeneratedKeywords) {
+      // Check if these are fallback keywords (they have fb- prefix IDs)
+      const hasFallbackOnly = keywords.every(k => k.id.startsWith('fb-'));
+      if (hasFallbackOnly && !generateKeywordsMutation.isPending) {
+        hasGeneratedRef.current = true;
+        generateKeywordsMutation.mutate();
+      }
+    }
+  }, [keywords, aiGeneratedKeywords]);
 
   if (isLoading) {
     return (
@@ -340,17 +353,38 @@ export function SEOOptimizer() {
       <CardContent className="space-y-4">
         {/* Top Keywords */}
         <div>
-          <h3 className="text-sm font-medium text-foreground mb-3">Top Performing Keywords</h3>
-          <div className="space-y-2">
-            {displayKeywords?.slice(0, 4).map((keyword) => (
-              <div key={keyword.id} className="flex items-center justify-between" data-testid={`keyword-${keyword.id}`}>
-                <span className="text-sm text-foreground">{keyword.keyword}</span>
-                <Badge variant="secondary" className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent hover:bg-secondary/80 text-chart-3 font-medium bg-[#2e4551]">
-                  #{keyword.currentRank}
-                </Badge>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-foreground">
+              {aiGeneratedKeywords ? "AI-Suggested Keywords" : "Suggested Keywords"}
+            </h3>
+            {aiGeneratedKeywords && (
+              <Badge variant="outline" className="text-xs flex items-center gap-1">
+                <Sparkles className="h-3 w-3" />
+                AI Generated
+              </Badge>
+            )}
           </div>
+          <div className="space-y-2">
+            {generateKeywordsMutation.isPending ? (
+              <div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Generating AI keywords...
+              </div>
+            ) : (
+              displayKeywords?.slice(0, 4).map((keyword) => (
+                <div key={keyword.id} className="flex items-center justify-between" data-testid={`keyword-${keyword.id}`}>
+                  <span className="text-sm text-foreground">{keyword.keyword}</span>
+                  <Badge variant="secondary" className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent hover:bg-secondary/80 text-chart-3 font-medium bg-[#2e4551]">
+                    ~#{keyword.currentRank}
+                  </Badge>
+                </div>
+              ))
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+            <Info className="h-3 w-3" />
+            Rankings are AI estimates based on market analysis
+          </p>
         </div>
 
         {/* Site Health */}
@@ -381,8 +415,8 @@ export function SEOOptimizer() {
               <div className="text-xs text-muted-foreground">Mobile Score</div>
             </div>
             <div>
-              <div className="text-lg font-bold text-green-600" data-testid="text-monthly-visitors">12K</div>
-              <div className="text-xs text-muted-foreground">Monthly Visitors</div>
+              <div className="text-lg font-bold text-muted-foreground" data-testid="text-monthly-visitors">--</div>
+              <div className="text-xs text-muted-foreground">Visitors (needs Analytics)</div>
             </div>
           </div>
         </div>
