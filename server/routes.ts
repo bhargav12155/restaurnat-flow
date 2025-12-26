@@ -3304,8 +3304,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (photo) {
           photoUrl = `/uploads/${path.basename(photo.path)}`;
-        } else if (mediaUrl) {
-          // Use the provided media URL (e.g., from S3 upload)
+        } else if (mediaUrl && (mediaUrl.startsWith('https://') || mediaUrl.startsWith('http://'))) {
+          // Use the provided media URL (e.g., from S3 upload) - only if it's a valid HTTP(S) URL
           photoUrl = mediaUrl;
           console.log(`📸 Facebook Post Debug - Using mediaUrl: ${mediaUrl.substring(0, 50)}...`);
         } else if (useSampleImage) {
@@ -3597,8 +3597,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (photo) {
           photoUrl = `${baseUrl}/uploads/${path.basename(photo.path)}`;
-        } else if (mediaUrl) {
-          // Use the provided media URL (e.g., from S3 upload)
+        } else if (mediaUrl && (mediaUrl.startsWith('https://') || mediaUrl.startsWith('http://'))) {
+          // Use the provided media URL (e.g., from S3 upload) - only if it's a valid HTTP(S) URL
           photoUrl = mediaUrl;
           console.log(`📸 Instagram Post Debug - Using mediaUrl: ${mediaUrl.substring(0, 50)}...`);
         } else if (useSampleImage) {
