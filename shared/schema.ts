@@ -1347,6 +1347,84 @@ export type VideoGenerationJob = typeof videoGenerationJobs.$inferSelect;
 export type InsertVideoGenerationJob = z.infer<typeof insertVideoGenerationJobSchema>;
 
 // =====================================================
+// TWILIO SETTINGS TABLE (Per-subscriber phone configuration)
+// =====================================================
+export const twilioSettings = pgTable("twilio_settings", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  phoneNumber: text("phone_number"), // Twilio phone number assigned to this subscriber
+  twilioAccountSid: text("twilio_account_sid"), // Optional: subscriber's own Twilio account
+  twilioAuthToken: text("twilio_auth_token"), // Encrypted auth token
+  isEnabled: boolean("is_enabled").default(false),
+  // AI Chatbot Settings
+  aiGreeting: text("ai_greeting").default("Hello! Thank you for reaching out. I'm an AI assistant for a local real estate agent. How can I help you today?"),
+  aiPersonality: text("ai_personality").default("friendly"), // 'friendly', 'professional', 'casual'
+  businessHoursStart: text("business_hours_start").default("09:00"),
+  businessHoursEnd: text("business_hours_end").default("17:00"),
+  afterHoursMessage: text("after_hours_message").default("Thanks for reaching out! Our office is currently closed. We'll get back to you during business hours."),
+  // Lead capture settings
+  captureLeadOnFirstMessage: boolean("capture_lead_on_first_message").default(true),
+  askForName: boolean("ask_for_name").default(true),
+  askForEmail: boolean("ask_for_email").default(true),
+  // Business info for AI context
+  agentName: text("agent_name"),
+  brokerageName: text("brokerage_name"),
+  serviceAreas: text("service_areas").array(), // Neighborhoods/areas served
+  specialties: text("specialties").array(), // 'luxury', 'first-time buyers', etc.
+  // Voice settings
+  voiceGreeting: text("voice_greeting").default("Hello! Thank you for calling. I'm an AI assistant. How can I help you today?"),
+  voiceEnabled: boolean("voice_enabled").default(false),
+  transferNumber: text("transfer_number"), // Number to transfer calls to for live agent
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// =====================================================
+// TWILIO CONVERSATIONS TABLE (SMS/Voice chat history)
+// =====================================================
+export const twilioConversations = pgTable("twilio_conversations", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // The agent/subscriber who owns this conversation
+  fromNumber: text("from_number").notNull(), // The caller/texter's phone number
+  toNumber: text("to_number").notNull(), // The Twilio number that received it
+  conversationType: text("conversation_type").notNull().default("sms"), // 'sms' or 'voice'
+  status: text("status").notNull().default("active"), // 'active', 'closed', 'converted'
+  // Lead info captured during conversation
+  leadName: text("lead_name"),
+  leadEmail: text("lead_email"),
+  leadInterest: text("lead_interest"), // 'buying', 'selling', 'both', 'general'
+  leadQuality: text("lead_quality").default("warm"), // 'hot', 'warm', 'cold'
+  leadNotes: text("lead_notes"), // AI-generated summary of conversation
+  // Timestamps
+  lastMessageAt: timestamp("last_message_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  convertedToLeadAt: timestamp("converted_to_lead_at"),
+});
+
+// =====================================================
+// TWILIO MESSAGES TABLE (Individual messages in conversations)
+// =====================================================
+export const twilioMessages = pgTable("twilio_messages", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull(),
+  twilioMessageSid: text("twilio_message_sid"), // Twilio's message ID
+  direction: text("direction").notNull(), // 'inbound' or 'outbound'
+  messageType: text("message_type").notNull().default("sms"), // 'sms', 'mms', 'voice_transcript'
+  body: text("body").notNull(),
+  mediaUrls: text("media_urls").array(), // For MMS attachments
+  status: text("status").default("delivered"), // 'queued', 'sent', 'delivered', 'failed'
+  isAiGenerated: boolean("is_ai_generated").default(false),
+  aiModel: text("ai_model"), // 'gpt-4o', etc.
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =====================================================
 // PLATFORM SETTINGS TABLE (Admin-level integrations)
 // =====================================================
 export const platformSettings = pgTable("platform_settings", {
@@ -1366,3 +1444,27 @@ export const insertPlatformSettingSchema = createInsertSchema(platformSettings).
 
 export type PlatformSetting = typeof platformSettings.$inferSelect;
 export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
+
+// Twilio insert schemas and types
+export const insertTwilioSettingsSchema = createInsertSchema(twilioSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTwilioConversationSchema = createInsertSchema(twilioConversations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTwilioMessageSchema = createInsertSchema(twilioMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type TwilioSettings = typeof twilioSettings.$inferSelect;
+export type InsertTwilioSettings = z.infer<typeof insertTwilioSettingsSchema>;
+export type TwilioConversation = typeof twilioConversations.$inferSelect;
+export type InsertTwilioConversation = z.infer<typeof insertTwilioConversationSchema>;
+export type TwilioMessage = typeof twilioMessages.$inferSelect;
+export type InsertTwilioMessage = z.infer<typeof insertTwilioMessageSchema>;
