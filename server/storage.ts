@@ -40,6 +40,9 @@ import {
   type InsertSeoKeyword,
   type InsertSocialMediaAccount,
   type InsertTemplateVariable,
+  type InsertTwilioConversation,
+  type InsertTwilioMessage,
+  type InsertTwilioSettings,
   type InsertUser,
   type InsertVideoAvatar,
   type InsertVideoContent,
@@ -64,6 +67,12 @@ import {
   type SocialMediaAccount,
   type TemplateVariable,
   templateVariables as templateVariablesTable,
+  type TwilioConversation,
+  twilioConversations as twilioConversationsTable,
+  type TwilioMessage,
+  twilioMessages as twilioMessagesTable,
+  type TwilioSettings,
+  twilioSettings as twilioSettingsTable,
   type User,
   type VideoAvatar,
   videoAvatars,
@@ -341,6 +350,22 @@ export interface IStorage {
   getLookGenerationJobsByGroup(groupId: string, userId: string): Promise<LookGenerationJob[]>;
   updateLookGenerationJob(id: string, updates: Partial<LookGenerationJob>): Promise<LookGenerationJob | undefined>;
   getPendingLookGenerationJobs(): Promise<LookGenerationJob[]>;
+
+  // Twilio Settings
+  getTwilioSettingsByUserId(userId: string): Promise<TwilioSettings | undefined>;
+  getTwilioSettingsByPhoneNumber(phoneNumber: string): Promise<TwilioSettings | undefined>;
+  createOrUpdateTwilioSettings(settings: InsertTwilioSettings): Promise<TwilioSettings>;
+
+  // Twilio Conversations
+  getTwilioConversationByPhone(userId: string, fromNumber: string): Promise<TwilioConversation | undefined>;
+  createTwilioConversation(data: InsertTwilioConversation): Promise<TwilioConversation>;
+  updateTwilioConversation(id: string, updates: Partial<TwilioConversation>): Promise<TwilioConversation | undefined>;
+  getTwilioConversationsByUserId(userId: string): Promise<TwilioConversation[]>;
+  getTwilioConversationById(id: string): Promise<TwilioConversation | undefined>;
+
+  // Twilio Messages
+  createTwilioMessage(data: InsertTwilioMessage): Promise<TwilioMessage>;
+  getTwilioMessagesByConversationId(conversationId: string): Promise<TwilioMessage[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -2250,6 +2275,99 @@ export class MemStorage implements IStorage {
       .where(eq(videoGenerationJobsTable.id, id))
       .returning();
     return updated;
+  }
+
+  // Twilio Settings
+  async getTwilioSettingsByUserId(userId: string): Promise<TwilioSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(twilioSettingsTable)
+      .where(eq(twilioSettingsTable.userId, userId));
+    return settings;
+  }
+
+  async getTwilioSettingsByPhoneNumber(phoneNumber: string): Promise<TwilioSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(twilioSettingsTable)
+      .where(eq(twilioSettingsTable.phoneNumber, phoneNumber));
+    return settings;
+  }
+
+  async createOrUpdateTwilioSettings(settings: InsertTwilioSettings): Promise<TwilioSettings> {
+    const [result] = await db
+      .insert(twilioSettingsTable)
+      .values(settings)
+      .onConflictDoUpdate({
+        target: twilioSettingsTable.userId,
+        set: { ...settings, updatedAt: new Date() },
+      })
+      .returning();
+    return result;
+  }
+
+  // Twilio Conversations
+  async getTwilioConversationByPhone(userId: string, fromNumber: string): Promise<TwilioConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(twilioConversationsTable)
+      .where(
+        and(
+          eq(twilioConversationsTable.userId, userId),
+          eq(twilioConversationsTable.fromNumber, fromNumber)
+        )
+      );
+    return conversation;
+  }
+
+  async createTwilioConversation(data: InsertTwilioConversation): Promise<TwilioConversation> {
+    const [conversation] = await db
+      .insert(twilioConversationsTable)
+      .values(data)
+      .returning();
+    return conversation;
+  }
+
+  async updateTwilioConversation(id: string, updates: Partial<TwilioConversation>): Promise<TwilioConversation | undefined> {
+    const [updated] = await db
+      .update(twilioConversationsTable)
+      .set(updates)
+      .where(eq(twilioConversationsTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getTwilioConversationsByUserId(userId: string): Promise<TwilioConversation[]> {
+    return await db
+      .select()
+      .from(twilioConversationsTable)
+      .where(eq(twilioConversationsTable.userId, userId))
+      .orderBy(desc(twilioConversationsTable.lastMessageAt));
+  }
+
+  async getTwilioConversationById(id: string): Promise<TwilioConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(twilioConversationsTable)
+      .where(eq(twilioConversationsTable.id, id));
+    return conversation;
+  }
+
+  // Twilio Messages
+  async createTwilioMessage(data: InsertTwilioMessage): Promise<TwilioMessage> {
+    const [message] = await db
+      .insert(twilioMessagesTable)
+      .values(data)
+      .returning();
+    return message;
+  }
+
+  async getTwilioMessagesByConversationId(conversationId: string): Promise<TwilioMessage[]> {
+    return await db
+      .select()
+      .from(twilioMessagesTable)
+      .where(eq(twilioMessagesTable.conversationId, conversationId))
+      .orderBy(twilioMessagesTable.createdAt);
   }
 }
 
