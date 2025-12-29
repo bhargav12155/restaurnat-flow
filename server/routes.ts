@@ -41,7 +41,9 @@ import { seoService } from "./services/seo";
 const s3UploadService = new S3UploadService();
 import { SocialMediaError, socialMediaService } from "./services/socialMedia";
 import { seedVideoTemplates } from "./services/template-seeder";
+import { twilioService } from "./services/twilio";
 import { storage } from "./storage";
+import twilio from "twilio";
 import { realtimeService } from "./websocket";
 
 // Shared streaming service instance (singleton) to maintain session state across requests
@@ -357,6 +359,31 @@ Whether you're a first-time buyer, growing family, or savvy investor, I'll help 
 ---
 *This content was optimized for AI search engines to provide direct, helpful answers about ${neighborhood} real estate.*`;
 }
+
+const validateTwilioRequest = (req: Request, res: Response, next: NextFunction) => {
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!authToken) {
+    console.warn('⚠️ TWILIO_AUTH_TOKEN not set - skipping webhook validation');
+    return next();
+  }
+
+  const twilioSignature = req.headers['x-twilio-signature'] as string;
+  const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+  
+  const isValid = twilio.validateRequest(
+    authToken,
+    twilioSignature || '',
+    url,
+    req.body
+  );
+
+  if (!isValid) {
+    console.error('❌ Invalid Twilio signature - possible webhook spoofing');
+    return res.status(403).send('Forbidden');
+  }
+
+  next();
+};
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const resolveMemStorageUser = async (req: any) => {
@@ -14282,6 +14309,263 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error: any) {
       console.error("Error updating generated video:", error);
       res.status(500).json({ error: "Failed to update generated video" });
+    }
+  });
+
+  // ============================================================
+  // TWILIO WEBHOOK ROUTES (Multi-tenant SMS/Voice Chatbot)
+  // ============================================================
+
+  // POST /api/twilio/sms - Public webhook for incoming SMS from Twilio
+  app.post("/api/twilio/sms", express.urlencoded({ extended: false }), validateTwilioRequest, async (req, res) => {
+    try {
+      const { From: fromNumber, To: toNumber, Body: messageBody, MessageSid: messageSid } = req.body;
+
+      console.log(`📱 Incoming SMS from ${fromNumber} to ${toNumber}: "${messageBody?.substring(0, 50)}..."`);
+
+      if (!fromNumber || !toNumber || !messageBody) {
+        console.error("Missing required SMS webhook parameters");
+        const twiml = twilioService.generateSmsResponse("Sorry, there was an error processing your message.");
+        return res.type("text/xml").send(twiml);
+      }
+
+      const settings = await storage.getTwilioSettingsByPhoneNumber(toNumber);
+      if (!settings) {
+        console.error(`No subscriber found for phone number: ${toNumber}`);
+        const twiml = twilioService.generateSmsResponse("Sorry, this number is not configured. Please check the number and try again.");
+        return res.type("text/xml").send(twiml);
+      }
+
+      if (!settings.isEnabled) {
+        const twiml = twilioService.generateSmsResponse(settings.afterHoursMessage || "Thanks for reaching out! We'll get back to you soon.");
+        return res.type("text/xml").send(twiml);
+      }
+
+      let conversation = await storage.getTwilioConversationByPhone(settings.userId, fromNumber);
+      if (!conversation) {
+        conversation = await storage.createTwilioConversation({
+          userId: settings.userId,
+          fromNumber,
+          toNumber,
+          conversationType: "sms",
+          status: "active",
+        });
+        console.log(`📝 Created new conversation: ${conversation.id}`);
+      }
+
+      await storage.createTwilioMessage({
+        conversationId: conversation.id,
+        twilioMessageSid: messageSid,
+        direction: "inbound",
+        messageType: "sms",
+        body: messageBody,
+        status: "delivered",
+        isAiGenerated: false,
+      });
+
+      const leadUpdates = twilioService.extractLeadInfo(messageBody, conversation);
+      if (Object.keys(leadUpdates).length > 0) {
+        await storage.updateTwilioConversation(conversation.id, leadUpdates);
+      }
+
+      await storage.updateTwilioConversation(conversation.id, { lastMessageAt: new Date() });
+
+      const conversationHistory = await storage.getTwilioMessagesByConversationId(conversation.id);
+
+      let aiResponse: string;
+      if (!twilioService.isWithinBusinessHours(settings)) {
+        aiResponse = settings.afterHoursMessage || "Thanks for reaching out! Our office is currently closed. We'll get back to you during business hours.";
+      } else {
+        aiResponse = await twilioService.generateChatbotResponse(messageBody, conversationHistory, settings);
+      }
+
+      await storage.createTwilioMessage({
+        conversationId: conversation.id,
+        direction: "outbound",
+        messageType: "sms",
+        body: aiResponse,
+        status: "sent",
+        isAiGenerated: true,
+        aiModel: "gpt-4o",
+      });
+
+      const twiml = twilioService.generateSmsResponse(aiResponse);
+      console.log(`📤 Sending AI response to ${fromNumber}`);
+      res.type("text/xml").send(twiml);
+    } catch (error: any) {
+      console.error("Error processing incoming SMS:", error);
+      const twiml = twilioService.generateSmsResponse("Sorry, there was an error. Please try again later.");
+      res.type("text/xml").send(twiml);
+    }
+  });
+
+  // POST /api/twilio/voice - Public webhook for incoming voice calls from Twilio
+  app.post("/api/twilio/voice", express.urlencoded({ extended: false }), validateTwilioRequest, async (req, res) => {
+    try {
+      const { From: fromNumber, To: toNumber, CallSid: callSid } = req.body;
+
+      console.log(`📞 Incoming call from ${fromNumber} to ${toNumber} (CallSid: ${callSid})`);
+
+      if (!fromNumber || !toNumber) {
+        console.error("Missing required voice webhook parameters");
+        return res.status(400).send("Missing parameters");
+      }
+
+      const settings = await storage.getTwilioSettingsByPhoneNumber(toNumber);
+      if (!settings || !settings.voiceEnabled) {
+        const twilio = await import('twilio');
+        const { VoiceResponse } = twilio.default.twiml;
+        const twiml = new VoiceResponse();
+        twiml.say({ voice: 'Polly.Joanna' }, "Sorry, this number is not configured for voice calls. Please send a text message instead.");
+        twiml.hangup();
+        return res.type("text/xml").send(twiml.toString());
+      }
+
+      let conversation = await storage.getTwilioConversationByPhone(settings.userId, fromNumber);
+      if (!conversation) {
+        conversation = await storage.createTwilioConversation({
+          userId: settings.userId,
+          fromNumber,
+          toNumber,
+          conversationType: "voice",
+          status: "active",
+        });
+      }
+
+      const twiml = twilioService.generateVoiceResponse(settings);
+      res.type("text/xml").send(twiml);
+    } catch (error: any) {
+      console.error("Error processing incoming voice call:", error);
+      const twilio = await import('twilio');
+      const { VoiceResponse } = twilio.default.twiml;
+      const twiml = new VoiceResponse();
+      twiml.say({ voice: 'Polly.Joanna' }, "Sorry, there was an error. Please try again later.");
+      twiml.hangup();
+      res.type("text/xml").send(twiml.toString());
+    }
+  });
+
+  // POST /api/twilio/voice-input - Handle voice input from gather
+  app.post("/api/twilio/voice-input", express.urlencoded({ extended: false }), validateTwilioRequest, async (req, res) => {
+    try {
+      const { From: fromNumber, To: toNumber, SpeechResult: speechResult, CallSid: callSid } = req.body;
+
+      console.log(`🎤 Voice input from ${fromNumber}: "${speechResult}"`);
+
+      const settings = await storage.getTwilioSettingsByPhoneNumber(toNumber);
+      if (!settings) {
+        const twilio = await import('twilio');
+        const { VoiceResponse } = twilio.default.twiml;
+        const twiml = new VoiceResponse();
+        twiml.say({ voice: 'Polly.Joanna' }, "Sorry, this number is not configured.");
+        twiml.hangup();
+        return res.type("text/xml").send(twiml.toString());
+      }
+
+      if (speechResult) {
+        const conversation = await storage.getTwilioConversationByPhone(settings.userId, fromNumber);
+        if (conversation) {
+          await storage.createTwilioMessage({
+            conversationId: conversation.id,
+            direction: "inbound",
+            messageType: "voice_transcript",
+            body: speechResult,
+            status: "delivered",
+            isAiGenerated: false,
+          });
+        }
+      }
+
+      const twiml = twilioService.generateVoiceInputResponse(speechResult || "", settings);
+      res.type("text/xml").send(twiml);
+    } catch (error: any) {
+      console.error("Error processing voice input:", error);
+      const twilio = await import('twilio');
+      const { VoiceResponse } = twilio.default.twiml;
+      const twiml = new VoiceResponse();
+      twiml.say({ voice: 'Polly.Joanna' }, "Sorry, there was an error. Goodbye.");
+      twiml.hangup();
+      res.type("text/xml").send(twiml.toString());
+    }
+  });
+
+  // GET /api/twilio/settings - Get current user's Twilio settings
+  app.get("/api/twilio/settings", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const settings = await storage.getTwilioSettingsByUserId(userId);
+      res.json(settings || null);
+    } catch (error: any) {
+      console.error("Error fetching Twilio settings:", error);
+      res.status(500).json({ error: "Failed to fetch Twilio settings" });
+    }
+  });
+
+  // POST /api/twilio/settings - Update current user's Twilio settings
+  app.post("/api/twilio/settings", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const settingsData = {
+        ...req.body,
+        userId,
+      };
+
+      const settings = await storage.createOrUpdateTwilioSettings(settingsData);
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error updating Twilio settings:", error);
+      res.status(500).json({ error: "Failed to update Twilio settings" });
+    }
+  });
+
+  // GET /api/twilio/conversations - Get user's SMS/voice conversations
+  app.get("/api/twilio/conversations", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const conversations = await storage.getTwilioConversationsByUserId(userId);
+      res.json(conversations);
+    } catch (error: any) {
+      console.error("Error fetching Twilio conversations:", error);
+      res.status(500).json({ error: "Failed to fetch conversations" });
+    }
+  });
+
+  // GET /api/twilio/conversations/:id/messages - Get messages for a conversation
+  app.get("/api/twilio/conversations/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const conversationId = req.params.id;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const conversation = await storage.getTwilioConversationById(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
+      if (conversation.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const messages = await storage.getTwilioMessagesByConversationId(conversationId);
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Error fetching conversation messages:", error);
+      res.status(500).json({ error: "Failed to fetch messages" });
     }
   });
 

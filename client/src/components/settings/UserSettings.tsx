@@ -17,9 +17,11 @@ import {
   Eye,
   EyeOff,
   User,
+  MessageCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { CompanyProfile } from "./CompanyProfile";
+import { TwilioSettings } from "./TwilioSettings";
 import { SocialSetupReminder } from "@/components/dashboard/social-setup-reminder";
 
 interface SocialMediaUrls {
@@ -195,6 +197,10 @@ export function UserSettings() {
           <TabsTrigger value="company">Company Profile</TabsTrigger>
           <TabsTrigger value="social">Social URLs</TabsTrigger>
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+          <TabsTrigger value="chatbot">
+            <MessageCircle className="h-4 w-4 mr-2" />
+            AI Chatbot
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="account">
@@ -701,6 +707,10 @@ export function UserSettings() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="chatbot">
+          <TwilioSettings />
         </TabsContent>
       </Tabs>
     </div>
