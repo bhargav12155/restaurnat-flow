@@ -106,19 +106,21 @@ export class VideoStudioService {
       contentType
     );
 
-    if (!uploadResult.imageKey) {
+    // HeyGen returns image_key in snake_case
+    const imageKey = uploadResult.image_key;
+    if (!imageKey) {
       console.error("🎭 Video Studio: Upload result:", JSON.stringify(uploadResult, null, 2));
       throw new Error("Failed to upload image - no image_key returned");
     }
 
-    console.log(`🎭 Video Studio: Avatar IV image uploaded with key: ${uploadResult.imageKey}`);
+    console.log(`🎭 Video Studio: Avatar IV image uploaded with key: ${imageKey}`);
 
     return {
-      id: uploadResult.imageKey, // Use imageKey as the ID for Avatar IV
+      id: imageKey, // Use imageKey as the ID for Avatar IV
       name: name,
       type: "photo",
-      previewUrl: uploadResult.previewUrl || imageUrl,
-      imageKey: uploadResult.imageKey,
+      previewUrl: uploadResult.url || imageUrl,
+      imageKey: imageKey,
     };
   }
 
@@ -135,19 +137,21 @@ export class VideoStudioService {
     
     const uploadResult = await this.avatarIVService.uploadPhoto(imageBuffer, contentType);
 
-    if (!uploadResult.imageKey) {
+    // HeyGen returns image_key in snake_case
+    const imageKey = uploadResult.image_key;
+    if (!imageKey) {
       console.error("🎭 Video Studio: Upload result:", JSON.stringify(uploadResult, null, 2));
       throw new Error("Failed to upload image - no image_key returned");
     }
 
-    console.log(`🎭 Video Studio: Avatar IV image uploaded with key: ${uploadResult.imageKey}`);
+    console.log(`🎭 Video Studio: Avatar IV image uploaded with key: ${imageKey}`);
 
     return {
-      id: uploadResult.imageKey,
+      id: imageKey,
       name: name,
       type: "photo",
-      previewUrl: uploadResult.previewUrl,
-      imageKey: uploadResult.imageKey,
+      previewUrl: uploadResult.url,
+      imageKey: imageKey,
     };
   }
 
