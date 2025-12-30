@@ -1,12 +1,20 @@
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Loader2 } from "lucide-react";
+import { Building2, Loader2, Phone, Bot, Clock, MessageCircle, CheckCircle, XCircle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -21,6 +29,14 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 const companyProfileFormSchema = z.object({
   businessName: z.string().min(1, "Business name is required"),
@@ -35,6 +51,21 @@ const companyProfileFormSchema = z.object({
 });
 
 type CompanyProfileFormData = z.infer<typeof companyProfileFormSchema>;
+
+const twilioSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  phoneNumber: z.string().optional(),
+  aiPersonality: z.enum(["friendly", "professional", "casual"]).default("professional"),
+  aiGreeting: z.string().default("Hello! Thanks for reaching out. How can I help you today?"),
+  voiceEnabled: z.boolean().default(false),
+  businessHoursStart: z.string().default("09:00"),
+  businessHoursEnd: z.string().default("17:00"),
+  afterHoursMessage: z.string().default("Thanks for your message! We're currently outside of business hours."),
+  serviceAreas: z.string().optional(),
+  specialties: z.string().optional(),
+});
+
+type TwilioSettingsFormData = z.infer<typeof twilioSettingsSchema>;
 
 interface CompanyProfileData extends CompanyProfileFormData {
   id?: string;
@@ -86,10 +117,7 @@ export function CompanyProfile() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: CompanyProfileFormData) => {
-      return await apiRequest("/api/company/profile", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      return await apiRequest("POST", "/api/company/profile", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/company/profile"] });
@@ -112,6 +140,78 @@ export function CompanyProfile() {
     saveMutation.mutate(data);
   };
 
+  const twilioForm = useForm<TwilioSettingsFormData>({
+    resolver: zodResolver(twilioSettingsSchema),
+    defaultValues: {
+      enabled: false,
+      phoneNumber: "",
+      aiPersonality: "professional",
+      aiGreeting: "Hello! Thanks for reaching out. How can I help you today?",
+      voiceEnabled: false,
+      businessHoursStart: "09:00",
+      businessHoursEnd: "17:00",
+      afterHoursMessage: "Thanks for your message! We're currently outside of business hours.",
+      serviceAreas: "",
+      specialties: "",
+    },
+  });
+
+  const { data: twilioSettings, isLoading: isTwilioLoading } = useQuery<Record<string, unknown> | null>({
+    queryKey: ["/api/twilio/settings"],
+  });
+
+  useEffect(() => {
+    if (twilioSettings) {
+      const settings = twilioSettings as Record<string, unknown>;
+      twilioForm.reset({
+        enabled: (settings.enabled as boolean) ?? false,
+        phoneNumber: (settings.phoneNumber as string) ?? "",
+        aiPersonality: (settings.aiPersonality as "friendly" | "professional" | "casual") ?? "professional",
+        aiGreeting: (settings.aiGreeting as string) ?? "Hello! Thanks for reaching out. How can I help you today?",
+        voiceEnabled: (settings.voiceEnabled as boolean) ?? false,
+        businessHoursStart: (settings.businessHoursStart as string) ?? "09:00",
+        businessHoursEnd: (settings.businessHoursEnd as string) ?? "17:00",
+        afterHoursMessage: (settings.afterHoursMessage as string) ?? "Thanks for your message! We're currently outside of business hours.",
+        serviceAreas: Array.isArray(settings.serviceAreas) ? (settings.serviceAreas as string[]).join(', ') : '',
+        specialties: Array.isArray(settings.specialties) ? (settings.specialties as string[]).join(', ') : '',
+      });
+    }
+  }, [twilioSettings, twilioForm]);
+
+  const saveTwilioMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return await apiRequest("POST", "/api/twilio/settings", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/twilio/settings"] });
+      toast({
+        title: "Success",
+        description: "AI Chatbot settings saved successfully",
+      });
+    },
+    onError: (error) => {
+      console.error("Error saving Twilio settings:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save AI Chatbot settings. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onTwilioSubmit = (data: TwilioSettingsFormData) => {
+    const submitData: Record<string, unknown> = {
+      ...data,
+      serviceAreas: data.serviceAreas
+        ? data.serviceAreas.split(',').map(s => s.trim()).filter(Boolean)
+        : [],
+      specialties: data.specialties
+        ? data.specialties.split(',').map(s => s.trim()).filter(Boolean)
+        : [],
+    };
+    saveTwilioMutation.mutate(submitData);
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -125,6 +225,7 @@ export function CompanyProfile() {
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -333,5 +434,277 @@ export function CompanyProfile() {
         </div>
       </CardContent>
     </Card>
+
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Bot className="h-5 w-5" />
+          AI Chatbot Settings
+        </CardTitle>
+        <CardDescription>
+          Configure your AI-powered SMS and voice chatbot for lead engagement
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Accordion type="single" collapsible className="w-full">
+          <AccordionItem value="chatbot-settings">
+            <AccordionTrigger className="hover:no-underline">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4" />
+                <span>AI Chatbot Configuration</span>
+                {twilioForm.watch("phoneNumber") ? (
+                  <Badge variant="outline" className="ml-2 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3 text-green-500" />
+                    Phone Configured
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="ml-2 flex items-center gap-1">
+                    <XCircle className="h-3 w-3 text-red-500" />
+                    No Phone
+                  </Badge>
+                )}
+              </div>
+            </AccordionTrigger>
+            <AccordionContent>
+              {isTwilioLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin" />
+                </div>
+              ) : (
+                <Form {...twilioForm}>
+                  <form onSubmit={twilioForm.handleSubmit(onTwilioSubmit)} className="space-y-4 pt-4">
+                    <FormField
+                      control={twilioForm.control}
+                      name="enabled"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-base">Enable AI Chatbot</FormLabel>
+                            <FormDescription>
+                              Activate the AI chatbot to respond to incoming messages
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              data-testid="switch-twilio-enabled"
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+
+                    <Separator />
+
+                    <FormField
+                      control={twilioForm.control}
+                      name="aiPersonality"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>AI Personality</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-twilio-aiPersonality">
+                                <SelectValue placeholder="Select personality" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="friendly">Friendly</SelectItem>
+                              <SelectItem value="professional">Professional</SelectItem>
+                              <SelectItem value="casual">Casual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Choose the tone and style of AI responses
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={twilioForm.control}
+                      name="aiGreeting"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>AI Greeting Message</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              data-testid="input-twilio-aiGreeting"
+                              {...field}
+                              placeholder="Enter greeting message..."
+                              rows={3}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Default greeting for incoming messages
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={twilioForm.control}
+                      name="voiceEnabled"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-base">Enable Voice Responses</FormLabel>
+                            <FormDescription>
+                              Allow AI to handle incoming voice calls
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              data-testid="switch-twilio-voiceEnabled"
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+
+                    <Separator />
+
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Business Hours
+                      </Label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                          control={twilioForm.control}
+                          name="businessHoursStart"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Start Time</FormLabel>
+                              <FormControl>
+                                <Input
+                                  data-testid="input-twilio-businessHoursStart"
+                                  type="time"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={twilioForm.control}
+                          name="businessHoursEnd"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>End Time</FormLabel>
+                              <FormControl>
+                                <Input
+                                  data-testid="input-twilio-businessHoursEnd"
+                                  type="time"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    <FormField
+                      control={twilioForm.control}
+                      name="afterHoursMessage"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>After Hours Message</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              data-testid="input-twilio-afterHoursMessage"
+                              {...field}
+                              placeholder="Message to send outside business hours..."
+                              rows={3}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Automatic response sent outside of business hours
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Separator />
+
+                    <FormField
+                      control={twilioForm.control}
+                      name="serviceAreas"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Service Areas</FormLabel>
+                          <FormControl>
+                            <Input
+                              data-testid="input-twilio-serviceAreas"
+                              {...field}
+                              placeholder="e.g., Downtown, Midtown, Westside (comma-separated)"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Enter areas you serve, separated by commas
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={twilioForm.control}
+                      name="specialties"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Specialties</FormLabel>
+                          <FormControl>
+                            <Input
+                              data-testid="input-twilio-specialties"
+                              {...field}
+                              placeholder="e.g., First-time buyers, Luxury homes (comma-separated)"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Enter your specialties, separated by commas
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Button
+                      type="submit"
+                      disabled={saveTwilioMutation.isPending}
+                      className="w-full"
+                      data-testid="button-saveTwilioSettings"
+                    >
+                      {saveTwilioMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Bot className="h-4 w-4 mr-2" />
+                          Save AI Chatbot Settings
+                        </>
+                      )}
+                    </Button>
+                  </form>
+                </Form>
+              )}
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </CardContent>
+    </Card>
+    </>
   );
 }
