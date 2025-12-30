@@ -6560,29 +6560,18 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     return videoStudioInstance;
   }
 
-  // Cache for preset avatars (refreshed every 10 minutes)
-  let cachedPresetAvatars: any[] | null = null;
-  let presetAvatarsCacheTime: number = 0;
-  const PRESET_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+  // Curated list of popular HeyGen preset avatars (no API calls needed)
+  const CURATED_PRESET_AVATARS = [
+    { id: "Angela-inblackskirt-20220820", name: "Angela", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Angela-inblackskirt-20220820.webp" },
+    { id: "Daisy-inskirt-20220818", name: "Daisy", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Daisy-inskirt-20220818.webp" },
+    { id: "Josh-business-20220712", name: "Josh", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Josh-business-20220712.webp" },
+    { id: "Susan-formal-20220820", name: "Susan", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Susan-formal-20220820.webp" },
+    { id: "Tyler-incasualsuit-20220721", name: "Tyler", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Tyler-incasualsuit-20220721.webp" },
+  ];
 
-  async function getCachedPresetAvatars(): Promise<any[]> {
-    const now = Date.now();
-    if (cachedPresetAvatars && now - presetAvatarsCacheTime < PRESET_CACHE_TTL) {
-      return cachedPresetAvatars;
-    }
-    
-    try {
-      const studio = getVideoStudio();
-      const allAvatars = await studio.listAvatars();
-      // Limit to first 50 avatars for faster loading
-      cachedPresetAvatars = allAvatars.slice(0, 50);
-      presetAvatarsCacheTime = now;
-      console.log(`🎭 Cached ${cachedPresetAvatars.length} preset avatars`);
-      return cachedPresetAvatars;
-    } catch (error) {
-      console.warn("Failed to refresh preset avatars cache:", error);
-      return cachedPresetAvatars || [];
-    }
+  function getCachedPresetAvatars(): any[] {
+    // Return curated list instantly - no API calls
+    return CURATED_PRESET_AVATARS;
   }
 
   // List available avatars (hybrid: user-specific from database + cached presets)
@@ -6636,22 +6625,16 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         console.warn("Failed to load user avatars from database:", dbError);
       }
 
-      // PART 2: Add cached preset HeyGen avatars (fast - uses cache)
-      try {
-        const presetAvatars = await getCachedPresetAvatars();
-        
-        // Add preset avatars that aren't already in the user's list
-        const existingIds = new Set(avatars.map(a => a.id));
-        for (const preset of presetAvatars) {
-          if (!existingIds.has(preset.id)) {
-            avatars.push({
-              ...preset,
-              type: preset.type || "preset",
-            });
-          }
+      // PART 2: Add curated preset HeyGen avatars (instant - no API calls)
+      const presetAvatars = getCachedPresetAvatars();
+      const existingIds = new Set(avatars.map(a => a.id));
+      for (const preset of presetAvatars) {
+        if (!existingIds.has(preset.id)) {
+          avatars.push({
+            ...preset,
+            type: preset.type || "preset",
+          });
         }
-      } catch (presetError) {
-        console.warn("Failed to load preset avatars:", presetError);
       }
 
       res.json({ avatars });
