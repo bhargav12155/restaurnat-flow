@@ -592,8 +592,8 @@ Thanks for watching! If you found this helpful, don't forget to like and subscri
       return {
         id: videoId,
         status,
-        videoUrl: response.videoUrl,
-        thumbnailUrl: response.thumbnailUrl,
+        videoUrl: response.video_url,
+        thumbnailUrl: response.thumbnail_url,
         error: response.error,
       };
     } catch (error) {
