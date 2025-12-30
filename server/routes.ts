@@ -6881,11 +6881,41 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   app.get("/api/studio/videos", requireAuth, async (req: any, res) => {
     try {
       const userId = String(req.user?.id);
+      const studio = getVideoStudio();
       
       // Get all videos for this user
       const allVideos = await storage.getVideoContent(userId);
       
-      // Sort all videos by most recent (show all user videos, not just studio ones)
+      // Check status for videos stuck in "generating" or "processing" (limit to 3 to keep it fast)
+      const pendingVideos = allVideos.filter((v: any) => 
+        (v.status === "generating" || v.status === "processing") && v.metadata?.heygenVideoId
+      ).slice(0, 3);
+
+      for (const video of pendingVideos) {
+        try {
+          const heygenId = video.metadata?.heygenVideoId;
+          if (heygenId) {
+            const status = await studio.getVideoStatus(heygenId);
+            if (status.status === "completed" && status.videoUrl) {
+              // Update the video in database
+              await storage.updateVideoContent(video.id, {
+                status: "ready",
+                videoUrl: status.videoUrl,
+                thumbnailUrl: status.thumbnailUrl,
+              });
+              // Update in our array too
+              video.status = "ready";
+              video.videoUrl = status.videoUrl;
+              video.thumbnailUrl = status.thumbnailUrl;
+              console.log(`✅ Updated video ${video.id} to ready`);
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to check status for video ${video.id}:`, err);
+        }
+      }
+      
+      // Sort all videos by most recent
       const sortedVideos = allVideos
         .sort((a: any, b: any) => {
           const dateA = new Date(a.createdAt || 0);
