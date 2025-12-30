@@ -6560,11 +6560,113 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     return videoStudioInstance;
   }
 
-  // List available avatars (preset + custom)
-  app.get("/api/studio/avatars", requireAuth, async (req, res) => {
+  // List available avatars (hybrid: user-specific from database + preset from HeyGen)
+  app.get("/api/studio/avatars", requireAuth, async (req: any, res) => {
     try {
-      const studio = getVideoStudio();
-      const avatars = await studio.listAvatars();
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const avatars: any[] = [];
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+
+      // PART 1: Get user's photo avatar groups from database (per-user avatars)
+      try {
+        const dbGroups = await storage.listPhotoAvatarGroups(userId);
+
+        for (const dbGroup of dbGroups) {
+          const groupId = dbGroup.heygenGroupId;
+          const isDemoGroup = groupId.startsWith("demo-group-");
+          const isStudioGroup = groupId.startsWith("studio-");
+
+          try {
+            if (isDemoGroup || isStudioGroup) {
+              // Demo/Studio groups: use database data
+              const dbLooks = await storage.listPhotoAvatarsByGroup(groupId);
+              if (dbLooks.length > 0) {
+                for (const look of dbLooks) {
+                  avatars.push({
+                    id: look.heygenAvatarId || look.id,
+                    name: look.avatarName || dbGroup.groupName,
+                    type: "photo" as const,
+                    previewUrl: look.s3ImageUrl || look.heygenImageUrl,
+                    thumbnailUrl: look.s3ImageUrl || look.heygenImageUrl,
+                    groupId: groupId,
+                    avatarType: "talking_photo" as const,
+                    imageKey: look.imageKey,
+                  });
+                }
+              } else {
+                // Fallback: use group data if no looks
+                avatars.push({
+                  id: dbGroup.heygenImageKey || groupId,
+                  name: dbGroup.groupName,
+                  type: "photo" as const,
+                  previewUrl: dbGroup.s3ImageUrl,
+                  thumbnailUrl: dbGroup.s3ImageUrl,
+                  groupId: groupId,
+                  avatarType: "talking_photo" as const,
+                  imageKey: dbGroup.heygenImageKey,
+                });
+              }
+            } else {
+              // Real HeyGen groups: fetch looks from API
+              const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
+              if (looks?.avatar_list && looks.avatar_list.length > 0) {
+                for (const look of looks.avatar_list) {
+                  avatars.push({
+                    id: look.avatar_id || groupId,
+                    name: look.avatar_name || dbGroup.groupName,
+                    type: "photo" as const,
+                    previewUrl: look.image_url,
+                    thumbnailUrl: look.image_url,
+                    groupId: groupId,
+                    avatarType: "talking_photo" as const,
+                    isMotion: !!look.motion_preview_url,
+                    motionPreviewUrl: look.motion_preview_url,
+                    imageKey: look.image_key,
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to fetch looks for group ${groupId}:`, err);
+            // Still add a fallback avatar from the group
+            avatars.push({
+              id: groupId,
+              name: dbGroup.groupName,
+              type: "photo" as const,
+              previewUrl: dbGroup.s3ImageUrl,
+              thumbnailUrl: dbGroup.s3ImageUrl,
+              groupId: groupId,
+              avatarType: "talking_photo" as const,
+            });
+          }
+        }
+      } catch (dbError) {
+        console.warn("Failed to load user avatars from database:", dbError);
+      }
+
+      // PART 2: Add preset HeyGen avatars (shared across all users)
+      try {
+        const studio = getVideoStudio();
+        const presetAvatars = await studio.listAvatars();
+        
+        // Add preset avatars that aren't already in the user's list
+        const existingIds = new Set(avatars.map(a => a.id));
+        for (const preset of presetAvatars) {
+          if (!existingIds.has(preset.id)) {
+            avatars.push({
+              ...preset,
+              type: preset.type || "preset",
+            });
+          }
+        }
+      } catch (presetError) {
+        console.warn("Failed to load preset avatars:", presetError);
+      }
+
       res.json({ avatars });
     } catch (error) {
       console.error("Failed to list avatars:", error);
@@ -6584,7 +6686,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  // STEP 1: Upload - Create avatar from image
+  // STEP 1: Upload - Create avatar from image using Avatar IV API
+  // Note: For persistent per-user avatar management, use the Photo Avatars section
+  // Video Studio avatars are session-based and use Avatar IV's imageKey directly
   app.post("/api/studio/avatars", requireAuth, upload.single("image"), async (req: any, res) => {
     const tempFilePath = req.file?.path;
     
@@ -6610,6 +6714,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         name || "My Avatar"
       );
 
+      // Avatar IV returns imageKey which is used directly for video generation
+      // No database storage needed - use Photo Avatars section for persistent avatars
       res.json({ avatar });
     } catch (error) {
       console.error("Failed to create avatar:", error);
