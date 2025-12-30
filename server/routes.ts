@@ -6560,7 +6560,32 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     return videoStudioInstance;
   }
 
-  // List available avatars (hybrid: user-specific from database + preset from HeyGen)
+  // Cache for preset avatars (refreshed every 10 minutes)
+  let cachedPresetAvatars: any[] | null = null;
+  let presetAvatarsCacheTime: number = 0;
+  const PRESET_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+  async function getCachedPresetAvatars(): Promise<any[]> {
+    const now = Date.now();
+    if (cachedPresetAvatars && now - presetAvatarsCacheTime < PRESET_CACHE_TTL) {
+      return cachedPresetAvatars;
+    }
+    
+    try {
+      const studio = getVideoStudio();
+      const allAvatars = await studio.listAvatars();
+      // Limit to first 50 avatars for faster loading
+      cachedPresetAvatars = allAvatars.slice(0, 50);
+      presetAvatarsCacheTime = now;
+      console.log(`🎭 Cached ${cachedPresetAvatars.length} preset avatars`);
+      return cachedPresetAvatars;
+    } catch (error) {
+      console.warn("Failed to refresh preset avatars cache:", error);
+      return cachedPresetAvatars || [];
+    }
+  }
+
+  // List available avatars (hybrid: user-specific from database + cached presets)
   app.get("/api/studio/avatars", requireAuth, async (req: any, res) => {
     try {
       const userId = String(req.user?.id);
@@ -6569,78 +6594,41 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
 
       const avatars: any[] = [];
-      const photoAvatarService = new HeyGenPhotoAvatarService();
 
-      // PART 1: Get user's photo avatar groups from database (per-user avatars)
+      // PART 1: Get user's photo avatar groups from database (fast - no API calls)
       try {
         const dbGroups = await storage.listPhotoAvatarGroups(userId);
 
         for (const dbGroup of dbGroups) {
           const groupId = dbGroup.heygenGroupId;
-          const isDemoGroup = groupId.startsWith("demo-group-");
-          const isStudioGroup = groupId.startsWith("studio-");
-
-          try {
-            if (isDemoGroup || isStudioGroup) {
-              // Demo/Studio groups: use database data
-              const dbLooks = await storage.listPhotoAvatarsByGroup(groupId);
-              if (dbLooks.length > 0) {
-                for (const look of dbLooks) {
-                  avatars.push({
-                    id: look.heygenAvatarId || look.id,
-                    name: look.avatarName || dbGroup.groupName,
-                    type: "photo" as const,
-                    previewUrl: look.s3ImageUrl || look.heygenImageUrl,
-                    thumbnailUrl: look.s3ImageUrl || look.heygenImageUrl,
-                    groupId: groupId,
-                    avatarType: "talking_photo" as const,
-                    imageKey: look.imageKey,
-                  });
-                }
-              } else {
-                // Fallback: use group data if no looks
-                avatars.push({
-                  id: dbGroup.heygenImageKey || groupId,
-                  name: dbGroup.groupName,
-                  type: "photo" as const,
-                  previewUrl: dbGroup.s3ImageUrl,
-                  thumbnailUrl: dbGroup.s3ImageUrl,
-                  groupId: groupId,
-                  avatarType: "talking_photo" as const,
-                  imageKey: dbGroup.heygenImageKey,
-                });
-              }
-            } else {
-              // Real HeyGen groups: fetch looks from API
-              const looks = await photoAvatarService.getAvatarGroupLooks(groupId);
-              if (looks?.avatar_list && looks.avatar_list.length > 0) {
-                for (const look of looks.avatar_list) {
-                  avatars.push({
-                    id: look.avatar_id || groupId,
-                    name: look.avatar_name || dbGroup.groupName,
-                    type: "photo" as const,
-                    previewUrl: look.image_url,
-                    thumbnailUrl: look.image_url,
-                    groupId: groupId,
-                    avatarType: "talking_photo" as const,
-                    isMotion: !!look.motion_preview_url,
-                    motionPreviewUrl: look.motion_preview_url,
-                    imageKey: look.image_key,
-                  });
-                }
-              }
+          
+          // Use database data only - no HeyGen API calls for speed
+          const dbLooks = await storage.listPhotoAvatarsByGroup(groupId);
+          if (dbLooks.length > 0) {
+            for (const look of dbLooks) {
+              avatars.push({
+                id: look.heygenAvatarId || look.id,
+                name: look.avatarName || dbGroup.groupName,
+                type: "photo" as const,
+                previewUrl: look.s3ImageUrl || look.heygenImageUrl,
+                thumbnailUrl: look.s3ImageUrl || look.heygenImageUrl,
+                groupId: groupId,
+                avatarType: "talking_photo" as const,
+                imageKey: look.imageKey,
+                isMotion: false,
+              });
             }
-          } catch (err) {
-            console.warn(`Failed to fetch looks for group ${groupId}:`, err);
-            // Still add a fallback avatar from the group
+          } else {
+            // Fallback: use group data if no looks
             avatars.push({
-              id: groupId,
+              id: dbGroup.heygenImageKey || groupId,
               name: dbGroup.groupName,
               type: "photo" as const,
               previewUrl: dbGroup.s3ImageUrl,
               thumbnailUrl: dbGroup.s3ImageUrl,
               groupId: groupId,
               avatarType: "talking_photo" as const,
+              imageKey: dbGroup.heygenImageKey,
             });
           }
         }
@@ -6648,10 +6636,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         console.warn("Failed to load user avatars from database:", dbError);
       }
 
-      // PART 2: Add preset HeyGen avatars (shared across all users)
+      // PART 2: Add cached preset HeyGen avatars (fast - uses cache)
       try {
-        const studio = getVideoStudio();
-        const presetAvatars = await studio.listAvatars();
+        const presetAvatars = await getCachedPresetAvatars();
         
         // Add preset avatars that aren't already in the user's list
         const existingIds = new Set(avatars.map(a => a.id));
