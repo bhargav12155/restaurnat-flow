@@ -45,6 +45,7 @@ interface StudioAvatar {
   thumbnailUrl?: string;
   isMotion?: boolean;
   motionPreviewUrl?: string;
+  imageKey?: string; // For Avatar IV API
 }
 
 interface VideoStatus {
@@ -76,6 +77,7 @@ export function VideoStudio() {
   const [activeView, setActiveView] = useState<View>("create");
   const [step, setStep] = useState<Step>(1);
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
+  const [selectedImageKey, setSelectedImageKey] = useState<string>(""); // For Avatar IV API
   const [avatarType, setAvatarType] = useState<"avatar" | "talking_photo">("avatar");
   const [topic, setTopic] = useState("");
   const [script, setScript] = useState("");
@@ -132,6 +134,7 @@ export function VideoStudio() {
     },
     onSuccess: (data) => {
       setSelectedAvatar(data.avatar.id);
+      setSelectedImageKey(data.avatar.imageKey || data.avatar.id); // Avatar IV uses imageKey
       setAvatarType("talking_photo");
       setUploadPreview(null);
       setAvatarName("");
@@ -201,6 +204,7 @@ export function VideoStudio() {
 
       const res = await apiRequest("POST", "/api/studio/generate", {
         avatarId: selectedAvatar,
+        imageKey: selectedImageKey || undefined, // Only pass imageKey if it's a valid Avatar IV key
         avatarType,
         script,
         title: title || topic || "My Video",
@@ -439,6 +443,7 @@ export function VideoStudio() {
   const resetStudio = () => {
     setStep(1);
     setSelectedAvatar("");
+    setSelectedImageKey(""); // Reset Avatar IV imageKey
     setTopic("");
     setScript("");
     setTitle("");
@@ -671,6 +676,7 @@ export function VideoStudio() {
                           }`}
                           onClick={() => {
                             setSelectedAvatar(avatar.id);
+                            setSelectedImageKey(avatar.imageKey || ""); // Only set if avatar has a valid imageKey
                             setAvatarType(avatar.type === "photo" ? "talking_photo" : "avatar");
                           }}
                           onMouseEnter={() => setHoveredAvatarId(avatar.id)}

@@ -6647,7 +6647,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  // STEP 3: Get It - Generate video
+  // STEP 3: Get It - Generate video using Avatar IV API
   app.post("/api/studio/generate", requireAuth, async (req: any, res) => {
     try {
       const studio = getVideoStudio();
@@ -6655,6 +6655,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const { 
         avatarId, 
         avatarType = "avatar",
+        imageKey, // For Avatar IV API
         script, 
         title,
         voiceId,
@@ -6665,8 +6666,8 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         gestureIntensity = 0
       } = req.body;
 
-      if (!avatarId) {
-        return res.status(400).json({ error: "Avatar ID is required" });
+      if (!avatarId && !imageKey) {
+        return res.status(400).json({ error: "Avatar ID or Image Key is required" });
       }
 
       // Script is required for TTS mode, optional for record/upload modes
@@ -6680,8 +6681,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
 
       const result = await studio.generateVideo({
-        avatarId,
+        avatarId: avatarId,
         avatarType,
+        imageKey: imageKey, // Only pass imageKey if it's a valid Avatar IV key (format: image/xxx/original.jpg)
         script: script || "", // May be empty for audio modes
         title,
         voiceId,

@@ -11,6 +11,7 @@
 
 import { HeyGenService } from "./heygen";
 import { HeyGenPhotoAvatarService } from "./heygen-photo-avatar";
+import { HeyGenAvatarIVService } from "./heygen-avatar-iv";
 
 export interface StudioAvatar {
   id: string;
@@ -23,11 +24,13 @@ export interface StudioAvatar {
   defaultVoiceId?: string; // Default voice for this avatar (from group or avatar)
   isMotion?: boolean; // Whether this avatar has motion/video preview
   motionPreviewUrl?: string; // URL to the motion preview video
+  imageKey?: string; // For Avatar IV API - the image_key from upload
 }
 
 export interface VideoGenerationRequest {
   avatarId: string;
   avatarType?: "avatar" | "talking_photo";
+  imageKey?: string; // For Avatar IV API
   script: string;
   title?: string;
   voiceId?: string;
@@ -60,6 +63,7 @@ export interface QuickVideoRequest {
 export class VideoStudioService {
   private heygenService: HeyGenService;
   private photoAvatarService: HeyGenPhotoAvatarService;
+  private avatarIVService: HeyGenAvatarIVService;
   private apiKey: string;
   private baseUrl = "https://api.heygen.com";
 
@@ -71,18 +75,19 @@ export class VideoStudioService {
     this.apiKey = apiKey;
     this.heygenService = new HeyGenService();
     this.photoAvatarService = new HeyGenPhotoAvatarService();
+    this.avatarIVService = new HeyGenAvatarIVService();
   }
 
   /**
    * STEP 1: UPLOAD
-   * Create a talking photo avatar from an uploaded image
-   * Uses the simpler /v1/talking_photo endpoint that works with Pro/Scale plans
+   * Create avatar from uploaded image using Avatar IV API
+   * Uses the newer /v2/video/av4 endpoint for better quality
    */
   async createAvatarFromImage(
     imageUrl: string,
     name: string
   ): Promise<StudioAvatar> {
-    console.log("🎭 Video Studio: Creating talking photo from image...");
+    console.log("🎭 Video Studio: Creating avatar using Avatar IV API...");
 
     // First, download the image from the URL
     const imageResponse = await fetch(imageUrl);
@@ -95,65 +100,54 @@ export class VideoStudioService {
     
     console.log(`🎭 Video Studio: Downloaded image, size: ${imageBuffer.byteLength} bytes, type: ${contentType}`);
     
-    // Use the simpler talking photo upload (works with Pro/Scale plans)
-    const response = await this.heygenService.uploadTalkingPhoto(
+    // Use Avatar IV API to upload and get image_key
+    const uploadResult = await this.avatarIVService.uploadPhoto(
       Buffer.from(imageBuffer),
       contentType
     );
 
-    const data = response.data as any;
-    const avatarId =
-      data?.talking_photo_id ||
-      data?.avatar_id ||
-      data?.avatar_group_id ||
-      data?.group_id;
-
-    if (!avatarId) {
-      console.error("🎭 Video Studio: Response data:", JSON.stringify(response, null, 2));
-      throw new Error("Failed to create talking photo - no ID returned");
+    if (!uploadResult.imageKey) {
+      console.error("🎭 Video Studio: Upload result:", JSON.stringify(uploadResult, null, 2));
+      throw new Error("Failed to upload image - no image_key returned");
     }
 
-    console.log(`🎭 Video Studio: Talking photo created with ID: ${avatarId}`);
+    console.log(`🎭 Video Studio: Avatar IV image uploaded with key: ${uploadResult.imageKey}`);
 
     return {
-      id: avatarId,
+      id: uploadResult.imageKey, // Use imageKey as the ID for Avatar IV
       name: name,
       type: "photo",
-      previewUrl: data?.talking_photo_url || imageUrl,
+      previewUrl: uploadResult.previewUrl || imageUrl,
+      imageKey: uploadResult.imageKey,
     };
   }
 
   /**
    * STEP 1 (Alternative): Create avatar directly from image buffer
-   * This avoids the need to upload to HeyGen first and then download
+   * Uses Avatar IV API for direct buffer upload
    */
   async createAvatarFromBuffer(
     imageBuffer: Buffer,
     name: string,
     contentType: string = "image/jpeg"
   ): Promise<StudioAvatar> {
-    console.log("🎭 Video Studio: Creating talking photo from buffer...");
+    console.log("🎭 Video Studio: Creating avatar from buffer using Avatar IV API...");
     
-    const response = await this.heygenService.uploadTalkingPhoto(imageBuffer, contentType);
+    const uploadResult = await this.avatarIVService.uploadPhoto(imageBuffer, contentType);
 
-    const data = response.data as any;
-    const avatarId =
-      data?.talking_photo_id ||
-      data?.avatar_id ||
-      data?.avatar_group_id;
-
-    if (!avatarId) {
-      console.error("🎭 Video Studio: Response data:", JSON.stringify(response, null, 2));
-      throw new Error("Failed to create talking photo - no ID returned");
+    if (!uploadResult.imageKey) {
+      console.error("🎭 Video Studio: Upload result:", JSON.stringify(uploadResult, null, 2));
+      throw new Error("Failed to upload image - no image_key returned");
     }
 
-    console.log(`🎭 Video Studio: Talking photo created with ID: ${avatarId}`);
+    console.log(`🎭 Video Studio: Avatar IV image uploaded with key: ${uploadResult.imageKey}`);
 
     return {
-      id: avatarId,
+      id: uploadResult.imageKey,
       name: name,
       type: "photo",
-      previewUrl: data?.talking_photo_url,
+      previewUrl: uploadResult.previewUrl,
+      imageKey: uploadResult.imageKey,
     };
   }
 
@@ -508,6 +502,7 @@ Thanks for watching! If you found this helpful, don't forget to like and subscri
   /**
    * STEP 3: GET IT
    * Generate a video with the given parameters
+   * Uses Avatar IV API for new uploads with imageKey, falls back to classic API for legacy avatars
    */
   async generateVideo(request: VideoGenerationRequest): Promise<VideoStatus> {
     console.log("🎬 Video Studio: Starting video generation...");
@@ -516,66 +511,119 @@ Thanks for watching! If you found this helpful, don't forget to like and subscri
     // Determine if using custom audio (record/upload) or TTS
     const useCustomAudio = request.voiceMode && request.voiceMode !== "tts" && request.audioUrl;
 
-    const response = await this.heygenService.generateVideo({
-      avatarId: request.avatarId,
-      script: request.script,
-      title: request.title || "Video Studio Generation",
-      voiceId: useCustomAudio ? undefined : request.voiceId,
-      audioUrl: useCustomAudio ? request.audioUrl : undefined,
-      aspectRatio: request.aspectRatio || "16:9",
-      quality: request.quality || "720p",
-      isTalkingPhoto: request.avatarType === "talking_photo",
-      gestureIntensity: request.gestureIntensity || 0,
-    });
+    // Check if this is an Avatar IV imageKey (format: "image/xxx/original.jpg")
+    const isAvatarIVKey = request.imageKey && request.imageKey.startsWith("image/");
 
-    if (!response.data?.video_id) {
-      throw new Error("Video generation failed - no video ID returned");
+    if (isAvatarIVKey) {
+      // Use Avatar IV API for new uploads with valid imageKey
+      console.log("🎬 Using Avatar IV API with imageKey:", request.imageKey);
+      const result = await this.avatarIVService.generateVideo({
+        imageKey: request.imageKey!,
+        script: request.script,
+        voiceId: useCustomAudio ? undefined : request.voiceId,
+        audioUrl: useCustomAudio ? request.audioUrl : undefined,
+        aspectRatio: request.aspectRatio || "16:9",
+      });
+
+      if (!result.videoId) {
+        throw new Error("Video generation failed - no video ID returned");
+      }
+
+      console.log("✅ Video generation started with Avatar IV:", result.videoId);
+
+      return {
+        id: result.videoId,
+        status: "processing",
+        progress: 0,
+      };
+    } else {
+      // Fall back to classic HeyGenService for legacy avatars (talking_photo_id format)
+      console.log("🎬 Using classic HeyGen API with avatarId:", request.avatarId);
+      const response = await this.heygenService.generateVideo({
+        avatarId: request.avatarId,
+        script: request.script,
+        title: request.title || "Video Studio Generation",
+        voiceId: useCustomAudio ? undefined : request.voiceId,
+        audioUrl: useCustomAudio ? request.audioUrl : undefined,
+        aspectRatio: request.aspectRatio || "16:9",
+        quality: request.quality || "720p",
+        isTalkingPhoto: request.avatarType === "talking_photo",
+        gestureIntensity: request.gestureIntensity || 0,
+      });
+
+      if (!response.data?.video_id) {
+        throw new Error("Video generation failed - no video ID returned");
+      }
+
+      console.log("✅ Video generation started with classic API:", response.data.video_id);
+
+      return {
+        id: response.data.video_id,
+        status: "processing",
+        progress: 0,
+      };
     }
-
-    console.log("✅ Video generation started:", response.data.video_id);
-
-    return {
-      id: response.data.video_id,
-      status: "processing",
-      progress: 0,
-    };
   }
 
   /**
    * Check video generation status
+   * Both Avatar IV and classic API use the same status endpoint
    */
   async getVideoStatus(videoId: string): Promise<VideoStatus> {
     console.log("📊 Video Studio: Checking status for video:", videoId);
 
-    const response = await this.heygenService.getVideoStatus(videoId);
+    // Try Avatar IV service first (handles both APIs since status endpoint is unified)
+    try {
+      const response = await this.avatarIVService.getVideoStatus(videoId);
 
-    let status: VideoStatus["status"] = "processing";
-    if (response.status === "completed") {
-      status = "completed";
-    } else if (response.status === "failed") {
-      status = "failed";
-    } else if (response.status === "pending") {
-      status = "pending";
+      let status: VideoStatus["status"] = "processing";
+      if (response.status === "completed") {
+        status = "completed";
+      } else if (response.status === "failed") {
+        status = "failed";
+      } else if (response.status === "pending") {
+        status = "pending";
+      }
+
+      return {
+        id: videoId,
+        status,
+        videoUrl: response.videoUrl,
+        thumbnailUrl: response.thumbnailUrl,
+        error: response.error,
+      };
+    } catch (error) {
+      // Fallback to classic HeyGen service if Avatar IV fails
+      console.log("📊 Falling back to classic HeyGen status check");
+      const response = await this.heygenService.getVideoStatus(videoId);
+
+      let status: VideoStatus["status"] = "processing";
+      if (response.status === "completed") {
+        status = "completed";
+      } else if (response.status === "failed") {
+        status = "failed";
+      } else if (response.status === "pending") {
+        status = "pending";
+      }
+
+      return {
+        id: videoId,
+        status,
+        videoUrl: response.video_url,
+        thumbnailUrl: response.thumbnail_url,
+        error: response.error,
+      };
     }
-
-    return {
-      id: videoId,
-      status,
-      videoUrl: response.video_url,
-      thumbnailUrl: response.thumbnail_url,
-      error: response.error,
-    };
   }
 
   /**
    * ALL-IN-ONE: Quick video generation
-   * Handles the entire flow: Upload → Ask → Get It
+   * Handles the entire flow: Upload → Ask → Get It using Avatar IV API
    */
   async quickGenerate(request: QuickVideoRequest): Promise<VideoStatus> {
-    console.log("🚀 Video Studio: Quick generation starting...");
+    console.log("🚀 Video Studio: Quick generation starting with Avatar IV...");
 
-    let avatarId = request.avatarId;
-    let avatarType: "avatar" | "talking_photo" = "avatar";
+    let imageKey = request.avatarId;
 
     if (request.imageUrl && !request.avatarId) {
       console.log("📸 Step 1: Creating avatar from image...");
@@ -583,11 +631,10 @@ Thanks for watching! If you found this helpful, don't forget to like and subscri
         request.imageUrl,
         request.title || "Quick Avatar"
       );
-      avatarId = avatar.id;
-      avatarType = "talking_photo";
+      imageKey = avatar.imageKey || avatar.id;
     }
 
-    if (!avatarId) {
+    if (!imageKey) {
       throw new Error("Either imageUrl or avatarId is required");
     }
 
@@ -601,10 +648,10 @@ Thanks for watching! If you found this helpful, don't forget to like and subscri
       throw new Error("Either script or topic is required");
     }
 
-    console.log("🎬 Step 3: Generating video...");
+    console.log("🎬 Step 3: Generating video with Avatar IV...");
     return this.generateVideo({
-      avatarId,
-      avatarType,
+      avatarId: imageKey,
+      imageKey: imageKey,
       script,
       title: request.title,
       voiceId: request.voiceId,
