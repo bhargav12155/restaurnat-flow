@@ -32,7 +32,7 @@ import {
   Volume2,
   Wand2,
 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
@@ -109,6 +109,15 @@ export function VideoStudio() {
   const { data: voicesData } = useQuery<{ voices: Array<{ voice_id: string; name: string }> }>({
     queryKey: ["/api/studio/voices"],
   });
+
+  // Memoize voice options to prevent 2500+ items re-rendering on every keystroke
+  const voiceOptions = useMemo(() => {
+    return voicesData?.voices?.map((voice) => (
+      <SelectItem key={voice.voice_id} value={voice.voice_id}>
+        {voice.name}
+      </SelectItem>
+    )) || [];
+  }, [voicesData]);
 
   const { data: savedVideosData, isLoading: videosLoading, refetch: refetchVideos } = useQuery<{ videos: SavedVideo[] }>({
     queryKey: ["/api/studio/videos"],
@@ -872,11 +881,7 @@ export function VideoStudio() {
                       <SelectValue placeholder="Choose a voice for your avatar" />
                     </SelectTrigger>
                     <SelectContent>
-                      {voicesData?.voices?.map((voice) => (
-                        <SelectItem key={voice.voice_id} value={voice.voice_id}>
-                          {voice.name}
-                        </SelectItem>
-                      ))}
+                      {voiceOptions}
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
