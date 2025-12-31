@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -88,23 +88,18 @@ export function ComplianceChecker({
     },
   });
 
-  const debounce = useCallback((fn: () => void, delay: number) => {
-    let timeoutId: NodeJS.Timeout;
-    return () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(fn, delay);
-    };
-  }, []);
-
+  // Properly debounced compliance check - doesn't block typing
   useEffect(() => {
-    if (content && content.trim().length > 10) {
-      const debouncedCheck = debounce(() => {
-        checkMutation.mutate({ content, platform, hasMedia, hasVideo });
-      }, 500);
-      debouncedCheck();
-    } else {
+    if (!content || content.trim().length <= 10) {
       setLocalResult(null);
+      return;
     }
+
+    const timeoutId = setTimeout(() => {
+      checkMutation.mutate({ content, platform, hasMedia, hasVideo });
+    }, 800); // Wait 800ms after user stops typing
+
+    return () => clearTimeout(timeoutId);
   }, [content, platform, hasMedia, hasVideo]);
 
   const handleAutoFix = () => {
