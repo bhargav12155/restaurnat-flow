@@ -6672,29 +6672,71 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     const tempFilePath = req.file?.path;
     
     try {
-      const studio = getVideoStudio();
-      const { name, imageUrl } = req.body;
-
-      let finalImageUrl = imageUrl;
-
-      // If a file was uploaded, read from disk (multer uses disk storage)
-      if (req.file && tempFilePath) {
-        const fileBuffer = fs.readFileSync(tempFilePath);
-        const imageBlob = new Blob([fileBuffer], { type: req.file.mimetype });
-        finalImageUrl = await studio.uploadImage(imageBlob);
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
       }
 
-      if (!finalImageUrl) {
-        return res.status(400).json({ error: "Image URL or file is required" });
+      const { name } = req.body;
+      const avatarName = name || "My Avatar";
+
+      // Read file from disk (multer uses disk storage)
+      if (!req.file || !tempFilePath) {
+        return res.status(400).json({ error: "Image file is required" });
       }
 
-      const avatar = await studio.createAvatarFromImage(
-        finalImageUrl,
-        name || "My Avatar"
-      );
+      const fileBuffer = fs.readFileSync(tempFilePath);
+      const contentType = req.file.mimetype || "image/jpeg";
 
-      // Avatar IV returns imageKey which is used directly for video generation
-      // No database storage needed - use Photo Avatars section for persistent avatars
+      console.log(`📤 Video Studio avatar upload for user ${userId}`);
+      console.log(`📤 File: ${req.file.originalname}, ${fileBuffer.length} bytes`);
+
+      // Use Avatar IV API to upload directly (matching the documented workflow)
+      const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
+      const avatarIVService = new HeyGenAvatarIVService();
+
+      const uploadResult = await avatarIVService.uploadPhoto(fileBuffer, contentType);
+
+      if (!uploadResult.image_key) {
+        throw new Error("Failed to upload image - no image_key returned");
+      }
+
+      console.log(`✅ Avatar IV upload successful: ${uploadResult.image_key}`);
+
+      // Save to object storage as backup
+      const { persistImageBuffer } = await import("./objectStorage");
+      const timestamp = Date.now();
+      const ext = req.file.originalname?.split('.').pop() || 'jpg';
+      const filename = `avatar-${userId}-${timestamp}.${ext}`;
+      const savedPath = await persistImageBuffer(fileBuffer, filename, contentType);
+      console.log(`💾 Avatar backup saved: ${savedPath || 'failed'}`);
+
+      // Save to media_assets so user can pick it next time
+      const mediaAsset = await storage.createMediaAsset({
+        userId,
+        type: "avatar-photo",
+        source: "upload",
+        url: uploadResult.url,
+        thumbnailUrl: uploadResult.url,
+        title: avatarName,
+        mimeType: contentType,
+        fileSize: fileBuffer.length,
+        metadata: {
+          imageKey: uploadResult.image_key,
+          heygenAssetId: uploadResult.id,
+          savedPath,
+        },
+      });
+      console.log(`📚 Avatar saved to library: ${mediaAsset.id}`);
+
+      const avatar = {
+        id: uploadResult.image_key,
+        name: avatarName,
+        type: "photo" as const,
+        previewUrl: uploadResult.url,
+        imageKey: uploadResult.image_key,
+      };
+
       res.json({ avatar });
     } catch (error) {
       console.error("Failed to create avatar:", error);
