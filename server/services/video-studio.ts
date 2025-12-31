@@ -523,20 +523,21 @@ Thanks for watching! If you found this helpful, don't forget to like and subscri
       console.log("🎬 Using Avatar IV API with imageKey:", request.imageKey);
       const result = await this.avatarIVService.generateVideo({
         imageKey: request.imageKey!,
+        videoTitle: request.title || "Video " + Date.now(),
         script: request.script,
-        voiceId: useCustomAudio ? undefined : request.voiceId,
-        audioUrl: useCustomAudio ? request.audioUrl : undefined,
-        aspectRatio: request.aspectRatio || "16:9",
+        voiceId: request.voiceId || "119caed25533477ba63822d5d1552d25", // Default voice if not specified
+        videoOrientation: request.aspectRatio === "9:16" ? "portrait" : "landscape",
+        fit: "cover",
       });
 
-      if (!result.videoId) {
+      if (!result.video_id) {
         throw new Error("Video generation failed - no video ID returned");
       }
 
-      console.log("✅ Video generation started with Avatar IV:", result.videoId);
+      console.log("✅ Video generation started with Avatar IV:", result.video_id);
 
       return {
-        id: result.videoId,
+        id: result.video_id,
         status: "processing",
         progress: 0,
       };
