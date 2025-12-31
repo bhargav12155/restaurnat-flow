@@ -6566,7 +6566,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     return [];
   }
 
-  // List available avatars (hybrid: user-specific from database + cached presets)
+  // List available avatars (unified: same source as Photo Avatars section)
   app.get("/api/studio/avatars", requireAuth, async (req: any, res) => {
     try {
       const userId = String(req.user?.id);
@@ -6575,34 +6575,60 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       }
 
       const avatars: any[] = [];
+      const existingIds = new Set<string>();
 
-      // PART 1: Get user's photo avatar groups from database (fast - no API calls)
+      // PART 1: Get avatars from media_assets (same as Photo Avatars section)
+      try {
+        const mediaAssets = await storage.getMediaAssets(userId, "avatar-photo");
+        for (const asset of mediaAssets) {
+          if (!existingIds.has(asset.id)) {
+            existingIds.add(asset.id);
+            avatars.push({
+              id: asset.imageKey || asset.id,
+              name: asset.fileName || "My Avatar",
+              type: "photo" as const,
+              previewUrl: asset.url || asset.s3Url,
+              thumbnailUrl: asset.url || asset.s3Url,
+              avatarType: "talking_photo" as const,
+              imageKey: asset.imageKey,
+              isMotion: !!asset.motionVideoUrl,
+              motionPreviewUrl: asset.motionVideoUrl,
+            });
+          }
+        }
+      } catch (mediaError) {
+        console.warn("Failed to load media assets:", mediaError);
+      }
+
+      // PART 2: Also include photo avatar groups for backward compatibility
       try {
         const dbGroups = await storage.listPhotoAvatarGroups(userId);
-
         for (const dbGroup of dbGroups) {
           const groupId = dbGroup.heygenGroupId;
-          
-          // Use database data only - no HeyGen API calls for speed
           const dbLooks = await storage.listPhotoAvatarsByGroup(groupId);
+          
           if (dbLooks.length > 0) {
             for (const look of dbLooks) {
-              avatars.push({
-                id: look.heygenAvatarId || look.id,
-                name: look.avatarName || dbGroup.groupName,
-                type: "photo" as const,
-                previewUrl: look.s3ImageUrl || look.heygenImageUrl,
-                thumbnailUrl: look.s3ImageUrl || look.heygenImageUrl,
-                groupId: groupId,
-                avatarType: "talking_photo" as const,
-                imageKey: look.imageKey,
-                isMotion: false,
-              });
+              const lookId = look.heygenAvatarId || look.id;
+              if (!existingIds.has(lookId)) {
+                existingIds.add(lookId);
+                avatars.push({
+                  id: lookId,
+                  name: look.avatarName || dbGroup.groupName,
+                  type: "photo" as const,
+                  previewUrl: look.s3ImageUrl || look.heygenImageUrl,
+                  thumbnailUrl: look.s3ImageUrl || look.heygenImageUrl,
+                  groupId: groupId,
+                  avatarType: "talking_photo" as const,
+                  imageKey: look.imageKey,
+                  isMotion: false,
+                });
+              }
             }
-          } else {
-            // Fallback: use group data if no looks
+          } else if (dbGroup.heygenImageKey && !existingIds.has(dbGroup.heygenImageKey)) {
+            existingIds.add(dbGroup.heygenImageKey);
             avatars.push({
-              id: dbGroup.heygenImageKey || groupId,
+              id: dbGroup.heygenImageKey,
               name: dbGroup.groupName,
               type: "photo" as const,
               previewUrl: dbGroup.s3ImageUrl,
@@ -6614,19 +6640,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           }
         }
       } catch (dbError) {
-        console.warn("Failed to load user avatars from database:", dbError);
-      }
-
-      // PART 2: Add curated preset HeyGen avatars (instant - no API calls)
-      const presetAvatars = getCachedPresetAvatars();
-      const existingIds = new Set(avatars.map(a => a.id));
-      for (const preset of presetAvatars) {
-        if (!existingIds.has(preset.id)) {
-          avatars.push({
-            ...preset,
-            type: preset.type || "preset",
-          });
-        }
+        console.warn("Failed to load photo avatar groups:", dbError);
       }
 
       res.json({ avatars });
