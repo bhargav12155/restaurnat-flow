@@ -6583,16 +6583,19 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         for (const asset of mediaAssets) {
           if (!existingIds.has(asset.id)) {
             existingIds.add(asset.id);
+            // imageKey is stored in metadata.imageKey from Avatar IV upload
+            const metadata = asset.metadata as any || {};
+            const imageKey = metadata.imageKey || asset.imageKey;
             avatars.push({
-              id: asset.imageKey || asset.id,
-              name: asset.fileName || "My Avatar",
+              id: imageKey || asset.id,
+              name: asset.title || asset.fileName || "My Avatar",
               type: "photo" as const,
-              previewUrl: asset.url || asset.s3Url,
-              thumbnailUrl: asset.url || asset.s3Url,
+              previewUrl: asset.url || asset.thumbnailUrl,
+              thumbnailUrl: asset.thumbnailUrl || asset.url,
               avatarType: "talking_photo" as const,
-              imageKey: asset.imageKey,
-              isMotion: !!asset.motionVideoUrl,
-              motionPreviewUrl: asset.motionVideoUrl,
+              imageKey: imageKey, // This is the HeyGen image_key needed for Avatar IV
+              isMotion: !!metadata.motionVideoUrl,
+              motionPreviewUrl: metadata.motionVideoUrl,
             });
           }
         }
