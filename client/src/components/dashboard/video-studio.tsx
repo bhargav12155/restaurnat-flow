@@ -101,6 +101,15 @@ export function VideoStudio() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [hoveredAvatarId, setHoveredAvatarId] = useState<string | null>(null);
+  const [debouncedScript, setDebouncedScript] = useState("");
+
+  // Debounce script for compliance checker - only update after user stops typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedScript(script);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [script]);
 
   const { data: avatarsData, isLoading: avatarsLoading, refetch: refetchAvatars } = useQuery<{ avatars: StudioAvatar[] }>({
     queryKey: ["/api/studio/avatars"],
@@ -800,9 +809,9 @@ export function VideoStudio() {
               </p>
             </div>
 
-            {script.trim().length > 10 && (
+            {debouncedScript.trim().length > 10 && (
               <ComplianceChecker
-                content={script}
+                content={debouncedScript}
                 platform="video"
                 hasMedia={false}
                 hasVideo={true}
