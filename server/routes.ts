@@ -6561,17 +6561,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   }
 
   // Curated list of popular HeyGen preset avatars (no API calls needed)
-  const CURATED_PRESET_AVATARS = [
-    { id: "Angela-inblackskirt-20220820", name: "Angela", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Angela-inblackskirt-20220820.webp" },
-    { id: "Daisy-inskirt-20220818", name: "Daisy", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Daisy-inskirt-20220818.webp" },
-    { id: "Josh-business-20220712", name: "Josh", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Josh-business-20220712.webp" },
-    { id: "Susan-formal-20220820", name: "Susan", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Susan-formal-20220820.webp" },
-    { id: "Tyler-incasualsuit-20220721", name: "Tyler", type: "preset", thumbnailUrl: "https://files.heygen.ai/avatar_cover_images/Tyler-incasualsuit-20220721.webp" },
-  ];
-
+  // No preset avatars - users upload their own photos for Avatar IV
   function getCachedPresetAvatars(): any[] {
-    // Return curated list instantly - no API calls
-    return CURATED_PRESET_AVATARS;
+    return [];
   }
 
   // List available avatars (hybrid: user-specific from database + cached presets)
