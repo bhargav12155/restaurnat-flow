@@ -1,0 +1,89 @@
+
+My Apps
+Required actions
+Docs
+Tools
+Support
+Search input
+​
+Search...
+Facebook
+Use cases
+Customize
+Customize use case
+Customize use case settings and permissions to make your app work the way you want it to.
+Use case switcher
+​
+Access the Threads API
+​
+Permissions and features
+API Calls
+​
+Status
+Action
+threads_basic
+Display a user’s own Threads posts within an app, and make these visible only to the user who created them for the purpose of managing the user's presence on Threads. Allowed Usage
+…
+Full Description
+Requirements
+0
+Ready for testing
+threads_content_publish
+The threads_content_publish permission allows an app to create and publish content on behalf of a Threads profile.
+…
+Full Description
+Requirements
+0
+Ready for testing
+threads_delete
+The threads_delete permission allows an app to delete an app user's Threads posts.
+…
+Full Description
+Requirements
+0
+Ready for testing
+threads_keyword_search
+The threads_keyword_search permission allows an app to search and fetch content with a specific keyword on behalf of a Threads user. The permission also allows for publishing responses to this fetched content.
+…
+Full Description
+Requirements
+threads_location_tagging
+The threads_location_tagging permission allows an app to search for and fetch public locations using specific queries/keywords or coordinates on behalf of a Threads user and publish media with a location tagged.
+…
+Full Description
+Requirements
+0
+Ready for testing
+threads_manage_insights
+The threads_manage_insights permission allows your app to get access to insights for a Threads profile.
+…
+Full Description
+Requirements
+0
+Ready for testing
+threads_manage_mentions
+The threads_manage_mentions permission allows an app to fetch content where the user is mentioned in on behalf of a Threads user.
+…
+Full Description
+Requirements
+0
+Ready for testing
+threads_manage_replies
+The threads_manage_replies permission allows an app to create a reply on behalf of a Threads profile, hide or unhide replies to a thread, and control who can reply to a thread on the Threads profile.
+…
+Full Description
+Requirements
+0
+Ready for testing
+threads_profile_discovery
+The threads_profile_discovery permission allows an app to access profiles for public Threads accounts and public posts of these accounts.
+…
+Full Description
+Requirements
+threads_read_replies
+The threads_read_replies permission allows an app to read replies to a user's thread.
+…
+Full Description
+Requirements
+0
+Ready for testing
