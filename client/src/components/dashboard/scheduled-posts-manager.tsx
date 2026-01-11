@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
 import { ImagePicker } from "@/components/shared/image-picker";
@@ -99,6 +100,54 @@ const postTypeLabels = {
   price_improvement: { label: "Price Drop", icon: Clock, color: "bg-red-100 text-red-700" },
 };
 
+// Platform-specific optimal word counts
+const platformWordCounts: Record<string, { min: number; max: number; optimal: number }> = {
+  instagram: { min: 100, max: 150, optimal: 125 },
+  facebook: { min: 100, max: 250, optimal: 150 },
+  linkedin: { min: 150, max: 300, optimal: 200 },
+  x: { min: 30, max: 70, optimal: 50 },
+};
+
+// AI Enhancement Presets
+const aiPresets = [
+  { 
+    id: "engagement", 
+    name: "Engagement Boost",
+    description: "Optimize for likes, comments & shares",
+    prompt: "Rewrite this post to maximize engagement with action-oriented language, compelling hooks, and a clear call-to-action. Use emojis strategically and ask a question to encourage comments."
+  },
+  { 
+    id: "seo", 
+    name: "SEO Focus",
+    description: "Add keywords & hashtags for discoverability",
+    prompt: "Optimize this post for search and discoverability. Add relevant real estate keywords naturally, include location-specific terms for Omaha/Nebraska, and suggest 3-5 relevant hashtags at the end."
+  },
+  { 
+    id: "compliance", 
+    name: "Compliance-Safe",
+    description: "Ensure brokerage-compliant language",
+    prompt: "Review and rewrite this post to ensure it's compliant with real estate advertising regulations. Avoid making guarantees or promises about property values, use appropriate disclosures, and maintain professional language."
+  },
+  { 
+    id: "shorten", 
+    name: "Make Concise",
+    description: "Trim to optimal length for the platform",
+    prompt: "Shorten this post while keeping the key message. Remove filler words, be direct, and ensure the most important information is front-loaded."
+  },
+  { 
+    id: "expand", 
+    name: "Add Detail",
+    description: "Expand with more compelling content",
+    prompt: "Expand this post with more detail and context. Add storytelling elements, paint a picture for the reader, and include more specific benefits or features."
+  },
+  { 
+    id: "custom", 
+    name: "Custom Prompt",
+    description: "Write your own instructions",
+    prompt: ""
+  },
+];
+
 export function ScheduledPostsManager() {
   const { user, isLoading: authLoading } = useAuth();
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -117,7 +166,8 @@ export function ScheduledPostsManager() {
   const [isEditingWithAI, setIsEditingWithAI] = useState(false);
   const [aiEditContent, setAiEditContent] = useState("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("Optimize this post for SEO and engagement while maintaining professional tone for real estate audience in Omaha, Nebraska.");
+  const [selectedPreset, setSelectedPreset] = useState("engagement");
+  const [aiPrompt, setAiPrompt] = useState(aiPresets[0].prompt);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [editMode, setEditMode] = useState<"manual" | "ai">("manual");
   const [isEnhancingInEdit, setIsEnhancingInEdit] = useState(false);
@@ -127,6 +177,30 @@ export function ScheduledPostsManager() {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
+
+  // Recalculate aiPrompt when selected post changes to ensure platform-specific word count is current
+  useEffect(() => {
+    if (selectedPost && editMode === "ai" && selectedPreset !== "custom") {
+      const preset = aiPresets.find(p => p.id === selectedPreset);
+      if (preset) {
+        const platform = selectedPost.platform;
+        const wordCount = platformWordCounts[platform];
+        const wordCountInstruction = wordCount 
+          ? ` Target approximately ${wordCount.optimal} words (${wordCount.min}-${wordCount.max} range is optimal for ${platform}).`
+          : "";
+        setAiPrompt(preset.prompt + wordCountInstruction);
+      }
+    }
+  }, [selectedPost?.id, selectedPost?.platform]);
+
+  // Reset AI mode state when switching posts
+  useEffect(() => {
+    if (selectedPost) {
+      setEditMode("manual");
+      setShowPromptEditor(false);
+      setSelectedPreset("engagement");
+    }
+  }, [selectedPost?.id]);
 
   const { data: scheduledPosts = [], isLoading } = useQuery<ScheduledPost[]>({
     queryKey: ["/api/scheduled-posts"],
@@ -505,6 +579,16 @@ export function ScheduledPostsManager() {
                     if (!aiEditContent) {
                       setAiEditContent(editContent);
                     }
+                    // Initialize the prompt with word count instructions for the current platform
+                    const preset = aiPresets.find(p => p.id === selectedPreset);
+                    if (preset && selectedPreset !== "custom" && selectedPost) {
+                      const platform = selectedPost.platform;
+                      const wordCount = platformWordCounts[platform];
+                      const wordCountInstruction = wordCount 
+                        ? ` Target approximately ${wordCount.optimal} words (${wordCount.min}-${wordCount.max} range is optimal for ${platform}).`
+                        : "";
+                      setAiPrompt(preset.prompt + wordCountInstruction);
+                    }
                   }}
                   className="flex-1 h-8"
                   data-testid="button-ai-edit"
@@ -560,9 +644,75 @@ export function ScheduledPostsManager() {
                       />
                     )}
                     
-                    {showPromptEditor && (
+                    {/* AI Preset Selector */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Enhancement Style</Label>
+                      <Select 
+                        value={selectedPreset} 
+                        onValueChange={(value) => {
+                          setSelectedPreset(value);
+                          const preset = aiPresets.find(p => p.id === value);
+                          if (preset && preset.id !== "custom") {
+                            // Build prompt with word count target
+                            const platform = selectedPost?.platform || "facebook";
+                            const wordCount = platformWordCounts[platform];
+                            const wordCountInstruction = wordCount 
+                              ? ` Target approximately ${wordCount.optimal} words (${wordCount.min}-${wordCount.max} range is optimal for ${platform}).`
+                              : "";
+                            setAiPrompt(preset.prompt + wordCountInstruction);
+                            setShowPromptEditor(false);
+                          }
+                          if (value === "custom") {
+                            // Clear prompt for custom input
+                            setAiPrompt("");
+                            setShowPromptEditor(true);
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-9" data-testid="select-ai-preset">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {aiPresets.map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{preset.name}</span>
+                                <span className="text-xs text-muted-foreground">{preset.description}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
+                      {/* Word count indicator */}
+                      {selectedPost?.platform && platformWordCounts[selectedPost.platform] && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">Target:</span>
+                          <span className={`font-medium ${
+                            (() => {
+                              const wordCount = aiEditContent.trim().split(/\s+/).filter(w => w).length;
+                              const target = platformWordCounts[selectedPost.platform];
+                              if (wordCount >= target.min && wordCount <= target.max) return "text-green-600";
+                              if (wordCount < target.min) return "text-amber-600";
+                              return "text-red-600";
+                            })()
+                          }`}>
+                            {aiEditContent.trim().split(/\s+/).filter(w => w).length} / {platformWordCounts[selectedPost.platform].optimal} words
+                          </span>
+                          {(() => {
+                            const wordCount = aiEditContent.trim().split(/\s+/).filter(w => w).length;
+                            const target = platformWordCounts[selectedPost.platform];
+                            if (wordCount < target.min) return <span className="text-amber-600">(too short)</span>;
+                            if (wordCount > target.max) return <span className="text-red-600">(too long)</span>;
+                            return <span className="text-green-600">(optimal)</span>;
+                          })()}
+                        </div>
+                      )}
+                    </div>
+
+                    {(showPromptEditor || selectedPreset === "custom") && (
                       <div className="space-y-2">
-                        <Label className="text-xs font-medium">AI Enhancement Instructions</Label>
+                        <Label className="text-xs font-medium">Custom Instructions</Label>
                         <Textarea
                           value={aiPrompt}
                           onChange={(e) => setAiPrompt(e.target.value)}
@@ -617,7 +767,7 @@ export function ScheduledPostsManager() {
                         className="shrink-0"
                         data-testid="button-toggle-prompt"
                       >
-                        Prompt
+                        {showPromptEditor ? "Hide" : "Edit"} Prompt
                       </Button>
                     </div>
                   </div>
