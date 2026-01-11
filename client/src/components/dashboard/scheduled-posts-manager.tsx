@@ -36,8 +36,12 @@ import {
   ChevronRight,
   Loader2,
   Wand2,
-  ChevronDown
+  ChevronDown,
+  Square,
+  CheckSquare,
+  Trash
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth } from "date-fns";
 import { 
   Dialog,
@@ -173,6 +177,9 @@ export function ScheduledPostsManager() {
   const [isEnhancingInEdit, setIsEnhancingInEdit] = useState(false);
   const [uploadingPostId, setUploadingPostId] = useState<string | null>(null);
   const [showPhotoDialog, setShowPhotoDialog] = useState(false);
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleteType, setBulkDeleteType] = useState<"selected" | "all">("selected");
   const [photoUploadMode, setPhotoUploadMode] = useState<"upload" | "mls">("upload");
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -278,6 +285,29 @@ export function ScheduledPostsManager() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async ({ ids, deleteAll }: { ids?: string[]; deleteAll?: boolean }) => {
+      const response = await apiRequest("POST", "/api/scheduled-posts/bulk-delete", { ids, deleteAll });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Posts Deleted",
+        description: `Successfully deleted ${data.deleted} scheduled post${data.deleted !== 1 ? 's' : ''}.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      setSelectedPostIds(new Set());
+      setShowBulkDeleteConfirm(false);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete posts. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const attachPhotoMutation = useMutation({
     mutationFn: async ({ id, imageUrl }: { id: string; imageUrl: string }) => {
       const response = await apiRequest("PUT", `/api/scheduled-posts/${id}`, {
@@ -368,6 +398,43 @@ export function ScheduledPostsManager() {
     setCurrentMonth(new Date());
   };
 
+  // Selection helper functions
+  const togglePostSelection = (postId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setSelectedPostIds(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) {
+        next.delete(postId);
+      } else {
+        next.add(postId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllPosts = () => {
+    setSelectedPostIds(new Set(scheduledPosts.map(p => p.id)));
+  };
+
+  const deselectAllPosts = () => {
+    setSelectedPostIds(new Set());
+  };
+
+  const handleBulkDelete = (type: "selected" | "all") => {
+    setBulkDeleteType(type);
+    setShowBulkDeleteConfirm(true);
+  };
+
+  const confirmBulkDelete = () => {
+    if (bulkDeleteType === "all") {
+      bulkDeleteMutation.mutate({ deleteAll: true });
+    } else {
+      bulkDeleteMutation.mutate({ ids: Array.from(selectedPostIds) });
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -451,6 +518,66 @@ export function ScheduledPostsManager() {
             </Button>
           </div>
         </div>
+        
+        {/* Bulk Actions Row */}
+        {scheduledPosts.length > 0 && (
+          <div className="flex items-center justify-between mt-4 pt-4 border-t">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectedPostIds.size === scheduledPosts.length ? deselectAllPosts : selectAllPosts}
+                data-testid="button-select-all"
+              >
+                {selectedPostIds.size === scheduledPosts.length ? (
+                  <>
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                    Deselect All
+                  </>
+                ) : (
+                  <>
+                    <Square className="h-4 w-4 mr-2" />
+                    Select All ({scheduledPosts.length})
+                  </>
+                )}
+              </Button>
+              {selectedPostIds.size > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  {selectedPostIds.size} selected
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedPostIds.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleBulkDelete("selected")}
+                  disabled={bulkDeleteMutation.isPending}
+                  data-testid="button-delete-selected"
+                >
+                  {bulkDeleteMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash className="h-4 w-4 mr-2" />
+                  )}
+                  Delete Selected ({selectedPostIds.size})
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleBulkDelete("all")}
+                disabled={bulkDeleteMutation.isPending}
+                className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                data-testid="button-delete-all"
+              >
+                <Trash className="h-4 w-4 mr-2" />
+                Delete All
+              </Button>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {/* Calendar Grid */}
@@ -490,27 +617,38 @@ export function ScheduledPostsManager() {
                     {postsForDay.map((post) => {
                       const platform = platformIcons[post.platform as keyof typeof platformIcons];
                       const Icon = platform?.icon || Home;
+                      const isSelected = selectedPostIds.has(post.id);
                       
                       return (
-                        <button
+                        <div
                           key={post.id}
-                          onClick={() => handleEditPost(post)}
-                          className={`w-full flex items-center gap-2 p-1.5 rounded hover:bg-muted/50 transition-colors group text-left`}
+                          className={`w-full flex items-center gap-1 p-1.5 rounded hover:bg-muted/50 transition-colors group ${isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
                           data-testid={`post-${post.id}`}
                           title={`${platform?.name || post.platform} - ${format(new Date(post.scheduledFor), 'h:mm a')}`}
                         >
-                          <div className={`shrink-0 w-6 h-6 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
-                            <Icon className="h-3.5 w-3.5 text-white" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium truncate">
-                              {format(new Date(post.scheduledFor), 'h:mm a')}
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => togglePostSelection(post.id)}
+                            className="shrink-0"
+                            data-testid={`checkbox-post-${post.id}`}
+                          />
+                          <button
+                            onClick={() => handleEditPost(post)}
+                            className="flex-1 flex items-center gap-2 text-left min-w-0"
+                          >
+                            <div className={`shrink-0 w-6 h-6 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
+                              <Icon className="h-3.5 w-3.5 text-white" />
                             </div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {post.content.substring(0, 20)}...
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium truncate">
+                                {format(new Date(post.scheduledFor), 'h:mm a')}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {post.content.substring(0, 20)}...
+                              </div>
                             </div>
-                          </div>
-                        </button>
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -1225,6 +1363,42 @@ export function ScheduledPostsManager() {
             data-testid="button-confirm-delete"
           >
             Delete Post
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Bulk Delete Confirmation Dialog */}
+    <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {bulkDeleteType === "all" 
+              ? "Delete All Scheduled Posts?" 
+              : `Delete ${selectedPostIds.size} Selected Post${selectedPostIds.size !== 1 ? 's' : ''}?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {bulkDeleteType === "all"
+              ? `This will permanently delete all ${scheduledPosts.length} scheduled posts. This action cannot be undone.`
+              : `This will permanently delete ${selectedPostIds.size} selected post${selectedPostIds.size !== 1 ? 's' : ''}. This action cannot be undone.`}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid="button-cancel-bulk-delete">Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={confirmBulkDelete}
+            className="bg-red-600 hover:bg-red-700"
+            disabled={bulkDeleteMutation.isPending}
+            data-testid="button-confirm-bulk-delete"
+          >
+            {bulkDeleteMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              bulkDeleteType === "all" ? "Delete All Posts" : "Delete Selected"
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
