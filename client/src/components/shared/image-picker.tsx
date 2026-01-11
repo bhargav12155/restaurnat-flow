@@ -22,6 +22,8 @@ import {
   Check,
   Sparkles,
   RefreshCw,
+  Download,
+  FolderPlus,
 } from "lucide-react";
 
 interface ImageTemplate {
@@ -197,6 +199,64 @@ export function ImagePicker({
     setGeneratedImage(null);
     onSelect("");
   };
+
+  // Download generated image to device
+  const handleDownloadImage = async () => {
+    if (!generatedImage) return;
+    
+    try {
+      const response = await fetch(generatedImage);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-generated-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Image Downloaded",
+        description: "Your AI-generated image has been saved to your device.",
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: "Could not download the image. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Save to library mutation
+  const saveToLibraryMutation = useMutation({
+    mutationFn: async (imageUrl: string) => {
+      const response = await apiRequest("POST", "/api/brand-assets", {
+        type: "generated_image",
+        url: imageUrl,
+        name: `AI Generated - ${new Date().toLocaleDateString()}`,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save image to library");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Saved to Library",
+        description: "Your AI-generated image has been saved to your brand assets for future use.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Save Failed",
+        description: error.message || "Could not save image to library. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleUploadComplete = (uploadedUrl: string) => {
     setPreviewImage(uploadedUrl);
@@ -410,7 +470,7 @@ export function ImagePicker({
 
           {/* Generated Image Preview */}
           {generatedImage && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>Generated Image</Label>
               <div
                 className="relative aspect-square max-w-xs mx-auto rounded-lg overflow-hidden border cursor-pointer hover:ring-2 hover:ring-primary transition-all"
@@ -425,6 +485,35 @@ export function ImagePicker({
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                   <Badge className="bg-white text-black">Click to Select</Badge>
                 </div>
+              </div>
+              
+              {/* Download and Save buttons */}
+              <div className="flex gap-2 justify-center max-w-xs mx-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadImage}
+                  className="flex-1"
+                  data-testid="button-download-generated"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => saveToLibraryMutation.mutate(generatedImage)}
+                  disabled={saveToLibraryMutation.isPending}
+                  className="flex-1"
+                  data-testid="button-save-to-library"
+                >
+                  {saveToLibraryMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FolderPlus className="h-4 w-4 mr-2" />
+                  )}
+                  Save to Library
+                </Button>
               </div>
             </div>
           )}
