@@ -12496,6 +12496,77 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // Add a brand asset (e.g., save AI-generated image to library)
+  app.post("/api/brand-assets", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { type, url, name } = req.body;
+      
+      // Validate required fields
+      if (!type || typeof type !== "string") {
+        return res.status(400).json({ error: "Type is required and must be a string" });
+      }
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "URL is required and must be a string" });
+      }
+      if (name && typeof name !== "string") {
+        return res.status(400).json({ error: "Name must be a string if provided" });
+      }
+
+      // Fetch existing brand settings
+      const existingSettings = await storage.getBrandSettings(user.id);
+      
+      // Define default assets structure
+      const defaultAssets = [
+        { id: "primary-logo", name: "Primary Logo", type: "logo" },
+        { id: "icon", name: "Icon/Favicon", type: "icon" },
+        { id: "banner", name: "Banner/Header Image", type: "banner" },
+        { id: "background", name: "Background Pattern", type: "background" },
+      ];
+      
+      // Get existing assets, preserving any that exist
+      const existingAssets = (existingSettings?.assets as Array<{ id: string; name: string; type: string; url?: string }>) || defaultAssets;
+
+      // Create new asset entry with unique ID
+      const newAsset = {
+        id: `generated-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: name || `AI Generated - ${new Date().toLocaleDateString()}`,
+        type: type,
+        url: url,
+      };
+
+      // Add to assets array (append, don't replace)
+      const updatedAssets = [...existingAssets, newAsset];
+
+      // Only update the assets field, preserve all other existing settings
+      const brandSettings = await storage.upsertBrandSettings({
+        userId: user.id,
+        assets: updatedAssets,
+        // Preserve existing values - don't overwrite with null
+        colors: existingSettings?.colors,
+        fonts: existingSettings?.fonts,
+        description: existingSettings?.description,
+        socialConnections: existingSettings?.socialConnections,
+        logoInfo: existingSettings?.logoInfo,
+      });
+
+      console.log(`✅ Brand asset added for user ${user.id}: ${newAsset.id}`);
+
+      res.json({
+        success: true,
+        message: "Image saved to library successfully",
+        asset: newAsset,
+      });
+    } catch (error) {
+      console.error("Error adding brand asset:", error);
+      res.status(500).json({ error: "Failed to save image to library" });
+    }
+  });
+
   // Get brand settings
   app.get("/api/brand-settings", requireAuth, async (req, res) => {
     try {
