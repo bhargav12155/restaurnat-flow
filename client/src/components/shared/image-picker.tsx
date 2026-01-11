@@ -22,9 +22,7 @@ import {
   Check,
   Sparkles,
   RefreshCw,
-  Plus,
 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 
 interface ImageTemplate {
   id: string;
@@ -89,7 +87,7 @@ export function ImagePicker({
   );
   const [style, setStyle] = useState("photorealistic");
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [includeLogo, setIncludeLogo] = useState(false);
+  const [logoOption, setLogoOption] = useState<"none" | "primary" | "broker" | "both">("none");
 
   // Stock Images state
   const [stockQuery, setStockQuery] = useState("real estate");
@@ -134,7 +132,7 @@ export function ImagePicker({
 
   // AI Generate mutation
   const generateMutation = useMutation({
-    mutationFn: async (params: { prompt: string; aspectRatio: string; style: string }) => {
+    mutationFn: async (params: { prompt: string; aspectRatio: string; style: string; logoOption?: string }) => {
       const response = await apiRequest("POST", "/api/images/generate", params);
       return response.json();
     },
@@ -165,7 +163,12 @@ export function ImagePicker({
       });
       return;
     }
-    generateMutation.mutate({ prompt: aiPrompt, aspectRatio, style });
+    generateMutation.mutate({ 
+      prompt: aiPrompt, 
+      aspectRatio, 
+      style, 
+      logoOption: logoOption !== "none" ? logoOption : undefined 
+    });
   };
 
   const handleTemplateClick = (template: ImageTemplate) => {
@@ -313,19 +316,17 @@ export function ImagePicker({
             <div className="flex items-center justify-between">
               <Label htmlFor="ai-prompt">Image Description</Label>
               <div className="flex items-center gap-2">
-                <Checkbox
-                  id="include-logo"
-                  checked={includeLogo}
-                  onCheckedChange={(checked) => setIncludeLogo(checked === true)}
-                  data-testid="checkbox-include-logo"
-                />
-                <Label 
-                  htmlFor="include-logo" 
-                  className="text-sm font-normal cursor-pointer flex items-center gap-1"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add my logo
-                </Label>
+                <Select value={logoOption} onValueChange={(v) => setLogoOption(v as typeof logoOption)}>
+                  <SelectTrigger className="w-[160px] h-8 text-xs" data-testid="select-logo-option">
+                    <SelectValue placeholder="Add logo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Logo</SelectItem>
+                    <SelectItem value="primary">My Logo</SelectItem>
+                    <SelectItem value="broker">Broker Logo</SelectItem>
+                    <SelectItem value="both">Both Logos</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <Textarea
@@ -336,9 +337,13 @@ export function ImagePicker({
               rows={3}
               data-testid="textarea-ai-prompt"
             />
-            {includeLogo && (
+            {logoOption !== "none" && (
               <p className="text-xs text-muted-foreground">
-                Your logo will be overlaid on the generated image
+                {logoOption === "both" 
+                  ? "Both logos will be overlaid on the generated image (compliant with brokerage requirements)"
+                  : logoOption === "broker" 
+                    ? "Broker logo will be overlaid on the generated image"
+                    : "Your logo will be overlaid on the generated image"}
               </p>
             )}
           </div>
