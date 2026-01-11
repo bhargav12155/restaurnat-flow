@@ -22,7 +22,9 @@ import {
   Check,
   Sparkles,
   RefreshCw,
+  Plus,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ImageTemplate {
   id: string;
@@ -87,6 +89,7 @@ export function ImagePicker({
   );
   const [style, setStyle] = useState("photorealistic");
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [includeLogo, setIncludeLogo] = useState(false);
 
   // Stock Images state
   const [stockQuery, setStockQuery] = useState("real estate");
@@ -307,7 +310,24 @@ export function ImagePicker({
 
           {/* Prompt Input */}
           <div className="space-y-2">
-            <Label htmlFor="ai-prompt">Image Description</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ai-prompt">Image Description</Label>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="include-logo"
+                  checked={includeLogo}
+                  onCheckedChange={(checked) => setIncludeLogo(checked === true)}
+                  data-testid="checkbox-include-logo"
+                />
+                <Label 
+                  htmlFor="include-logo" 
+                  className="text-sm font-normal cursor-pointer flex items-center gap-1"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add my logo
+                </Label>
+              </div>
+            </div>
             <Textarea
               id="ai-prompt"
               value={aiPrompt}
@@ -316,6 +336,11 @@ export function ImagePicker({
               rows={3}
               data-testid="textarea-ai-prompt"
             />
+            {includeLogo && (
+              <p className="text-xs text-muted-foreground">
+                Your logo will be overlaid on the generated image
+              </p>
+            )}
           </div>
 
           {/* Options Row */}
