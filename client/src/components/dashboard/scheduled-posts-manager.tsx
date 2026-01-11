@@ -60,6 +60,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
+import { ImagePicker } from "@/components/shared/image-picker";
 import { CharacterCounter, PlatformTip } from "@/components/ui/character-counter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -1021,128 +1022,32 @@ export function ScheduledPostsManager() {
         </DialogContent>
       </Dialog>
       
-      {/* Photo Upload Dialog */}
+      {/* Photo Upload Dialog - Enhanced with AI Image Generation */}
       <Dialog open={showPhotoDialog} onOpenChange={setShowPhotoDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Photo to Post</DialogTitle>
+            <DialogTitle>Add Image to Post</DialogTitle>
             <DialogDescription>
-              Upload a photo or select from MLS listings
+              Generate with AI, search stock images, upload your own, or select from MLS listings
             </DialogDescription>
           </DialogHeader>
           
-          <Tabs value={photoUploadMode} onValueChange={(value) => setPhotoUploadMode(value as "upload" | "mls")} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="upload">Upload Photo</TabsTrigger>
-              <TabsTrigger value="mls">MLS Listings</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="upload" className="space-y-4 mt-4">
-              {selectedPhoto ? (
-                <div className="space-y-4">
-                  <div className="border rounded-lg overflow-hidden">
-                    <img 
-                      src={selectedPhoto} 
-                      alt="Selected photo" 
-                      className="w-full h-64 object-cover"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-green-600 font-medium">Photo selected successfully!</p>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setSelectedPhoto(null)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <ObjectUploader
-                  maxNumberOfFiles={1}
-                  maxFileSize={10485760}
-                  onGetUploadParameters={async () => {
-                    const response = await apiRequest("POST", "/api/objects/upload", {
-                      contentType: "image/jpeg"
-                    });
-                    const data = await response.json();
-                    return {
-                      method: "PUT" as const,
-                      url: data.uploadURL,
-                      fileUrl: data.fileUrl, // S3 file URL
-                    };
-                  }}
-                  onComplete={(uploadedFileUrl: string) => {
-                    // Use the S3 URL directly
-                    setSelectedPhoto(uploadedFileUrl);
-                    toast({
-                      title: "Photo Uploaded",
-                      description: "Photo is ready to be attached to your post",
-                    });
-                  }}
-                  buttonClassName="w-full"
-                >
-                  <div className="flex items-center justify-center gap-2 py-8 border-2 border-dashed rounded-lg hover:border-primary transition-colors cursor-pointer">
-                    <Upload className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-muted-foreground">Click to upload a photo</span>
-                  </div>
-                </ObjectUploader>
-              )}
-              
-              {selectedPhoto && (
-                <Button 
-                  className="w-full"
-                  onClick={() => handlePhotoUploadComplete(selectedPhoto)}
-                >
-                  Attach Photo to Post
-                </Button>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="mls" className="space-y-4 mt-4">
-              <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-                {/* Sample MLS Properties - In production, these would come from MLS API */}
-                {[
-                  { id: "1", address: "123 Oak St, Dundee", price: "$425,000", image: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=400&h=300&fit=crop" },
-                  { id: "2", address: "456 Maple Ave, Aksarben", price: "$385,000", image: "https://images.unsplash.com/photo-1554995207-c18c203602cb?w=400&h=300&fit=crop" },
-                  { id: "3", address: "789 Pine Rd, Old Market", price: "$350,000", image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=400&h=300&fit=crop" },
-                  { id: "4", address: "321 Elm St, Benson", price: "$295,000", image: "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=400&h=300&fit=crop" },
-                  { id: "5", address: "654 Cedar Ln, Blackstone", price: "$450,000", image: "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=400&h=300&fit=crop" },
-                  { id: "6", address: "987 Birch Way, West Omaha", price: "$525,000", image: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=400&h=300&fit=crop" },
-                ].map((property) => (
-                  <div 
-                    key={property.id}
-                    className="border rounded-lg overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
-                    onClick={() => handleSelectMLSPhoto(property.image)}
-                  >
-                    <img 
-                      src={property.image} 
-                      alt={property.address}
-                      className="w-full h-32 object-cover"
-                    />
-                    <div className="p-3">
-                      <p className="font-medium text-sm">{property.address}</p>
-                      <p className="text-sm text-muted-foreground">{property.price}</p>
-                      <Button 
-                        size="sm" 
-                        className="w-full mt-2"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectMLSPhoto(property.image);
-                        }}
-                      >
-                        Use This Photo
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground text-center">
-                Select a property photo from your MLS listings to attach to this post
-              </p>
-            </TabsContent>
-          </Tabs>
+          <ImagePicker
+            onSelect={(imageUrl) => {
+              handlePhotoUploadComplete(imageUrl);
+              setShowPhotoDialog(false);
+            }}
+            platform={previewPost?.platform}
+            selectedImage={selectedPhoto}
+            mlsPhotos={[
+              "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1554995207-c18c203602cb?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=600&fit=crop",
+            ]}
+          />
         </DialogContent>
       </Dialog>
     </Card>
