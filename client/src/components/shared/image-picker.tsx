@@ -141,9 +141,10 @@ export function ImagePicker({
     onSuccess: (data) => {
       if (data.imageUrl) {
         setGeneratedImage(data.imageUrl);
+        setPreviewImage(data.imageUrl); // Automatically select the generated image
         toast({
           title: "Image Generated!",
-          description: "Your AI image has been created successfully.",
+          description: "Your AI image is ready and selected. Click Confirm to attach it.",
         });
       }
     },
