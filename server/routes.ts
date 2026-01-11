@@ -5598,13 +5598,16 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   app.put("/api/scheduled-posts/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { content, scheduledFor, status } = req.body;
+      const { content, scheduledFor, status, metadata } = req.body;
 
-      const updatedPost = await storage.updateScheduledPost(id, {
-        content,
-        scheduledFor: scheduledFor ? new Date(scheduledFor) : undefined,
-        status,
-      });
+      // Build update object, only including fields that were provided
+      const updateData: Record<string, any> = {};
+      if (content !== undefined) updateData.content = content;
+      if (scheduledFor !== undefined) updateData.scheduledFor = new Date(scheduledFor);
+      if (status !== undefined) updateData.status = status;
+      if (metadata !== undefined) updateData.metadata = metadata;
+
+      const updatedPost = await storage.updateScheduledPost(id, updateData);
 
       if (!updatedPost) {
         return res.status(404).json({ error: "Scheduled post not found" });
