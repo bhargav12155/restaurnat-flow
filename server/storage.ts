@@ -84,7 +84,7 @@ import {
   videoTemplates as videoTemplatesTable,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "./db";
 
 export interface IStorage {
@@ -162,6 +162,8 @@ export interface IStorage {
     updates: Partial<ScheduledPost>
   ): Promise<ScheduledPost | undefined>;
   deleteScheduledPost(id: string): Promise<boolean>;
+  deleteScheduledPostsBulk(ids: string[], userId: string): Promise<number>;
+  deleteAllScheduledPosts(userId: string): Promise<number>;
 
   // Avatars
   getAvatars(userId: string): Promise<Avatar[]>;
@@ -1043,6 +1045,28 @@ export class MemStorage implements IStorage {
       .where(eq(scheduledPostsTable.id, id))
       .returning();
     return result.length > 0;
+  }
+
+  async deleteScheduledPostsBulk(ids: string[], userId: string): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await db
+      .delete(scheduledPostsTable)
+      .where(
+        and(
+          inArray(scheduledPostsTable.id, ids),
+          eq(scheduledPostsTable.userId, userId)
+        )
+      )
+      .returning();
+    return result.length;
+  }
+
+  async deleteAllScheduledPosts(userId: string): Promise<number> {
+    const result = await db
+      .delete(scheduledPostsTable)
+      .where(eq(scheduledPostsTable.userId, userId))
+      .returning();
+    return result.length;
   }
 
   private generateWeeklyScheduledPosts(userId: string) {

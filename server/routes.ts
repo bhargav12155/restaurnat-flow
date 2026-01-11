@@ -5667,6 +5667,29 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  // Bulk delete scheduled posts
+  app.post("/api/scheduled-posts/bulk-delete", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const { ids, deleteAll } = req.body;
+
+      if (deleteAll) {
+        const count = await storage.deleteAllScheduledPosts(userId);
+        return res.json({ success: true, deleted: count });
+      }
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "No post IDs provided" });
+      }
+
+      const count = await storage.deleteScheduledPostsBulk(ids, userId);
+      res.json({ success: true, deleted: count });
+    } catch (error) {
+      console.error("Bulk delete scheduled posts error:", error);
+      res.status(500).json({ error: "Failed to delete scheduled posts" });
+    }
+  });
+
   // Manually publish a scheduled post now
   app.post("/api/scheduled-posts/:id/publish", requireAuth, async (req: any, res) => {
     try {
