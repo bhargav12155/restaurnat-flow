@@ -1148,7 +1148,7 @@ export function BrandSettings() {
                 <div className="w-16 h-16 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden">
                   {asset.url ? (
                     <img 
-                      src={`/objects/${asset.url.split('/').pop()}`}
+                      src={asset.url.startsWith('http') ? asset.url : `/objects/${asset.url.split('/').pop()}`}
                       alt={asset.name}
                       className="w-full h-full object-contain"
                       onError={(e) => {
@@ -1319,7 +1319,7 @@ export function BrandSettings() {
                   {brandAssets.filter(a => a.url).map(asset => (
                     <div key={asset.id} className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-hidden">
                       <img 
-                        src={`/objects/${asset.url?.split('/').pop()}`}
+                        src={asset.url?.startsWith('http') ? asset.url : `/objects/${asset.url?.split('/').pop()}`}
                         alt={asset.name}
                         className="w-full h-full object-contain"
                       />
