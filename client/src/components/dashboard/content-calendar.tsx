@@ -423,6 +423,7 @@ export function ContentCalendar() {
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
   const [isBulkDelete, setIsBulkDelete] = useState(false);
+  const [isDeleteAll, setIsDeleteAll] = useState(false);
   const { toast } = useToast();
   
   // Get user's display name with proper formatting
@@ -497,23 +498,26 @@ export function ContentCalendar() {
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map(id => apiRequest("DELETE", `/api/scheduled-posts/${id}`)));
+    mutationFn: async ({ ids, deleteAll }: { ids?: string[]; deleteAll?: boolean }) => {
+      const response = await apiRequest("POST", "/api/scheduled-posts/bulk-delete", { ids, deleteAll });
+      const data = await response.json();
+      return data;
     },
-    onSuccess: () => {
-      const count = selectedPosts.size;
+    onSuccess: (data) => {
       setSelectedPosts(new Set());
       setIsBulkDelete(false);
+      setIsDeleteAll(false);
+      const count = data?.deleted ?? 0;
       toast({
         title: "Posts Deleted",
-        description: `${count} scheduled posts have been deleted.`,
+        description: `${count} scheduled post${count !== 1 ? 's have' : ' has'} been deleted.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to delete some posts. Please try again.",
+        description: "Failed to delete posts. Please try again.",
         variant: "destructive",
       });
     },
@@ -1158,12 +1162,29 @@ export function ContentCalendar() {
                     className="h-7 text-xs"
                     onClick={() => {
                       setIsBulkDelete(true);
+                      setIsDeleteAll(false);
                       setShowDeleteConfirm(true);
                     }}
                     data-testid="button-delete-selected"
                   >
                     <Trash2 className="h-3 w-3 mr-1" />
                     Delete {selectedPosts.size} Selected
+                  </Button>
+                )}
+                {scheduledContent.some(c => String(c.id).startsWith('api-')) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => {
+                      setIsBulkDelete(true);
+                      setIsDeleteAll(true);
+                      setShowDeleteConfirm(true);
+                    }}
+                    data-testid="button-delete-all"
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Delete All
                   </Button>
                 )}
               </div>
@@ -1810,21 +1831,26 @@ export function ContentCalendar() {
         setShowDeleteConfirm(open);
         if (!open) {
           setIsBulkDelete(false);
+          setIsDeleteAll(false);
           setPostToDelete(null);
         }
       }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isBulkDelete 
-                ? `Delete ${selectedPosts.size} Scheduled Posts?`
-                : "Delete Scheduled Post?"
+              {isDeleteAll 
+                ? "Delete All Scheduled Posts?"
+                : isBulkDelete 
+                  ? `Delete ${selectedPosts.size} Scheduled Posts?`
+                  : "Delete Scheduled Post?"
               }
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {isBulkDelete
-                ? `Are you sure you want to delete ${selectedPosts.size} scheduled posts? This action cannot be undone.`
-                : "Are you sure you want to delete this scheduled post? This action cannot be undone."
+              {isDeleteAll
+                ? `Are you sure you want to delete all ${scheduledContent.filter(c => String(c.id).startsWith('api-')).length} scheduled posts? This action cannot be undone.`
+                : isBulkDelete
+                  ? `Are you sure you want to delete ${selectedPosts.size} scheduled posts? This action cannot be undone.`
+                  : "Are you sure you want to delete this scheduled post? This action cannot be undone."
               }
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1832,8 +1858,10 @@ export function ContentCalendar() {
             <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (isBulkDelete) {
-                  bulkDeleteMutation.mutate(Array.from(selectedPosts));
+                if (isDeleteAll) {
+                  bulkDeleteMutation.mutate({ deleteAll: true });
+                } else if (isBulkDelete) {
+                  bulkDeleteMutation.mutate({ ids: Array.from(selectedPosts) });
                 } else if (postToDelete) {
                   deletePostMutation.mutate(postToDelete);
                 }
@@ -1843,9 +1871,11 @@ export function ContentCalendar() {
               className="bg-red-600 hover:bg-red-700"
               data-testid="button-confirm-delete"
             >
-              {isBulkDelete 
-                ? `Delete ${selectedPosts.size} Posts`
-                : "Delete Post"
+              {isDeleteAll 
+                ? "Delete All Posts"
+                : isBulkDelete 
+                  ? `Delete ${selectedPosts.size} Posts`
+                  : "Delete Post"
               }
             </AlertDialogAction>
           </AlertDialogFooter>
