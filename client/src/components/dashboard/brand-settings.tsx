@@ -94,6 +94,7 @@ export function BrandSettings() {
   
   const [brandAssets, setBrandAssets] = useState<BrandAsset[]>([
     { id: 'primary-logo', name: 'Primary Logo', type: 'logo' },
+    { id: 'broker-logo', name: 'Broker Logo', type: 'logo' },
     { id: 'icon', name: 'Icon/Favicon', type: 'icon' },
     { id: 'banner', name: 'Banner/Header Image', type: 'banner' },
     { id: 'background', name: 'Background Pattern', type: 'background' },
