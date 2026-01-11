@@ -158,9 +158,26 @@ export function BrandSettings() {
     refetchOnWindowFocus: false,
   });
 
+  // Default asset types - used to ensure new asset types appear for existing users
+  const defaultAssetTypes: BrandAsset[] = [
+    { id: 'primary-logo', name: 'Primary Logo', type: 'logo' },
+    { id: 'broker-logo', name: 'Broker Logo', type: 'logo' },
+    { id: 'icon', name: 'Icon/Favicon', type: 'icon' },
+    { id: 'banner', name: 'Banner/Header Image', type: 'banner' },
+    { id: 'background', name: 'Background Pattern', type: 'background' },
+  ];
+
   useEffect(() => {
     if (brandSettingsData) {
-      if (brandSettingsData.assets) setBrandAssets(brandSettingsData.assets);
+      // Merge saved assets with default asset types to include new ones like broker-logo
+      if (brandSettingsData.assets) {
+        const savedAssets = brandSettingsData.assets;
+        const mergedAssets = defaultAssetTypes.map(defaultAsset => {
+          const savedAsset = savedAssets.find(a => a.id === defaultAsset.id);
+          return savedAsset ? { ...defaultAsset, url: savedAsset.url } : defaultAsset;
+        });
+        setBrandAssets(mergedAssets);
+      }
       if (brandSettingsData.colors) setBrandColors(brandSettingsData.colors);
       if (brandSettingsData.fonts) setBrandFonts(brandSettingsData.fonts);
       if (brandSettingsData.description) setBrandDescription(brandSettingsData.description);
