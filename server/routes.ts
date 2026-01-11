@@ -12075,9 +12075,26 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const userId = String(req.user!.id);
       const { contentType = 'image/jpeg', fileName } = req.body;
       
-      // Generate unique file name
+      // Determine file extension based on content type
+      const extensionMap: Record<string, string> = {
+        'image/jpeg': '.jpg',
+        'image/jpg': '.jpg',
+        'image/png': '.png',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
+        'image/svg+xml': '.svg',
+        'application/pdf': '.pdf',
+        'video/mp4': '.mp4',
+        'video/webm': '.webm',
+        'audio/mpeg': '.mp3',
+        'audio/wav': '.wav',
+        'audio/webm': '.webm',
+      };
+      const extension = extensionMap[contentType] || '.bin';
+      
+      // Generate unique file name with correct extension
       const timestamp = Date.now();
-      const uniqueFileName = fileName || `upload-${timestamp}.jpg`;
+      const uniqueFileName = fileName || `upload-${timestamp}${extension}`;
       const key = `user-${userId}/uploads/${timestamp}-${uniqueFileName}`;
       
       // Get S3 presigned URL for direct upload
@@ -12162,40 +12179,18 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           },
         ];
       } else if (fileType === "application/pdf") {
-        // For PDF files, use object storage to read the file
+        // For PDF files, fetch directly from S3 URL
         try {
-          console.log("📁 Reading PDF from object storage:", fileUrl);
+          console.log("📁 Fetching PDF from URL:", fileUrl);
 
-          // Extract the object path from the URL
-          const pdfObjectStorageService = new ObjectStorageService();
-
-          // Check if private object directory is configured for PDF analysis
-          if (!pdfObjectStorageService.hasPrivateDir()) {
-            console.warn(
-              "Private object directory not configured for PDF analysis"
-            );
-            return res.status(503).json({
-              error: "Object storage service unavailable",
-              message:
-                "Cannot analyze PDF files without PRIVATE_OBJECT_DIR configuration",
-            });
+          // Fetch the PDF directly from the S3 URL
+          const pdfResponse = await fetch(fileUrl);
+          if (!pdfResponse.ok) {
+            throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
           }
 
-          const objectPath =
-            pdfObjectStorageService.normalizeObjectEntityPath(fileUrl);
-          const objectFile = await pdfObjectStorageService.getObjectEntityFile(
-            objectPath
-          );
-
-          // Get the file contents as a buffer
-          const chunks: Buffer[] = [];
-          const stream = objectFile.createReadStream();
-
-          for await (const chunk of stream) {
-            chunks.push(chunk);
-          }
-
-          const pdfBuffer = Buffer.concat(chunks);
+          const arrayBuffer = await pdfResponse.arrayBuffer();
+          const pdfBuffer = Buffer.from(arrayBuffer);
           console.log("📋 PDF buffer size:", pdfBuffer.length, "bytes");
 
           // Try alternative PDF parsing approach
