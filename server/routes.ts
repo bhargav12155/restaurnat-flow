@@ -309,6 +309,63 @@ Welcome to ${neighborhood}!`,
   return baseScript;
 }
 
+// Curated real estate stock images fallback (when no Pexels API key)
+function getRealEstateStockImages(query: string): Array<{
+  id: string;
+  url: string;
+  thumbnail: string;
+  alt: string;
+  photographer: string;
+}> {
+  const stockImages: Record<string, Array<{ id: string; url: string; alt: string }>> = {
+    "home": [
+      { id: "home-1", url: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=80", alt: "Modern home exterior" },
+      { id: "home-2", url: "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800&q=80", alt: "Luxury home" },
+      { id: "home-3", url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80", alt: "Beautiful home" },
+      { id: "home-4", url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80", alt: "Contemporary home" },
+      { id: "home-5", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80", alt: "Modern architecture" },
+      { id: "home-6", url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=80", alt: "Suburban home" },
+    ],
+    "interior": [
+      { id: "int-1", url: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80", alt: "Living room" },
+      { id: "int-2", url: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=80", alt: "Modern kitchen" },
+      { id: "int-3", url: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=800&q=80", alt: "Bedroom" },
+    ],
+    "neighborhood": [
+      { id: "nb-1", url: "https://images.unsplash.com/photo-1448630360428-65456885c650?w=800&q=80", alt: "Neighborhood street" },
+      { id: "nb-2", url: "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?w=800&q=80", alt: "Suburban neighborhood" },
+    ],
+    "sold": [
+      { id: "sold-1", url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80", alt: "Sold sign" },
+      { id: "sold-2", url: "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800&q=80", alt: "Real estate success" },
+    ],
+    "keys": [
+      { id: "key-1", url: "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?w=800&q=80", alt: "House keys" },
+      { id: "key-2", url: "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800&q=80", alt: "New home keys" },
+    ],
+    "family": [
+      { id: "fam-1", url: "https://images.unsplash.com/photo-1581579438747-1dc8d17bbce4?w=800&q=80", alt: "Happy family" },
+    ],
+  };
+
+  // Find matching category or return all home images
+  const lowerQuery = query.toLowerCase();
+  let images = stockImages["home"];
+  
+  for (const [key, categoryImages] of Object.entries(stockImages)) {
+    if (lowerQuery.includes(key)) {
+      images = categoryImages;
+      break;
+    }
+  }
+
+  return images.map(img => ({
+    ...img,
+    thumbnail: img.url.replace("w=800", "w=400"),
+    photographer: "Unsplash",
+  }));
+}
+
 function generateAIOptimizedContent(
   neighborhood: string,
   goal: string,
@@ -879,6 +936,182 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Content enhancement error:", error);
       res.status(500).json({ error: "Failed to enhance content" });
     }
+  });
+
+  // AI Image Generation endpoint
+  app.post("/api/images/generate", requireAuth, async (req, res) => {
+    try {
+      const { prompt, aspectRatio = "1:1", style = "photorealistic" } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      // Map aspect ratio to DALL-E size
+      const sizeMap: Record<string, string> = {
+        "1:1": "1024x1024",
+        "16:9": "1792x1024",
+        "9:16": "1024x1792",
+        "4:3": "1024x1024", // Approximate
+        "3:4": "1024x1024", // Approximate
+      };
+      const size = sizeMap[aspectRatio] || "1024x1024";
+
+      // Build enhanced real estate prompt
+      const enhancedPrompt = `Professional real estate photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
+
+      // Use the existing openaiService to get the best API key
+      const imageUrl = await openaiService.generateImage({
+        prompt: enhancedPrompt,
+        size: size as "1024x1024" | "1792x1024" | "1024x1792",
+      });
+
+      if (!imageUrl) {
+        return res.status(500).json({ error: "Failed to generate image" });
+      }
+
+      res.json({ 
+        imageUrl,
+        prompt: enhancedPrompt,
+        aspectRatio,
+        style
+      });
+    } catch (error) {
+      console.error("AI image generation error:", error);
+      res.status(500).json({ error: "Failed to generate image" });
+    }
+  });
+
+  // Stock Image Search endpoint (using Pexels API)
+  app.get("/api/images/stock", async (req, res) => {
+    try {
+      const { query, orientation = "landscape", perPage = 12 } = req.query;
+
+      if (!query) {
+        return res.status(400).json({ error: "Search query is required" });
+      }
+
+      // Use Pexels API (free)
+      const pexelsApiKey = process.env.PEXELS_API_KEY;
+      
+      // If no Pexels key, use curated real estate stock images
+      if (!pexelsApiKey) {
+        const fallbackImages = getRealEstateStockImages(query as string);
+        return res.json({ images: fallbackImages, source: "curated" });
+      }
+
+      const orientationParam = orientation === "all" ? "" : `&orientation=${orientation}`;
+      const pexelsUrl = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query as string)}${orientationParam}&per_page=${perPage}`;
+
+      const response = await fetch(pexelsUrl, {
+        headers: {
+          Authorization: pexelsApiKey,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Pexels API error");
+      }
+
+      const data = await response.json();
+      const images = data.photos.map((photo: any) => ({
+        id: photo.id,
+        url: photo.src.large,
+        thumbnail: photo.src.medium,
+        small: photo.src.small,
+        original: photo.src.original,
+        alt: photo.alt || query,
+        photographer: photo.photographer,
+        photographerUrl: photo.photographer_url,
+      }));
+
+      res.json({ images, source: "pexels", total: data.total_results });
+    } catch (error) {
+      console.error("Stock image search error:", error);
+      // Fallback to curated images
+      const fallbackImages = getRealEstateStockImages((req.query.query as string) || "real estate");
+      res.json({ images: fallbackImages, source: "curated" });
+    }
+  });
+
+  // Real Estate Image Templates endpoint
+  app.get("/api/images/templates", async (req, res) => {
+    const templates = [
+      {
+        id: "open-house",
+        name: "Open House Banner",
+        description: "Perfect for announcing open house events with warm, inviting imagery",
+        category: "Events",
+        prompt: "Professional open house real estate banner with modern home exterior, warm welcoming atmosphere, sunshine, manicured lawn",
+        suggestedAspectRatio: "16:9",
+        icon: "Home",
+      },
+      {
+        id: "just-listed",
+        name: "Just Listed",
+        description: "Showcase new listings with professional curb appeal photography",
+        category: "Listings",
+        prompt: "Elegant 'Just Listed' real estate promotional image with beautiful luxury home, professional photography, curb appeal",
+        suggestedAspectRatio: "1:1",
+        icon: "Tag",
+      },
+      {
+        id: "just-sold",
+        name: "Just Sold",
+        description: "Celebrate successful sales with celebratory imagery",
+        category: "Listings",
+        prompt: "Celebratory 'Sold' real estate image with beautiful home, SOLD sign, happy atmosphere, success theme",
+        suggestedAspectRatio: "1:1",
+        icon: "Check",
+      },
+      {
+        id: "market-update",
+        name: "Market Update",
+        description: "Professional graphics for market insights and data",
+        category: "Content",
+        prompt: "Professional real estate market analysis graphic, clean modern design, charts and data visualization, business style",
+        suggestedAspectRatio: "16:9",
+        icon: "TrendingUp",
+      },
+      {
+        id: "neighborhood",
+        name: "Neighborhood Spotlight",
+        description: "Highlight local neighborhoods with scenic community imagery",
+        category: "Content",
+        prompt: "Beautiful neighborhood scene with tree-lined streets, well-maintained homes, community atmosphere, suburban charm",
+        suggestedAspectRatio: "16:9",
+        icon: "MapPin",
+      },
+      {
+        id: "home-exterior",
+        name: "Home Exterior",
+        description: "Stunning exterior shots with perfect lighting and curb appeal",
+        category: "Property",
+        prompt: "Stunning modern home exterior, professional real estate photography, perfect lighting, curb appeal, landscaping",
+        suggestedAspectRatio: "16:9",
+        icon: "Building",
+      },
+      {
+        id: "home-interior",
+        name: "Home Interior",
+        description: "Beautiful interior photography with staging and natural light",
+        category: "Property",
+        prompt: "Beautiful modern home interior, open floor plan, natural lighting, staging, luxury finishes, real estate photography",
+        suggestedAspectRatio: "4:3",
+        icon: "Sofa",
+      },
+      {
+        id: "agent-branding",
+        name: "Agent Branding",
+        description: "Professional branding backgrounds for agent profiles",
+        category: "Personal",
+        prompt: "Professional real estate agent branding background, modern office setting, cityscape, business professional atmosphere",
+        suggestedAspectRatio: "1:1",
+        icon: "User",
+      },
+    ];
+
+    res.json({ templates });
   });
 
   // AI-optimized content generation endpoint

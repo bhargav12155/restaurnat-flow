@@ -1218,6 +1218,34 @@ Ready to make your move in ${
     };
   }
 
+  async generateImage({
+    prompt,
+    size = "1024x1024",
+  }: {
+    prompt: string;
+    size?: "1024x1024" | "1792x1024" | "1024x1792";
+  }): Promise<string | null> {
+    try {
+      const response = await multiOpenAI.makeRequest(
+        "content",
+        async (client) => {
+          return await client.images.generate({
+            model: "dall-e-3",
+            prompt: prompt,
+            n: 1,
+            size: size,
+            quality: "standard",
+          });
+        }
+      );
+
+      return response.data[0]?.url || null;
+    } catch (error) {
+      console.error("OpenAI image generation error:", error);
+      return null;
+    }
+  }
+
   async enhanceContent({
     originalContent,
     customPrompt,
