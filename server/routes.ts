@@ -941,7 +941,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Image Generation endpoint
   app.post("/api/images/generate", requireAuth, async (req, res) => {
     try {
-      const { prompt, aspectRatio = "1:1", style = "photorealistic" } = req.body;
+      const userId = String(req.user!.id);
+      const { prompt, aspectRatio = "1:1", style = "photorealistic", logoOption } = req.body;
 
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
@@ -961,7 +962,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enhancedPrompt = `Professional real estate photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
 
       // Use the existing openaiService to get the best API key
-      const imageUrl = await openaiService.generateImage({
+      let imageUrl = await openaiService.generateImage({
         prompt: enhancedPrompt,
         size: size as "1024x1024" | "1792x1024" | "1024x1792",
       });
@@ -970,11 +971,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: "Failed to generate image" });
       }
 
+      // Get logo URLs if requested and apply overlay
+      let logoUrls: { primary?: string; broker?: string } = {};
+      let hasLogos = false;
+      
+      if (logoOption) {
+        const brandSettings = await storage.getBrandSettings(userId);
+        if (brandSettings?.assets) {
+          const assets = brandSettings.assets as Array<{ id: string; url?: string }>;
+          if (logoOption === "primary" || logoOption === "both") {
+            const primaryLogo = assets.find(a => a.id === "primary-logo");
+            if (primaryLogo?.url) {
+              logoUrls.primary = primaryLogo.url;
+              hasLogos = true;
+            }
+          }
+          if (logoOption === "broker" || logoOption === "both") {
+            const brokerLogo = assets.find(a => a.id === "broker-logo");
+            if (brokerLogo?.url) {
+              logoUrls.broker = brokerLogo.url;
+              hasLogos = true;
+            }
+          }
+        }
+      }
+
+      // Apply logo overlays if logos are available
+      if (hasLogos && (logoUrls.primary || logoUrls.broker)) {
+        try {
+          const sharp = (await import("sharp")).default;
+          
+          // Fetch the generated image
+          const imageResponse = await fetch(imageUrl);
+          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+          
+          // Get image dimensions
+          const metadata = await sharp(imageBuffer).metadata();
+          const imgWidth = metadata.width || 1024;
+          const imgHeight = metadata.height || 1024;
+          
+          // Logo size (15% of image width, max 200px)
+          const logoMaxWidth = Math.min(Math.round(imgWidth * 0.15), 200);
+          const padding = 20;
+          
+          // Prepare logo overlays
+          const composites: Array<{ input: Buffer; gravity?: string; left?: number; top?: number }> = [];
+          
+          // Primary logo - bottom left
+          if (logoUrls.primary) {
+            try {
+              const logoResponse = await fetch(logoUrls.primary);
+              const logoBuffer = Buffer.from(await logoResponse.arrayBuffer());
+              const resizedLogo = await sharp(logoBuffer)
+                .resize({ width: logoMaxWidth, fit: "inside" })
+                .toBuffer();
+              const logoMeta = await sharp(resizedLogo).metadata();
+              composites.push({
+                input: resizedLogo,
+                left: padding,
+                top: imgHeight - (logoMeta.height || 50) - padding
+              });
+            } catch (logoErr) {
+              console.error("Failed to process primary logo:", logoErr);
+            }
+          }
+          
+          // Broker logo - bottom right
+          if (logoUrls.broker) {
+            try {
+              const logoResponse = await fetch(logoUrls.broker);
+              const logoBuffer = Buffer.from(await logoResponse.arrayBuffer());
+              const resizedLogo = await sharp(logoBuffer)
+                .resize({ width: logoMaxWidth, fit: "inside" })
+                .toBuffer();
+              const logoMeta = await sharp(resizedLogo).metadata();
+              composites.push({
+                input: resizedLogo,
+                left: imgWidth - (logoMeta.width || 100) - padding,
+                top: imgHeight - (logoMeta.height || 50) - padding
+              });
+            } catch (logoErr) {
+              console.error("Failed to process broker logo:", logoErr);
+            }
+          }
+          
+          // Apply composites if we have any
+          if (composites.length > 0) {
+            const compositedBuffer = await sharp(imageBuffer)
+              .composite(composites)
+              .png()
+              .toBuffer();
+            
+            // Upload the composited image to S3
+            const timestamp = Date.now();
+            const key = `user-${userId}/generated/${timestamp}-branded.png`;
+            const uploadUrl = await s3UploadService.getPresignedPutUrl(key, "image/png", 900);
+            
+            // Upload to S3
+            const uploadResponse = await fetch(uploadUrl, {
+              method: "PUT",
+              headers: { "Content-Type": "image/png" },
+              body: compositedBuffer
+            });
+            
+            if (uploadResponse.ok) {
+              imageUrl = s3UploadService.getS3Url(key);
+              console.log("Logo composite uploaded to S3:", imageUrl);
+            }
+          }
+        } catch (compositeError) {
+          console.error("Logo compositing error (returning original image):", compositeError);
+          // Continue with original image if compositing fails
+        }
+      }
+
       res.json({ 
         imageUrl,
         prompt: enhancedPrompt,
         aspectRatio,
-        style
+        style,
+        logoOption,
+        logoUrls,
+        hasLogoOverlay: hasLogos
       });
     } catch (error) {
       console.error("AI image generation error:", error);
