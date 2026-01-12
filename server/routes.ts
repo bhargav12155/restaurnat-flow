@@ -9467,6 +9467,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   });
 
   // Upload audio for Avatar IV (returns URL for HeyGen)
+  // Uses S3 with presigned URLs so HeyGen can access the audio
   app.post("/api/avatar-iv/upload-audio", requireAuth, memoryUpload.single("audio"), async (req, res) => {
     try {
       const userId = String(req.user?.id);
@@ -9481,8 +9482,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.log(`🎙️ Avatar IV audio upload for user ${userId}`);
       console.log(`🎙️ File: ${req.file.originalname || 'recording'}, ${req.file.size} bytes, ${req.file.mimetype}`);
 
-      // Save audio to object storage
-      const { uploadToObjectStorage } = await import("./objectStorage");
       const timestamp = Date.now();
       // Detect audio format from mimetype
       let ext = "webm";
@@ -9494,13 +9493,19 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       else if (mime.includes("webm")) ext = "webm";
       const filename = `audio-${userId}-${timestamp}.${ext}`;
       
-      const audioUrl = await uploadToObjectStorage(req.file.buffer, filename, req.file.mimetype || "audio/webm");
+      // Upload to S3 with presigned URL so HeyGen can access it
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+      
+      const s3FileName = `avatar-iv-audio/${userId}/${filename}`;
+      // Use presigned URL (valid for 1 hour) since bucket doesn't allow public ACLs
+      const audioUrl = await s3Service.uploadBuffer(req.file.buffer, s3FileName, req.file.mimetype || "audio/webm", true, 3600);
       
       if (!audioUrl) {
         return res.status(500).json({ error: "Failed to save audio file" });
       }
 
-      console.log(`✅ Audio uploaded: ${audioUrl}`);
+      console.log(`✅ Audio uploaded to S3: ${audioUrl.substring(0, 100)}...`);
 
       res.json({
         success: true,
