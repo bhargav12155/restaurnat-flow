@@ -412,7 +412,8 @@ export async function persistImageBuffer(
 export async function uploadToObjectStorage(
   buffer: Buffer,
   filename: string,
-  contentType: string = "audio/webm"
+  contentType: string = "audio/webm",
+  userId?: string
 ): Promise<string | null> {
   try {
     const objectStorage = new ObjectStorageService();
@@ -423,9 +424,11 @@ export async function uploadToObjectStorage(
 
     console.log(`📤 Uploading to object storage: ${filename}`);
     
-    const publicPaths = objectStorage.getPublicObjectSearchPaths();
-    const basePath = publicPaths[0];
-    const fullPath = `${basePath}/audio/${filename}`;
+    // Use private directory for uploads (has write permissions)
+    const privateDir = objectStorage.getPrivateObjectDir();
+    // Include userId in path for proper access control
+    const userPath = userId ? `user-${userId}/audio` : "audio";
+    const fullPath = `${privateDir}/${userPath}/${filename}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
     const bucket = objectStorageClient.bucket(bucketName);
@@ -435,14 +438,14 @@ export async function uploadToObjectStorage(
       contentType,
       resumable: false,
       metadata: {
-        cacheControl: "public, max-age=31536000",
+        cacheControl: "private, max-age=31536000",
       },
     });
 
-    // Get the public URL
-    const publicUrl = `https://storage.googleapis.com/${bucketName}/${objectName}`;
-    console.log(`✅ File uploaded to: ${publicUrl}`);
-    return publicUrl;
+    // Return the internal path for serving through our API
+    const internalPath = userId ? `/objects/user-${userId}/audio/${filename}` : `/objects/audio/${filename}`;
+    console.log(`✅ File uploaded to: ${fullPath}, accessible at: ${internalPath}`);
+    return internalPath;
   } catch (error) {
     console.error("Failed to upload to object storage:", error);
     return null;
