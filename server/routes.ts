@@ -9467,7 +9467,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   });
 
   // Upload audio for Avatar IV (returns URL for HeyGen)
-  app.post("/api/avatar-iv/upload-audio", requireAuth, memoryImageUpload.single("audio"), async (req, res) => {
+  app.post("/api/avatar-iv/upload-audio", requireAuth, memoryUpload.single("audio"), async (req, res) => {
     try {
       const userId = String(req.user?.id);
       if (!userId) {
