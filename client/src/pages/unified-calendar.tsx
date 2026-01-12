@@ -216,6 +216,7 @@ export default function UnifiedCalendarPage() {
   const [weeklyPlanSuggestions, setWeeklyPlanSuggestions] = useState<WeeklyPlanSuggestion[]>([]);
   const [postManagerPlatformFilter, setPostManagerPlatformFilter] = useState<string>("all");
   const [postManagerStatusFilter, setPostManagerStatusFilter] = useState<string>("all");
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
   const [editContent, setEditContent] = useState<string>("");
   const [editImageUrl, setEditImageUrl] = useState<string>("");
@@ -468,22 +469,43 @@ export default function UnifiedCalendarPage() {
 
   const deleteAllPostsMutation = useMutation({
     mutationFn: async () => {
-      const posts = apiScheduledPosts.filter(p => p.status === 'scheduled');
-      for (const post of posts) {
-        await apiRequest("DELETE", `/api/scheduled-posts/${post.id}`);
-      }
+      const response = await apiRequest("POST", "/api/scheduled-posts/bulk-delete", { deleteAll: true });
+      return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "All Posts Deleted",
-        description: "All scheduled posts have been deleted.",
+        description: `${data.deleted} scheduled post${data.deleted !== 1 ? 's have' : ' has'} been deleted.`,
       });
+      setSelectedPostIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
     },
     onError: () => {
       toast({
         title: "Delete Failed",
         description: "Could not delete all posts. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkDeleteSelectedMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const response = await apiRequest("POST", "/api/scheduled-posts/bulk-delete", { ids });
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Posts Deleted",
+        description: `${data.deleted} scheduled post${data.deleted !== 1 ? 's have' : ' has'} been deleted.`,
+      });
+      setSelectedPostIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+    },
+    onError: () => {
+      toast({
+        title: "Delete Failed",
+        description: "Could not delete selected posts. Please try again.",
         variant: "destructive",
       });
     },
@@ -532,6 +554,18 @@ export default function UnifiedCalendarPage() {
   }, [sources.length]);
 
   const calendarGrid = useMemo(() => generateCalendarDays(selectedDate), [selectedDate]);
+
+  // Filtered posts for the Scheduled Posts Manager section
+  const filteredPosts = useMemo(() => {
+    return apiScheduledPosts
+      .filter(post => postManagerPlatformFilter === "all" || post.platform.toLowerCase() === postManagerPlatformFilter)
+      .filter(post => postManagerStatusFilter === "all" || post.status.toLowerCase() === postManagerStatusFilter);
+  }, [apiScheduledPosts, postManagerPlatformFilter, postManagerStatusFilter]);
+
+  // Clear selection when filters change
+  useEffect(() => {
+    setSelectedPostIds(new Set());
+  }, [postManagerPlatformFilter, postManagerStatusFilter]);
 
   const scheduledContent = useMemo(() => {
     return apiScheduledPosts.map((post) => {
@@ -1105,7 +1139,26 @@ export default function UnifiedCalendarPage() {
                     Preview, edit, and optimize your scheduled posts
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {filteredPosts.length > 0 && (
+                    <div className="flex items-center gap-2 mr-2">
+                      <Checkbox
+                        id="select-all-posts"
+                        checked={selectedPostIds.size === filteredPosts.length && filteredPosts.length > 0}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedPostIds(new Set(filteredPosts.map(p => p.id)));
+                          } else {
+                            setSelectedPostIds(new Set());
+                          }
+                        }}
+                        data-testid="checkbox-select-all-posts"
+                      />
+                      <label htmlFor="select-all-posts" className="text-sm text-muted-foreground cursor-pointer">
+                        Select All
+                      </label>
+                    </div>
+                  )}
                   <Select value={postManagerPlatformFilter} onValueChange={setPostManagerPlatformFilter}>
                     <SelectTrigger className="w-32" data-testid="select-post-platform-filter">
                       <SelectValue placeholder="Platform" />
@@ -1131,10 +1184,31 @@ export default function UnifiedCalendarPage() {
                       <SelectItem value="failed">Failed</SelectItem>
                     </SelectContent>
                   </Select>
-                  {apiScheduledPosts.filter(p => p.status === 'scheduled').length > 0 && (
+                  {selectedPostIds.size > 0 && (
                     <Button
                       variant="destructive"
                       size="sm"
+                      onClick={() => {
+                        if (confirm(`Delete ${selectedPostIds.size} selected post${selectedPostIds.size !== 1 ? 's' : ''}? This cannot be undone.`)) {
+                          bulkDeleteSelectedMutation.mutate(Array.from(selectedPostIds));
+                        }
+                      }}
+                      disabled={bulkDeleteSelectedMutation.isPending}
+                      data-testid="btn-delete-selected-posts"
+                    >
+                      {bulkDeleteSelectedMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                      ) : (
+                        <Trash2 className="w-4 h-4 mr-1" />
+                      )}
+                      Delete {selectedPostIds.size} Selected
+                    </Button>
+                  )}
+                  {apiScheduledPosts.filter(p => p.status === 'scheduled').length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
                       onClick={() => {
                         if (confirm('Delete all scheduled posts? This cannot be undone.')) {
                           deleteAllPostsMutation.mutate();
@@ -1167,10 +1241,7 @@ export default function UnifiedCalendarPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {apiScheduledPosts
-                    .filter(post => postManagerPlatformFilter === "all" || post.platform.toLowerCase() === postManagerPlatformFilter)
-                    .filter(post => postManagerStatusFilter === "all" || post.status.toLowerCase() === postManagerStatusFilter)
-                    .map((post) => {
+                  {filteredPosts.map((post) => {
                       const platformLimits: Record<string, { optimal: number; max: number }> = {
                         x: { optimal: 280, max: 280 },
                         twitter: { optimal: 280, max: 280 },
@@ -1234,6 +1305,20 @@ export default function UnifiedCalendarPage() {
                           data-testid={`post-row-${post.id}`}
                         >
                           <div className="flex items-start gap-4">
+                            <Checkbox
+                              checked={selectedPostIds.has(post.id)}
+                              onCheckedChange={(checked) => {
+                                const newSelected = new Set(selectedPostIds);
+                                if (checked) {
+                                  newSelected.add(post.id);
+                                } else {
+                                  newSelected.delete(post.id);
+                                }
+                                setSelectedPostIds(newSelected);
+                              }}
+                              className="mt-1"
+                              data-testid={`checkbox-post-${post.id}`}
+                            />
                             <div className="flex-shrink-0">
                               {getPlatformIcon(post.platform)}
                             </div>
