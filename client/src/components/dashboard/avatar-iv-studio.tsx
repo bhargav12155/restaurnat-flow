@@ -37,6 +37,7 @@ import {
   Clock,
   ExternalLink,
   Sparkles,
+  RotateCcw,
 } from "lucide-react";
 
 interface Voice {
@@ -1140,10 +1141,10 @@ export function AvatarIVStudio() {
                             <Button
                               variant="outline"
                               onClick={clearRecording}
-                              data-testid="button-clear-recording"
+                              data-testid="button-retake-recording"
                             >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Clear
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                              Retake
                             </Button>
                           </div>
                         </div>
