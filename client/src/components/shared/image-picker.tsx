@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Download,
   FolderPlus,
+  Video,
 } from "lucide-react";
 
 interface ImageTemplate {
@@ -90,6 +91,13 @@ export function ImagePicker({
   const [style, setStyle] = useState("photorealistic");
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [logoOption, setLogoOption] = useState<"none" | "primary" | "broker" | "both">("none");
+
+  // AI Video state
+  const [videoPrompt, setVideoPrompt] = useState("");
+  const [videoAspectRatio, setVideoAspectRatio] = useState("16:9");
+  const [videoDuration, setVideoDuration] = useState<"5" | "10">("5");
+  const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
+  const [videoGenerationStep, setVideoGenerationStep] = useState<"idle" | "generating-image" | "generating-video" | "done">("idle");
 
   // Stock Images state
   const [stockQuery, setStockQuery] = useState("real estate");
@@ -178,6 +186,66 @@ export function ImagePicker({
     setAiPrompt(template.prompt);
     if (template.suggestedAspectRatio) {
       setAspectRatio(template.suggestedAspectRatio);
+    }
+  };
+
+  // AI Video generation (2-step: generate image, then animate with Kling)
+  const handleGenerateVideo = async () => {
+    if (!videoPrompt.trim()) {
+      toast({
+        title: "Prompt Required",
+        description: "Please enter a description for your video.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setVideoGenerationStep("generating-image");
+      setGeneratedVideo(null);
+
+      // Step 1: Generate an AI image from the prompt
+      const imageResponse = await apiRequest("POST", "/api/images/generate", {
+        prompt: videoPrompt,
+        aspectRatio: videoAspectRatio,
+        style: "photorealistic",
+      });
+      const imageData = await imageResponse.json();
+      
+      if (!imageData.imageUrl) {
+        throw new Error("Failed to generate image for video");
+      }
+
+      setVideoGenerationStep("generating-video");
+
+      // Step 2: Generate motion video from the image using Kling
+      const videoResponse = await apiRequest("POST", "/api/kling/generate-motion", {
+        imageUrl: imageData.imageUrl,
+        prompt: videoPrompt,
+        duration: videoDuration,
+        aspectRatio: videoAspectRatio === "9:16" ? "9:16" : "16:9",
+      });
+      const videoData = await videoResponse.json();
+
+      if (!videoData.videoUrl) {
+        throw new Error("Video is being generated. Check back in a few minutes.");
+      }
+
+      setGeneratedVideo(videoData.videoUrl);
+      setPreviewImage(videoData.videoUrl);
+      setVideoGenerationStep("done");
+      
+      toast({
+        title: "Video Generated!",
+        description: "Your AI video is ready. Click Confirm to attach it.",
+      });
+    } catch (error: any) {
+      setVideoGenerationStep("idle");
+      toast({
+        title: "Video Generation Failed",
+        description: error.message || "Failed to generate video. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -329,22 +397,28 @@ export function ImagePicker({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="ai" data-testid="tab-ai-generate">
-            <Wand2 className="h-4 w-4 mr-2" />
-            AI Generate
+            <Wand2 className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">AI Image</span>
+            <span className="sm:hidden">Image</span>
+          </TabsTrigger>
+          <TabsTrigger value="video" data-testid="tab-ai-video">
+            <Video className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">AI Video</span>
+            <span className="sm:hidden">Video</span>
           </TabsTrigger>
           <TabsTrigger value="stock" data-testid="tab-stock-images">
-            <Search className="h-4 w-4 mr-2" />
+            <Search className="h-4 w-4 mr-1" />
             Stock
           </TabsTrigger>
           <TabsTrigger value="upload" data-testid="tab-upload">
-            <Upload className="h-4 w-4 mr-2" />
+            <Upload className="h-4 w-4 mr-1" />
             Upload
           </TabsTrigger>
           <TabsTrigger value="mls" data-testid="tab-mls-photos">
-            <Home className="h-4 w-4 mr-2" />
-            MLS Photos
+            <Home className="h-4 w-4 mr-1" />
+            MLS
           </TabsTrigger>
         </TabsList>
 
@@ -514,6 +588,107 @@ export function ImagePicker({
                     <FolderPlus className="h-4 w-4 mr-2" />
                   )}
                   Save to Library
+                </Button>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* AI Video Tab */}
+        <TabsContent value="video" className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <Label htmlFor="video-prompt">Video Description</Label>
+            <Textarea
+              id="video-prompt"
+              value={videoPrompt}
+              onChange={(e) => setVideoPrompt(e.target.value)}
+              placeholder="Describe the video you want to generate... e.g., 'Aerial view of luxury home with pool surrounded by trees'"
+              rows={3}
+              data-testid="textarea-video-prompt"
+            />
+            <p className="text-xs text-muted-foreground">
+              We'll create an AI image from your description and animate it into a short video.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Aspect Ratio</Label>
+              <Select value={videoAspectRatio} onValueChange={setVideoAspectRatio}>
+                <SelectTrigger data-testid="select-video-aspect-ratio">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="16:9">Landscape (16:9)</SelectItem>
+                  <SelectItem value="9:16">Portrait (9:16)</SelectItem>
+                  <SelectItem value="1:1">Square (1:1)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Duration</Label>
+              <Select value={videoDuration} onValueChange={(v) => setVideoDuration(v as "5" | "10")}>
+                <SelectTrigger data-testid="select-video-duration">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5 seconds</SelectItem>
+                  <SelectItem value="10">10 seconds</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleGenerateVideo}
+            disabled={videoGenerationStep !== "idle" && videoGenerationStep !== "done"}
+            className="w-full"
+            data-testid="button-generate-video"
+          >
+            {videoGenerationStep === "generating-image" ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Creating image...
+              </>
+            ) : videoGenerationStep === "generating-video" ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Animating video...
+              </>
+            ) : (
+              <>
+                <Video className="h-4 w-4 mr-2" />
+                Generate Video
+              </>
+            )}
+          </Button>
+
+          {generatedVideo && (
+            <div className="space-y-3">
+              <Label>Generated Video</Label>
+              <div className="relative max-w-md mx-auto rounded-lg overflow-hidden border">
+                <video
+                  src={generatedVideo}
+                  controls
+                  className="w-full"
+                  data-testid="generated-video-preview"
+                />
+              </div>
+              <div className="flex gap-2 justify-center max-w-md mx-auto">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setPreviewImage(generatedVideo);
+                    toast({
+                      title: "Video Selected",
+                      description: "Click Confirm above to attach the video to your post.",
+                    });
+                  }}
+                  data-testid="button-select-video"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  Select Video
                 </Button>
               </div>
             </div>
