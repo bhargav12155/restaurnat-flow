@@ -1,0 +1,70 @@
+
+My Apps
+Required actions
+Docs
+Tools
+Support
+Search input
+​
+Search...
+Facebook
+Requests
+View details
+App review details
+Your request results for January 1, 2026 at 14:54 CST
+Review feedback
+Approved:
+public_profile
+Rejected:
+Business Asset User Profile Access, instagram_business_basic, instagram_content_publish, instagram_basic
+​
+Business Asset User Profile Access
+Disallowed Use Case Details
+Developer Policy 1.6 - Build a Trustworthy Product
+We have determined that your app's use case for the requested permission or feature is invalid or is not needed to support its core functionality.
+Your app should only request a permission or feature that helps enhance and build a solid user experience for your business and the end user. Please resolve this issue by removing or revising your app content before re-submitting for review.
+If you believe your use case is valid, please re-request the permission or feature you need and include notes in your submission that explains the following items:
+Which functionality of your app requires the permission or feature;
+How will the permission or feature to enhance your app's functionality and how the integration functions; and
+How will the permission or feature enhance end user's experience.
+For more information, you can also view our App Review introduction video, Permissions and Feature reference for allowed usage, and Common rejection guidelines.
+​
+instagram_business_basic
+Screencast Not Aligned with Use Case Details
+Developer Policy 1.6 - Build a Trustworthy Product
+We have determined that your apps' use case is allowed, however, the submitted screencast fails to demonstrate the end-to-end experience of the use case described in the submission notes, hence the requested permission/feature is rejected.
+Please resolve this issue by sharing a new screencast that contains the end-to-end experience of the use case when you re-submit for App Review, including:
+The complete Meta login flow;
+A user granting app access to the permission/feature;
+The end-to-end experience of the use case for the requested permission/feature;
+Follow the best practices shared in the Screen Recording Guide, including: use English as the app UI language, provide captions and tool-tips, and explain the meaning of buttons and other UI elements; and
+If your app is a server-to-server app OR your app is using system user token to access Meta API, please indicate it in your next submission so that we're aware that frontend Meta login authentication flow is not visible.
+For more information, you can also view our App Review introduction video, and Permissions and Feature Reference for allowed usage, and Common rejection guidelines.
+​
+instagram_content_publish
+Screencast Not Aligned with Use Case Details
+Developer Policy 1.6 - Build a Trustworthy Product
+We have determined that your apps' use case is allowed, however, the submitted screencast fails to demonstrate the end-to-end experience of the use case described in the submission notes, hence the requested permission/feature is rejected.
+Please resolve this issue by sharing a new screencast that contains the end-to-end experience of the use case when you re-submit for App Review, including:
+The complete Meta login flow;
+A user granting app access to the permission/feature;
+The end-to-end experience of the use case for the requested permission/feature;
+Follow the best practices shared in the Screen Recording Guide, including: use English as the app UI language, provide captions and tool-tips, and explain the meaning of buttons and other UI elements; and
+If your app is a server-to-server app OR your app is using system user token to access Meta API, please indicate it in your next submission so that we're aware that frontend Meta login authentication flow is not visible.
+For more information, you can also view our App Review introduction video, and Permissions and Feature Reference for allowed usage, and Common rejection guidelines.
+​
+instagram_basic
+Screencast Not Aligned with Use Case Details
+Developer Policy 1.6 - Build a Trustworthy Product
+We have determined that your apps' use case is allowed, however, the submitted screencast fails to demonstrate the end-to-end experience of the use case described in the submission notes, hence the requested permission/feature is rejected.
+Please resolve this issue by sharing a new screencast that contains the end-to-end experience of the use case when you re-submit for App Review, including:
+The complete Meta login flow;
+A user granting app access to the permission/feature;
+The end-to-end experience of the use case for the requested permission/feature;
+Follow the best practices shared in the Screen Recording Guide, including: use English as the app UI language, provide captions and tool-tips, and explain the meaning of buttons and other UI elements; and
+If your app is a server-to-server app OR your app is using system user token to access Meta API, please indicate it in your next submission so that we're aware that frontend Meta login authentication flow is not visible.
+For more information, you can also view our App Review introduction video, and Permissions and Feature Reference for allowed usage, and Common rejection guidelines.
+Submission details
+Permission usage
+Data handling
+Website
