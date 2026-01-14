@@ -938,11 +938,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Upload reference image for AI generation
+  app.post("/api/upload-reference", requireAuth, memoryImageUpload.single("file"), async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+
+      console.log(`📤 Reference image upload for user ${userId}: ${req.file.originalname}`);
+
+      // Use S3 with presigned URL so external services (OpenAI Vision) can access
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+      
+      const timestamp = Date.now();
+      const ext = req.file.originalname?.split('.').pop() || 'jpg';
+      const filename = `reference-${userId}-${timestamp}.${ext}`;
+      const s3Key = `reference-images/${userId}/${filename}`;
+      
+      // Upload with presigned URL (valid for 1 hour) so OpenAI can access it
+      const url = await s3Service.uploadBuffer(
+        req.file.buffer, 
+        s3Key, 
+        req.file.mimetype || "image/jpeg",
+        true, // return presigned URL
+        3600 // 1 hour expiration
+      );
+
+      if (!url) {
+        return res.status(500).json({ error: "Failed to save reference image" });
+      }
+
+      console.log(`✅ Reference image saved to S3: ${url.substring(0, 80)}...`);
+      res.json({ url });
+    } catch (error) {
+      console.error("Reference image upload error:", error);
+      res.status(500).json({ error: "Failed to upload reference image" });
+    }
+  });
+
   // AI Image Generation endpoint
   app.post("/api/images/generate", requireAuth, async (req, res) => {
     try {
       const userId = String(req.user!.id);
-      const { prompt, aspectRatio = "1:1", style = "photorealistic", logoOption } = req.body;
+      const { prompt, aspectRatio = "1:1", style = "photorealistic", logoOption, referenceImageUrl } = req.body;
 
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
@@ -959,7 +999,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const size = sizeMap[aspectRatio] || "1024x1024";
 
       // Build enhanced real estate prompt
-      const enhancedPrompt = `Professional real estate photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
+      let enhancedPrompt = `Professional real estate photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
+      
+      // If a reference image is provided, analyze it with GPT-4 Vision and incorporate the description
+      if (referenceImageUrl) {
+        try {
+          console.log(`📷 Analyzing reference image for generation guidance...`);
+          const referenceDescription = await openaiService.analyzeImage(referenceImageUrl, 
+            "Describe this image's visual style, composition, colors, and key elements. Be concise but detailed about the aesthetic qualities."
+          );
+          if (referenceDescription) {
+            enhancedPrompt = `Create an image inspired by this reference style: ${referenceDescription}. Applied to: ${prompt}. High quality, ${style} style, suitable for social media marketing.`;
+            console.log(`✅ Reference analyzed, enhanced prompt created`);
+          }
+        } catch (refError) {
+          console.error("Reference image analysis failed, using original prompt:", refError);
+        }
+      }
 
       // Use the existing openaiService to get the best API key
       let imageUrl = await openaiService.generateImage({
