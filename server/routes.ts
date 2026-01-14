@@ -33,7 +33,7 @@ import { HeyGenVideoAvatarService } from "./services/heygen-video-avatar";
 import { VideoStudioService } from "./services/video-studio";
 import { IDXService } from "./services/idx";
 import { MLSService } from "./services/mls";
-import { getAPIKeyStatus, openaiService } from "./services/openai";
+import { getAPIKeyStatus, openaiService, multiOpenAI } from "./services/openai";
 import { S3UploadService } from "./services/s3Upload";
 import { seoService } from "./services/seo";
 
@@ -795,6 +795,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Dashboard overview error:", error);
       res.status(500).json({ error: "Failed to fetch dashboard overview" });
+    }
+  });
+
+  // AI Assistant Chat endpoint
+  app.post("/api/ai/chat", requireAuth, async (req, res) => {
+    try {
+      const { message, conversationHistory = [] } = req.body;
+      
+      if (!message || typeof message !== "string") {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      const userId = req.user?.id;
+      let companyProfile = null;
+      if (userId) {
+        companyProfile = await storage.getCompanyProfile(userId);
+      }
+
+      // Build context from conversation history
+      const messages = [
+        {
+          role: "system" as const,
+          content: `You are a helpful AI assistant for real estate professionals in the Omaha, Nebraska area. 
+You help with:
+- Creating social media posts and marketing content
+- Writing blog articles and property descriptions
+- Answering real estate marketing questions
+- Providing market insights and advice
+- Generating image and video ideas
+
+${companyProfile ? `The user works for ${companyProfile.companyName || "a real estate company"} with tagline: "${companyProfile.tagline || ""}"` : ""}
+
+Be professional, helpful, and focused on real estate marketing. Keep responses concise but informative.`
+        },
+        ...conversationHistory.map((msg: { role: string; content: string }) => ({
+          role: msg.role as "user" | "assistant",
+          content: msg.content
+        })),
+        { role: "user" as const, content: message }
+      ];
+
+      // Use OpenAI for chat
+      const response = await multiOpenAI.makeRequest("content", async (client) => {
+        return await client.chat.completions.create({
+          model: "gpt-4o",
+          messages,
+          max_completion_tokens: 1000,
+        });
+      });
+
+      const assistantMessage = response.choices[0]?.message?.content || "I apologize, but I couldn't generate a response. Please try again.";
+
+      res.json({ 
+        message: assistantMessage,
+        role: "assistant"
+      });
+    } catch (error) {
+      console.error("AI chat error:", error);
+      res.status(500).json({ error: "Failed to process your request. Please try again." });
     }
   });
 
