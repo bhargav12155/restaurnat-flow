@@ -9415,14 +9415,29 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       }
 
       console.log(`📤 Avatar IV upload for user ${userId}`);
-      console.log(`📤 File: ${req.file.originalname}, ${req.file.size} bytes`);
+      console.log(`📤 File: ${req.file.originalname}, ${req.file.size} bytes, ${req.file.mimetype}`);
+
+      // Convert unsupported formats (WebP, HEIC, etc.) to JPEG for HeyGen
+      let imageBuffer = req.file.buffer;
+      let contentType = req.file.mimetype || "image/jpeg";
+      
+      const unsupportedFormats = ["image/webp", "image/heic", "image/heif", "image/avif"];
+      if (unsupportedFormats.includes(contentType.toLowerCase())) {
+        console.log(`🔄 Converting ${contentType} to JPEG for HeyGen compatibility...`);
+        const sharp = (await import("sharp")).default;
+        imageBuffer = await sharp(req.file.buffer)
+          .jpeg({ quality: 95 })
+          .toBuffer();
+        contentType = "image/jpeg";
+        console.log(`✅ Converted to JPEG: ${imageBuffer.length} bytes`);
+      }
 
       const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
       const avatarIVService = new HeyGenAvatarIVService();
 
       const uploadResult = await avatarIVService.uploadPhoto(
-        req.file.buffer,
-        req.file.mimetype || "image/jpeg"
+        imageBuffer,
+        contentType
       );
 
       // Save photo to object storage as backup
