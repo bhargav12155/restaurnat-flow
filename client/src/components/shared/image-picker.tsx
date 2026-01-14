@@ -91,6 +91,8 @@ export function ImagePicker({
   const [style, setStyle] = useState("photorealistic");
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [logoOption, setLogoOption] = useState<"none" | "primary" | "broker" | "both">("none");
+  const [imageReferenceUrl, setImageReferenceUrl] = useState<string | null>(null);
+  const [imageReferenceUploading, setImageReferenceUploading] = useState(false);
 
   // AI Video state
   const [videoPrompt, setVideoPrompt] = useState("");
@@ -98,6 +100,8 @@ export function ImagePicker({
   const [videoDuration, setVideoDuration] = useState<"5" | "10">("5");
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
   const [videoGenerationStep, setVideoGenerationStep] = useState<"idle" | "generating-image" | "generating-video" | "done">("idle");
+  const [videoReferenceUrl, setVideoReferenceUrl] = useState<string | null>(null);
+  const [videoReferenceUploading, setVideoReferenceUploading] = useState(false);
 
   // Stock Images state
   const [stockQuery, setStockQuery] = useState("real estate");
@@ -178,7 +182,8 @@ export function ImagePicker({
       prompt: aiPrompt, 
       aspectRatio, 
       style, 
-      logoOption: logoOption !== "none" ? logoOption : undefined 
+      logoOption: logoOption !== "none" ? logoOption : undefined,
+      referenceImageUrl: imageReferenceUrl || undefined,
     });
   };
 
@@ -186,6 +191,43 @@ export function ImagePicker({
     setAiPrompt(template.prompt);
     if (template.suggestedAspectRatio) {
       setAspectRatio(template.suggestedAspectRatio);
+    }
+  };
+
+  const handleReferenceImageUpload = async (file: File, type: "image" | "video") => {
+    const setUploading = type === "image" ? setImageReferenceUploading : setVideoReferenceUploading;
+    const setUrl = type === "image" ? setImageReferenceUrl : setVideoReferenceUrl;
+    
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      const response = await fetch("/api/upload-reference", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Upload failed");
+      }
+      
+      const data = await response.json();
+      setUrl(data.url);
+      toast({
+        title: "Reference Image Uploaded",
+        description: "Your reference image will guide the AI generation.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Upload Failed",
+        description: error.message || "Could not upload reference image. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -209,6 +251,7 @@ export function ImagePicker({
         prompt: videoPrompt,
         aspectRatio: videoAspectRatio,
         style: "photorealistic",
+        referenceImageUrl: videoReferenceUrl || undefined,
       });
       const imageData = await imageResponse.json();
       
@@ -483,6 +526,59 @@ export function ImagePicker({
             )}
           </div>
 
+          {/* Reference Image Upload */}
+          <div className="space-y-2">
+            <Label>Reference Image (Optional)</Label>
+            {imageReferenceUrl ? (
+              <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30">
+                <div className="w-16 h-16 rounded overflow-hidden flex-shrink-0">
+                  <img src={imageReferenceUrl} alt="Reference" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Reference uploaded</p>
+                  <p className="text-xs text-muted-foreground">AI will use this as inspiration</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setImageReferenceUrl(null)}
+                  data-testid="button-remove-image-reference"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed rounded-lg p-4 text-center">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  id="image-reference-upload"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleReferenceImageUpload(file, "image");
+                    e.target.value = "";
+                  }}
+                  data-testid="input-image-reference"
+                />
+                <label htmlFor="image-reference-upload" className="cursor-pointer">
+                  {imageReferenceUploading ? (
+                    <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Uploading...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                      <Upload className="h-6 w-6" />
+                      <span className="text-sm">Upload reference image</span>
+                      <span className="text-xs">AI will match style/composition</span>
+                    </div>
+                  )}
+                </label>
+              </div>
+            )}
+          </div>
+
           {/* Options Row */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -609,6 +705,59 @@ export function ImagePicker({
             <p className="text-xs text-muted-foreground">
               We'll create an AI image from your description and animate it into a short video.
             </p>
+          </div>
+
+          {/* Reference Image Upload for Video */}
+          <div className="space-y-2">
+            <Label>Reference Image (Optional)</Label>
+            {videoReferenceUrl ? (
+              <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30">
+                <div className="w-16 h-16 rounded overflow-hidden flex-shrink-0">
+                  <img src={videoReferenceUrl} alt="Reference" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">Reference uploaded</p>
+                  <p className="text-xs text-muted-foreground">AI will use this as inspiration</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setVideoReferenceUrl(null)}
+                  data-testid="button-remove-video-reference"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed rounded-lg p-4 text-center">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  id="video-reference-upload"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleReferenceImageUpload(file, "video");
+                    e.target.value = "";
+                  }}
+                  data-testid="input-video-reference"
+                />
+                <label htmlFor="video-reference-upload" className="cursor-pointer">
+                  {videoReferenceUploading ? (
+                    <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Uploading...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                      <Upload className="h-6 w-6" />
+                      <span className="text-sm">Upload reference image</span>
+                      <span className="text-xs">AI will match style/composition</span>
+                    </div>
+                  )}
+                </label>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
