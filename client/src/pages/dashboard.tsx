@@ -1,3 +1,4 @@
+import { AIAssistantDialog, useAIAssistantDialog } from "@/components/dashboard/ai-assistant-dialog";
 import { AIContentGenerator } from "@/components/dashboard/ai-content-generator";
 import { AISearchOptimizer } from "@/components/dashboard/ai-search-optimizer";
 import { APIKeyManager } from "@/components/dashboard/api-key-manager";
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const [showSocialLinksPrompt, setShowSocialLinksPrompt] = useState(false);
   const { user, isAuthenticated } = useAuth();
   const [location] = useLocation();
+  const aiAssistant = useAIAssistantDialog();
 
   // Connect to WebSocket for real-time updates
   const { isConnected, lastMessage } = useWebSocket({
@@ -44,9 +46,7 @@ export default function Dashboard() {
   });
 
   const handleGenerateContent = () => {
-    setIsGenerating(true);
-    // This will be handled by the AI Content Generator component
-    setTimeout(() => setIsGenerating(false), 2000);
+    aiAssistant.openDialog();
   };
 
   // Removed legacy social media setup modal - now using OAuth-only flow
@@ -160,18 +160,13 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
               <Button
                 onClick={handleGenerateContent}
-                disabled={isGenerating}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
                 size="sm"
-                aria-label={
-                  isGenerating ? "Generating content..." : "Generate content"
-                }
+                aria-label="Generate content"
                 data-testid="button-generate-content"
               >
                 <Sparkles className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">
-                  {isGenerating ? "Generating..." : "Generate Content"}
-                </span>
+                <span className="hidden sm:inline">Generate Content</span>
               </Button>
               <NotificationPanel
                 userId={user?.id?.toString()}
@@ -201,19 +196,11 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Loading Overlay */}
-      {isGenerating && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-card p-6 rounded-lg border border-border shadow-lg">
-            <div className="flex items-center space-x-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-              <span className="text-foreground font-medium">
-                Generating AI content...
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* AI Assistant Dialog */}
+      <AIAssistantDialog
+        open={aiAssistant.open}
+        onOpenChange={aiAssistant.setOpen}
+      />
     </div>
   );
 }
