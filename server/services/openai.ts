@@ -1246,6 +1246,34 @@ Ready to make your move in ${
     }
   }
 
+  async analyzeImage(imageUrl: string, prompt: string): Promise<string | null> {
+    try {
+      const response = await multiOpenAI.makeRequest(
+        "vision",
+        async (client) => {
+          return await client.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: prompt },
+                  { type: "image_url", image_url: { url: imageUrl } },
+                ],
+              },
+            ],
+            max_completion_tokens: 300,
+          });
+        }
+      );
+
+      return response.choices[0]?.message?.content || null;
+    } catch (error) {
+      console.error("OpenAI image analysis error:", error);
+      return null;
+    }
+  }
+
   async enhanceContent({
     originalContent,
     customPrompt,
