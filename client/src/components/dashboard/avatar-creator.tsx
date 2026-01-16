@@ -377,6 +377,67 @@ export function AvatarCreator() {
   };
 
   // Voice recording functions
+  const getRecordingErrorMessage = (error: any): { title: string; description: string } => {
+    const errorName = error?.name || "";
+    const errorMessage = error?.message || "";
+    
+    console.error("Recording error details:", {
+      name: errorName,
+      message: errorMessage,
+      toString: error?.toString?.() || "N/A"
+    });
+
+    switch (errorName) {
+      case "NotAllowedError":
+        return {
+          title: "Microphone Access Denied",
+          description: "Please allow microphone access: Click the lock/info icon in your browser's address bar, find 'Microphone', set it to 'Allow', then refresh the page."
+        };
+      case "NotFoundError":
+        return {
+          title: "No Microphone Found",
+          description: "No microphone was detected. Please connect a microphone and try again."
+        };
+      case "NotReadableError":
+        return {
+          title: "Microphone In Use",
+          description: "Your microphone may be in use by another application. Close other apps using the mic and try again."
+        };
+      case "OverconstrainedError":
+        return {
+          title: "Microphone Error",
+          description: "The microphone settings are not supported. Try using a different microphone."
+        };
+      case "SecurityError":
+        return {
+          title: "Security Error",
+          description: "Microphone access is blocked due to security settings. Make sure you're using HTTPS."
+        };
+      case "AbortError":
+        return {
+          title: "Recording Aborted",
+          description: "The recording was aborted. Please try again."
+        };
+      default:
+        return {
+          title: "Recording Failed",
+          description: errorMessage || `Could not access microphone (${errorName || "unknown error"}). Make sure you've granted microphone permission.`
+        };
+    }
+  };
+
+  const checkMicrophonePermission = async (): Promise<"granted" | "denied" | "prompt" | "unsupported"> => {
+    try {
+      if (!navigator.permissions || !navigator.permissions.query) {
+        return "unsupported";
+      }
+      const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
+      return result.state as "granted" | "denied" | "prompt";
+    } catch {
+      return "unsupported";
+    }
+  };
+
   const requestMicrophonePermission = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -403,12 +464,13 @@ export function AvatarCreator() {
       };
       
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Microphone permission denied:', error);
       setMicrophonePermission('denied');
+      const { title, description } = getRecordingErrorMessage(error);
       toast({
-        title: "Microphone Access Denied",
-        description: "Please allow microphone access to record your voice for the avatar.",
+        title,
+        description,
         variant: "destructive",
       });
       return false;
@@ -416,6 +478,18 @@ export function AvatarCreator() {
   };
 
   const startRecording = async () => {
+    const permissionStatus = await checkMicrophonePermission();
+    console.log("Microphone permission status:", permissionStatus);
+    
+    if (permissionStatus === "denied") {
+      toast({
+        title: "Microphone Access Blocked",
+        description: "Microphone permission is blocked. Click the lock/info icon in your browser's address bar, find 'Microphone', set it to 'Allow', then refresh the page.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (microphonePermission !== 'granted') {
       const hasPermission = await requestMicrophonePermission();
       if (!hasPermission) return;
@@ -473,10 +547,11 @@ export function AvatarCreator() {
           title: "Recording Started",
           description: "Speak for 15-30 seconds for best results. Click stop when finished.",
         });
-      } catch (error) {
+      } catch (error: any) {
+        const { title, description } = getRecordingErrorMessage(error);
         toast({
-          title: "Recording Failed",
-          description: "Could not start recording. Please check your microphone.",
+          title,
+          description,
           variant: "destructive",
         });
       }
