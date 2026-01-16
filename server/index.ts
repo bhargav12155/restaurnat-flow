@@ -51,9 +51,12 @@ app.use(
   })
 );
 
-// Allow iframe embedding
+// Allow iframe embedding and microphone access
 app.use((req, res, next) => {
   res.setHeader("Content-Security-Policy", "frame-ancestors *");
+  // Allow microphone and camera access for audio/video recording features
+  // Correct syntax: feature=(allowlist) where * means all origins
+  res.setHeader("Permissions-Policy", "microphone=(*), camera=(*)");
   next();
 });
 
