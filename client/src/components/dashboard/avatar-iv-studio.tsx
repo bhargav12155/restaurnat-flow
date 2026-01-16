@@ -347,8 +347,81 @@ export function AvatarIVStudio() {
     return "";
   };
 
+  const getRecordingErrorMessage = (error: any): { title: string; description: string } => {
+    const errorName = error?.name || "";
+    const errorMessage = error?.message || "";
+    
+    console.error("Recording error details:", {
+      name: errorName,
+      message: errorMessage,
+      toString: error?.toString?.() || "N/A"
+    });
+
+    switch (errorName) {
+      case "NotAllowedError":
+        return {
+          title: "Microphone Access Denied",
+          description: "Please allow microphone access: Click the lock/info icon in your browser's address bar, find 'Microphone', set it to 'Allow', then refresh the page."
+        };
+      case "NotFoundError":
+        return {
+          title: "No Microphone Found",
+          description: "No microphone was detected. Please connect a microphone and try again."
+        };
+      case "NotReadableError":
+        return {
+          title: "Microphone In Use",
+          description: "Your microphone may be in use by another application. Close other apps using the mic and try again."
+        };
+      case "OverconstrainedError":
+        return {
+          title: "Microphone Error",
+          description: "The microphone settings are not supported. Try using a different microphone."
+        };
+      case "SecurityError":
+        return {
+          title: "Security Error",
+          description: "Microphone access is blocked due to security settings. Make sure you're using HTTPS."
+        };
+      case "AbortError":
+        return {
+          title: "Recording Aborted",
+          description: "The recording was aborted. Please try again."
+        };
+      default:
+        return {
+          title: "Recording Failed",
+          description: errorMessage || `Could not access microphone (${errorName || "unknown error"}). Make sure you've granted microphone permission.`
+        };
+    }
+  };
+
+  const checkMicrophonePermission = async (): Promise<"granted" | "denied" | "prompt" | "unsupported"> => {
+    try {
+      if (!navigator.permissions || !navigator.permissions.query) {
+        return "unsupported";
+      }
+      const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
+      return result.state as "granted" | "denied" | "prompt";
+    } catch {
+      return "unsupported";
+    }
+  };
+
   const startRecording = async () => {
     try {
+      const permissionStatus = await checkMicrophonePermission();
+      console.log("Microphone permission status:", permissionStatus);
+      
+      if (permissionStatus === "denied") {
+        toast({
+          title: "Microphone Access Blocked",
+          description: "Microphone permission is blocked. Click the lock/info icon in your browser's address bar, find 'Microphone', set it to 'Allow', then refresh the page.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = getSupportedMimeType();
       console.log("Using audio format:", mimeType || "browser default");
@@ -379,10 +452,10 @@ export function AvatarIVStudio() {
         description: "Speak now. Click stop when finished.",
       });
     } catch (error: any) {
-      console.error("Recording error:", error);
+      const { title, description } = getRecordingErrorMessage(error);
       toast({
-        title: "Recording Failed",
-        description: error?.message || "Could not access microphone. Make sure you're using HTTPS and have granted microphone permission.",
+        title,
+        description,
         variant: "destructive",
       });
     }
