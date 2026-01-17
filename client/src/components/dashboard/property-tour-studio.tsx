@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { PropertySelector, Property } from "./property-selector";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -29,7 +30,10 @@ import {
   Trees,
   Palette,
   Download,
+  Library,
+  Share2,
 } from "lucide-react";
+import { SiFacebook, SiInstagram, SiLinkedin, SiX, SiYoutube, SiTiktok } from "react-icons/si";
 
 interface AvatarPhoto {
   id: string;
@@ -173,6 +177,23 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
   const [motionVideos, setMotionVideos] = useState<string[]>([]);
   const [avatarVideoUrl, setAvatarVideoUrl] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [savedToLibrary, setSavedToLibrary] = useState<boolean>(false);
+  const [savedVideos, setSavedVideos] = useState<{ url: string; id: string; title: string }[]>([]);
+  const [showShareDialog, setShowShareDialog] = useState<boolean>(false);
+  const [selectedVideoForShare, setSelectedVideoForShare] = useState<string>("");
+  const [shareContent, setShareContent] = useState<string>("");
+  const [selectedPlatform, setSelectedPlatform] = useState<string>("");
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState<boolean>(false);
+  const [isPosting, setIsPosting] = useState<boolean>(false);
+
+  const SOCIAL_PLATFORMS = [
+    { value: "facebook", label: "Facebook", icon: SiFacebook },
+    { value: "instagram", label: "Instagram", icon: SiInstagram },
+    { value: "linkedin", label: "LinkedIn", icon: SiLinkedin },
+    { value: "x", label: "X (Twitter)", icon: SiX },
+    { value: "youtube", label: "YouTube", icon: SiYoutube },
+    { value: "tiktok", label: "TikTok", icon: SiTiktok },
+  ];
 
   const pollJobStatus = useCallback(async (jobId: string) => {
     try {
@@ -298,6 +319,127 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
       });
     }
   }, [selectedProperty, selectedAvatar, generatedScript, selectedPhotos, backgroundType, includeBranding, toast, pollJobStatus, avatarsData]);
+
+  const handleSaveToLibrary = useCallback(async () => {
+    if (!currentJobId || !selectedProperty) return;
+    
+    setIsSavingToLibrary(true);
+    try {
+      const response = await fetch("/api/property-tour/save-to-library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          jobId: currentJobId,
+          address: `${selectedProperty.address}, ${selectedProperty.city}`,
+          script: generatedScript,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save to library");
+      }
+
+      const data = await response.json();
+      setSavedVideos(data.savedVideos || []);
+      setSavedToLibrary(true);
+      toast({
+        title: "Saved to Library",
+        description: `${data.savedVideos?.length || 0} videos saved to your library.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Save Failed",
+        description: error.message || "Failed to save videos to library",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingToLibrary(false);
+    }
+  }, [currentJobId, selectedProperty, generatedScript, toast]);
+
+  const handleOpenShareDialog = useCallback(() => {
+    if (!selectedProperty) return;
+    
+    const defaultContent = `🏠 Just listed! Beautiful property at ${selectedProperty.address}, ${selectedProperty.city}, ${selectedProperty.state}. Listed at $${selectedProperty.listPrice.toLocaleString()}. Check out this virtual tour! #RealEstate #PropertyTour #NewListing`;
+    setShareContent(defaultContent);
+    
+    const defaultVideo = avatarVideoUrl || (motionVideos.length > 0 ? motionVideos[0] : "");
+    setSelectedVideoForShare(defaultVideo);
+    setSelectedPlatform("");
+    setShowShareDialog(true);
+  }, [selectedProperty, avatarVideoUrl, motionVideos]);
+
+  const handleShareToSocial = useCallback(async () => {
+    if (!selectedPlatform || !selectedVideoForShare || !shareContent) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a platform, video, and add content text.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!savedToLibrary || savedVideos.length === 0) {
+      toast({
+        title: "Save to Library First",
+        description: "Please save videos to your library before sharing to social media.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const selectedVideo = savedVideos.find(v => v.url === selectedVideoForShare);
+    if (!selectedVideo) {
+      toast({
+        title: "Error",
+        description: "Selected video not found. Please save videos first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsPosting(true);
+    try {
+      const response = await apiRequest("POST", "/api/social/post", {
+        platform: selectedPlatform,
+        content: shareContent,
+        mediaType: "video",
+        mediaId: selectedVideo.id,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to share to social media");
+      }
+
+      toast({
+        title: "Shared Successfully",
+        description: `Your property tour video has been shared to ${selectedPlatform}.`,
+      });
+      setShowShareDialog(false);
+    } catch (error: any) {
+      toast({
+        title: "Share Failed",
+        description: error.message || "Failed to share to social media",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPosting(false);
+    }
+  }, [selectedPlatform, selectedVideoForShare, shareContent, savedToLibrary, savedVideos, toast]);
+
+  const getVideoOptions = useCallback(() => {
+    const options: { value: string; label: string }[] = [];
+    if (avatarVideoUrl) {
+      options.push({ value: avatarVideoUrl, label: "Avatar Narration" });
+    }
+    motionVideos.forEach((url, index) => {
+      options.push({ value: url, label: `Motion Clip ${index + 1}` });
+    });
+    return options;
+  }, [avatarVideoUrl, motionVideos]);
 
   const canProceedToStep = (step: number): boolean => {
     switch (step) {
@@ -676,7 +818,32 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                   </div>
                 )}
                 
-                <div className="flex gap-3 justify-center pt-2">
+                <div className="flex flex-wrap gap-3 justify-center pt-2">
+                  <Button
+                    variant="default"
+                    className="gap-2"
+                    onClick={handleSaveToLibrary}
+                    disabled={savedToLibrary || isSavingToLibrary}
+                    data-testid="save-to-library-btn"
+                  >
+                    {isSavingToLibrary ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : savedToLibrary ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Library className="h-4 w-4" />
+                    )}
+                    {savedToLibrary ? "Saved to Library" : "Save to Library"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="gap-2"
+                    onClick={handleOpenShareDialog}
+                    data-testid="share-to-social-btn"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share to Social Media
+                  </Button>
                   <Button
                     variant="outline"
                     className="gap-2"
@@ -685,6 +852,8 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                       setGeneratedVideoUrl(null);
                       setMotionVideos([]);
                       setAvatarVideoUrl(null);
+                      setSavedToLibrary(false);
+                      setSavedVideos([]);
                       setCurrentStep(1);
                     }}
                     data-testid="create-another-btn"
@@ -738,6 +907,102 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
           )}
         </div>
       </CardContent>
+
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent className="sm:max-w-[500px]" data-testid="share-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="h-5 w-5" />
+              Share to Social Media
+            </DialogTitle>
+            <DialogDescription>
+              Share your property tour video to social media platforms.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {!savedToLibrary && (
+              <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-sm">
+                <p className="text-yellow-600 dark:text-yellow-400">
+                  Please save videos to your library first before sharing to social media.
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="platform-select">Platform</Label>
+              <Select value={selectedPlatform} onValueChange={setSelectedPlatform}>
+                <SelectTrigger id="platform-select" data-testid="share-platform-select">
+                  <SelectValue placeholder="Select a platform" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOCIAL_PLATFORMS.map((platform) => (
+                    <SelectItem key={platform.value} value={platform.value}>
+                      <div className="flex items-center gap-2">
+                        <platform.icon className="h-4 w-4" />
+                        {platform.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video-select">Video to Share</Label>
+              <Select value={selectedVideoForShare} onValueChange={setSelectedVideoForShare}>
+                <SelectTrigger id="video-select" data-testid="share-video-select">
+                  <SelectValue placeholder="Select a video" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getVideoOptions().map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="share-content">Post Content</Label>
+              <Textarea
+                id="share-content"
+                value={shareContent}
+                onChange={(e) => setShareContent(e.target.value)}
+                className="min-h-[120px]"
+                placeholder="Write your post content..."
+                data-testid="share-content-textarea"
+              />
+              <p className="text-xs text-muted-foreground">
+                {shareContent.length} characters
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowShareDialog(false)}
+              data-testid="share-cancel-btn"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleShareToSocial}
+              disabled={isPosting || !savedToLibrary || !selectedPlatform}
+              data-testid="share-post-btn"
+            >
+              {isPosting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Share2 className="h-4 w-4 mr-2" />
+              )}
+              {isPosting ? "Posting..." : "Post"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
