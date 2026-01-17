@@ -15318,12 +15318,15 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     message: string;
     photos: string[];
     avatarId: string;
+    avatarImageKey?: string;
     script: string;
     backgroundType: string;
     includeBranding: boolean;
     property: any;
     klingTaskIds: string[];
     motionVideos: string[];
+    avatarVideoId?: string;
+    avatarVideoUrl?: string;
     finalVideoUrl?: string;
     error?: string;
     createdAt: Date;
@@ -15338,13 +15341,14 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       job.message = "Starting Ken Burns motion generation...";
       
       const { KlingService } = await import("./services/kling");
+      const { VideoStudioService } = await import("./services/video-studio");
       const klingService = new KlingService();
       
       const photosToProcess = job.photos.slice(0, 5);
       
       for (let i = 0; i < photosToProcess.length; i++) {
         const photoUrl = photosToProcess[i];
-        job.progress = Math.round(((i + 1) / photosToProcess.length) * 80);
+        job.progress = Math.round(((i + 1) / photosToProcess.length) * 60);
         job.message = `Generating motion for photo ${i + 1} of ${photosToProcess.length}...`;
         
         console.log(`🎬 [PropertyTour] Generating motion for photo ${i + 1}: ${photoUrl.substring(0, 50)}...`);
@@ -15373,10 +15377,57 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         }
       }
       
+      if (job.motionVideos.length > 0 && job.avatarImageKey) {
+        job.progress = 70;
+        job.message = "Generating avatar narration video...";
+        
+        try {
+          const videoStudio = new VideoStudioService();
+          const videoResult = await videoStudio.generateVideo({
+            avatarId: job.avatarId,
+            imageKey: job.avatarImageKey,
+            script: job.script,
+            title: `Property Tour - ${job.property?.address || "Video"}`,
+            aspectRatio: "16:9",
+          });
+          
+          if (videoResult.id) {
+            job.avatarVideoId = videoResult.id;
+            console.log(`✅ [PropertyTour] Avatar video started: ${videoResult.id}`);
+            
+            job.progress = 80;
+            job.message = "Waiting for avatar video...";
+            
+            const maxWait = 120000;
+            const startTime = Date.now();
+            
+            while (Date.now() - startTime < maxWait) {
+              const status = await videoStudio.getVideoStatus(videoResult.id);
+              
+              if (status.status === "completed" && status.videoUrl) {
+                job.avatarVideoUrl = status.videoUrl;
+                console.log(`✅ [PropertyTour] Avatar video ready: ${status.videoUrl.substring(0, 50)}...`);
+                break;
+              }
+              
+              if (status.status === "failed") {
+                console.error(`❌ [PropertyTour] Avatar video failed:`, status.error);
+                break;
+              }
+              
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+          }
+        } catch (avatarError: any) {
+          console.error(`❌ [PropertyTour] Avatar video error (non-fatal):`, avatarError.message);
+        }
+      }
+      
       if (job.motionVideos.length > 0) {
         job.progress = 100;
         job.status = "completed";
-        job.message = `Generated ${job.motionVideos.length} motion clips successfully`;
+        const avatarStatus = job.avatarVideoUrl ? " + avatar narration" : "";
+        job.message = `Generated ${job.motionVideos.length} motion clips${avatarStatus}`;
         job.finalVideoUrl = job.motionVideos[0];
         console.log(`✅ [PropertyTour] Job ${job.id} completed with ${job.motionVideos.length} videos`);
       } else {
@@ -15401,7 +15452,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const { photos, avatarId, script, backgroundType, includeBranding, property } = req.body;
+      const { photos, avatarId, avatarImageKey, script, backgroundType, includeBranding, property } = req.body;
 
       if (!photos || !Array.isArray(photos) || photos.length === 0) {
         return res.status(400).json({ error: "At least one photo is required" });
@@ -15431,6 +15482,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         message: "Job queued for processing",
         photos,
         avatarId,
+        avatarImageKey: avatarImageKey || undefined,
         script,
         backgroundType: backgroundType || "office",
         includeBranding: includeBranding !== false,
@@ -15477,6 +15529,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         progress: job.progress,
         message: job.message,
         motionVideos: job.motionVideos,
+        avatarVideoUrl: job.avatarVideoUrl,
         finalVideoUrl: job.finalVideoUrl,
         error: job.error,
       });
