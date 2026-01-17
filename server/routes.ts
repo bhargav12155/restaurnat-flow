@@ -15306,6 +15306,213 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // =====================================================
+  // PROPERTY TOUR VIDEO GENERATION
+  // =====================================================
+
+  interface PropertyTourJob {
+    id: string;
+    userId: number;
+    status: "pending" | "processing" | "completed" | "failed";
+    progress: number;
+    message: string;
+    photos: string[];
+    avatarId: string;
+    script: string;
+    backgroundType: string;
+    includeBranding: boolean;
+    property: any;
+    klingTaskIds: string[];
+    motionVideos: string[];
+    finalVideoUrl?: string;
+    error?: string;
+    createdAt: Date;
+  }
+
+  const propertyTourJobs = new Map<string, PropertyTourJob>();
+
+  async function processPropertyTourJob(job: PropertyTourJob) {
+    try {
+      console.log(`🎬 [PropertyTour] Processing job ${job.id}`);
+      job.status = "processing";
+      job.message = "Starting Ken Burns motion generation...";
+      
+      const { KlingService } = await import("./services/kling");
+      const klingService = new KlingService();
+      
+      const photosToProcess = job.photos.slice(0, 5);
+      
+      for (let i = 0; i < photosToProcess.length; i++) {
+        const photoUrl = photosToProcess[i];
+        job.progress = Math.round(((i + 1) / photosToProcess.length) * 80);
+        job.message = `Generating motion for photo ${i + 1} of ${photosToProcess.length}...`;
+        
+        console.log(`🎬 [PropertyTour] Generating motion for photo ${i + 1}: ${photoUrl.substring(0, 50)}...`);
+        
+        const result = await klingService.generateImageToVideo({
+          imageUrl: photoUrl,
+          prompt: "Slow cinematic pan and zoom across this property photo, professional real estate video style, smooth camera movement",
+          duration: "5",
+          mode: "std",
+        });
+        
+        if (result.success && result.taskId) {
+          job.klingTaskIds.push(result.taskId);
+          console.log(`✅ [PropertyTour] Kling task started: ${result.taskId}`);
+          
+          const status = await klingService.waitForCompletion(result.taskId, 120000);
+          
+          if (status.status === "completed" && status.videoUrl) {
+            job.motionVideos.push(status.videoUrl);
+            console.log(`✅ [PropertyTour] Motion video ready: ${status.videoUrl.substring(0, 50)}...`);
+          } else {
+            console.error(`❌ [PropertyTour] Motion generation failed for photo ${i + 1}:`, status.error);
+          }
+        } else {
+          console.error(`❌ [PropertyTour] Failed to start motion for photo ${i + 1}:`, result.error);
+        }
+      }
+      
+      if (job.motionVideos.length > 0) {
+        job.progress = 100;
+        job.status = "completed";
+        job.message = `Generated ${job.motionVideos.length} motion clips successfully`;
+        job.finalVideoUrl = job.motionVideos[0];
+        console.log(`✅ [PropertyTour] Job ${job.id} completed with ${job.motionVideos.length} videos`);
+      } else {
+        job.status = "failed";
+        job.error = "No motion videos could be generated";
+        job.message = "Motion generation failed for all photos";
+        console.error(`❌ [PropertyTour] Job ${job.id} failed - no videos generated`);
+      }
+    } catch (error: any) {
+      console.error(`❌ [PropertyTour] Job ${job.id} error:`, error);
+      job.status = "failed";
+      job.error = error.message;
+      job.message = "An error occurred during video generation";
+    }
+  }
+
+  // POST /api/property-tour/generate - Generate a property tour video
+  app.post("/api/property-tour/generate", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { photos, avatarId, script, backgroundType, includeBranding, property } = req.body;
+
+      if (!photos || !Array.isArray(photos) || photos.length === 0) {
+        return res.status(400).json({ error: "At least one photo is required" });
+      }
+
+      if (!avatarId) {
+        return res.status(400).json({ error: "Avatar selection is required" });
+      }
+
+      if (!script || script.trim() === "") {
+        return res.status(400).json({ error: "Script is required" });
+      }
+
+      console.log("🎬 Property Tour: Starting generation for user", userId);
+      console.log("📸 Photos:", photos.length);
+      console.log("🎭 Avatar ID:", avatarId);
+      console.log("🎨 Background:", backgroundType);
+      console.log("🏷️ Branding:", includeBranding);
+
+      const jobId = `tour-${userId}-${Date.now()}`;
+      
+      const job: PropertyTourJob = {
+        id: jobId,
+        userId: Number(userId),
+        status: "pending",
+        progress: 0,
+        message: "Job queued for processing",
+        photos,
+        avatarId,
+        script,
+        backgroundType: backgroundType || "office",
+        includeBranding: includeBranding !== false,
+        property,
+        klingTaskIds: [],
+        motionVideos: [],
+        createdAt: new Date(),
+      };
+      
+      propertyTourJobs.set(jobId, job);
+      
+      processPropertyTourJob(job).catch(err => {
+        console.error(`❌ [PropertyTour] Background job error:`, err);
+        job.status = "failed";
+        job.error = err.message;
+      });
+      
+      res.json({
+        success: true,
+        jobId,
+        message: "Property tour video generation started",
+        estimatedTime: `${photos.length * 30 + 60} seconds`,
+      });
+
+    } catch (error: any) {
+      console.error("Error starting property tour generation:", error);
+      res.status(500).json({ error: error.message || "Failed to start video generation" });
+    }
+  });
+
+  // GET /api/property-tour/status/:jobId - Check generation status
+  app.get("/api/property-tour/status/:jobId", requireAuth, async (req, res) => {
+    try {
+      const { jobId } = req.params;
+      
+      const job = propertyTourJobs.get(jobId);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      
+      res.json({
+        jobId: job.id,
+        status: job.status,
+        progress: job.progress,
+        message: job.message,
+        motionVideos: job.motionVideos,
+        finalVideoUrl: job.finalVideoUrl,
+        error: job.error,
+      });
+    } catch (error: any) {
+      console.error("Error checking property tour status:", error);
+      res.status(500).json({ error: "Failed to check status" });
+    }
+  });
+
+  // GET /api/property-tour/jobs - Get user's property tour jobs
+  app.get("/api/property-tour/jobs", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      const userJobs = Array.from(propertyTourJobs.values())
+        .filter(job => job.userId === Number(userId))
+        .map(job => ({
+          id: job.id,
+          status: job.status,
+          progress: job.progress,
+          message: job.message,
+          createdAt: job.createdAt,
+          finalVideoUrl: job.finalVideoUrl,
+        }))
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      
+      res.json({ jobs: userJobs });
+    } catch (error: any) {
+      console.error("Error fetching property tour jobs:", error);
+      res.status(500).json({ error: "Failed to fetch jobs" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
