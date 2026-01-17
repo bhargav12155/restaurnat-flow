@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Search, Home, MapPin, Bed, Bath, Square, DollarSign, Calendar, Eye, Loader2, X, CheckCircle, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface Property {
+export interface Property {
   id: string;
   mlsId: string;
   listPrice: number;
@@ -149,6 +149,7 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
             squareFootage: Number(propertyData.LivingArea) || 0,
             propertyType: 'Residential',
             listingStatus: propertyData.MlsStatus || '',
+            listingDate: propertyData.ListingContractDate || propertyData.OnMarketDate || '',
             description: propertyData.PublicRemarks || '',
             features: [],
             photoUrls: propertyData.Media?.slice(0, 3)?.map((m: any) => m.MediaURL) || [],
