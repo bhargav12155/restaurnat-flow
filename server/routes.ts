@@ -15566,6 +15566,96 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // POST /api/property-tour/save-to-library - Save generated videos to library
+  app.post("/api/property-tour/save-to-library", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { jobId, title, script, address } = req.body;
+
+      if (!jobId) {
+        return res.status(400).json({ error: "Job ID is required" });
+      }
+
+      const job = propertyTourJobs.get(jobId);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+
+      if (job.userId !== Number(userId)) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const savedVideos: { url: string; id: string; title: string }[] = [];
+      const baseTitle = title || `Property Tour - ${address || job.property?.address || "Listing"}`;
+
+      // Save avatar video if available (from job, not request body)
+      if (job.avatarVideoUrl) {
+        const videoTitle = `${baseTitle} - Avatar Narration`;
+        const avatarVideoEntry = await db
+          .insert(videoContent)
+          .values({
+            userId: userId,
+            title: videoTitle,
+            script: script || job.script || "",
+            videoType: "property_tour",
+            status: "ready",
+            videoUrl: job.avatarVideoUrl,
+          })
+          .returning({ id: videoContent.id });
+
+        if (avatarVideoEntry[0]) {
+          savedVideos.push({
+            url: job.avatarVideoUrl,
+            id: avatarVideoEntry[0].id,
+            title: videoTitle,
+          });
+        }
+      }
+
+      // Save motion clips (from job, not request body)
+      if (job.motionVideos && job.motionVideos.length > 0) {
+        for (let i = 0; i < job.motionVideos.length; i++) {
+          const clipTitle = `Motion Clip ${i + 1} - ${address || job.property?.address || "Property Tour"}`;
+          const clipEntry = await db
+            .insert(videoContent)
+            .values({
+              userId: userId,
+              title: clipTitle,
+              script: script || job.script || "",
+              videoType: "property_tour",
+              status: "ready",
+              videoUrl: job.motionVideos[i],
+            })
+            .returning({ id: videoContent.id });
+
+          if (clipEntry[0]) {
+            savedVideos.push({
+              url: job.motionVideos[i],
+              id: clipEntry[0].id,
+              title: clipTitle,
+            });
+          }
+        }
+      }
+
+      console.log(`✅ [PropertyTour] Saved ${savedVideos.length} videos to library for user ${userId}`);
+
+      res.json({
+        success: true,
+        savedVideos,
+        savedVideoIds: savedVideos.map(v => v.id),
+        message: `Saved ${savedVideos.length} videos to your library`,
+      });
+    } catch (error: any) {
+      console.error("Error saving property tour to library:", error);
+      res.status(500).json({ error: "Failed to save videos to library" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
