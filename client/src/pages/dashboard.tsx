@@ -19,6 +19,7 @@ import { VideoGenerationManager } from "@/components/dashboard/video-generation-
 import { VideoGenerator } from "@/components/dashboard/video-generator";
 import { VideoStudio } from "@/components/dashboard/video-studio";
 import { VideoTemplates } from "@/components/dashboard/video-templates";
+import { PropertyTourStudio } from "@/components/dashboard/property-tour-studio";
 import { Sidebar } from "@/components/layout/sidebar";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,8 @@ export default function Dashboard() {
         return <TemplateManager />;
       case "video-templates":
         return <VideoTemplates />;
+      case "property-tour":
+        return <PropertyTourStudio />;
       case "social":
         return <SocialMediaManager />;
       case "seo":

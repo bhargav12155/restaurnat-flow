@@ -1,0 +1,56 @@
+js?key=AIzaSyDtpYKk8_bKzb05KBe69eSE99tk645Q4I4&libraries=places,drawing:1345 Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading
+xea @ js?key=AIzaSyDtpYKk8_bKzb05KBe69eSE99tk645Q4I4&libraries=places,drawing:1345
+external:150 🎨 Early theme restore applied: Object
+content-scripts.js:1 Content Script Bridge: Sending response back to page context: Object
+index-D83ugfk8.js:880 [HeaderDropdown] openDropdown state => null
+index-D83ugfk8.js:5149 [AI-SEO] Connecting to RealtyFlow Object
+index-D83ugfk8.js:4409 🗺️ Mapbox initialized successfully
+index-D83ugfk8.js:1424 🗺️ Google Maps already available
+index-D83ugfk8.js:4419 🎨 Theme debug tools loaded. Use window.debugTheme.*
+index-D83ugfk8.js:5149 [AI-SEO] Connecting to RealtyFlow Object
+index-D83ugfk8.js:5149 [AI-SEO] Connecting to RealtyFlow Object
+index-D83ugfk8.js:5149 [AI-SEO] Connecting to RealtyFlow Object
+index-D83ugfk8.js:5149 [AI-SEO] Received message from iframe: Object
+content-scripts.js:1 Content Script Bridge: Sending response back to page context: Object
+index-D83ugfk8.js:5149 [AI-SEO] Sent template payload (iframe-ready) Object
+index-D83ugfk8.js:5149 [AI-SEO] Received message from iframe: Object
+index-CbIozsqu.js:847 🔌 Connecting to WebSocket: wss://multi-users-realtyflow.replit.app/ws?userId=4
+index-CbIozsqu.js:934 🔍 Social accounts data: undefined
+index-CbIozsqu.js:934 🔍 Is loading: true
+index-CbIozsqu.js:934 🔍 Error: null
+index-CbIozsqu.js:934 🔍 Document cookies: 
+index-D83ugfk8.js:5149 [AI-SEO] Received message from iframe: Object
+index-CbIozsqu.js:847 ✅ WebSocket connected
+index-CbIozsqu.js:847 📨 WebSocket message: Object
+index-CbIozsqu.js:39 Warning: Each child in a list should have a unique "key" prop.
+
+Check the render method of `VM`. See https://reactjs.org/link/warning-keys for more information.
+    at VM (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:934:302201)
+    at div
+    at main
+    at div
+    at vP (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:1265:197505)
+    at Xc (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:1268:99635)
+    at Ri (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:212:4345)
+    at KW (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:212:5158)
+    at $me
+    at h (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:233:6425)
+    at LA (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:798:52526)
+    at iX (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:798:64670)
+    at sX (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:798:60479)
+    at pK (https://multi-users-realtyflow.replit.app/assets/index-CbIozsqu.js:233:426)
+    at Bme
+C @ index-CbIozsqu.js:39
+index-CbIozsqu.js:934 🔍 Social accounts data: Array(6)
+index-CbIozsqu.js:934 🔍 Is loading: false
+index-CbIozsqu.js:934 🔍 Error: null
+index-CbIozsqu.js:934 🔍 Document cookies: 
+multi-users-realtyflow.replit.app/api/facebook/pages:1  Failed to load resource: the server responded with a status of 500 ()
+js?key=AIzaSyABw7DX0sg8fmhPt9H6JdlIGO-GikNgWhI&libraries=places&callback=initGoogleMaps:1341 Google Maps JavaScript API has been loaded directly without loading=async. This can result in suboptimal performance. For best-practice loading patterns please see https://goo.gle/js-api-loading
+xea @ js?key=AIzaSyABw7DX0sg8fmhPt9H6JdlIGO-GikNgWhI&libraries=places&callback=initGoogleMaps:1341
+index-CbIozsqu.js:934 Google Maps loaded successfully
+multi-users-realtyflow.replit.app/api/videos:1  Failed to load resource: the server responded with a status of 500 ()
+index-CbIozsqu.js:847 🔌 Connecting to WebSocket: wss://multi-users-realtyflow.replit.app/ws?userId=4
+index-CbIozsqu.js:847 ✅ WebSocket connected
+index-CbIozsqu.js:847 📨 WebSocket message: {type: 'notification', data: {…}, timestamp: '2026-01-16T16:12:51.393Z'}
+index-CbIozsqu.js:847 Microphone permission status: denied
