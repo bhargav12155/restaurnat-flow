@@ -35,6 +35,7 @@ interface AvatarPhoto {
   id: string;
   image_url: string;
   avatar_name: string;
+  image_key?: string;
 }
 
 interface SelectedPhoto {
@@ -170,6 +171,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [motionVideos, setMotionVideos] = useState<string[]>([]);
+  const [avatarVideoUrl, setAvatarVideoUrl] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
 
   const pollJobStatus = useCallback(async (jobId: string) => {
@@ -199,9 +201,13 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
         if (data.motionVideos) {
           setMotionVideos(data.motionVideos);
         }
+        if (data.avatarVideoUrl) {
+          setAvatarVideoUrl(data.avatarVideoUrl);
+        }
+        const avatarMsg = data.avatarVideoUrl ? " and avatar narration" : "";
         toast({
           title: "Video Generation Complete",
-          description: `Generated ${data.motionVideos?.length || 1} motion clips for your property tour!`,
+          description: `Generated ${data.motionVideos?.length || 1} motion clips${avatarMsg}!`,
         });
         return true;
       }
@@ -231,12 +237,16 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
     setGenerationComplete(false);
     setGeneratedVideoUrl(null);
     setMotionVideos([]);
+    setAvatarVideoUrl(null);
     setStatusMessage("Starting video generation...");
     
     try {
       const photosToInclude = selectedPhotos
         .filter(p => p.selected)
         .map(p => p.url);
+
+      const selectedAvatarData = avatarsData?.photos?.find(a => a.id === selectedAvatar);
+      const avatarImageKey = selectedAvatarData?.image_key || selectedAvatarData?.id;
 
       const response = await fetch("/api/property-tour/generate", {
         method: "POST",
@@ -245,6 +255,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
         body: JSON.stringify({
           photos: photosToInclude,
           avatarId: selectedAvatar,
+          avatarImageKey,
           script: generatedScript,
           backgroundType,
           includeBranding,
@@ -286,7 +297,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
         variant: "destructive",
       });
     }
-  }, [selectedProperty, selectedAvatar, generatedScript, selectedPhotos, backgroundType, includeBranding, toast, pollJobStatus]);
+  }, [selectedProperty, selectedAvatar, generatedScript, selectedPhotos, backgroundType, includeBranding, toast, pollJobStatus, avatarsData]);
 
   const canProceedToStep = (step: number): boolean => {
     switch (step) {
@@ -597,17 +608,45 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                   <Check className="h-6 w-6 text-green-500" />
                   <div>
                     <h4 className="font-medium text-green-600 dark:text-green-400">
-                      Motion Clips Generated
+                      Property Tour Videos Generated
                     </h4>
                     <p className="text-sm text-muted-foreground">
-                      {motionVideos.length} Ken Burns motion clips are ready.
+                      {motionVideos.length} motion clips{avatarVideoUrl ? " and avatar narration" : ""} are ready.
                     </p>
                   </div>
                 </div>
                 
+                {avatarVideoUrl && (
+                  <div className="space-y-3">
+                    <h5 className="font-medium text-sm">Avatar Narration</h5>
+                    <div className="rounded-lg overflow-hidden border bg-black max-w-2xl mx-auto">
+                      <video
+                        src={avatarVideoUrl}
+                        controls
+                        className="w-full aspect-video"
+                        data-testid="avatar-video-player"
+                      />
+                      <div className="bg-muted p-2 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Avatar Introduction</span>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-6 gap-1 text-xs"
+                          asChild
+                        >
+                          <a href={avatarVideoUrl} download target="_blank" rel="noopener noreferrer">
+                            <Download className="h-3 w-3" />
+                            Save
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 {motionVideos.length > 0 && (
                   <div className="space-y-3">
-                    <h5 className="font-medium text-sm">Preview Motion Clips</h5>
+                    <h5 className="font-medium text-sm">Property Motion Clips</h5>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {motionVideos.map((videoUrl, index) => (
                         <div key={index} className="rounded-lg overflow-hidden border bg-black">
@@ -645,6 +684,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                       setGenerationComplete(false);
                       setGeneratedVideoUrl(null);
                       setMotionVideos([]);
+                      setAvatarVideoUrl(null);
                       setCurrentStep(1);
                     }}
                     data-testid="create-another-btn"
