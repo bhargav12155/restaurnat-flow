@@ -87,7 +87,9 @@ export class VeoVideoService {
         return { done: false, error: "Client not initialized" };
       }
 
-      const updatedOperation = await this.client.operations.get(operation);
+      const updatedOperation = await this.client.operations.getVideosOperation({
+        operation: operation,
+      });
       
       if (updatedOperation.done) {
         this.pendingOperations.delete(operationId);
@@ -118,6 +120,8 @@ export class VeoVideoService {
         
         return { done: true, error: "No video in response" };
       }
+
+      this.pendingOperations.set(operationId, updatedOperation);
 
       return { done: false };
     } catch (error: any) {
