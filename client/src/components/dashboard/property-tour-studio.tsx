@@ -111,17 +111,15 @@ ${property.description ? `Description: ${property.description}` : ""}
 ${property.features && property.features.length > 0 ? `Features: ${property.features.join(", ")}` : ""}
 `.trim();
 
+      const message = `You are a professional real estate video script writer. Create an engaging property tour narration script. IMPORTANT: Only describe features that are explicitly mentioned in the property data provided. Do not make up or assume any features, amenities, or characteristics that are not in the MLS data. Keep the script concise (under 200 words), professional, and suitable for video narration.
+
+Write a property tour video script for this listing. Only include information that is explicitly provided below. Do not fabricate any details:
+
+${propertyDetails}`;
+
       const response = await apiRequest("POST", "/api/ai/chat", {
-        messages: [
-          {
-            role: "system",
-            content: "You are a professional real estate video script writer. Create engaging property tour narration scripts. IMPORTANT: Only describe features that are explicitly mentioned in the property data provided. Do not make up or assume any features, amenities, or characteristics that are not in the MLS data. Keep the script concise (under 200 words), professional, and suitable for video narration."
-          },
-          {
-            role: "user",
-            content: `Write a property tour video script for this listing. Only include information that is explicitly provided below. Do not fabricate any details:\n\n${propertyDetails}`
-          }
-        ]
+        message,
+        conversationHistory: []
       });
       return response.json();
     },
@@ -941,27 +939,33 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                         <SelectItem value="loading" disabled>
                           Loading avatars...
                         </SelectItem>
-                      ) : avatarsData?.photos && avatarsData.photos.length > 0 ? (
-                        avatarsData.photos.map((avatar) => (
-                          <SelectItem key={avatar.id} value={avatar.id}>
+                      ) : (
+                        <>
+                          <SelectItem value="no-avatar">
                             <div className="flex items-center gap-2">
-                              {avatar.url ? (
-                                <img
-                                  src={avatar.url}
-                                  alt={avatar.title || "Avatar"}
-                                  className="w-6 h-6 rounded-full object-cover"
-                                />
-                              ) : (
-                                <User className="w-6 h-6" />
-                              )}
-                              {avatar.title || "Unnamed Avatar"}
+                              <Video className="w-6 h-6 text-muted-foreground" />
+                              No Avatar (Video Only)
                             </div>
                           </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="none" disabled>
-                          No avatars available
-                        </SelectItem>
+                          {avatarsData?.photos && avatarsData.photos.length > 0 ? (
+                            avatarsData.photos.map((avatar) => (
+                              <SelectItem key={avatar.id} value={avatar.id}>
+                                <div className="flex items-center gap-2">
+                                  {avatar.url ? (
+                                    <img
+                                      src={avatar.url}
+                                      alt={avatar.title || "Avatar"}
+                                      className="w-6 h-6 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <User className="w-6 h-6" />
+                                  )}
+                                  {avatar.title || "Unnamed Avatar"}
+                                </div>
+                              </SelectItem>
+                            ))
+                          ) : null}
+                        </>
                       )}
                     </SelectContent>
                   </Select>
@@ -1061,7 +1065,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                 <div>
                   <span className="text-muted-foreground">Avatar:</span>
                   <p data-testid="summary-avatar">
-                    {avatarsData?.photos?.find(a => a.id === selectedAvatar)?.title || "Selected"}
+                    {selectedAvatar === "no-avatar" ? "No Avatar (Video Only)" : avatarsData?.photos?.find(a => a.id === selectedAvatar)?.title || "Selected"}
                   </p>
                 </div>
                 <div>
