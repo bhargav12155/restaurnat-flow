@@ -152,7 +152,7 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
             listingDate: propertyData.ListingContractDate || propertyData.OnMarketDate || '',
             description: propertyData.PublicRemarks || '',
             features: [],
-            photoUrls: propertyData.Media?.slice(0, 3)?.map((m: any) => m.MediaURL) || [],
+            photoUrls: propertyData.Media?.map((m: any) => m.MediaURL) || [],
             neighborhood: propertyData.SubdivisionName || null,
             agentName: propertyData.ListAgentFullName || null
           };
