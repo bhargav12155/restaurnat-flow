@@ -15409,44 +15409,40 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         throw new Error("No valid photos to process after upload");
       }
       
-      console.log(`📸 [PropertyTour] Processed ${processedPhotos.length} photos for Kling AI`);
-      job.message = "Starting Ken Burns motion generation...";
+      console.log(`📸 [PropertyTour] Processed ${processedPhotos.length} photos for Ken Burns FFmpeg`);
+      job.message = "Starting Ken Burns motion generation with FFmpeg...";
       
-      const { KlingService } = await import("./services/kling");
+      const { generatePropertyTourVideo, assignEffectsToImages } = await import("./services/kenburns-video");
       const { VideoStudioService } = await import("./services/video-studio");
-      const klingService = new KlingService();
       
-      const photosToProcess = processedPhotos.slice(0, 5);
+      const photosToProcess = processedPhotos.slice(0, 10);
+      const totalDuration = job.script ? Math.max(30, Math.ceil(job.script.split(/\s+/).length / 2.5)) : 60;
+      const durationPerImage = Math.max(3, Math.floor(totalDuration / photosToProcess.length));
       
-      for (let i = 0; i < photosToProcess.length; i++) {
-        const photoUrl = photosToProcess[i];
-        job.progress = Math.round(((i + 1) / photosToProcess.length) * 60);
-        job.message = `Generating motion for photo ${i + 1} of ${photosToProcess.length}...`;
-        
-        console.log(`🎬 [PropertyTour] Generating motion for photo ${i + 1}: ${photoUrl.substring(0, 50)}...`);
-        
-        const result = await klingService.generateImageToVideo({
-          imageUrl: photoUrl,
-          prompt: "Slow cinematic pan and zoom across this property photo, professional real estate video style, smooth camera movement",
-          duration: "5",
-          mode: "std",
-        });
-        
-        if (result.success && result.taskId) {
-          job.klingTaskIds.push(result.taskId);
-          console.log(`✅ [PropertyTour] Kling task started: ${result.taskId}`);
-          
-          const status = await klingService.waitForCompletion(result.taskId, 120000);
-          
-          if (status.status === "completed" && status.videoUrl) {
-            job.motionVideos.push(status.videoUrl);
-            console.log(`✅ [PropertyTour] Motion video ready: ${status.videoUrl.substring(0, 50)}...`);
-          } else {
-            console.error(`❌ [PropertyTour] Motion generation failed for photo ${i + 1}:`, status.error);
-          }
-        } else {
-          console.error(`❌ [PropertyTour] Failed to start motion for photo ${i + 1}:`, result.error);
-        }
+      console.log(`🎬 [PropertyTour] Generating Ken Burns video: ${photosToProcess.length} images, ${durationPerImage}s each`);
+      
+      job.progress = 10;
+      job.message = `Processing ${photosToProcess.length} property photos...`;
+      
+      const clips = assignEffectsToImages(photosToProcess, durationPerImage);
+      
+      job.progress = 20;
+      job.message = "Applying Ken Burns motion effects...";
+      
+      const videoResult = await generatePropertyTourVideo({
+        clips,
+        outputWidth: 1920,
+        outputHeight: 1080,
+        fps: 30,
+      });
+      
+      if (videoResult.success && videoResult.videoPath) {
+        job.motionVideos.push(videoResult.videoPath);
+        job.progress = 60;
+        console.log(`✅ [PropertyTour] Ken Burns video ready: ${videoResult.videoPath}`);
+      } else {
+        console.error(`❌ [PropertyTour] Ken Burns generation failed:`, videoResult.error);
+        throw new Error(videoResult.error || "Ken Burns video generation failed");
       }
       
       if (job.motionVideos.length > 0 && job.avatarImageKey) {
@@ -15589,20 +15585,34 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   app.get("/api/property-tour/status/:jobId", requireAuth, async (req, res) => {
     try {
       const { jobId } = req.params;
+      const path = await import('path');
       
       const job = propertyTourJobs.get(jobId);
       if (!job) {
         return res.status(404).json({ error: "Job not found" });
       }
       
+      // Convert local file paths to API URLs
+      const motionVideoUrls = job.motionVideos.map(videoPath => {
+        if (videoPath.startsWith('/tmp/kenburns-output/')) {
+          const filename = path.basename(videoPath);
+          return `/api/property-tour/video/${filename}`;
+        }
+        return videoPath;
+      });
+      
+      const finalUrl = job.finalVideoUrl?.startsWith('/tmp/kenburns-output/')
+        ? `/api/property-tour/video/${path.basename(job.finalVideoUrl)}`
+        : job.finalVideoUrl;
+      
       res.json({
         jobId: job.id,
         status: job.status,
         progress: job.progress,
         message: job.message,
-        motionVideos: job.motionVideos,
+        motionVideos: motionVideoUrls,
         avatarVideoUrl: job.avatarVideoUrl,
-        finalVideoUrl: job.finalVideoUrl,
+        finalVideoUrl: finalUrl,
         error: job.error,
       });
     } catch (error: any) {
@@ -15725,6 +15735,55 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error: any) {
       console.error("Error saving property tour to library:", error);
       res.status(500).json({ error: "Failed to save videos to library" });
+    }
+  });
+
+  // GET /api/property-tour/video/:filename - Serve generated videos
+  app.get("/api/property-tour/video/:filename", requireAuth, async (req, res) => {
+    try {
+      const { filename } = req.params;
+      const fs = await import('fs');
+      const path = await import('path');
+      
+      // Security: only allow alphanumeric, dash, underscore, and dot
+      if (!/^[a-zA-Z0-9_\-.]+\.mp4$/.test(filename)) {
+        return res.status(400).json({ error: "Invalid filename" });
+      }
+      
+      const videoPath = path.join('/tmp/kenburns-output', filename);
+      
+      if (!fs.existsSync(videoPath)) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+      
+      const stat = fs.statSync(videoPath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+      
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunksize = (end - start) + 1;
+        const stream = fs.createReadStream(videoPath, { start, end });
+        
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunksize,
+          'Content-Type': 'video/mp4',
+        });
+        stream.pipe(res);
+      } else {
+        res.writeHead(200, {
+          'Content-Length': fileSize,
+          'Content-Type': 'video/mp4',
+        });
+        fs.createReadStream(videoPath).pipe(res);
+      }
+    } catch (error: any) {
+      console.error("Error serving property tour video:", error);
+      res.status(500).json({ error: "Failed to serve video" });
     }
   });
 
