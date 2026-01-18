@@ -182,7 +182,7 @@ ${propertyDetails}`;
       return response.json();
     },
     onSuccess: (data) => {
-      const script = data.response || data.choices?.[0]?.message?.content || data.content || "";
+      const script = data.message || data.response || data.choices?.[0]?.message?.content || data.content || "";
       setGeneratedScript(script);
       toast({
         title: "Script Generated",
