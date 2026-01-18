@@ -15416,7 +15416,9 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       
       if (veoVideoService.isConfigured()) {
         job.message = "Starting Gemini VEO 3.1 video generation...";
-        console.log(`🎬 [PropertyTour] Using VEO 3.1 for cinematic video`);
+        console.log(`🎬 [PropertyTour] ========================================`);
+        console.log(`🎬 [PropertyTour] VIDEO ENGINE: GEMINI VEO 3.1`);
+        console.log(`🎬 [PropertyTour] ========================================`);
         
         job.progress = 10;
         
@@ -15456,7 +15458,11 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           await fallbackToFFmpeg(job, processedPhotos);
         }
       } else {
-        console.log(`⚠️ [PropertyTour] VEO not configured, using FFmpeg Ken Burns`);
+        console.log(`🎬 [PropertyTour] ========================================`);
+        console.log(`🎬 [PropertyTour] VIDEO ENGINE: FFMPEG KEN BURNS (VEO not configured)`);
+        console.log(`🎬 [PropertyTour] Reason: GEMINI_API_KEY secret not found`);
+        console.log(`🎬 [PropertyTour] ========================================`);
+        job.message = "Using FFmpeg Ken Burns effects (VEO not configured)...";
         await fallbackToFFmpeg(job, processedPhotos);
       }
       

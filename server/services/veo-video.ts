@@ -23,32 +23,47 @@ interface VeoOperationStatus {
 export class VeoVideoService {
   private client: GoogleGenAI | null = null;
   private pendingOperations: Map<string, any> = new Map();
+  private lastApiKey: string | null = null;
 
-  constructor() {
+  private getClient(): GoogleGenAI | null {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (apiKey) {
-      this.client = new GoogleGenAI({ apiKey });
-      console.log("✅ [VeoVideo] Initialized with Gemini API key");
-    } else {
-      console.warn("⚠️ [VeoVideo] No GEMINI_API_KEY found - video generation disabled");
+    
+    if (!apiKey) {
+      console.warn("⚠️ [VeoVideo] No GEMINI_API_KEY found in environment");
+      return null;
     }
+    
+    if (this.client && this.lastApiKey === apiKey) {
+      return this.client;
+    }
+    
+    console.log("✅ [VeoVideo] Initializing Gemini client with API key");
+    this.client = new GoogleGenAI({ apiKey });
+    this.lastApiKey = apiKey;
+    return this.client;
   }
 
   async generateVideo(request: VeoVideoRequest): Promise<VeoVideoResult> {
-    if (!this.client) {
-      return { success: false, error: "Gemini API key not configured" };
+    const client = this.getClient();
+    
+    if (!client) {
+      console.error("❌ [VeoVideo] Cannot generate video - GEMINI_API_KEY not configured");
+      return { success: false, error: "Gemini API key not configured. Please add GEMINI_API_KEY to secrets." };
     }
 
     try {
-      console.log(`🎬 [VeoVideo] Starting video generation from image`);
+      console.log(`🎬 [VeoVideo] Starting VEO 3.1 video generation from image`);
       console.log(`📝 [VeoVideo] Prompt: ${request.prompt.substring(0, 100)}...`);
+      console.log(`🖼️ [VeoVideo] Image URL: ${request.imageUrl.substring(0, 80)}...`);
 
       const imageData = await this.fetchImageAsBase64(request.imageUrl);
       if (!imageData) {
-        return { success: false, error: "Failed to fetch image" };
+        return { success: false, error: "Failed to fetch image for video generation" };
       }
 
-      const operation = await this.client.models.generateVideos({
+      console.log(`📤 [VeoVideo] Sending to VEO 3.1 API...`);
+      
+      const operation = await client.models.generateVideos({
         model: "veo-3.1-generate-preview",
         prompt: request.prompt,
         image: {
@@ -64,14 +79,17 @@ export class VeoVideoService {
       const operationId = `veo-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       this.pendingOperations.set(operationId, operation);
 
-      console.log(`✅ [VeoVideo] Operation started: ${operationId}`);
+      console.log(`✅ [VeoVideo] VEO 3.1 operation started successfully: ${operationId}`);
 
       return {
         success: true,
         operationId,
       };
     } catch (error: any) {
-      console.error("❌ [VeoVideo] Generation error:", error.message);
+      console.error("❌ [VeoVideo] VEO 3.1 generation error:", error.message);
+      if (error.message?.includes("API key")) {
+        return { success: false, error: "Invalid Gemini API key. Please check your GEMINI_API_KEY secret." };
+      }
       return { success: false, error: error.message };
     }
   }
@@ -83,16 +101,20 @@ export class VeoVideoService {
     }
 
     try {
-      if (!this.client) {
+      const client = this.getClient();
+      if (!client) {
         return { done: false, error: "Client not initialized" };
       }
 
-      const updatedOperation = await this.client.operations.getVideosOperation({
+      console.log(`🔄 [VeoVideo] Checking VEO operation status: ${operationId}`);
+      
+      const updatedOperation = await client.operations.getVideosOperation({
         operation: operation,
       });
       
       if (updatedOperation.done) {
         this.pendingOperations.delete(operationId);
+        console.log(`✅ [VeoVideo] VEO operation completed: ${operationId}`);
 
         const response = updatedOperation.response as any;
         const generatedVideos = response?.generatedVideos || response?.generated_videos;
@@ -111,27 +133,31 @@ export class VeoVideoService {
             const filename = `property-tour-${operationId}.mp4`;
             const filepath = path.join(outputDir, filename);
             
-            await this.client.files.download({ file: video, downloadPath: filepath });
+            console.log(`📥 [VeoVideo] Downloading VEO video to: ${filepath}`);
+            await client.files.download({ file: video, downloadPath: filepath });
             
-            console.log(`✅ [VeoVideo] Video completed: ${filepath}`);
+            console.log(`✅ [VeoVideo] VEO 3.1 video saved: ${filepath}`);
             return { done: true, videoUrl: `/api/property-tour/veo-video/${filename}` };
           }
         }
         
+        console.error(`❌ [VeoVideo] No video in VEO response`);
         return { done: true, error: "No video in response" };
       }
 
       this.pendingOperations.set(operationId, updatedOperation);
+      console.log(`⏳ [VeoVideo] VEO operation still processing: ${operationId}`);
 
       return { done: false };
     } catch (error: any) {
-      console.error("❌ [VeoVideo] Status check error:", error.message);
+      console.error("❌ [VeoVideo] VEO status check error:", error.message);
       return { done: false, error: error.message };
     }
   }
 
   async waitForCompletion(operationId: string, maxWaitMs: number = 180000): Promise<VeoOperationStatus> {
     const startTime = Date.now();
+    console.log(`⏳ [VeoVideo] Waiting for VEO completion (max ${maxWaitMs/1000}s): ${operationId}`);
     
     while (Date.now() - startTime < maxWaitMs) {
       const status = await this.checkOperationStatus(operationId);
@@ -147,14 +173,16 @@ export class VeoVideoService {
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
 
+    console.error(`❌ [VeoVideo] VEO operation timed out after ${maxWaitMs/1000}s`);
     return { done: false, error: "Video generation timed out" };
   }
 
   private async fetchImageAsBase64(url: string): Promise<{ bytes: string; mimeType: string } | null> {
     try {
+      console.log(`📷 [VeoVideo] Fetching image from URL...`);
       const response = await fetch(url);
       if (!response.ok) {
-        console.error(`❌ [VeoVideo] Failed to fetch image: ${response.status}`);
+        console.error(`❌ [VeoVideo] Failed to fetch image: HTTP ${response.status}`);
         return null;
       }
 
@@ -162,6 +190,7 @@ export class VeoVideoService {
       const arrayBuffer = await response.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
 
+      console.log(`✅ [VeoVideo] Image fetched: ${contentType}, ${Math.round(arrayBuffer.byteLength/1024)}KB`);
       return { bytes: base64, mimeType: contentType };
     } catch (error: any) {
       console.error(`❌ [VeoVideo] Image fetch error:`, error.message);
@@ -170,7 +199,9 @@ export class VeoVideoService {
   }
 
   isConfigured(): boolean {
-    return this.client !== null;
+    const hasKey = !!process.env.GEMINI_API_KEY;
+    console.log(`🔑 [VeoVideo] isConfigured check: GEMINI_API_KEY ${hasKey ? 'present' : 'missing'}`);
+    return hasKey;
   }
 }
 
