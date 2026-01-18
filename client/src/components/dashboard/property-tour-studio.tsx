@@ -132,6 +132,7 @@ export function PropertyTourStudio() {
   const [scriptStyle, setScriptStyle] = useState<string>("standard");
   const [targetPlatform, setTargetPlatform] = useState<string>("youtube");
   const [videoDuration, setVideoDuration] = useState<string>("60");
+  const [customPrompt, setCustomPrompt] = useState<string>("");
 
   const { data: avatarsData, isLoading: avatarsLoading } = useQuery<{ photos: AvatarPhoto[] }>({
     queryKey: ["/api/avatar-iv/photos"],
@@ -157,6 +158,10 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
       const duration = VIDEO_DURATIONS.find(d => d.value === videoDuration) || VIDEO_DURATIONS[1];
       const targetWordCount = Math.min(duration.targetWords, Math.floor(platform.charLimit / 5));
 
+      const userInstructions = customPrompt.trim() 
+        ? `\n\nADDITIONAL USER INSTRUCTIONS:\n${customPrompt.trim()}`
+        : "";
+
       const message = `You are a professional real estate video script writer. ${selectedStyle.prompt}
 
 IMPORTANT RULES:
@@ -164,7 +169,7 @@ IMPORTANT RULES:
 - Do not make up or assume any features, amenities, or characteristics not in the MLS data
 - Keep the script around ${targetWordCount} words for a ${duration.label} video
 - This will be posted on ${platform.label} (max ${platform.charLimit} characters)
-- Make it professional and suitable for video narration
+- Make it professional and suitable for video narration${userInstructions}
 
 Write a property tour video script for this listing. Only include information that is explicitly provided below:
 
@@ -1065,6 +1070,16 @@ ${propertyDetails}`;
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="script-textarea">Tour Script</Label>
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Add custom instructions for script generation (e.g., 'emphasize the backyard' or 'mention nearby schools')..."
+                    value={customPrompt}
+                    onChange={(e) => setCustomPrompt(e.target.value)}
+                    className="flex-1"
+                    data-testid="custom-prompt-input"
+                  />
                   {selectedProperty && (
                     <Button
                       size="sm"
