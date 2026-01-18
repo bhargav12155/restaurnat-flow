@@ -34,6 +34,8 @@ import {
   Share2,
   Upload,
   X,
+  CircleOff,
+  Film,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -61,9 +63,11 @@ const STEPS = [
 ];
 
 const BACKGROUND_OPTIONS = [
+  { value: "none", label: "None", icon: CircleOff },
   { value: "office", label: "Office", icon: Building },
   { value: "outdoor", label: "Outdoor", icon: Trees },
   { value: "branded", label: "Branded", icon: Palette },
+  { value: "video", label: "Video", icon: Film },
 ];
 
 export function PropertyTourStudio() {
@@ -965,7 +969,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
 
                 <div className="space-y-2">
                   <Label>Background Style</Label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                     {BACKGROUND_OPTIONS.map((option) => (
                       <Button
                         key={option.value}
