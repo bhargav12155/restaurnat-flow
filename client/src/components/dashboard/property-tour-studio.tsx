@@ -996,12 +996,16 @@ ${propertyDetails}`;
                       Include your branding overlay
                     </p>
                   </div>
-                  <Switch
-                    id="branding-toggle"
-                    checked={includeBranding}
-                    onCheckedChange={setIncludeBranding}
-                    data-testid="branding-toggle"
-                  />
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm ${!includeBranding ? "font-medium" : "text-muted-foreground"}`}>No</span>
+                    <Switch
+                      id="branding-toggle"
+                      checked={includeBranding}
+                      onCheckedChange={setIncludeBranding}
+                      data-testid="branding-toggle"
+                    />
+                    <span className={`text-sm ${includeBranding ? "font-medium" : "text-muted-foreground"}`}>Yes</span>
+                  </div>
                 </div>
               </div>
 
