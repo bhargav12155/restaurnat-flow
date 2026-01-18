@@ -32,7 +32,11 @@ import {
   Download,
   Library,
   Share2,
+  Upload,
+  X,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { SiFacebook, SiInstagram, SiLinkedin, SiX, SiYoutube, SiTiktok } from "react-icons/si";
 
 interface AvatarPhoto {
@@ -46,6 +50,7 @@ interface SelectedPhoto {
   url: string;
   index: number;
   selected: boolean;
+  source?: "mls" | "upload";
 }
 
 const STEPS = [
@@ -67,6 +72,10 @@ export function PropertyTourStudio() {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [selectedPhotos, setSelectedPhotos] = useState<SelectedPhoto[]>([]);
+  const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [photoViewTab, setPhotoViewTab] = useState<string>("all");
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
   const [backgroundType, setBackgroundType] = useState<string>("office");
   const [includeBranding, setIncludeBranding] = useState<boolean>(true);
@@ -132,8 +141,10 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
       url,
       index,
       selected: true,
+      source: "mls" as const,
     })) || [];
     setSelectedPhotos(photos);
+    setUploadedPhotos([]);
     setGeneratedScript("");
     setCurrentStep(2);
   }, []);
@@ -166,6 +177,93 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
   const handleDragEnd = useCallback(() => {
     setDraggedIndex(null);
   }, []);
+
+  const handleFileUpload = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    
+    setIsUploading(true);
+    const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    const newPhotos: SelectedPhoto[] = [];
+    let processedCount = 0;
+    
+    Array.from(files).forEach((file) => {
+      if (!validTypes.includes(file.type)) {
+        toast({
+          title: "Invalid File Type",
+          description: `${file.name} is not a supported image format. Use JPG, PNG, or WebP.`,
+          variant: "destructive",
+        });
+        processedCount++;
+        if (processedCount === files.length) {
+          setIsUploading(false);
+        }
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (dataUrl) {
+          setUploadedPhotos(prev => [...prev, dataUrl]);
+          setSelectedPhotos(prev => [
+            ...prev,
+            {
+              url: dataUrl,
+              index: prev.length,
+              selected: true,
+              source: "upload" as const,
+            }
+          ]);
+        }
+        processedCount++;
+        if (processedCount === files.length) {
+          setIsUploading(false);
+          toast({
+            title: "Photos Uploaded",
+            description: `${files.length} photo(s) added successfully.`,
+          });
+        }
+      };
+      reader.onerror = () => {
+        processedCount++;
+        if (processedCount === files.length) {
+          setIsUploading(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }, [toast]);
+
+  const handleDropZoneDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDropZoneDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDropZoneDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    handleFileUpload(e.dataTransfer.files);
+  }, [handleFileUpload]);
+
+  const handleRemoveUploadedPhoto = useCallback((url: string) => {
+    setUploadedPhotos(prev => prev.filter(p => p !== url));
+    setSelectedPhotos(prev => {
+      const filtered = prev.filter(p => p.url !== url);
+      return filtered.map((photo, i) => ({ ...photo, index: i }));
+    });
+    toast({
+      title: "Photo Removed",
+      description: "Uploaded photo has been removed.",
+    });
+  }, [toast]);
 
   const handleGenerateScript = useCallback(() => {
     if (!selectedProperty) return;
@@ -539,50 +637,222 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
               </div>
               <Badge variant="secondary" data-testid="photo-count">
                 {selectedPhotoCount} of {selectedPhotos.length} selected
+                {uploadedPhotos.length > 0 && ` (${uploadedPhotos.length} uploaded)`}
               </Badge>
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {selectedPhotos.map((photo, index) => (
-                <div
-                  key={photo.url}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDragEnd={handleDragEnd}
-                  className={`relative group rounded-lg overflow-hidden border-2 transition-all cursor-move ${
-                    photo.selected
-                      ? "border-primary"
-                      : "border-transparent opacity-50"
-                  } ${draggedIndex === index ? "scale-95 opacity-70" : ""}`}
-                  data-testid={`photo-item-${index}`}
-                >
-                  <img
-                    src={photo.url}
-                    alt={`Property photo ${index + 1}`}
-                    className="w-full aspect-video object-cover"
-                  />
-                  <div className="absolute top-2 left-2 flex items-center gap-2">
-                    <div className="bg-black/70 text-white px-2 py-1 rounded text-xs">
-                      #{index + 1}
+
+            <div
+              className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
+                isDragOver
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25 hover:border-primary/50"
+              }`}
+              onDragOver={handleDropZoneDragOver}
+              onDragLeave={handleDropZoneDragLeave}
+              onDrop={handleDropZoneDrop}
+              data-testid="upload-drop-zone"
+            >
+              <div className="flex flex-col items-center gap-3 text-center">
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                    <p className="text-sm text-muted-foreground">Uploading photos...</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-10 w-10 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Upload Custom Photos</p>
+                      <p className="text-sm text-muted-foreground">
+                        Drag and drop images here, or click to browse
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Supports JPG, PNG, WebP
+                      </p>
                     </div>
-                    <GripVertical className="h-4 w-4 text-white drop-shadow" />
-                  </div>
-                  <div className="absolute top-2 right-2">
-                    <Checkbox
-                      checked={photo.selected}
-                      onCheckedChange={() => handlePhotoToggle(index)}
-                      className="bg-white/90"
-                      data-testid={`photo-checkbox-${index}`}
+                    <Input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      multiple
+                      className="max-w-xs"
+                      onChange={(e) => handleFileUpload(e.target.files)}
+                      data-testid="photo-upload-input"
                     />
-                  </div>
-                </div>
-              ))}
+                  </>
+                )}
+              </div>
             </div>
+
+            <Tabs value={photoViewTab} onValueChange={setPhotoViewTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="all" data-testid="tab-all-photos">
+                  All Photos ({selectedPhotos.length})
+                </TabsTrigger>
+                <TabsTrigger value="mls" data-testid="tab-mls-photos">
+                  MLS Photos ({selectedPhotos.filter(p => p.source === "mls").length})
+                </TabsTrigger>
+                <TabsTrigger value="upload" data-testid="tab-upload-photos">
+                  Uploaded ({uploadedPhotos.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="all" className="mt-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {selectedPhotos.map((photo, index) => (
+                    <div
+                      key={`${photo.source}-${photo.url.substring(0, 50)}-${index}`}
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragEnd={handleDragEnd}
+                      className={`relative group rounded-lg overflow-hidden border-2 transition-all cursor-move ${
+                        photo.selected
+                          ? "border-primary"
+                          : "border-transparent opacity-50"
+                      } ${draggedIndex === index ? "scale-95 opacity-70" : ""}`}
+                      data-testid={`photo-item-${index}`}
+                    >
+                      <img
+                        src={photo.url}
+                        alt={`Property photo ${index + 1}`}
+                        className="w-full aspect-video object-cover"
+                      />
+                      <div className="absolute top-2 left-2 flex items-center gap-2">
+                        <div className="bg-black/70 text-white px-2 py-1 rounded text-xs">
+                          #{index + 1}
+                        </div>
+                        <GripVertical className="h-4 w-4 text-white drop-shadow" />
+                        {photo.source === "upload" && (
+                          <Badge variant="secondary" className="text-xs py-0 px-1">
+                            <Upload className="h-3 w-3" />
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="absolute top-2 right-2 flex items-center gap-1">
+                        {photo.source === "upload" && (
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            className="h-6 w-6"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveUploadedPhoto(photo.url);
+                            }}
+                            data-testid={`remove-photo-${index}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                        <Checkbox
+                          checked={photo.selected}
+                          onCheckedChange={() => handlePhotoToggle(index)}
+                          className="bg-white/90"
+                          data-testid={`photo-checkbox-${index}`}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="mls" className="mt-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {selectedPhotos.filter(p => p.source === "mls").map((photo) => {
+                    const originalIndex = selectedPhotos.findIndex(p => p.url === photo.url);
+                    return (
+                      <div
+                        key={photo.url}
+                        className={`relative group rounded-lg overflow-hidden border-2 transition-all ${
+                          photo.selected
+                            ? "border-primary"
+                            : "border-transparent opacity-50"
+                        }`}
+                        data-testid={`mls-photo-item-${originalIndex}`}
+                      >
+                        <img
+                          src={photo.url}
+                          alt={`MLS photo`}
+                          className="w-full aspect-video object-cover"
+                        />
+                        <div className="absolute top-2 left-2">
+                          <div className="bg-black/70 text-white px-2 py-1 rounded text-xs">
+                            #{originalIndex + 1}
+                          </div>
+                        </div>
+                        <div className="absolute top-2 right-2">
+                          <Checkbox
+                            checked={photo.selected}
+                            onCheckedChange={() => handlePhotoToggle(originalIndex)}
+                            className="bg-white/90"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {selectedPhotos.filter(p => p.source === "mls").length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No MLS photos available
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="upload" className="mt-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {selectedPhotos.filter(p => p.source === "upload").map((photo) => {
+                    const originalIndex = selectedPhotos.findIndex(p => p.url === photo.url);
+                    return (
+                      <div
+                        key={photo.url.substring(0, 50)}
+                        className={`relative group rounded-lg overflow-hidden border-2 transition-all ${
+                          photo.selected
+                            ? "border-primary"
+                            : "border-transparent opacity-50"
+                        }`}
+                        data-testid={`upload-photo-item-${originalIndex}`}
+                      >
+                        <img
+                          src={photo.url}
+                          alt={`Uploaded photo`}
+                          className="w-full aspect-video object-cover"
+                        />
+                        <div className="absolute top-2 left-2">
+                          <div className="bg-black/70 text-white px-2 py-1 rounded text-xs flex items-center gap-1">
+                            <Upload className="h-3 w-3" />
+                            #{originalIndex + 1}
+                          </div>
+                        </div>
+                        <div className="absolute top-2 right-2 flex items-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            className="h-6 w-6"
+                            onClick={() => handleRemoveUploadedPhoto(photo.url)}
+                            data-testid={`remove-upload-photo-${originalIndex}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                          <Checkbox
+                            checked={photo.selected}
+                            onCheckedChange={() => handlePhotoToggle(originalIndex)}
+                            className="bg-white/90"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {uploadedPhotos.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No uploaded photos yet. Use the upload area above to add custom images.
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
             
             {selectedPhotos.length === 0 && (
               <div className="text-center py-8 text-muted-foreground">
-                No photos available for this property
+                No photos available. Upload some images to get started.
               </div>
             )}
           </div>
