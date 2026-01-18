@@ -43,8 +43,8 @@ import { SiFacebook, SiInstagram, SiLinkedin, SiX, SiYoutube, SiTiktok } from "r
 
 interface AvatarPhoto {
   id: string;
-  image_url: string;
-  avatar_name: string;
+  url: string;
+  title: string;
   image_key?: string;
 }
 
@@ -945,16 +945,16 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                         avatarsData.photos.map((avatar) => (
                           <SelectItem key={avatar.id} value={avatar.id}>
                             <div className="flex items-center gap-2">
-                              {avatar.image_url ? (
+                              {avatar.url ? (
                                 <img
-                                  src={avatar.image_url}
-                                  alt={avatar.avatar_name}
+                                  src={avatar.url}
+                                  alt={avatar.title || "Avatar"}
                                   className="w-6 h-6 rounded-full object-cover"
                                 />
                               ) : (
                                 <User className="w-6 h-6" />
                               )}
-                              {avatar.avatar_name}
+                              {avatar.title || "Unnamed Avatar"}
                             </div>
                           </SelectItem>
                         ))
@@ -1061,7 +1061,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                 <div>
                   <span className="text-muted-foreground">Avatar:</span>
                   <p data-testid="summary-avatar">
-                    {avatarsData?.photos?.find(a => a.id === selectedAvatar)?.avatar_name || "Selected"}
+                    {avatarsData?.photos?.find(a => a.id === selectedAvatar)?.title || "Selected"}
                   </p>
                 </div>
                 <div>
