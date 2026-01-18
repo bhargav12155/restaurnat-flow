@@ -70,6 +70,44 @@ const BACKGROUND_OPTIONS = [
   { value: "video", label: "Video", icon: Film },
 ];
 
+const SCRIPT_STYLES = [
+  { 
+    value: "standard", 
+    label: "Standard", 
+    description: "Professional property tour narration",
+    prompt: "Create an engaging property tour narration script that highlights key features professionally."
+  },
+  { 
+    value: "high-seo", 
+    label: "High SEO", 
+    description: "Optimized for search engine visibility",
+    prompt: "Create a property tour script optimized for SEO. Include relevant keywords naturally: real estate, home for sale, property listing, neighborhood name, city, bedrooms, bathrooms, square footage, amenities. Structure content with clear topic focus for search visibility."
+  },
+  { 
+    value: "aeo", 
+    label: "AEO (Answer Engine)", 
+    description: "Optimized for voice search & AI assistants",
+    prompt: "Create a property tour script optimized for Answer Engine Optimization (AEO). Use natural conversational language that answers common homebuyer questions. Include phrases like 'This home features...', 'You'll find...', 'The property includes...'. Structure as if answering: What makes this home special? What are the key features? Why should someone consider this property?"
+  },
+];
+
+const TARGET_PLATFORMS = [
+  { value: "youtube", label: "YouTube", charLimit: 5000, icon: SiYoutube, description: "Long-form video descriptions" },
+  { value: "instagram", label: "Instagram", charLimit: 2200, icon: SiInstagram, description: "Reels & posts (first 125 chars visible)" },
+  { value: "tiktok", label: "TikTok", charLimit: 2200, icon: SiTiktok, description: "Short-form video captions" },
+  { value: "facebook", label: "Facebook", charLimit: 500, icon: SiFacebook, description: "Feed posts (first 480 chars visible)" },
+  { value: "linkedin", label: "LinkedIn", charLimit: 700, icon: SiLinkedin, description: "Professional network posts" },
+  { value: "twitter", label: "X (Twitter)", charLimit: 280, icon: SiX, description: "Short-form posts" },
+];
+
+const VIDEO_DURATIONS = [
+  { value: "30", label: "30 seconds", seconds: 30, targetWords: 75, targetChars: 375 },
+  { value: "60", label: "1 minute", seconds: 60, targetWords: 150, targetChars: 750 },
+  { value: "90", label: "90 seconds", seconds: 90, targetWords: 225, targetChars: 1125 },
+  { value: "120", label: "2 minutes", seconds: 120, targetWords: 300, targetChars: 1500 },
+  { value: "180", label: "3 minutes", seconds: 180, targetWords: 450, targetChars: 2250 },
+];
+
 export function PropertyTourStudio() {
   const { toast } = useToast();
   
@@ -91,6 +129,9 @@ export function PropertyTourStudio() {
   const [noMlsMode, setNoMlsMode] = useState<boolean>(false);
   const [showPhotoSelectModal, setShowPhotoSelectModal] = useState<boolean>(false);
   const [tempPhotoSelection, setTempPhotoSelection] = useState<{url: string; selected: boolean}[]>([]);
+  const [scriptStyle, setScriptStyle] = useState<string>("standard");
+  const [targetPlatform, setTargetPlatform] = useState<string>("youtube");
+  const [videoDuration, setVideoDuration] = useState<string>("60");
 
   const { data: avatarsData, isLoading: avatarsLoading } = useQuery<{ photos: AvatarPhoto[] }>({
     queryKey: ["/api/avatar-iv/photos"],
@@ -111,9 +152,21 @@ ${property.description ? `Description: ${property.description}` : ""}
 ${property.features && property.features.length > 0 ? `Features: ${property.features.join(", ")}` : ""}
 `.trim();
 
-      const message = `You are a professional real estate video script writer. Create an engaging property tour narration script. IMPORTANT: Only describe features that are explicitly mentioned in the property data provided. Do not make up or assume any features, amenities, or characteristics that are not in the MLS data. Keep the script concise (under 200 words), professional, and suitable for video narration.
+      const selectedStyle = SCRIPT_STYLES.find(s => s.value === scriptStyle) || SCRIPT_STYLES[0];
+      const platform = TARGET_PLATFORMS.find(p => p.value === targetPlatform) || TARGET_PLATFORMS[0];
+      const duration = VIDEO_DURATIONS.find(d => d.value === videoDuration) || VIDEO_DURATIONS[1];
+      const targetWordCount = Math.min(duration.targetWords, Math.floor(platform.charLimit / 5));
 
-Write a property tour video script for this listing. Only include information that is explicitly provided below. Do not fabricate any details:
+      const message = `You are a professional real estate video script writer. ${selectedStyle.prompt}
+
+IMPORTANT RULES:
+- Only describe features that are explicitly mentioned in the property data provided
+- Do not make up or assume any features, amenities, or characteristics not in the MLS data
+- Keep the script around ${targetWordCount} words for a ${duration.label} video
+- This will be posted on ${platform.label} (max ${platform.charLimit} characters)
+- Make it professional and suitable for video narration
+
+Write a property tour video script for this listing. Only include information that is explicitly provided below:
 
 ${propertyDetails}`;
 
@@ -1029,6 +1082,66 @@ ${propertyDetails}`;
                     </Button>
                   )}
                 </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="script-style">Script Style</Label>
+                    <Select value={scriptStyle} onValueChange={setScriptStyle}>
+                      <SelectTrigger id="script-style" data-testid="script-style-select">
+                        <SelectValue placeholder="Select style" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SCRIPT_STYLES.map((style) => (
+                          <SelectItem key={style.value} value={style.value}>
+                            <div className="flex flex-col">
+                              <span>{style.label}</span>
+                              <span className="text-xs text-muted-foreground">{style.description}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="target-platform">Target Platform</Label>
+                    <Select value={targetPlatform} onValueChange={setTargetPlatform}>
+                      <SelectTrigger id="target-platform" data-testid="target-platform-select">
+                        <SelectValue placeholder="Select platform" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TARGET_PLATFORMS.map((platform) => (
+                          <SelectItem key={platform.value} value={platform.value}>
+                            <div className="flex items-center gap-2">
+                              <platform.icon className="h-4 w-4" />
+                              <span>{platform.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="video-duration">Video Duration</Label>
+                    <Select value={videoDuration} onValueChange={setVideoDuration}>
+                      <SelectTrigger id="video-duration" data-testid="video-duration-select">
+                        <SelectValue placeholder="Select duration" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VIDEO_DURATIONS.map((duration) => (
+                          <SelectItem key={duration.value} value={duration.value}>
+                            <div className="flex items-center gap-2">
+                              <span>{duration.label}</span>
+                              <span className="text-xs text-muted-foreground">(~{duration.targetWords} words)</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 {noMlsMode && (
                   <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
                     Since you're creating a tour without MLS data, please write your own script for the avatar narration.
@@ -1045,9 +1158,47 @@ ${propertyDetails}`;
                   className="min-h-[200px]"
                   data-testid="script-textarea"
                 />
-                <p className="text-xs text-muted-foreground">
-                  {generatedScript.length} characters
-                </p>
+                {(() => {
+                  const platform = TARGET_PLATFORMS.find(p => p.value === targetPlatform) || TARGET_PLATFORMS[0];
+                  const duration = VIDEO_DURATIONS.find(d => d.value === videoDuration) || VIDEO_DURATIONS[1];
+                  const charCount = generatedScript.length;
+                  const charLimit = platform.charLimit;
+                  const wordCount = generatedScript.trim() ? generatedScript.trim().split(/\s+/).length : 0;
+                  const targetWords = duration.targetWords;
+                  
+                  const isOverPlatformLimit = charCount > charLimit;
+                  const isOverDurationTarget = wordCount > targetWords * 1.1;
+                  const isUnderDurationTarget = wordCount < targetWords * 0.7;
+                  
+                  let wordStatus = "text-muted-foreground";
+                  if (isOverDurationTarget) wordStatus = "text-red-500 font-medium";
+                  else if (isUnderDurationTarget && wordCount > 0) wordStatus = "text-yellow-500";
+                  
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-4">
+                          <span className={wordStatus}>
+                            {wordCount} / {targetWords} words
+                            {isOverDurationTarget && " (too long for video)"}
+                          </span>
+                          <span className={isOverPlatformLimit ? "text-red-500 font-medium" : "text-muted-foreground"}>
+                            {charCount} / {charLimit} chars ({platform.label})
+                            {isOverPlatformLimit && " (over limit)"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Play className="h-3 w-3" />
+                          <span>Target: {duration.label}</span>
+                        </div>
+                      </div>
+                      <Progress 
+                        value={Math.min((wordCount / targetWords) * 100, 100)} 
+                        className="h-1"
+                      />
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
