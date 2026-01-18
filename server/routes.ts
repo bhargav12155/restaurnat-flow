@@ -21,7 +21,7 @@ import path from "path";
 import { db } from "./db";
 import { requireAuth, createRequireAdmin, optionalAuth } from "./middleware/auth";
 // S3 is now the primary storage - ObjectStorageService kept only for legacy PDF analysis
-import { ObjectNotFoundError, ObjectStorageService } from "./objectStorage";
+import { ObjectNotFoundError, ObjectStorageService, objectStorageClient } from "./objectStorage";
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
 import demoRoutes from "./routes/demo";
@@ -15334,17 +15334,89 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
   const propertyTourJobs = new Map<string, PropertyTourJob>();
 
+  async function uploadBase64ToStorage(base64Data: string, userId: string): Promise<string> {
+    const matches = base64Data.match(/^data:(.+);base64,(.+)$/);
+    if (!matches) throw new Error('Invalid base64 image format');
+    
+    const mimeType = matches[1];
+    const base64Content = matches[2];
+    const buffer = Buffer.from(base64Content, 'base64');
+    
+    const ext = mimeType.split('/')[1]?.split('+')[0] || 'jpg';
+    const filename = `property-tour-${userId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+    
+    const objectStorage = new ObjectStorageService();
+    if (!objectStorage.isConfigured()) {
+      throw new Error('Object storage not configured');
+    }
+    
+    const privateDir = objectStorage.getPrivateObjectDir();
+    const fullPath = `${privateDir}/property-tour-uploads/${filename}`;
+    
+    const pathParts = fullPath.startsWith('/') ? fullPath.split('/') : `/${fullPath}`.split('/');
+    const bucketName = pathParts[1];
+    const objectName = pathParts.slice(2).join('/');
+    
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    
+    await file.save(buffer, {
+      contentType: mimeType,
+      resumable: false,
+      metadata: {
+        cacheControl: 'private, max-age=86400',
+      },
+    });
+    
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 24 * 60 * 60 * 1000,
+    });
+    
+    console.log(`✅ [PropertyTour] Uploaded base64 image to storage: ${filename}`);
+    return signedUrl;
+  }
+
+  async function processPhotoUrls(photos: string[], userId: string): Promise<string[]> {
+    const processedUrls: string[] = [];
+    
+    for (const photo of photos) {
+      try {
+        if (photo.startsWith('data:')) {
+          console.log(`📤 [PropertyTour] Uploading base64 image to storage...`);
+          const url = await uploadBase64ToStorage(photo, userId);
+          processedUrls.push(url);
+        } else {
+          processedUrls.push(photo);
+        }
+      } catch (error: any) {
+        console.error(`❌ [PropertyTour] Failed to process photo:`, error.message);
+      }
+    }
+    
+    return processedUrls;
+  }
+
   async function processPropertyTourJob(job: PropertyTourJob) {
     try {
       console.log(`🎬 [PropertyTour] Processing job ${job.id}`);
       job.status = "processing";
+      job.message = "Processing uploaded images...";
+      
+      const processedPhotos = await processPhotoUrls(job.photos, String(job.userId));
+      
+      if (processedPhotos.length === 0) {
+        throw new Error("No valid photos to process after upload");
+      }
+      
+      console.log(`📸 [PropertyTour] Processed ${processedPhotos.length} photos for Kling AI`);
       job.message = "Starting Ken Burns motion generation...";
       
       const { KlingService } = await import("./services/kling");
       const { VideoStudioService } = await import("./services/video-studio");
       const klingService = new KlingService();
       
-      const photosToProcess = job.photos.slice(0, 5);
+      const photosToProcess = processedPhotos.slice(0, 5);
       
       for (let i = 0; i < photosToProcess.length; i++) {
         const photoUrl = photosToProcess[i];
