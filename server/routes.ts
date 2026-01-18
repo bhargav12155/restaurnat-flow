@@ -15526,8 +15526,9 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(400).json({ error: "At least one photo is required" });
       }
 
+      // "no-avatar" is a valid option for video-only generation
       if (!avatarId) {
-        return res.status(400).json({ error: "Avatar selection is required" });
+        return res.status(400).json({ error: "Avatar selection is required (use 'no-avatar' for video only)" });
       }
 
       if (!script || script.trim() === "") {
@@ -15742,12 +15743,24 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   app.get("/api/property-tour/video/:filename", requireAuth, async (req, res) => {
     try {
       const { filename } = req.params;
+      const userId = req.user?.id;
       const fs = await import('fs');
       const path = await import('path');
       
       // Security: only allow alphanumeric, dash, underscore, and dot
       if (!/^[a-zA-Z0-9_\-.]+\.mp4$/.test(filename)) {
         return res.status(400).json({ error: "Invalid filename" });
+      }
+      
+      // Security: verify video belongs to the requesting user's job
+      const userOwnsVideo = Array.from(propertyTourJobs.values()).some(job => {
+        if (job.userId !== Number(userId)) return false;
+        return job.motionVideos.some(v => v.includes(filename)) || 
+               job.finalVideoUrl?.includes(filename);
+      });
+      
+      if (!userOwnsVideo) {
+        return res.status(403).json({ error: "Access denied" });
       }
       
       const videoPath = path.join('/tmp/kenburns-output', filename);
