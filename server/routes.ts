@@ -15409,43 +15409,58 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         throw new Error("No valid photos to process after upload");
       }
       
-      console.log(`📸 [PropertyTour] Processed ${processedPhotos.length} photos for Ken Burns FFmpeg`);
-      job.message = "Starting Ken Burns motion generation with FFmpeg...";
+      console.log(`📸 [PropertyTour] Processed ${processedPhotos.length} photos for video generation`);
       
-      const { generatePropertyTourVideo, assignEffectsToImages } = await import("./services/kenburns-video");
+      const { veoVideoService } = await import("./services/veo-video");
       const { VideoStudioService } = await import("./services/video-studio");
       
-      const photosToProcess = processedPhotos.slice(0, 10);
-      const totalDuration = job.script ? Math.max(30, Math.ceil(job.script.split(/\s+/).length / 2.5)) : 60;
-      const durationPerImage = Math.max(3, Math.floor(totalDuration / photosToProcess.length));
-      
-      console.log(`🎬 [PropertyTour] Generating Ken Burns video: ${photosToProcess.length} images, ${durationPerImage}s each`);
-      
-      job.progress = 10;
-      job.message = `Processing ${photosToProcess.length} property photos...`;
-      
-      const clips = assignEffectsToImages(photosToProcess, durationPerImage);
-      
-      job.progress = 20;
-      job.message = "Applying Ken Burns motion effects...";
-      
-      const videoResult = await generatePropertyTourVideo({
-        clips,
-        outputWidth: 1920,
-        outputHeight: 1080,
-        fps: 30,
-      });
-      
-      if (videoResult.success && videoResult.videoPath) {
-        job.motionVideos.push(videoResult.videoPath);
-        job.progress = 60;
-        console.log(`✅ [PropertyTour] Ken Burns video ready: ${videoResult.videoPath}`);
+      if (veoVideoService.isConfigured()) {
+        job.message = "Starting Gemini VEO 3.1 video generation...";
+        console.log(`🎬 [PropertyTour] Using VEO 3.1 for cinematic video`);
+        
+        job.progress = 10;
+        
+        const primaryPhoto = processedPhotos[0];
+        const veoPrompt = job.script 
+          ? `Cinematic real estate property tour video. ${job.script.substring(0, 200)}. Slow, smooth camera movements showcasing the property. Professional real estate cinematography.`
+          : `Cinematic real estate property tour video. Slow dolly movement through an elegant home. Professional real estate cinematography with smooth transitions. High-end property showcase.`;
+        
+        job.progress = 20;
+        job.message = "Generating cinematic video with VEO 3.1...";
+        
+        const veoResult = await veoVideoService.generateVideo({
+          imageUrl: primaryPhoto,
+          prompt: veoPrompt,
+          aspectRatio: "16:9",
+          duration: 8,
+        });
+        
+        if (veoResult.success && veoResult.operationId) {
+          job.progress = 30;
+          job.message = "VEO 3.1 video processing (this may take 1-3 minutes)...";
+          
+          const completion = await veoVideoService.waitForCompletion(veoResult.operationId, 180000);
+          
+          if (completion.done && completion.videoUrl) {
+            job.motionVideos.push(completion.videoUrl);
+            job.progress = 60;
+            console.log(`✅ [PropertyTour] VEO 3.1 video ready: ${completion.videoUrl}`);
+          } else {
+            console.error(`❌ [PropertyTour] VEO 3.1 failed:`, completion.error);
+            job.message = `VEO generation failed: ${completion.error}. Falling back to FFmpeg...`;
+            await fallbackToFFmpeg(job, processedPhotos);
+          }
+        } else {
+          console.error(`❌ [PropertyTour] VEO start failed:`, veoResult.error);
+          job.message = `VEO start failed: ${veoResult.error}. Falling back to FFmpeg...`;
+          await fallbackToFFmpeg(job, processedPhotos);
+        }
       } else {
-        console.error(`❌ [PropertyTour] Ken Burns generation failed:`, videoResult.error);
-        throw new Error(videoResult.error || "Ken Burns video generation failed");
+        console.log(`⚠️ [PropertyTour] VEO not configured, using FFmpeg Ken Burns`);
+        await fallbackToFFmpeg(job, processedPhotos);
       }
       
-      if (job.motionVideos.length > 0 && job.avatarImageKey) {
+      if (job.motionVideos.length > 0 && job.avatarImageKey && job.avatarId !== "no-avatar") {
         job.progress = 70;
         job.message = "Generating avatar narration video...";
         
@@ -15495,13 +15510,13 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         job.progress = 100;
         job.status = "completed";
         const avatarStatus = job.avatarVideoUrl ? " + avatar narration" : "";
-        job.message = `Generated ${job.motionVideos.length} motion clips${avatarStatus}`;
+        job.message = `Generated cinematic property tour${avatarStatus}`;
         job.finalVideoUrl = job.motionVideos[0];
         console.log(`✅ [PropertyTour] Job ${job.id} completed with ${job.motionVideos.length} videos`);
       } else {
         job.status = "failed";
         job.error = "No motion videos could be generated";
-        job.message = "Motion generation failed for all photos";
+        job.message = "Video generation failed";
         console.error(`❌ [PropertyTour] Job ${job.id} failed - no videos generated`);
       }
     } catch (error: any) {
@@ -15509,6 +15524,42 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       job.status = "failed";
       job.error = error.message;
       job.message = "An error occurred during video generation";
+    }
+  }
+
+  async function fallbackToFFmpeg(job: PropertyTourJob, processedPhotos: string[]) {
+    try {
+      job.message = "Using FFmpeg Ken Burns effects...";
+      
+      const { generatePropertyTourVideo, assignEffectsToImages } = await import("./services/kenburns-video");
+      
+      const photosToProcess = processedPhotos.slice(0, 10);
+      const totalDuration = job.script ? Math.max(30, Math.ceil(job.script.split(/\s+/).length / 2.5)) : 60;
+      const durationPerImage = Math.max(3, Math.floor(totalDuration / photosToProcess.length));
+      
+      console.log(`🎬 [PropertyTour] FFmpeg fallback: ${photosToProcess.length} images, ${durationPerImage}s each`);
+      
+      job.progress = 40;
+      
+      const clips = assignEffectsToImages(photosToProcess, durationPerImage);
+      
+      const videoResult = await generatePropertyTourVideo({
+        clips,
+        outputWidth: 1920,
+        outputHeight: 1080,
+        fps: 30,
+      });
+      
+      if (videoResult.success && videoResult.videoPath) {
+        job.motionVideos.push(videoResult.videoPath);
+        job.progress = 60;
+        console.log(`✅ [PropertyTour] FFmpeg video ready: ${videoResult.videoPath}`);
+      } else {
+        throw new Error(videoResult.error || "FFmpeg video generation failed");
+      }
+    } catch (error: any) {
+      console.error(`❌ [PropertyTour] FFmpeg fallback failed:`, error.message);
+      throw error;
     }
   }
 
@@ -15763,7 +15814,11 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(403).json({ error: "Access denied" });
       }
       
-      const videoPath = path.join('/tmp/kenburns-output', filename);
+      let videoPath = path.join('/tmp/kenburns-output', filename);
+      
+      if (!fs.existsSync(videoPath)) {
+        videoPath = path.join('/tmp/veo-output', filename);
+      }
       
       if (!fs.existsSync(videoPath)) {
         return res.status(404).json({ error: "Video not found" });
@@ -15796,6 +15851,65 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       }
     } catch (error: any) {
       console.error("Error serving property tour video:", error);
+      res.status(500).json({ error: "Failed to serve video" });
+    }
+  });
+
+  // GET /api/property-tour/veo-video/:filename - Serve VEO generated videos
+  app.get("/api/property-tour/veo-video/:filename", requireAuth, async (req, res) => {
+    try {
+      const { filename } = req.params;
+      const userId = req.user?.id;
+      const fs = await import('fs');
+      const path = await import('path');
+      
+      if (!/^[a-zA-Z0-9_\-.]+\.mp4$/.test(filename)) {
+        return res.status(400).json({ error: "Invalid filename" });
+      }
+      
+      const userOwnsVideo = Array.from(propertyTourJobs.values()).some(job => {
+        if (job.userId !== Number(userId)) return false;
+        return job.motionVideos.some(v => v.includes(filename)) || 
+               job.finalVideoUrl?.includes(filename);
+      });
+      
+      if (!userOwnsVideo) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const videoPath = path.join('/tmp/veo-output', filename);
+      
+      if (!fs.existsSync(videoPath)) {
+        return res.status(404).json({ error: "Video not found" });
+      }
+      
+      const stat = fs.statSync(videoPath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+      
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunksize = (end - start) + 1;
+        const stream = fs.createReadStream(videoPath, { start, end });
+        
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunksize,
+          'Content-Type': 'video/mp4',
+        });
+        stream.pipe(res);
+      } else {
+        res.writeHead(200, {
+          'Content-Length': fileSize,
+          'Content-Type': 'video/mp4',
+        });
+        fs.createReadStream(videoPath).pipe(res);
+      }
+    } catch (error: any) {
+      console.error("Error serving VEO video:", error);
       res.status(500).json({ error: "Failed to serve video" });
     }
   });
