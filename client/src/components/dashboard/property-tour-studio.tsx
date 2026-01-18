@@ -84,6 +84,9 @@ export function PropertyTourStudio() {
   const [generationProgress, setGenerationProgress] = useState<number>(0);
   const [generationComplete, setGenerationComplete] = useState<boolean>(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [noMlsMode, setNoMlsMode] = useState<boolean>(false);
+  const [showPhotoSelectModal, setShowPhotoSelectModal] = useState<boolean>(false);
+  const [tempPhotoSelection, setTempPhotoSelection] = useState<{url: string; selected: boolean}[]>([]);
 
   const { data: avatarsData, isLoading: avatarsLoading } = useQuery<{ photos: AvatarPhoto[] }>({
     queryKey: ["/api/avatar-iv/photos"],
@@ -137,17 +140,44 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
 
   const handlePropertySelect = useCallback((property: Property) => {
     setSelectedProperty(property);
-    const photos = property.photoUrls?.map((url, index) => ({
+    setNoMlsMode(false);
+    const photosList = property.photoUrls?.map((url) => ({
       url,
-      index,
       selected: true,
-      source: "mls" as const,
     })) || [];
-    setSelectedPhotos(photos);
+    setTempPhotoSelection(photosList);
     setUploadedPhotos([]);
     setGeneratedScript("");
-    setCurrentStep(2);
+    setShowPhotoSelectModal(true);
   }, []);
+
+  const toggleTempPhoto = useCallback((index: number) => {
+    setTempPhotoSelection(prev => 
+      prev.map((p, i) => i === index ? { ...p, selected: !p.selected } : p)
+    );
+  }, []);
+
+  const selectAllPhotos = useCallback(() => {
+    setTempPhotoSelection(prev => prev.map(p => ({ ...p, selected: true })));
+  }, []);
+
+  const deselectAllPhotos = useCallback(() => {
+    setTempPhotoSelection(prev => prev.map(p => ({ ...p, selected: false })));
+  }, []);
+
+  const confirmPhotoSelection = useCallback(() => {
+    const selected = tempPhotoSelection
+      .filter(p => p.selected)
+      .map((p, index) => ({
+        url: p.url,
+        index,
+        selected: true,
+        source: "mls" as const,
+      }));
+    setSelectedPhotos(selected);
+    setShowPhotoSelectModal(false);
+    setCurrentStep(2);
+  }, [tempPhotoSelection]);
 
   const handlePhotoToggle = useCallback((index: number) => {
     setSelectedPhotos(prev => 
@@ -349,7 +379,8 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
   }, [toast]);
 
   const handleGenerateVideo = useCallback(async () => {
-    if (!selectedProperty || !selectedAvatar || !generatedScript) return;
+    if (!selectedAvatar || !generatedScript) return;
+    if (!selectedProperty && !noMlsMode) return;
     
     setIsGenerating(true);
     setGenerationProgress(0);
@@ -378,11 +409,16 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
           script: generatedScript,
           backgroundType,
           includeBranding,
-          property: {
+          property: selectedProperty ? {
             address: selectedProperty.address,
             city: selectedProperty.city,
             state: selectedProperty.state,
             listPrice: selectedProperty.listPrice,
+          } : {
+            address: "Custom Tour",
+            city: "",
+            state: "",
+            listPrice: 0,
           },
         }),
       });
@@ -416,20 +452,25 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
         variant: "destructive",
       });
     }
-  }, [selectedProperty, selectedAvatar, generatedScript, selectedPhotos, backgroundType, includeBranding, toast, pollJobStatus, avatarsData]);
+  }, [selectedProperty, noMlsMode, selectedAvatar, generatedScript, selectedPhotos, backgroundType, includeBranding, toast, pollJobStatus, avatarsData]);
 
   const handleSaveToLibrary = useCallback(async () => {
-    if (!currentJobId || !selectedProperty) return;
+    if (!currentJobId) return;
+    if (!selectedProperty && !noMlsMode) return;
     
     setIsSavingToLibrary(true);
     try {
+      const address = selectedProperty 
+        ? `${selectedProperty.address}, ${selectedProperty.city}`
+        : "Custom Tour";
+      
       const response = await fetch("/api/property-tour/save-to-library", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           jobId: currentJobId,
-          address: `${selectedProperty.address}, ${selectedProperty.city}`,
+          address,
           script: generatedScript,
         }),
       });
@@ -455,19 +496,21 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
     } finally {
       setIsSavingToLibrary(false);
     }
-  }, [currentJobId, selectedProperty, generatedScript, toast]);
+  }, [currentJobId, selectedProperty, noMlsMode, generatedScript, toast]);
 
   const handleOpenShareDialog = useCallback(() => {
-    if (!selectedProperty) return;
+    if (!selectedProperty && !noMlsMode) return;
     
-    const defaultContent = `🏠 Just listed! Beautiful property at ${selectedProperty.address}, ${selectedProperty.city}, ${selectedProperty.state}. Listed at $${selectedProperty.listPrice.toLocaleString()}. Check out this virtual tour! #RealEstate #PropertyTour #NewListing`;
+    const defaultContent = selectedProperty 
+      ? `🏠 Just listed! Beautiful property at ${selectedProperty.address}, ${selectedProperty.city}, ${selectedProperty.state}. Listed at $${selectedProperty.listPrice.toLocaleString()}. Check out this virtual tour! #RealEstate #PropertyTour #NewListing`
+      : `🏠 Check out this amazing property tour! #RealEstate #PropertyTour`;
     setShareContent(defaultContent);
     
     const defaultVideo = avatarVideoUrl || (motionVideos.length > 0 ? motionVideos[0] : "");
     setSelectedVideoForShare(defaultVideo);
     setSelectedPlatform("");
     setShowShareDialog(true);
-  }, [selectedProperty, avatarVideoUrl, motionVideos]);
+  }, [selectedProperty, noMlsMode, avatarVideoUrl, motionVideos]);
 
   const handleShareToSocial = useCallback(async () => {
     if (!selectedPlatform || !selectedVideoForShare || !shareContent) {
@@ -542,7 +585,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
   const canProceedToStep = (step: number): boolean => {
     switch (step) {
       case 2:
-        return selectedProperty !== null;
+        return selectedProperty !== null || noMlsMode;
       case 3:
         return selectedPhotos.filter(p => p.selected).length > 0;
       case 4:
@@ -623,6 +666,27 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                 </p>
               </div>
             )}
+            <div className="flex items-center gap-4 my-4">
+              <div className="flex-1 border-t border-muted" />
+              <span className="text-sm text-muted-foreground">or</span>
+              <div className="flex-1 border-t border-muted" />
+            </div>
+            <Button 
+              variant="outline"
+              onClick={() => {
+                setNoMlsMode(true);
+                setSelectedProperty(null);
+                setSelectedPhotos([]);
+                setUploadedPhotos([]);
+                setGeneratedScript("");
+                setCurrentStep(2);
+              }}
+              className="w-full"
+              data-testid="skip-mls-button"
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Create Without MLS - Use My Own Photos
+            </Button>
           </div>
         )}
 
@@ -936,24 +1000,34 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="script-textarea">Tour Script</Label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleGenerateScript}
-                    disabled={generateScriptMutation.isPending || !selectedProperty}
-                    data-testid="generate-script-btn"
-                  >
-                    {generateScriptMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Wand2 className="h-4 w-4 mr-2" />
-                    )}
-                    Generate Script
-                  </Button>
+                  {selectedProperty && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGenerateScript}
+                      disabled={generateScriptMutation.isPending}
+                      data-testid="generate-script-btn"
+                    >
+                      {generateScriptMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-4 w-4 mr-2" />
+                      )}
+                      Generate Script
+                    </Button>
+                  )}
                 </div>
+                {noMlsMode && (
+                  <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+                    Since you're creating a tour without MLS data, please write your own script for the avatar narration.
+                  </div>
+                )}
                 <Textarea
                   id="script-textarea"
-                  placeholder="Your property tour narration script will appear here. Click 'Generate Script' to create one based on the property's MLS data, or write your own."
+                  placeholder={noMlsMode 
+                    ? "Write your property tour narration script here. Describe the property features, location, and highlights you want the avatar to present."
+                    : "Your property tour narration script will appear here. Click 'Generate Script' to create one based on the property's MLS data, or write your own."
+                  }
                   value={generatedScript}
                   onChange={(e) => setGeneratedScript(e.target.value)}
                   className="min-h-[200px]"
@@ -974,7 +1048,7 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
               <div className="grid md:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Property:</span>
-                  <p data-testid="summary-property">{selectedProperty?.address}</p>
+                  <p data-testid="summary-property">{selectedProperty?.address || (noMlsMode ? "Custom Tour (No MLS)" : "N/A")}</p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Photos:</span>
@@ -1269,6 +1343,65 @@ ${property.features && property.features.length > 0 ? `Features: ${property.feat
                 <Share2 className="h-4 w-4 mr-2" />
               )}
               {isPosting ? "Posting..." : "Post"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPhotoSelectModal} onOpenChange={setShowPhotoSelectModal}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto" data-testid="photo-select-modal">
+          <DialogHeader>
+            <DialogTitle>Select Photos for Tour</DialogTitle>
+            <DialogDescription>
+              Choose which photos from this listing to include in your property tour. You can add more photos later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Button variant="outline" size="sm" onClick={selectAllPhotos} data-testid="select-all-photos-btn">
+                Select All
+              </Button>
+              <Button variant="outline" size="sm" onClick={deselectAllPhotos} data-testid="deselect-all-photos-btn">
+                Deselect All
+              </Button>
+              <span className="text-sm text-muted-foreground" data-testid="photo-selection-count">
+                {tempPhotoSelection.filter(p => p.selected).length} of {tempPhotoSelection.length} selected
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {tempPhotoSelection.map((photo, index) => (
+                <div
+                  key={index}
+                  onClick={() => toggleTempPhoto(index)}
+                  className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                    photo.selected ? "border-primary ring-2 ring-primary/30" : "border-muted opacity-60"
+                  }`}
+                  data-testid={`temp-photo-${index}`}
+                >
+                  <img src={photo.url} alt={`Photo ${index + 1}`} className="w-full aspect-video object-cover" />
+                  <div className="absolute top-2 right-2">
+                    <Checkbox checked={photo.selected} />
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 text-center">
+                    Photo {index + 1}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+                setShowPhotoSelectModal(false);
+                setSelectedProperty(null);
+              }} data-testid="photo-select-cancel-btn">
+              Cancel
+            </Button>
+            <Button 
+              onClick={confirmPhotoSelection}
+              disabled={tempPhotoSelection.filter(p => p.selected).length === 0}
+              data-testid="photo-select-confirm-btn"
+            >
+              Continue with {tempPhotoSelection.filter(p => p.selected).length} Photos
             </Button>
           </DialogFooter>
         </DialogContent>
