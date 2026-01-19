@@ -6070,14 +6070,14 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   });
 
   // Avatar Management endpoints
-  app.get("/api/avatars", async (req, res) => {
+  app.get("/api/avatars", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const avatars = await storage.getAvatars(user.id);
+      const avatars = await storage.getAvatars(userId);
       res.json(avatars);
     } catch (error) {
       console.error("Get avatars error:", error);
@@ -6085,12 +6085,13 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  app.post("/api/avatars", upload.single("avatarPhoto"), async (req, res) => {
+  app.post("/api/avatars", requireAuth, upload.single("avatarPhoto"), async (req, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
       }
+      const user = { id: userId };
 
       // Initialize HeyGen service
       const heygenService = new HeyGenService();
@@ -6188,6 +6189,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
 
   app.put(
     "/api/avatars/:id",
+    requireAuth,
     upload.fields([
       { name: "avatarPhoto", maxCount: 1 },
       { name: "voiceRecording", maxCount: 1 },
@@ -6195,12 +6197,16 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     async (req, res) => {
       try {
         const { id } = req.params;
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
         const updates = req.body;
 
-        // Get existing avatar to check for HeyGen metadata
-        const existingAvatar = await storage.getAvatarById(id);
+        // Get existing avatar and verify ownership
+        const existingAvatar = await storage.getAvatarByIdAndUser(id, userId);
         if (!existingAvatar) {
-          return res.status(404).json({ error: "Avatar not found" });
+          return res.status(404).json({ error: "Avatar not found or not owned by user" });
         }
 
         // Cast req.files to the correct type
@@ -6305,11 +6311,11 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
   );
 
   // Import existing HeyGen avatar (use pre-built avatars from HeyGen library)
-  app.post("/api/avatars/import", async (req, res) => {
+  app.post("/api/avatars/import", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUserByUsername("mikebjork");
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
       }
 
       const { avatarId } = req.body;
@@ -6332,7 +6338,7 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         description: `Professional HeyGen avatar for video creation`,
         style: "professional",
         gender: avatarDetails.data.gender || "unknown",
-        userId: user.id,
+        userId: userId,
         metadata: {
           heygenAvatarId: avatarId,
           importedFrom: "heygen",
