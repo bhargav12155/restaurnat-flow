@@ -9877,14 +9877,36 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Get available voices for Avatar IV
+  // Get available voices for Avatar IV (includes HeyGen voices + user's custom saved voices)
   app.get("/api/avatar-iv/voices", requireAuth, async (req, res) => {
     try {
+      const userId = String(req.user?.id);
       const { HeyGenAvatarIVService } = await import("./services/heygen-avatar-iv");
       const avatarIVService = new HeyGenAvatarIVService();
 
-      const voices = await avatarIVService.getVoices();
-      res.json({ voices });
+      // Get HeyGen voices
+      const heygenVoices = await avatarIVService.getVoices();
+      
+      // Get user's custom saved voices from the voice library
+      const customVoices = await storage.listCustomVoices(userId);
+      
+      // Convert custom voices to the same format as HeyGen voices
+      const formattedCustomVoices = customVoices
+        .filter(v => v.status === "ready" && v.heygenAudioAssetId)
+        .map(v => ({
+          voice_id: v.heygenAudioAssetId!,
+          name: `${v.name} (Saved)`,
+          language: "Custom",
+          gender: "custom",
+          preview_audio: v.audioUrl,
+          is_custom: true,
+          custom_voice_id: v.id,
+        }));
+      
+      // Combine with custom voices first (so they appear at top)
+      const allVoices = [...formattedCustomVoices, ...heygenVoices];
+      
+      res.json({ voices: allVoices });
     } catch (error: any) {
       console.error("Failed to get voices:", error);
       res.status(500).json({ error: "Failed to get voices", details: error?.message });

@@ -39,6 +39,7 @@ import {
   Sparkles,
   RotateCcw,
   Search,
+  Save,
 } from "lucide-react";
 
 interface Voice {
@@ -47,6 +48,8 @@ interface Voice {
   language: string;
   gender: string;
   preview_audio?: string;
+  is_custom?: boolean;
+  custom_voice_id?: string;
 }
 
 interface PhotoAsset {
