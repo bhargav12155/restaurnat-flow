@@ -38,6 +38,7 @@ import {
   ExternalLink,
   Sparkles,
   RotateCcw,
+  Search,
 } from "lucide-react";
 
 interface Voice {
@@ -60,7 +61,7 @@ interface PhotoAsset {
   createdAt?: string;
 }
 
-const FALLBACK_VOICES = [
+const FALLBACK_VOICES: Voice[] = [
   { voice_id: "119caed25533477ba63822d5d1552d25", name: "Default Voice", language: "English", gender: "female" },
 ];
 
@@ -187,6 +188,8 @@ export function AvatarIVStudio() {
   const videoTitleRef = useRef<IsolatedInputHandle>(null);
   const scriptTextareaRef = useRef<IsolatedInputHandle>(null);
   const [selectedVoice, setSelectedVoice] = useState("");
+  const [voiceSearch, setVoiceSearch] = useState("");
+  const [genderFilter, setGenderFilter] = useState<"all" | "female" | "male">("all");
   const [selectedMotion, setSelectedMotion] = useState(MOTION_PROMPTS[0].id);
   const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
@@ -272,6 +275,25 @@ export function AvatarIVStudio() {
   });
 
   const voices = voicesData?.voices || FALLBACK_VOICES;
+  
+  // Filter voices based on search and gender
+  const filteredVoices = useMemo(() => {
+    return voices.filter((voice) => {
+      // Gender filter
+      if (genderFilter !== "all") {
+        const voiceGender = voice.gender?.toLowerCase() || "";
+        if (voiceGender !== genderFilter) return false;
+      }
+      // Text search
+      if (voiceSearch.trim()) {
+        const searchLower = voiceSearch.toLowerCase();
+        const nameMatch = voice.name?.toLowerCase().includes(searchLower);
+        const languageMatch = voice.language?.toLowerCase().includes(searchLower);
+        if (!nameMatch && !languageMatch) return false;
+      }
+      return true;
+    });
+  }, [voices, genderFilter, voiceSearch]);
   
   // Set default voice when voices load
   useEffect(() => {
@@ -1228,64 +1250,111 @@ export function AvatarIVStudio() {
 
                 <div className="space-y-4">
                   {inputMode === "text" && (
-                    <div>
+                    <div className="space-y-3">
                       <Label className="flex items-center gap-2">
                         Voice
                         {voicesLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                         <Badge variant="secondary" className="text-xs">
-                          {voices.length} available
+                          {filteredVoices.length} of {voices.length}
                         </Badge>
                       </Label>
-                      <Select value={selectedVoice} onValueChange={setSelectedVoice}>
-                        <SelectTrigger className="mt-1" data-testid="select-voice">
-                          <SelectValue placeholder="Select voice" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <ScrollArea className="h-[300px]">
-                            {voices.map((voice) => (
-                              <SelectItem key={voice.voice_id} value={voice.voice_id}>
-                                <div className="flex items-center justify-between w-full gap-2">
-                                  <span>{voice.name}</span>
-                                  <div className="flex items-center gap-1">
-                                    {voice.language && voice.language !== "unknown" && (
-                                      <Badge variant="outline" className="text-xs">
-                                        {voice.language}
-                                      </Badge>
-                                    )}
-                                    {voice.gender && voice.gender !== "unknown" && (
-                                      <Badge variant="outline" className="text-xs">
-                                        {voice.gender}
-                                      </Badge>
-                                    )}
-                                    {(!voice.language || voice.language === "unknown") && (!voice.gender || voice.gender === "unknown") && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        Custom
-                                      </Badge>
-                                    )}
+                      
+                      {/* Search and Gender Filter */}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="relative flex-1">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search voices..."
+                            value={voiceSearch}
+                            onChange={(e) => setVoiceSearch(e.target.value)}
+                            className="pl-9"
+                            data-testid="input-voice-search"
+                          />
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            variant={genderFilter === "all" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setGenderFilter("all")}
+                            data-testid="button-filter-all"
+                          >
+                            All
+                          </Button>
+                          <Button
+                            variant={genderFilter === "female" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setGenderFilter("female")}
+                            data-testid="button-filter-female"
+                          >
+                            Female
+                          </Button>
+                          <Button
+                            variant={genderFilter === "male" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setGenderFilter("male")}
+                            data-testid="button-filter-male"
+                          >
+                            Male
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {/* Voice List */}
+                      <ScrollArea className="h-[250px] border rounded-md p-2">
+                        {filteredVoices.length === 0 ? (
+                          <p className="text-center text-gray-500 py-4">No voices match your search</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {filteredVoices.map((voice) => (
+                              <div
+                                key={voice.voice_id}
+                                className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${
+                                  selectedVoice === voice.voice_id ? "bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700" : ""
+                                }`}
+                                onClick={() => setSelectedVoice(voice.voice_id)}
+                                data-testid={`voice-option-${voice.voice_id}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className="flex flex-col">
+                                    <span className="font-medium text-sm">{voice.name}</span>
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      {voice.language && voice.language !== "unknown" && (
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                          {voice.language}
+                                        </Badge>
+                                      )}
+                                      {voice.gender && voice.gender !== "unknown" && (
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0">
+                                          {voice.gender}
+                                        </Badge>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </SelectItem>
+                                <div className="flex items-center gap-2">
+                                  {voice.preview_audio && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        playVoicePreview(voice.preview_audio!, voice.voice_id);
+                                      }}
+                                      data-testid={`button-preview-${voice.voice_id}`}
+                                    >
+                                      <Volume2 className={`h-4 w-4 ${playingPreview === voice.voice_id ? "text-blue-500 animate-pulse" : ""}`} />
+                                    </Button>
+                                  )}
+                                  {selectedVoice === voice.voice_id && (
+                                    <Check className="h-4 w-4 text-blue-500" />
+                                  )}
+                                </div>
+                              </div>
                             ))}
-                          </ScrollArea>
-                        </SelectContent>
-                      </Select>
-                      {selectedVoice && voices.find(v => v.voice_id === selectedVoice)?.preview_audio && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="mt-1"
-                          onClick={() => {
-                            const voice = voices.find(v => v.voice_id === selectedVoice);
-                            if (voice?.preview_audio) {
-                              playVoicePreview(voice.preview_audio, voice.voice_id);
-                            }
-                          }}
-                          data-testid="button-preview-voice"
-                        >
-                          <Volume2 className="h-4 w-4 mr-1" />
-                          {playingPreview === selectedVoice ? "Playing..." : "Preview Voice"}
-                        </Button>
-                      )}
+                          </div>
+                        )}
+                      </ScrollArea>
                     </div>
                   )}
 
