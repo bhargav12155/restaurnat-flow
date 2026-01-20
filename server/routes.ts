@@ -6669,10 +6669,21 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  app.put("/api/videos/:id", async (req, res) => {
+  app.put("/api/videos/:id", requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = String(req.user?.id);
       const updates = req.body;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Verify ownership before updating
+      const existingVideo = await storage.getVideoByIdAndUser(id, userId);
+      if (!existingVideo) {
+        return res.status(404).json({ error: "Video not found or access denied" });
+      }
 
       const updatedVideo = await storage.updateVideoContent(id, updates);
 
