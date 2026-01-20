@@ -9544,8 +9544,43 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       let imageBuffer = req.file.buffer;
       let contentType = req.file.mimetype || "image/jpeg";
       
-      const unsupportedFormats = ["image/webp", "image/heic", "image/heif", "image/avif"];
-      if (unsupportedFormats.includes(contentType.toLowerCase())) {
+      const heicFormats = ["image/heic", "image/heif"];
+      const otherUnsupportedFormats = ["image/webp", "image/avif"];
+      
+      // Handle HEIC/HEIF separately with heic-convert (pure JS, more reliable)
+      if (heicFormats.includes(contentType.toLowerCase()) || 
+          req.file.originalname?.toLowerCase().endsWith('.heic') ||
+          req.file.originalname?.toLowerCase().endsWith('.heif')) {
+        console.log(`🔄 Converting HEIC/HEIF to JPEG using heic-convert...`);
+        try {
+          const heicConvert = (await import("heic-convert")).default;
+          const outputBuffer = await heicConvert({
+            buffer: req.file.buffer,
+            format: "JPEG",
+            quality: 0.95
+          });
+          imageBuffer = Buffer.from(outputBuffer);
+          contentType = "image/jpeg";
+          console.log(`✅ HEIC converted to JPEG: ${imageBuffer.length} bytes`);
+        } catch (heicError: any) {
+          console.error(`❌ HEIC conversion failed:`, heicError?.message);
+          // Try sharp as fallback
+          try {
+            const sharp = (await import("sharp")).default;
+            imageBuffer = await sharp(req.file.buffer)
+              .jpeg({ quality: 95 })
+              .toBuffer();
+            contentType = "image/jpeg";
+            console.log(`✅ HEIC converted via sharp fallback: ${imageBuffer.length} bytes`);
+          } catch (sharpError: any) {
+            console.error(`❌ Sharp fallback also failed:`, sharpError?.message);
+            return res.status(400).json({ 
+              error: "Failed to convert HEIC image. Please convert to JPEG or PNG before uploading.",
+              details: heicError?.message
+            });
+          }
+        }
+      } else if (otherUnsupportedFormats.includes(contentType.toLowerCase())) {
         console.log(`🔄 Converting ${contentType} to JPEG for HeyGen compatibility...`);
         const sharp = (await import("sharp")).default;
         imageBuffer = await sharp(req.file.buffer)
