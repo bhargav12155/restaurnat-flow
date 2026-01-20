@@ -214,9 +214,17 @@ function SidebarContent({
         }, 50);
       }
     } else {
-      setLocation(fullPath);
-      if (window.location.hash) {
-        window.location.hash = '';
+      // Navigating to a path without hash (e.g., Dashboard)
+      // If we're on the same path but with a hash, clear the hash and force refresh
+      if ((currentPath === path || (currentPath === '/' && path === '/dashboard')) && window.location.hash) {
+        // Clear hash using replaceState and notify both Wouter and dashboard's hash listener
+        window.history.replaceState({}, '', fullPath);
+        // Dispatch popstate to notify Wouter of the URL change
+        window.dispatchEvent(new Event('popstate'));
+        // Dispatch hashchange for dashboard's activeView listener (using Event for Safari compatibility)
+        window.dispatchEvent(new Event('hashchange'));
+      } else {
+        setLocation(fullPath);
       }
     }
     
