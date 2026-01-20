@@ -1197,8 +1197,17 @@ export function AvatarIVStudio() {
                             title={!imageKey ? "Upload a photo first" : !videoTitle.trim() ? "Enter a video title first" : "Generate script with AI"}
                             data-testid="button-ai-generate-script"
                           >
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            {generateScriptMutation.isPending ? "Generating..." : "AI Generate"}
+                            {generateScriptMutation.isPending ? (
+                              <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="h-3 w-3 mr-1" />
+                                AI Generate
+                              </>
+                            )}
                           </Button>
                         </div>
                         <IsolatedTextarea

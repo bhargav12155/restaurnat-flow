@@ -999,7 +999,11 @@ export function ScheduledPostsManager() {
                   className="flex-1"
                   data-testid="button-save"
                 >
-                  <Check className="h-4 w-4 mr-2" />
+                  {updatePostMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4 mr-2" />
+                  )}
                   {updatePostMutation.isPending ? "Saving..." : "Save Changes"}
                 </Button>
                 <Button

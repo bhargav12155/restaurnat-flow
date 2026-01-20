@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Edit, Search, Heart, ExternalLink, CheckCircle } from "lucide-react";
+import { Users, Edit, Search, Heart, ExternalLink, CheckCircle, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -208,8 +208,17 @@ export function OverviewCards() {
                         disabled={connectSearchConsoleMutation.isPending}
                         data-testid={`button-connect-${card.key}`}
                       >
-                        {connectSearchConsoleMutation.isPending ? "Connecting..." : card.connectHint}
-                        <ExternalLink className="ml-1 h-3 w-3" />
+                        {connectSearchConsoleMutation.isPending ? (
+                          <>
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            Connecting...
+                          </>
+                        ) : (
+                          <>
+                            {card.connectHint}
+                            <ExternalLink className="ml-1 h-3 w-3" />
+                          </>
+                        )}
                       </Button>
                     ) : (
                       <span className="text-muted-foreground font-medium truncate">Admin connects this</span>
@@ -223,8 +232,17 @@ export function OverviewCards() {
                       disabled={connectSearchConsoleMutation.isPending}
                       data-testid={`button-connect-${card.key}`}
                     >
-                      {connectSearchConsoleMutation.isPending ? "Connecting..." : card.connectHint}
-                      <ExternalLink className="ml-1 h-3 w-3" />
+                      {connectSearchConsoleMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          {card.connectHint}
+                          <ExternalLink className="ml-1 h-3 w-3" />
+                        </>
+                      )}
                     </Button>
                   ) : (
                     <span className="text-amber-600 font-medium truncate">{card.connectHint}</span>
