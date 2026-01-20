@@ -1619,7 +1619,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
         instagram: facebookClientId
           ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/instagram"
-            )}&scope=pages_show_list,pages_read_engagement,pages_manage_posts,instagram_business_basic,instagram_content_publish&state=${encodeURIComponent(
+            )}&scope=pages_show_list,pages_read_engagement,pages_manage_posts,instagram_content_publish&state=${encodeURIComponent(
               state
             )}`
           : null,
