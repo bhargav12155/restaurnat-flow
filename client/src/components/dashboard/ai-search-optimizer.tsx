@@ -22,7 +22,8 @@ import {
   Users,
   Award,
   Target,
-  Lightbulb
+  Lightbulb,
+  Loader2
 } from "lucide-react";
 
 interface AIOptimizationScore {
@@ -445,8 +446,17 @@ export function AISearchOptimizer() {
                 className="w-full"
                 data-testid="button-generate-ai-content"
               >
-                <Search className="mr-2 h-4 w-4" />
-                {generateAIOptimizedContent.isPending ? "Generating..." : "Generate AI-Optimized Content"}
+                {generateAIOptimizedContent.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-4 w-4" />
+                    Generate AI-Optimized Content
+                  </>
+                )}
               </Button>
               
               {/* AI Optimization Preview */}
