@@ -1,6 +1,7 @@
 import {
   type Analytics,
   type Avatar,
+  avatars,
   type BrandSettings,
   brandSettings as brandSettingsTable,
   type CompanyProfile,
@@ -238,18 +239,20 @@ export interface IStorage {
   ): Promise<PhotoAvatarGroupVoice | undefined>;
   listPhotoAvatarGroupVoices(userId: string): Promise<PhotoAvatarGroupVoice[]>;
 
-  // Individual Photo Avatars
+  // Individual Photo Avatars (training photos within groups)
   createPhotoAvatar(avatar: InsertPhotoAvatar): Promise<PhotoAvatar>;
   listPhotoAvatarsByGroup(groupId: string): Promise<PhotoAvatar[]>;
+  
+  // Avatar Looks (trained avatars from HeyGen - uses avatars table)
   getPhotoAvatarByHeygenIdAndUser(
     heygenAvatarId: string,
     userId: string
-  ): Promise<PhotoAvatar | undefined>;
+  ): Promise<Avatar | undefined>;
   updatePhotoAvatar(
     heygenAvatarId: string,
     userId: string,
-    updates: Partial<PhotoAvatar>
-  ): Promise<PhotoAvatar | undefined>;
+    updates: Partial<Avatar>
+  ): Promise<Avatar | undefined>;
   deletePhotoAvatar(heygenAvatarId: string, userId: string): Promise<boolean>;
 
   // Video Avatars (Enterprise HeyGen Feature)
@@ -1541,10 +1544,13 @@ export class MemStorage implements IStorage {
   }
 
   async listPhotoAvatarGroups(userId: string): Promise<PhotoAvatarGroup[]> {
-    return await db
+    console.log(`📸 [STORAGE] listPhotoAvatarGroups called with userId: "${userId}"`);
+    const result = await db
       .select()
       .from(photoAvatarGroups)
       .where(eq(photoAvatarGroups.userId, userId));
+    console.log(`📸 [STORAGE] Found ${result.length} groups, group user_ids: ${result.map(g => g.userId).join(', ')}`);
+    return result;
   }
 
   async updatePhotoAvatarGroup(
@@ -1607,14 +1613,15 @@ export class MemStorage implements IStorage {
   async getPhotoAvatarByHeygenIdAndUser(
     heygenAvatarId: string,
     userId: string
-  ): Promise<PhotoAvatar | undefined> {
+  ): Promise<Avatar | undefined> {
+    // Use avatars table for individual avatar looks (not photoAvatars which is for training photos)
     const [avatar] = await db
       .select()
-      .from(photoAvatars)
+      .from(avatars)
       .where(
         and(
-          eq(photoAvatars.heygenAvatarId, heygenAvatarId),
-          eq(photoAvatars.userId, userId)
+          eq(avatars.heygenAvatarId, heygenAvatarId),
+          eq(avatars.userId, userId)
         )
       )
       .limit(1);
@@ -1624,15 +1631,16 @@ export class MemStorage implements IStorage {
   async updatePhotoAvatar(
     heygenAvatarId: string,
     userId: string,
-    updates: Partial<PhotoAvatar>
-  ): Promise<PhotoAvatar | undefined> {
+    updates: Partial<Avatar>
+  ): Promise<Avatar | undefined> {
+    // Use avatars table for individual avatar looks (not photoAvatars which is for training photos)
     const [result] = await db
-      .update(photoAvatars)
+      .update(avatars)
       .set(updates)
       .where(
         and(
-          eq(photoAvatars.heygenAvatarId, heygenAvatarId),
-          eq(photoAvatars.userId, userId)
+          eq(avatars.heygenAvatarId, heygenAvatarId),
+          eq(avatars.userId, userId)
         )
       )
       .returning();
@@ -1643,12 +1651,13 @@ export class MemStorage implements IStorage {
     heygenAvatarId: string,
     userId: string
   ): Promise<boolean> {
+    // Use avatars table for individual avatar looks (not photoAvatars which is for training photos)
     const result = await db
-      .delete(photoAvatars)
+      .delete(avatars)
       .where(
         and(
-          eq(photoAvatars.heygenAvatarId, heygenAvatarId),
-          eq(photoAvatars.userId, userId)
+          eq(avatars.heygenAvatarId, heygenAvatarId),
+          eq(avatars.userId, userId)
         )
       );
     return result.rowCount ? result.rowCount > 0 : false;

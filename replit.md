@@ -38,6 +38,7 @@ The backend uses Express.js with TypeScript (ESM) and Replit's OpenID Connect fo
 - **Database**: PostgreSQL with Drizzle ORM, supporting main users (agents) and public users (clients) with multi-tenancy.
 - **Storage Architecture**: Dual-storage strategy combining HeyGen API storage with AWS S3 for backup and archival of voice recordings, avatar images, and generated videos.
 - **Real-time Communication**: WebSockets provide live updates for content generation status, social media posting, lead notifications, and activity feeds.
+- **Photo Avatar Privacy**: Photo avatar groups are scoped to individual users via `userId` column. All photo avatar endpoints use database-first filtering to ensure users only see their own avatar groups. The `avatars` table stores individual avatar looks with user ownership, while `photoAvatars` table stores training photos linked to groups.
 
 ## External Dependencies
 
