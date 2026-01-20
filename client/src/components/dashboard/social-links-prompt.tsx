@@ -118,6 +118,7 @@ export function SocialLinksPrompt({
       });
 
       if (response.ok) {
+        localStorage.setItem("socialLinksPromptShown", "true");
         toast({
           title: "Success",
           description: "Your social links have been saved!",
@@ -216,7 +217,10 @@ export function SocialLinksPrompt({
         <div className="flex gap-3 justify-end pt-4 border-t">
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {
+              localStorage.setItem("socialLinksPromptShown", "true");
+              onOpenChange(false);
+            }}
             disabled={isLoading}
           >
             Skip for Now
