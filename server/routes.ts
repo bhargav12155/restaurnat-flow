@@ -1619,7 +1619,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
         instagram: facebookClientId
           ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${encodeURIComponent(
               baseUrl + "/api/social/callback/instagram"
-            )}&scope=pages_show_list,pages_read_engagement,business_management&state=${encodeURIComponent(
+            )}&scope=pages_show_list,pages_read_engagement,pages_manage_posts,instagram_business_basic,instagram_content_publish&state=${encodeURIComponent(
               state
             )}`
           : null,
@@ -2081,7 +2081,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
               <html>
                 <body>
                   <h1>❌ Instagram Connection Failed</h1>
-                  <p>Token exchange failed. Make sure you have pages_show_list, pages_read_engagement, and business_management permissions enabled in your Facebook App.</p>
+                  <p>Token exchange failed. Make sure you have pages_show_list, pages_read_engagement, pages_manage_posts, instagram_business_basic, and instagram_content_publish permissions enabled in your Facebook App.</p>
                   <script>
                     window.opener?.postMessage({ success: false, platform: 'instagram', error: 'token_exchange_failed' }, '*');
                     setTimeout(() => window.close(), 4000);
