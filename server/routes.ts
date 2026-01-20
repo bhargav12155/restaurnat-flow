@@ -10999,7 +10999,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
-  // List all video avatars
+  // List all video avatars - PRIVACY: Only return avatars belonging to the authenticated user
   app.get("/api/video-avatars", requireAuth, async (req, res) => {
     try {
       const userId = req.user?.id;
@@ -11009,17 +11009,34 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       console.log("🎥 Backend: List video avatars for user:", userId);
 
-      // Fetch avatars directly from HeyGen API to include avatars created on their website
+      // PRIVACY FIX: First get the user's avatar IDs from local database
+      // This ensures we only return avatars that belong to this user
+      const userAvatars = await storage.listVideoAvatars(String(userId));
+      const userAvatarIds = new Set(userAvatars.map(a => a.heygenAvatarId));
+      
+      console.log(`📋 User ${userId} has ${userAvatarIds.size} avatars in database`);
+
+      // If user has no avatars in database, return empty array
+      if (userAvatarIds.size === 0) {
+        console.log("✅ No avatars found for user - returning empty list");
+        return res.json([]);
+      }
+
+      // Fetch avatars from HeyGen API and filter to only user's avatars
       const videoAvatarService = new HeyGenVideoAvatarService();
       const heygenResponse = await videoAvatarService.listVideoAvatars();
       
-      // Transform HeyGen API response to match our expected format
-      // Uses 'avatars' array from the /avatars endpoint (filtered for instant_avatar type)
-      const heygenAvatars = (heygenResponse.data?.avatars || []).map((avatar: any) => ({
+      // Transform and FILTER HeyGen API response to only include user's avatars
+      const allHeygenAvatars = heygenResponse.data?.avatars || [];
+      const userHeygenAvatars = allHeygenAvatars.filter((avatar: any) => 
+        userAvatarIds.has(avatar.avatar_id)
+      );
+      
+      const formattedAvatars = userHeygenAvatars.map((avatar: any) => ({
         id: avatar.avatar_id,
         heygenAvatarId: avatar.avatar_id,
         avatarName: avatar.avatar_name,
-        status: 'complete' as const, // Instant avatars from the list are always complete
+        status: 'complete' as const,
         thumbnailUrl: avatar.preview_image_url,
         previewVideoUrl: avatar.preview_video_url,
         createdAt: new Date(),
@@ -11031,16 +11048,16 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         source: 'heygen' as const,
       }));
 
-      console.log("✅ Instant avatars retrieved from HeyGen:", heygenAvatars.length);
-      res.json(heygenAvatars);
+      console.log(`✅ Returning ${formattedAvatars.length} avatars for user ${userId} (filtered from ${allHeygenAvatars.length} total in HeyGen)`);
+      res.json(formattedAvatars);
     } catch (error: any) {
       console.error("❌ Failed to list video avatars:", error);
       
-      // If HeyGen API fails, try to get from local database as fallback
+      // If HeyGen API fails, return from local database (already user-scoped)
       try {
         const userId = req.user?.id;
         if (userId) {
-          const localAvatars = await storage.listVideoAvatars(userId);
+          const localAvatars = await storage.listVideoAvatars(String(userId));
           console.log("📦 Fallback: Retrieved from local database:", localAvatars.length);
           return res.json(localAvatars);
         }
@@ -11079,13 +11096,26 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Delete video avatar
+  // Delete video avatar - PRIVACY: Verify ownership before deleting
   app.delete("/api/video-avatars/:avatarId", requireAuth, async (req, res) => {
     try {
       const { avatarId } = req.params;
       const userId = req.user?.id;
 
-      console.log("🎥 Backend: Delete video avatar:", avatarId);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log("🎥 Backend: Delete video avatar:", avatarId, "for user:", userId);
+
+      // PRIVACY FIX: Verify ownership before deleting
+      const userAvatars = await storage.listVideoAvatars(String(userId));
+      const userOwnsAvatar = userAvatars.some(a => a.heygenAvatarId === avatarId);
+      
+      if (!userOwnsAvatar) {
+        console.warn(`⚠️ User ${userId} attempted to delete avatar ${avatarId} they don't own`);
+        return res.status(403).json({ error: "You don't have permission to delete this avatar" });
+      }
 
       const videoAvatarService = new HeyGenVideoAvatarService();
       await videoAvatarService.deleteVideoAvatar(avatarId);
@@ -11093,16 +11123,14 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.log("✅ Video avatar deleted from HeyGen");
 
       // Delete from database
-      if (userId) {
-        try {
-          await storage.deleteVideoAvatar(userId, avatarId);
-          console.log("💾 Video avatar deleted from database");
-        } catch (dbError) {
-          console.error(
-            "⚠️ Failed to delete video avatar from database:",
-            dbError
-          );
-        }
+      try {
+        await storage.deleteVideoAvatar(String(userId), avatarId);
+        console.log("💾 Video avatar deleted from database");
+      } catch (dbError) {
+        console.error(
+          "⚠️ Failed to delete video avatar from database:",
+          dbError
+        );
       }
 
       res.json({
