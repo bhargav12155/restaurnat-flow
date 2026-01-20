@@ -283,7 +283,7 @@ export function UserSettings() {
                     <Input
                       id="fb-page-id"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Your Facebook Page ID"
+                      placeholder={showTokens ? "Your Facebook Page ID" : "••••••••••••"}
                       value={socialKeys.facebookPageId || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -298,7 +298,7 @@ export function UserSettings() {
                     <Input
                       id="fb-access-token"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Facebook Access Token"
+                      placeholder={showTokens ? "Facebook Access Token" : "••••••••••••"}
                       value={socialKeys.facebookAccessToken || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -323,7 +323,7 @@ export function UserSettings() {
                     <Input
                       id="ig-user-id"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Instagram User ID"
+                      placeholder={showTokens ? "Instagram User ID" : "••••••••••••"}
                       value={socialKeys.instagramUserId || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -338,7 +338,7 @@ export function UserSettings() {
                     <Input
                       id="ig-access-token"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Instagram Access Token"
+                      placeholder={showTokens ? "Instagram Access Token" : "••••••••••••"}
                       value={socialKeys.instagramAccessToken || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -363,7 +363,7 @@ export function UserSettings() {
                     <Input
                       id="twitter-api-key"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Twitter API Key"
+                      placeholder={showTokens ? "Twitter API Key" : "••••••••••••"}
                       value={socialKeys.twitterApiKey || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -378,7 +378,7 @@ export function UserSettings() {
                     <Input
                       id="twitter-api-secret"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Twitter API Secret"
+                      placeholder={showTokens ? "Twitter API Secret" : "••••••••••••"}
                       value={socialKeys.twitterApiSecret || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -393,7 +393,7 @@ export function UserSettings() {
                     <Input
                       id="twitter-access-token"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Twitter Access Token"
+                      placeholder={showTokens ? "Twitter Access Token" : "••••••••••••"}
                       value={socialKeys.twitterAccessToken || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -410,7 +410,7 @@ export function UserSettings() {
                     <Input
                       id="twitter-access-secret"
                       type={showTokens ? "text" : "password"}
-                      placeholder="Twitter Access Token Secret"
+                      placeholder={showTokens ? "Twitter Access Token Secret" : "••••••••••••"}
                       value={socialKeys.twitterAccessTokenSecret || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -435,7 +435,7 @@ export function UserSettings() {
                     <Input
                       id="linkedin-access-token"
                       type={showTokens ? "text" : "password"}
-                      placeholder="LinkedIn Access Token"
+                      placeholder={showTokens ? "LinkedIn Access Token" : "••••••••••••"}
                       value={socialKeys.linkedinAccessToken || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -450,7 +450,7 @@ export function UserSettings() {
                     <Input
                       id="linkedin-org-id"
                       type={showTokens ? "text" : "password"}
-                      placeholder="LinkedIn Organization ID"
+                      placeholder={showTokens ? "LinkedIn Organization ID" : "••••••••••••"}
                       value={socialKeys.linkedinOrganizationId || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -472,7 +472,7 @@ export function UserSettings() {
                     <Input
                       id="youtube-api-key"
                       type={showTokens ? "text" : "password"}
-                      placeholder="YouTube API Key"
+                      placeholder={showTokens ? "YouTube API Key" : "••••••••••••"}
                       value={socialKeys.youtubeApiKey || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -487,7 +487,7 @@ export function UserSettings() {
                     <Input
                       id="youtube-channel-id"
                       type={showTokens ? "text" : "password"}
-                      placeholder="YouTube Channel ID"
+                      placeholder={showTokens ? "YouTube Channel ID" : "••••••••••••"}
                       value={socialKeys.youtubeChannelId || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -509,7 +509,7 @@ export function UserSettings() {
                     <Input
                       id="tiktok-access-token"
                       type={showTokens ? "text" : "password"}
-                      placeholder="TikTok Access Token"
+                      placeholder={showTokens ? "TikTok Access Token" : "••••••••••••"}
                       value={socialKeys.tiktokAccessToken || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
@@ -524,7 +524,7 @@ export function UserSettings() {
                     <Input
                       id="tiktok-open-id"
                       type={showTokens ? "text" : "password"}
-                      placeholder="TikTok Open ID"
+                      placeholder={showTokens ? "TikTok Open ID" : "••••••••••••"}
                       value={socialKeys.tiktokOpenId || ""}
                       onChange={(e) =>
                         setSocialKeys((prev) => ({
