@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback, memo, forwardRef, useImperativeHandle } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import heic2any from "heic2any";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -184,6 +185,7 @@ export function AvatarIVStudio() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageKey, setImageKey] = useState<string | null>(null);
   const [showLibrary, setShowLibrary] = useState(true);
+  const [isConvertingHeic, setIsConvertingHeic] = useState(false);
   
   const [videoTitle, setVideoTitle] = useState("");
   const [script, setScript] = useState("");
@@ -742,31 +744,68 @@ export function AvatarIVStudio() {
     setPollInterval(interval);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     console.log("File selected:", file?.name, file?.type, file?.size);
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
+    const isHeic = file.type === "image/heic" || file.type === "image/heif" || 
+                   file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif");
+
+    if (!file.type.startsWith("image/") && !isHeic) {
       toast({
         title: "Invalid File",
-        description: "Please select an image file (JPG, PNG)",
+        description: "Please select an image file (JPG, PNG, HEIC)",
         variant: "destructive",
       });
       return;
     }
 
     setUploadedImage(file);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      console.log("FileReader result length:", result?.length);
-      setImagePreview(result);
-    };
-    reader.onerror = (err) => {
-      console.error("FileReader error:", err);
-    };
-    reader.readAsDataURL(file);
+
+    if (isHeic) {
+      try {
+        setIsConvertingHeic(true);
+        console.log("Converting HEIC to JPEG for preview...");
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: "image/jpeg",
+          quality: 0.8,
+        });
+        const jpegBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const result = event.target?.result as string;
+          console.log("HEIC converted preview length:", result?.length);
+          setImagePreview(result);
+          setIsConvertingHeic(false);
+        };
+        reader.onerror = (err) => {
+          console.error("FileReader error after HEIC conversion:", err);
+          setIsConvertingHeic(false);
+        };
+        reader.readAsDataURL(jpegBlob);
+      } catch (err) {
+        console.error("HEIC conversion error:", err);
+        setIsConvertingHeic(false);
+        toast({
+          title: "Preview Failed",
+          description: "Could not preview HEIC file, but you can still upload it.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        console.log("FileReader result length:", result?.length);
+        setImagePreview(result);
+      };
+      reader.onerror = (err) => {
+        console.error("FileReader error:", err);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleUpload = () => {
@@ -991,7 +1030,13 @@ export function AvatarIVStudio() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {!imagePreview ? (
+                  {isConvertingHeic ? (
+                    <div className="border-2 border-dashed rounded-xl p-12 text-center">
+                      <Loader2 className="h-12 w-12 mx-auto text-[#D4AF37] mb-4 animate-spin" />
+                      <p className="text-gray-500 mb-2">Converting HEIC image...</p>
+                      <p className="text-xs text-gray-400">This may take a few seconds</p>
+                    </div>
+                  ) : !imagePreview ? (
                     <div
                       onClick={() => fileInputRef.current?.click()}
                       className="border-2 border-dashed rounded-xl p-12 text-center cursor-pointer hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 transition-all"
@@ -999,7 +1044,7 @@ export function AvatarIVStudio() {
                     >
                       <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
                       <p className="text-gray-500 mb-2">Click to upload or drag and drop</p>
-                      <p className="text-xs text-gray-400">PNG, JPG up to 10MB</p>
+                      <p className="text-xs text-gray-400">PNG, JPG, HEIC up to 10MB</p>
                     </div>
                   ) : (
                     <div className="relative max-w-md mx-auto">
@@ -1052,7 +1097,7 @@ export function AvatarIVStudio() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 className="hidden"
                 onChange={handleFileSelect}
                 data-testid="input-file"
