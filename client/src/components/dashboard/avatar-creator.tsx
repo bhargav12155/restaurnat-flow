@@ -37,7 +37,8 @@ import {
   AlertCircle,
   RotateCcw,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Loader2
 } from "lucide-react";
 
 interface Avatar {
@@ -1651,7 +1652,12 @@ export function AvatarCreator() {
                           className="w-full"
                           data-testid="button-import-avatar"
                         >
-                          {importAvatarMutation.isPending ? "Importing..." : "Import Avatar"}
+                          {importAvatarMutation.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Importing...
+                            </>
+                          ) : "Import Avatar"}
                         </Button>
                       </div>
                     </div>
@@ -1762,7 +1768,12 @@ export function AvatarCreator() {
                           className="w-full"
                           data-testid="button-import-selected-avatar"
                         >
-                          {importAvatarMutation.isPending ? "Importing..." : `Import "${selectedImportAvatar.avatar_name}"`}
+                          {importAvatarMutation.isPending ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Importing...
+                            </>
+                          ) : `Import "${selectedImportAvatar.avatar_name}"`}
                         </Button>
                       )}
                     </div>
@@ -1787,7 +1798,12 @@ export function AvatarCreator() {
                     disabled={createAvatarMutation.isPending}
                     data-testid="button-save-avatar"
                   >
-                    {createAvatarMutation.isPending ? "Creating..." : "Create Avatar"}
+                    {createAvatarMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Creating...
+                      </>
+                    ) : "Create Avatar"}
                   </Button>
                 </div>
               </Tabs>
@@ -2171,7 +2187,12 @@ export function AvatarCreator() {
                     disabled={updateAvatarMutation.isPending}
                     data-testid="button-save-edit-avatar"
                   >
-                    {updateAvatarMutation.isPending ? "Updating..." : "Save Changes"}
+                    {updateAvatarMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Updating...
+                      </>
+                    ) : "Save Changes"}
                   </Button>
                 </div>
               </div>
