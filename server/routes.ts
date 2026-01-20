@@ -8523,7 +8523,9 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       }
 
       const userIdString = String(userId);
+      console.log(`📸 [PHOTO-AVATARS] Fetching groups for user: ${userIdString}`);
       const dbGroups = await storage.listPhotoAvatarGroups(userIdString);
+      console.log(`📸 [PHOTO-AVATARS] Found ${dbGroups.length} groups for user ${userIdString}`);
 
       const photoAvatarService = new HeyGenPhotoAvatarService();
 
