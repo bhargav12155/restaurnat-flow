@@ -414,21 +414,46 @@ export function SocialMediaManager() {
     },
   });
 
-  // Load Facebook pages when component mounts
+  // Load Facebook pages when component mounts or when Facebook connection status changes
   useEffect(() => {
+    const facebookAccount = accounts?.find(
+      (a) => a.platform === "facebook" || a.platform === "facebook_page"
+    );
+    
     const loadFacebookPages = async () => {
+      if (!facebookAccount?.isConnected) {
+        setFacebookPages([]);
+        return;
+      }
+      
       try {
         const response = await fetch("/api/facebook/pages");
         if (response.ok) {
           const pages = await response.json();
           setFacebookPages(pages);
+          
+          // Restore saved page from localStorage or auto-select first page
+          const savedPageId = localStorage.getItem("selectedFacebookPage");
+          if (savedPageId && pages.some((p: any) => p.id === savedPageId)) {
+            setSelectedFacebookPage(savedPageId);
+          } else if (pages.length > 0 && !selectedFacebookPage) {
+            setSelectedFacebookPage(pages[0].id);
+            localStorage.setItem("selectedFacebookPage", pages[0].id);
+          }
         }
       } catch (error) {
         console.log("No Facebook pages available");
       }
     };
     loadFacebookPages();
-  }, []);
+  }, [accounts]);
+  
+  // Persist selected Facebook page to localStorage
+  useEffect(() => {
+    if (selectedFacebookPage) {
+      localStorage.setItem("selectedFacebookPage", selectedFacebookPage);
+    }
+  }, [selectedFacebookPage]);
 
   // Handle YouTube posting with on-demand authentication
   const handleYouTubePost = async (content: string, videoFile?: File) => {
@@ -1281,6 +1306,42 @@ ${agentName} | ${brokerageName}
                       {account.platform === "instagram" ? "Business or Creator Account" : "Page"}. Posts will not appear on your personal profile. Please make sure you have a{" "}
                       {account.platform === "instagram" ? "Business/Creator Account" : "Page"} created before connecting.
                     </p>
+                  </div>
+                )}
+                {/* Facebook Page Selector - Show immediately when Facebook is connected */}
+                {account.isConnected && (account.platform === "facebook" || account.platform === "facebook_page") && (
+                  <div className="mt-2 ml-8 p-3 rounded-lg border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 space-y-2">
+                    <Label
+                      htmlFor="facebook-page-inline-select"
+                      className="text-xs font-medium text-blue-900 dark:text-blue-100"
+                    >
+                      Select Facebook Page to post to:
+                    </Label>
+                    {facebookPages.length > 0 ? (
+                      <>
+                        <select
+                          id="facebook-page-inline-select"
+                          value={selectedFacebookPage}
+                          onChange={(e) => setSelectedFacebookPage(e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-blue-300 bg-white dark:bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          data-testid="select-facebook-page-inline"
+                        >
+                          <option value="">Select a page...</option>
+                          {facebookPages.map((page: any) => (
+                            <option key={page.id} value={page.id}>
+                              {page.name}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedFacebookPage && (
+                          <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                            <CheckCircle className="h-3 w-3" /> Ready to post to: {facebookPages.find((p: any) => p.id === selectedFacebookPage)?.name}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Loading your Pages...</p>
+                    )}
                   </div>
                 )}
               </>
