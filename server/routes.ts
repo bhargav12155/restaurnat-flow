@@ -13853,20 +13853,23 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      // Validate request body
-      const validation = insertCompanyProfileSchema.safeParse({
+      // Use partial schema to allow any subset of fields
+      const validation = insertCompanyProfileSchema.partial().safeParse({
         ...req.body,
         userId,
       });
 
       if (!validation.success) {
+        console.error("Company profile validation errors:", validation.error.errors);
         return res.status(400).json({
           error: "Invalid company profile data",
           details: validation.error.errors,
         });
       }
 
-      const profile = await storage.upsertCompanyProfile(validation.data);
+      // Ensure userId is always included
+      const profileData = { ...validation.data, userId: String(userId) };
+      const profile = await storage.upsertCompanyProfile(profileData as any);
       res.json(profile);
     } catch (error) {
       console.error("Error saving company profile:", error);
