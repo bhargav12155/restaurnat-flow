@@ -48,11 +48,11 @@ const getPriorityColor = (priority: string) => {
 const getTrendColor = (trend: string) => {
   switch (trend) {
     case "hot":
-      return "text-chart-3";
+      return "text-red-500 font-semibold";
     case "rising":
-      return "text-primary";
+      return "text-emerald-500 font-medium";
     case "steady":
-      return "text-accent";
+      return "text-blue-500";
     default:
       return "text-muted-foreground";
   }
