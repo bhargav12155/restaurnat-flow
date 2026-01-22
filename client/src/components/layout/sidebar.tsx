@@ -76,7 +76,6 @@ const navigationItems = [
         label: "Video Avatars",
         href: "/dashboard#video-avatars",
         key: "video-avatars",
-        badge: "ENTERPRISE",
         isPageLink: true,
       },
       {
