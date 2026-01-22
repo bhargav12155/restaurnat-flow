@@ -74,17 +74,14 @@ export default function Dashboard() {
     };
   }, [location]); // Re-run when Wouter location changes
 
-  // Show social links prompt on first visit (skip for demo users and NebraskaHomeHub)
+  // Don't auto-show social links prompt on first visit - users can access it in settings
   useEffect(() => {
     const hasSeenPrompt = localStorage.getItem("socialLinksPromptShown");
-    const urlParams = new URLSearchParams(window.location.search);
-    const isFromNebraska = urlParams.get("source") === "nebraska-home-hub";
-    const isDemo = (user as any)?.isDemo === true;
-
-    if (!hasSeenPrompt && !isFromNebraska && !isDemo) {
-      setShowSocialLinksPrompt(true);
+    if (!hasSeenPrompt) {
+      // Mark as seen so it never auto-shows
+      localStorage.setItem("socialLinksPromptShown", "true");
     }
-  }, [user]);
+  }, []);
 
   const renderActiveView = () => {
     switch (activeView) {
