@@ -14,6 +14,7 @@ import {
   PublicUserData,
   AuthResponse,
 } from "@/types/auth";
+import { setAuthToken, clearAuthToken, getAuthHeaders } from "@/lib/authToken";
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<AuthResponse>;
@@ -52,7 +53,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setAuthState((prev) => ({ ...prev, isLoading: true, error: null }));
 
       const response = await fetch("/api/auth/check", {
-        credentials: "include", // Include cookies
+        credentials: "include",
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -110,6 +112,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const data = await response.json();
 
         if (data.success && data.user) {
+          if (data.token) {
+            setAuthToken(data.token);
+          }
           setAuthState({
             user: data.user,
             isAuthenticated: true,
@@ -151,6 +156,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const result = await response.json();
 
         if (result.success && result.user) {
+          if (result.token) {
+            setAuthToken(result.token);
+          }
           setAuthState({
             user: result.user,
             isAuthenticated: true,
@@ -192,6 +200,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const result = await response.json();
 
         if (result.success && result.user) {
+          if (result.token) {
+            setAuthToken(result.token);
+          }
           setAuthState({
             user: result.user,
             isAuthenticated: true,
@@ -233,6 +244,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const result = await response.json();
 
         if (result.success && result.user) {
+          if (result.token) {
+            setAuthToken(result.token);
+          }
           setAuthState({
             user: result.user,
             isAuthenticated: true,
@@ -262,10 +276,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
+        headers: getAuthHeaders(),
       });
     } catch (error) {
       console.error("Logout request failed:", error);
     } finally {
+      clearAuthToken();
       // Always clear local auth state
       setAuthState({
         user: null,
