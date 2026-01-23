@@ -12985,7 +12985,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
             accent: "Cormorant Garamond",
           },
           description:
-            "Golden Brick Real Estate - Premium luxury properties in Omaha, Nebraska. Specializing in high-end residential and commercial real estate with personalized service and expert market knowledge.",
+            "Your Restaurant Name - Exceptional dining experiences with fresh, locally-sourced ingredients. Specializing in memorable cuisine with warm hospitality and passionate service.",
         };
         return res.json(defaultBrandSettings);
       }
