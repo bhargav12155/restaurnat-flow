@@ -10,6 +10,8 @@ import Dashboard from "@/pages/dashboard";
 import SocialMediaPage from "@/pages/social-media";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
+import SignupPage from "@/pages/signup";
+import VerifyEmailPage from "@/pages/verify-email";
 import IntegrationPage from "@/pages/integration";
 import VoiceLibrary from "@/pages/VoiceLibrary";
 import ProfilePage from "@/pages/profile";
@@ -30,6 +32,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/signup" component={SignupPage} />
+      <Route path="/verify-email" component={VerifyEmailPage} />
       <Route path="/integration" component={IntegrationPage} />
       <Route path="/mobile-upload/:sessionId" component={MobileUploadPage} />
       <Route path="/">

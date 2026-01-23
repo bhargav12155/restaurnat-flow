@@ -20,7 +20,6 @@ import {
   Home,
   Menu,
   Palette,
-  Plus,
   Search,
   Settings,
   Share2,
@@ -100,12 +99,6 @@ const navigationItems = [
   },
 ];
 
-const quickActions = [
-  { icon: Plus, label: "New Blog Post", href: "/dashboard?type=blog#ai-content", contentType: "blog" },
-  { icon: Camera, label: "Social Post", href: "/dashboard?type=social#ai-content", contentType: "social" },
-  { icon: Home, label: "Menu Item Feature", href: "/dashboard?type=property_feature#ai-content", contentType: "property_feature" },
-];
-
 interface SidebarProps {
   activeView?: string;
 }
@@ -123,7 +116,6 @@ function SidebarContent({
   isMobile = false,
   onClose,
 }: SidebarContentProps) {
-  const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(["avatar-video"]);
@@ -337,30 +329,6 @@ function SidebarContent({
             );
           })}
         </div>
-
-        {!isCollapsed && (
-          <div className="mt-8">
-            <h3 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-              Quick Actions
-            </h3>
-            <div className="space-y-1">
-              {quickActions.map((action) => (
-                <Button
-                  key={action.label}
-                  variant="ghost"
-                  className="w-full justify-start text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary"
-                  data-testid={`quick-${action.label
-                    .toLowerCase()
-                    .replace(/\s+/g, "-")}`}
-                  onClick={(e) => navigateTo(action.href, e)}
-                >
-                  <action.icon className="mr-3 h-4 w-4" />
-                  {action.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
       </nav>
 
       {/* User Profile */}
@@ -429,13 +397,13 @@ export function Sidebar({ activeView = "dashboard" }: SidebarProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden fixed top-4 left-4 z-50 bg-card border border-border shadow-md"
+            className="lg:hidden fixed top-3 left-3 z-50 bg-card border border-border shadow-lg h-12 w-12 rounded-xl active:scale-95 transition-transform"
             data-testid="button-mobile-menu"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-6 w-6" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-64 p-0">
+        <SheetContent side="left" className="w-[280px] p-0">
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation Menu</SheetTitle>
           </SheetHeader>

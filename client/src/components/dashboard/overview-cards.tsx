@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Edit, Search, Heart, ExternalLink, CheckCircle, Loader2 } from "lucide-react";
+import { Edit, Search, Heart, ExternalLink, CheckCircle, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -26,17 +26,6 @@ interface AdminStatus {
 }
 
 const cards = [
-  {
-    title: "Monthly Leads",
-    key: "monthly_leads" as keyof OverviewData,
-    changeKey: "monthly_leads_change" as keyof OverviewData,
-    icon: Users,
-    color: "text-chart-1",
-    bgColor: "bg-chart-1/10",
-    changeLabel: "vs last month",
-    isConnected: true,
-    connectHint: "Engagement tracking active",
-  },
   {
     title: "Content Published",
     key: "content_published" as keyof OverviewData,

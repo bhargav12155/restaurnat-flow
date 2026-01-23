@@ -467,27 +467,28 @@ export function ScheduledPostsManager() {
   return (
     <>
     <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
+      <CardHeader className="pb-3 sm:pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
             <Calendar className="h-5 w-5" />
             Scheduled Posts Calendar
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   size="sm"
                   disabled={generateContentPlanMutation.isPending}
                   data-testid="button-ai-generate"
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
                 >
                   {generateContentPlanMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
                   ) : (
-                    <Wand2 className="h-4 w-4 mr-2" />
+                    <Wand2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   )}
                   AI Generate
-                  <ChevronDown className="h-4 w-4 ml-1" />
+                  <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -505,33 +506,38 @@ export function ScheduledPostsManager() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={previousMonth}
-              data-testid="button-previous-month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToToday}
-              data-testid="button-today"
-            >
-              Today
-            </Button>
-            <span className="font-semibold text-sm min-w-[140px] text-center">
-              {format(currentMonth, 'MMMM yyyy')}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={nextMonth}
-              data-testid="button-next-month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={previousMonth}
+                data-testid="button-previous-month"
+                className="h-8 w-8 sm:h-9 sm:w-9 p-0"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToToday}
+                data-testid="button-today"
+                className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+              >
+                Today
+              </Button>
+              <span className="font-semibold text-xs sm:text-sm min-w-[90px] sm:min-w-[140px] text-center">
+                {format(currentMonth, 'MMM yyyy')}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={nextMonth}
+                data-testid="button-next-month"
+                className="h-8 w-8 sm:h-9 sm:w-9 p-0"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
         
@@ -601,8 +607,9 @@ export function ScheduledPostsManager() {
           {/* Day Headers */}
           <div className="grid grid-cols-7 bg-muted">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="p-2 text-center text-sm font-semibold border-r last:border-r-0">
-                {day}
+              <div key={day} className="p-1.5 sm:p-2 text-center text-xs sm:text-sm font-semibold border-r last:border-r-0">
+                <span className="hidden sm:inline">{day}</span>
+                <span className="sm:hidden">{day.charAt(0)}</span>
               </div>
             ))}
           </div>
@@ -617,20 +624,20 @@ export function ScheduledPostsManager() {
               return (
                 <div
                   key={index}
-                  className={`min-h-[120px] p-2 border-r border-b last:border-r-0 ${
+                  className={`min-h-[60px] sm:min-h-[100px] md:min-h-[120px] p-1 sm:p-2 border-r border-b last:border-r-0 ${
                     !isCurrentMonth ? 'bg-muted/30' : 'bg-background'
                   } ${isToday ? 'bg-golden-accent/10' : ''}`}
                   data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
                 >
-                  <div className={`text-sm font-medium mb-2 ${
+                  <div className={`text-xs sm:text-sm font-medium mb-1 sm:mb-2 ${
                     !isCurrentMonth ? 'text-muted-foreground' : isToday ? 'text-golden-accent font-bold' : 'text-foreground'
                   }`}>
                     {format(day, 'd')}
                   </div>
                   
                   {/* Platform Icons for Posts */}
-                  <div className="space-y-1">
-                    {postsForDay.map((post) => {
+                  <div className="space-y-0.5 sm:space-y-1">
+                    {postsForDay.slice(0, 2).map((post) => {
                       const platform = platformIcons[post.platform as keyof typeof platformIcons];
                       const Icon = platform?.icon || Home;
                       const isSelected = selectedPostIds.has(post.id);
@@ -638,24 +645,24 @@ export function ScheduledPostsManager() {
                       return (
                         <div
                           key={post.id}
-                          className={`w-full flex items-center gap-1 p-1.5 rounded hover:bg-muted/50 transition-colors group ${isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                          className={`w-full flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1.5 rounded hover:bg-muted/50 transition-colors group ${isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
                           data-testid={`post-${post.id}`}
                           title={`${platform?.name || post.platform} - ${format(new Date(post.scheduledFor), 'h:mm a')}`}
                         >
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => togglePostSelection(post.id)}
-                            className="shrink-0"
+                            className="shrink-0 h-3 w-3 sm:h-4 sm:w-4"
                             data-testid={`checkbox-post-${post.id}`}
                           />
                           <button
                             onClick={() => handleEditPost(post)}
-                            className="flex-1 flex items-center gap-2 text-left min-w-0"
+                            className="flex-1 flex items-center gap-1 sm:gap-2 text-left min-w-0"
                           >
-                            <div className={`shrink-0 w-6 h-6 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
-                              <Icon className="h-3.5 w-3.5 text-white" />
+                            <div className={`shrink-0 w-4 h-4 sm:w-6 sm:h-6 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
+                              <Icon className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5 text-white" />
                             </div>
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 hidden sm:block">
                               <div className="text-xs font-medium truncate">
                                 {format(new Date(post.scheduledFor), 'h:mm a')}
                               </div>
@@ -667,6 +674,11 @@ export function ScheduledPostsManager() {
                         </div>
                       );
                     })}
+                    {postsForDay.length > 2 && (
+                      <div className="text-[10px] sm:text-xs text-muted-foreground text-center">
+                        +{postsForDay.length - 2} more
+                      </div>
+                    )}
                   </div>
                 </div>
               );
