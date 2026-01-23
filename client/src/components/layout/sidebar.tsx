@@ -7,11 +7,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { cn, getUserDisplayName, getUserInitials } from "@/lib/utils";
 import {
-  BarChart3,
   Bot,
   CalendarDays,
   Camera,
@@ -20,16 +18,13 @@ import {
   ChevronRight,
   FileText,
   Home,
-  MapPin,
   Menu,
   Palette,
   Plus,
-  Radio,
   Search,
   Settings,
   Share2,
   Sparkles,
-  Target,
   Video,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -103,14 +98,6 @@ const navigationItems = [
     key: "brand-settings",
     isPageLink: true,
   },
-  { icon: BarChart3, label: "Analytics", href: "/dashboard#analytics", key: "analytics", isPageLink: true },
-  {
-    icon: Target,
-    label: "Advanced Advertising",
-    href: "/dashboard#advertising",
-    key: "advertising",
-    isPageLink: true,
-  },
 ];
 
 const quickActions = [
@@ -140,15 +127,6 @@ function SidebarContent({
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(["avatar-video"]);
-
-  const handleAdvancedAdvertisingClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    toast({
-      title: "Coming Soon",
-      description:
-        "Advanced Advertising features are currently in development and will be available soon!",
-    });
-  };
 
   const handleNavClick = () => {
     if (isMobile && onClose) {
@@ -259,7 +237,6 @@ function SidebarContent({
         <div className="space-y-1">
           {navigationItems.map((item: any) => {
             const isActive = activeView === item.key;
-            const isAdvancedAdvertising = item.key === "advertising";
             const hasSubItems = item.isCollapsible && item.subItems;
             const isExpanded = isMenuExpanded(item.key);
             const hasActiveSubItem = isSubItemActive(item);
@@ -345,13 +322,7 @@ function SidebarContent({
                 data-testid={`nav-${item.label
                   .toLowerCase()
                   .replace(/\s+/g, "-")}`}
-                onClick={(e) => {
-                  if (isAdvancedAdvertising) {
-                    handleAdvancedAdvertisingClick(e);
-                  } else {
-                    navigateTo(item.href, e);
-                  }
-                }}
+                onClick={(e) => navigateTo(item.href, e)}
                 title={isCollapsed ? item.label : undefined}
               >
                 <item.icon
