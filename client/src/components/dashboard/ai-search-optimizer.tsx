@@ -125,7 +125,7 @@ const aiSearchTips: AISearchTip[] = [
     description: "AI searches now index video content through transcripts and captions.",
     impact: "high",
     implemented: false,
-    action: "Add AI-readable transcripts to all video tours and market updates"
+    action: "Add AI-readable transcripts to all video tours and menu features"
   },
   {
     category: "Structured Data",

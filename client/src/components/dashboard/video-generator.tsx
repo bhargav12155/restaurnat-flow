@@ -73,11 +73,11 @@ interface VideoContent {
 }
 
 const videoTypes = [
-  { value: "market_update", label: "Market Update", icon: "📊" },
-  { value: "neighborhood_tour", label: "Neighborhood Tour", icon: "🏘️" },
-  { value: "buyer_tips", label: "Buyer Tips", icon: "💡" },
-  { value: "seller_guide", label: "Seller Guide", icon: "🏠" },
-  { value: "moving_guide", label: "Moving Guide", icon: "📦" },
+  { value: "menu_feature", label: "Menu Feature", icon: "🍽️" },
+  { value: "restaurant_tour", label: "Restaurant Tour", icon: "🏠" },
+  { value: "chef_spotlight", label: "Chef Spotlight", icon: "👨‍🍳" },
+  { value: "special_event", label: "Special Event", icon: "🎉" },
+  { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
 ];
 
 const videoPlatforms = [

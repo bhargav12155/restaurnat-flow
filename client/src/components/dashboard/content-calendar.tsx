@@ -636,17 +636,16 @@ export function ContentCalendar() {
   };
 
   const postTypeLabels: Record<string, string> = {
-    market_update: "Market Update",
-    buyer_tips: "Buyer Tips",
-    seller_tips: "Seller Tips",
-    neighborhood: "Neighborhood",
-    neighborhood_tour: "Neighborhood Tour",
+    menu_feature: "Menu Feature",
+    chef_spotlight: "Chef Spotlight",
+    special_event: "Special Event",
+    restaurant_tour: "Restaurant Tour",
+    seasonal_promo: "Seasonal Promo",
     local_market: "Local Market",
-    moving_guide: "Moving Guide",
-    open_houses: "Open House",
-    just_listed: "Just Listed",
-    just_sold: "Just Sold",
-    price_improvement: "Price Drop",
+    new_dish: "New Dish",
+    happy_hour: "Happy Hour",
+    weekend_special: "Weekend Special",
+    customer_review: "Customer Review",
   };
 
   const scheduledContent = useMemo(() => {

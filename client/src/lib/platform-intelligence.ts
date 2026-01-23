@@ -320,9 +320,9 @@ export function scorePlatform(
       score += 15;
       reasons.push("Hashtags essential for Twitter discovery");
     }
-    if (profile.contentType === "market_update") {
+    if (profile.contentType === "menu_feature") {
       score += 10;
-      reasons.push("Real-time market updates fit Twitter's fast pace");
+      reasons.push("Real-time menu updates fit Twitter's fast pace");
     }
   } else if (platform === "TikTok") {
     if (profile.wordCount <= 150) {
@@ -334,8 +334,8 @@ export function scorePlatform(
       reasons.push("Emojis increase TikTok engagement");
     }
     if (
-      profile.contentType === "listing" ||
-      profile.contentType === "neighborhood"
+      profile.contentType === "menu_feature" ||
+      profile.contentType === "restaurant_tour"
     ) {
       score += 15;
       reasons.push("Visual food content performs well on TikTok");
