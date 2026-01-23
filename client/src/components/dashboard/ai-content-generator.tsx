@@ -2531,7 +2531,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     <div className="border rounded bg-gray-50 p-1 mb-3">
                       <img
                         src={photoPreview}
-                        alt="Property"
+                        alt="Restaurant"
                         className="w-full aspect-video object-cover rounded"
                       />
                     </div>
@@ -2541,7 +2541,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                       <div className="text-center text-gray-600">
                         <Home className="h-8 w-8 mx-auto mb-2" />
                         <div className="text-sm font-medium">
-                          Property Listing
+                          Restaurant Feature
                         </div>
                         <div className="text-xs">Click to view details</div>
                       </div>

@@ -93,17 +93,9 @@ const navigationItems = [
         key: "video-generation",
         isPageLink: true,
       },
-      {
-        icon: Radio,
-        label: "Streaming Avatar",
-        href: "/dashboard#streaming-avatar",
-        key: "streaming-avatar",
-        isPageLink: true,
-      },
     ],
   },
   { icon: Search, label: "SEO Optimizer", href: "/dashboard#seo", key: "seo", isPageLink: true },
-  { icon: MapPin, label: "Local Market Tools", href: "/dashboard#market", key: "market", isPageLink: true },
   {
     icon: Palette,
     label: "Brand Settings",
@@ -247,22 +239,15 @@ function SidebarContent({
             isCollapsed ? "justify-center" : "space-x-3"
           )}
         >
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-            <img
-              src="/my-golden-brick-logo.png"
-              alt="My Golden Brick LLC Logo"
-              className="w-8 h-8 object-contain"
-            />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-orange-500 to-red-600 text-white font-bold text-lg">
+            🍽️
           </div>
           {!isCollapsed && (
             <div>
               <h1
-                className="font-bold text-xl bg-gradient-to-b from-yellow-300 via-yellow-500 to-yellow-600 bg-clip-text text-transparent"
-                style={{
-                  textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
-                }}
+                className="font-bold text-xl bg-gradient-to-r from-orange-500 via-red-500 to-orange-600 bg-clip-text text-transparent"
               >
-                My Golden Brick LLC
+                RestaurantFlow
               </h1>
             </div>
           )}

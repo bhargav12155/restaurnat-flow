@@ -97,11 +97,11 @@ const platformIcons = {
 
 const postTypeLabels = {
   local_market: { label: "Local Market", icon: MapPin, color: "bg-green-100 text-green-700" },
-  moving_guide: { label: "Moving Guide", icon: Home, color: "bg-blue-100 text-blue-700" },
-  open_houses: { label: "Open House", icon: Home, color: "bg-purple-100 text-purple-700" },
-  just_listed: { label: "Just Listed", icon: Home, color: "bg-orange-100 text-orange-700" },
-  just_sold: { label: "Just Sold", icon: Check, color: "bg-green-100 text-green-700" },
-  price_improvement: { label: "Price Drop", icon: Clock, color: "bg-red-100 text-red-700" },
+  menu_feature: { label: "Menu Feature", icon: Home, color: "bg-orange-100 text-orange-700" },
+  special_event: { label: "Special Event", icon: Home, color: "bg-purple-100 text-purple-700" },
+  new_dish: { label: "New Dish", icon: Home, color: "bg-yellow-100 text-yellow-700" },
+  happy_hour: { label: "Happy Hour", icon: Clock, color: "bg-blue-100 text-blue-700" },
+  weekend_special: { label: "Weekend Special", icon: Check, color: "bg-green-100 text-green-700" },
 };
 
 // Platform-specific optimal word counts

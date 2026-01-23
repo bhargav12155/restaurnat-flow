@@ -5,14 +5,12 @@ import { APIKeyManager } from "@/components/dashboard/api-key-manager";
 import { AvatarIVStudio } from "@/components/dashboard/avatar-iv-studio";
 import { BrandSettings } from "@/components/dashboard/brand-settings";
 import { ContentCalendar } from "@/components/dashboard/content-calendar";
-import { LocalMarketTools } from "@/components/dashboard/local-market-tools";
 import { OverviewCards } from "@/components/dashboard/overview-cards";
 import { PhotoAvatarManager } from "@/components/dashboard/photo-avatar-manager";
 import { ScheduledPostsManager } from "@/components/dashboard/scheduled-posts-manager";
 import { SEOOptimizer } from "@/components/dashboard/seo-optimizer";
 import { SocialLinksPrompt } from "@/components/dashboard/social-links-prompt";
 import { SocialMediaManager } from "@/components/dashboard/social-media-manager";
-import { StreamingAvatarComponent } from "@/components/dashboard/streaming-avatar";
 import { TemplateManager } from "@/components/dashboard/template-manager";
 import VideoAvatarManager from "@/components/dashboard/video-avatar-manager";
 import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
@@ -88,8 +86,6 @@ export default function Dashboard() {
         return <AIContentGenerator isGenerating={isGenerating} />;
       case "ai-video":
         return <VideoGenerator />;
-      case "streaming-avatar":
-        return <StreamingAvatarComponent />;
       case "photo-avatars":
         return <AvatarIVStudio />;
       case "video-avatars":
@@ -106,8 +102,6 @@ export default function Dashboard() {
         return <SEOOptimizer />;
       case "calendar":
         return <ContentCalendar />;
-      case "market":
-        return <LocalMarketTools />;
       case "brand-settings":
         return <BrandSettings />;
       case "analytics":

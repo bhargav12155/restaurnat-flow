@@ -234,34 +234,34 @@ export class HeyGenTemplateService {
         templates: [],
         suggestions: [
           {
-            name: "Property Tour Template",
-            description: "Virtual property walkthrough with agent narration",
+            name: "Menu Feature Template",
+            description: "Showcase new dishes and seasonal menu items",
             recommended_variables: {
-              property_address: "text",
-              agent_avatar: "avatar",
-              property_images: "image[]",
+              dish_name: "text",
+              chef_avatar: "avatar",
+              dish_images: "image[]",
               price: "text",
-              features: "text"
+              ingredients: "text"
             }
           },
           {
-            name: "Market Update Template",
-            description: "Monthly restaurant industry insights video",
+            name: "Special Event Template",
+            description: "Promote special events, live music, and themed nights",
             recommended_variables: {
-              month: "text",
-              market_stats: "text",
-              agent_avatar: "avatar",
-              charts: "image[]"
+              event_name: "text",
+              event_date: "text",
+              host_avatar: "avatar",
+              event_images: "image[]"
             }
           },
           {
-            name: "Agent Introduction Template",
-            description: "Professional agent introduction and services",
+            name: "Chef Introduction Template",
+            description: "Professional chef introduction and culinary expertise",
             recommended_variables: {
-              agent_name: "text",
-              agent_avatar: "avatar",
+              chef_name: "text",
+              chef_avatar: "avatar",
               expertise: "text",
-              contact_info: "text"
+              signature_dishes: "text"
             }
           }
         ]
