@@ -80,14 +80,14 @@ interface GeneratedVideo {
 }
 
 const CATEGORY_ICONS: Record<string, typeof Home> = {
-  property: Home,
+  food: Home,
   market: TrendingUp,
   personal: User,
   community: MapPin,
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  property: "bg-blue-500/10 text-blue-600 border-blue-200",
+  food: "bg-orange-500/10 text-orange-600 border-orange-200",
   market: "bg-green-500/10 text-green-600 border-green-200",
   personal: "bg-purple-500/10 text-purple-600 border-purple-200",
   community: "bg-orange-500/10 text-orange-600 border-orange-200",
@@ -582,7 +582,7 @@ export default function TemplateStudioPage() {
                 Video Template Studio
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground hidden md:block">
-                Create professional real estate videos using pre-built templates
+                Create professional restaurant marketing videos using pre-built templates
               </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">

@@ -226,7 +226,7 @@ export function AvatarCreator() {
       // Create a test video with the avatar
       const testVideoData = {
         title: "Avatar Test Video",
-        script: "Hello! This is a test of your AI avatar. I'm demonstrating how your personalized avatar looks and sounds in action. This technology allows you to create professional real estate videos with your own digital presence.",
+        script: "Hello! This is a test of your AI avatar. I'm demonstrating how your personalized avatar looks and sounds in action. This technology allows you to create professional restaurant videos with your own digital presence.",
         platform: "youtube",
         avatarId: avatarId,
         status: "draft"
@@ -1594,7 +1594,7 @@ export function AvatarCreator() {
                               <div className="flex items-start gap-3">
                                 <div className="bg-purple-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold shrink-0">4</div>
                                 <div className="space-y-2 flex-1">
-                                  <h5 className="font-bold text-purple-900 dark:text-purple-100">Import Avatar to RealtyFlow</h5>
+                                  <h5 className="font-bold text-purple-900 dark:text-purple-100">Import Avatar to RestaurantFlow</h5>
                                   <div className="text-sm space-y-2 text-purple-900 dark:text-purple-100">
                                     <p className="bg-white/60 dark:bg-black/20 rounded-lg p-3">
                                       Once HeyGen processes your avatar (you'll get an email), return here and use the <strong>"Import by Avatar ID"</strong> form below. 
@@ -2246,7 +2246,7 @@ export function AvatarCreator() {
                       </div>
                     )}
                     <p className="text-xs text-muted-foreground mt-2">
-                      This is how your avatar will appear in generated videos. You can now use this avatar to create professional real estate content.
+                      This is how your avatar will appear in generated videos. You can now use this avatar to create professional restaurant content.
                     </p>
                   </div>
                 ) : testResult.error ? (

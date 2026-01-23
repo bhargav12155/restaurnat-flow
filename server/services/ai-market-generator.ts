@@ -18,7 +18,7 @@ export class AIMarketDataGenerator {
 
   async generateOmahaMarketData(): Promise<GeneratedMarketData> {
 
-    const prompt = `You are a real estate market data analyst for Omaha, Nebraska. Generate realistic, current market statistics for major Omaha neighborhoods.
+    const prompt = `You are a restaurant industry analyst for Omaha, Nebraska. Generate realistic, current market statistics for major Omaha neighborhoods.
 
 Generate data for these 10 neighborhoods: Aksarben, Dundee, Blackstone, Benson, Midtown, West Omaha, Regency, Old Market, Elkhorn, and Papillion.
 

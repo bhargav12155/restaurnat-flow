@@ -734,7 +734,7 @@ export function VideoGenerationManager() {
               data-testid="button-sample-welcome"
               onClick={() =>
                 setScript(
-                  "Hello! I'm your local real estate expert. I'd love to help you find your dream home in Omaha. What are you looking for?"
+                  "Hello! Welcome to our restaurant. I'm excited to share what makes our dining experience special. Let me tell you about our signature dishes!"
                 )
               }
             >
@@ -746,11 +746,11 @@ export function VideoGenerationManager() {
               data-testid="button-sample-market"
               onClick={() =>
                 setScript(
-                  "The Omaha real estate market is hot right now! Homes in desirable neighborhoods are selling quickly. Contact me today to start your home search."
+                  "We have some exciting news! Our seasonal menu is here with fresh, locally-sourced ingredients. Come taste what's new this season!"
                 )
               }
             >
-              Market Update
+              Seasonal Update
             </Button>
             <Button
               variant="outline"
@@ -758,18 +758,18 @@ export function VideoGenerationManager() {
               data-testid="button-sample-consultation"
               onClick={() =>
                 setScript(
-                  "Looking to buy or sell in Omaha? I've helped hundreds of families find their perfect home. Let's schedule a consultation to discuss your real estate goals."
+                  "As the chef here, I pour my passion into every dish we serve. Let me share the story behind our most popular menu items and what makes them special."
                 )
               }
             >
-              Agent Introduction
+              Chef Introduction
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() =>
                 setScript(
-                  "Thank you for considering me as your real estate agent. I look forward to working with you to achieve your real estate dreams!"
+                  "Thank you for choosing to dine with us. We can't wait to serve you an unforgettable meal. See you soon!"
                 )
               }
             >

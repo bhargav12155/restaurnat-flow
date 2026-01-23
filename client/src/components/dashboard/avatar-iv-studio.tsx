@@ -78,11 +78,11 @@ const MOTION_PROMPTS = [
 ];
 
 const SCRIPT_STYLES = [
-  { id: "property_tour", label: "Property Tour", description: "Showcase property features and highlights" },
-  { id: "listing_spotlight", label: "Listing Spotlight", description: "Quick attention-grabbing listing preview" },
-  { id: "market_update", label: "Market Update", description: "Local real estate market insights" },
-  { id: "agent_intro", label: "Agent Introduction", description: "Professional self-introduction" },
-  { id: "neighborhood_guide", label: "Neighborhood Guide", description: "Area highlights and amenities" },
+  { id: "menu_showcase", label: "Menu Showcase", description: "Showcase menu items and specials" },
+  { id: "dish_spotlight", label: "Dish Spotlight", description: "Quick attention-grabbing dish preview" },
+  { id: "restaurant_update", label: "Restaurant Update", description: "Local restaurant news and updates" },
+  { id: "chef_intro", label: "Chef Introduction", description: "Professional chef/owner introduction" },
+  { id: "neighborhood_guide", label: "Area Guide", description: "Local area highlights and food scene" },
 ];
 
 const STEPS = [

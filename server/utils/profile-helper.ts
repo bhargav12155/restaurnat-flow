@@ -30,7 +30,7 @@ function getDefaultProfile(): Partial<CompanyProfile> {
     agentName: "[Your Name]",
     businessName: "[Your Business]",
     brokerageName: "[Your Brokerage]",
-    agentTitle: "real estate professional",
+    agentTitle: "restaurant professional",
     phone: "",
     email: "",
     licenseNumber: "",

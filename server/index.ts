@@ -8,8 +8,18 @@ import express, { NextFunction, type Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { registerRoutes } from "./routes";
-import { log, serveStatic, setupVite } from "./vite";
 import { realtimeService } from "./websocket";
+
+// Simple log function for production (vite logger is only for dev)
+function log(message: string, source = "express") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
 
 const app = express();
 
@@ -36,7 +46,7 @@ app.use(cookieParser());
 app.use(
   cors({
     origin: [
-      "http://localhost:5000", // RealtyFlow dev
+      "http://localhost:5000", // RestaurantFlow dev
       "http://localhost:5173", // NebraskaHomeHub dev
       "http://localhost:3001", // NebraskaHomeHub dev alternative
       "http://gb-home-template-env-dev.eba-pisu79mx.us-east-2.elasticbeanstalk.com",
@@ -134,9 +144,25 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
+    // Dynamic import vite only in development to avoid production errors
+    const { setupVite } = await import("./vite");
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    // Serve static files in production
+    const distPath = path.resolve(import.meta.dirname, "public");
+    if (!fs.existsSync(distPath)) {
+      throw new Error(
+        `Could not find the build directory: ${distPath}, make sure to build the client first`,
+      );
+    }
+    app.use(express.static(distPath));
+    // Serve index.html for all non-API routes (SPA fallback)
+    app.use("*", (req, res, next) => {
+      if (req.originalUrl.startsWith("/api")) {
+        return next();
+      }
+      res.sendFile(path.resolve(distPath, "index.html"));
+    });
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
@@ -155,7 +181,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(
-        `🚀 RealtyFlow Multi-User Server running on http://0.0.0.0:${port}`
+        `🚀 RestaurantFlow Multi-User Server running on http://0.0.0.0:${port}`
       );
       log(`📊 Database: Connected to Neon PostgreSQL`);
       log(`🔐 Authentication: JWT Multi-User System Active`);

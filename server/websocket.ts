@@ -52,7 +52,7 @@ export class RealtimeService {
       // Send welcome message
       this.sendToClient(ws, {
         type: "notification",
-        data: { message: "Connected to RealtyFlow real-time updates" },
+        data: { message: "Connected to RestaurantFlow real-time updates" },
         timestamp: new Date().toISOString(),
       });
 

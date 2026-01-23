@@ -289,7 +289,7 @@ export function CompanyProfile() {
                         <Input
                           {...field}
                           data-testid="input-agentTitle"
-                          placeholder="e.g., Senior Real Estate Specialist"
+                          placeholder="e.g., Head Chef"
                         />
                       </FormControl>
                       <FormMessage />
@@ -398,7 +398,7 @@ export function CompanyProfile() {
                         <Textarea
                           {...field}
                           data-testid="input-tagline"
-                          placeholder="e.g., Your Trusted Partner in Real Estate Excellence"
+                          placeholder="e.g., Your Destination for Exceptional Dining"
                           rows={2}
                         />
                       </FormControl>
@@ -668,7 +668,7 @@ export function CompanyProfile() {
                             <Input
                               data-testid="input-twilio-specialties"
                               {...field}
-                              placeholder="e.g., First-time buyers, Luxury homes (comma-separated)"
+                              placeholder="e.g., Brunch, Fine Dining, Catering (comma-separated)"
                             />
                           </FormControl>
                           <FormDescription>

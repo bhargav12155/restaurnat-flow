@@ -288,7 +288,7 @@ export class HeyGenPhotoAvatarService {
     return response.data;
   }
 
-  // Look configurations - 4 professional real estate agent styles
+  // Look configurations - 4 professional restaurant owner styles
   // Prompts focus on outfit and background only - HeyGen preserves the original person's face
   static readonly LOOK_CONFIGS = [
     {
@@ -325,7 +325,7 @@ export class HeyGenPhotoAvatarService {
     },
   ];
 
-  // Generate new looks for trained avatar with 4 professional real estate styles
+  // Generate new looks for trained avatar with 4 professional restaurant styles
   // Note: This requires the avatar group to be trained first
   async generateNewLooks(groupId: string, numLooks: number = 4) {
     const configs = HeyGenPhotoAvatarService.LOOK_CONFIGS.slice(0, numLooks);

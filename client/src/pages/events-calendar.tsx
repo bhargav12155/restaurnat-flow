@@ -276,8 +276,8 @@ export default function EventsCalendarPage() {
     },
     onSuccess: (data) => {
       toast({ 
-        title: "Omaha Sources Added", 
-        description: data.message || `Added ${data.addedSources} real estate event sources` 
+        title: "Local Sources Added", 
+        description: data.message || `Added ${data.addedSources} local event sources` 
       });
       setIsOmahaSourcesSetup(true);
       queryClient.invalidateQueries({ queryKey: ["/api/events/sources"] });
@@ -415,7 +415,7 @@ export default function EventsCalendarPage() {
 
   const getCategoryColor = (category: string | null) => {
     switch (category) {
-      case "real_estate": return "bg-blue-500";
+      case "restaurant": return "bg-blue-500";
       case "market": return "bg-green-500";
       case "festival": return "bg-purple-500";
       case "networking": return "bg-orange-500";
@@ -622,7 +622,7 @@ export default function EventsCalendarPage() {
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="community">Community</SelectItem>
-                            <SelectItem value="real_estate">Real Estate</SelectItem>
+                            <SelectItem value="food_events">Food Events</SelectItem>
                             <SelectItem value="market">Market</SelectItem>
                             <SelectItem value="festival">Festival</SelectItem>
                             <SelectItem value="networking">Networking</SelectItem>
@@ -700,7 +700,7 @@ export default function EventsCalendarPage() {
                     Generate Your Weekly Content Plan
                   </CardTitle>
                   <CardDescription>
-                    Automatically fetch Omaha real estate events and generate AI-powered social media posts for the week
+                    Automatically fetch local food events and generate AI-powered social media posts for the week
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -719,7 +719,7 @@ export default function EventsCalendarPage() {
                       ) : (
                         <ListChecks className="w-4 h-4 mr-2" />
                       )}
-                      {isOmahaSourcesSetup ? "Omaha Sources Ready" : "Setup Omaha Sources"}
+                      {isOmahaSourcesSetup ? "Local Sources Ready" : "Setup Local Event Sources"}
                     </Button>
                     <Button
                       onClick={() => generateWeeklyPlanMutation.mutate()}
@@ -737,7 +737,7 @@ export default function EventsCalendarPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Sources: Omaha Daily Record, Omaha Realtors, OABR Calendar
+                    Sources: Local Food Blogs, Restaurant Events, Community Calendars
                   </p>
                 </CardContent>
               </Card>
@@ -777,7 +777,7 @@ export default function EventsCalendarPage() {
                         <div className="text-center py-8 text-muted-foreground">
                           <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
                           <p>No events this week</p>
-                          <p className="text-sm">Click "Setup Omaha Sources" to fetch local real estate events</p>
+                          <p className="text-sm">Click "Setup Local Event Sources" to fetch local food events</p>
                         </div>
                       );
                     }

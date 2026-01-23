@@ -64,7 +64,7 @@ const generateCalendarDays = (selectedDate: Date) => {
   return days;
 };
 
-// Holiday recommendations for real estate
+// Holiday recommendations for restaurants
 const holidayRecommendations = {
   // January
   "2025-01-01": {
@@ -72,8 +72,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Social",
-        title: "New Year Real Estate Goals",
-        description: "Share tips for home buying/selling resolutions",
+        title: "New Year Menu Highlights",
+        description: "Share healthy eating resolutions and new menu items",
         color: "bg-yellow-500"
       }
     ]
@@ -84,7 +84,7 @@ const holidayRecommendations = {
       {
         type: "Blog",
         title: "Community Spotlight",
-        description: "Highlight diverse Omaha neighborhoods",
+        description: "Highlight local sourcing and community partnerships",
         color: "bg-purple-500"
       }
     ]
@@ -96,8 +96,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Social",
-        title: "Spring Market Preview",
-        description: "Will we see an early spring market?",
+        title: "Spring Menu Preview",
+        description: "Tease upcoming seasonal dishes",
         color: "bg-green-500"
       }
     ]
@@ -132,7 +132,7 @@ const holidayRecommendations = {
       {
         type: "Social",
         title: "Lucky Home Finds",
-        description: "Share your best property finds",
+        description: "Share your favorite dishes from the week",
         color: "bg-emerald-500"
       }
     ]
@@ -142,8 +142,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Blog",
-        title: "Spring Market Kickoff",
-        description: "Spring real estate market trends",
+        title: "Spring Menu Launch",
+        description: "New seasonal menu highlights",
         color: "bg-green-400"
       }
     ]
@@ -155,8 +155,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Social",
-        title: "Real Estate Myths Busted",
-        description: "Debunk common home buying myths",
+        title: "Food Myths Busted",
+        description: "Debunk common cooking myths",
         color: "bg-orange-500"
       }
     ]
@@ -166,8 +166,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Blog",
-        title: "Eco-Friendly Homes",
-        description: "Green features in Omaha homes",
+        title: "Sustainable Dining",
+        description: "Our eco-friendly practices and local sourcing",
         color: "bg-emerald-600"
       }
     ]
@@ -337,53 +337,53 @@ const holidayRecommendations = {
 const initialScheduledContent = [
   {
     id: 1,
-    title: "Dundee Market Report",
+    title: "Weekly Specials Feature",
     type: "Blog",
     date: new Date(2025, 0, 7), // January 7, 2025 (Tuesday)
     time: "10:00 AM",
     color: "bg-primary",
     platform: "Facebook",
-    content: "🏘️ Dundee Market Update - January 2025\n\nThe Dundee neighborhood continues to show strong market activity! Here's what we're seeing:\n\n📈 Average home price: $425,000 (+8% YoY)\n🏠 Days on market: 18 days\n📊 Inventory: 45 active listings\n\nDundee's historic charm and walkability make it one of Omaha's most desirable neighborhoods. Perfect for buyers seeking character homes with modern updates.\n\nLooking to buy or sell in Dundee? Let's chat about current opportunities!\n\n#OmahaRealEstate #DundeeNeighborhood #MarketUpdate",
+    content: "🍽️ This Week's Specials - January 2025\n\nOur kitchen is buzzing with excitement! Here's what we're featuring:\n\n📈 Fan Favorite: Our signature pasta\n🏠 New Addition: Chef's seasonal soup\n📊 Back by demand: Weekend brunch special\n\nOur commitment to fresh, local ingredients means every dish is made with care. Perfect for date night or family dinner!\n\nReady to taste the difference? Make your reservation today!\n\n#RestaurantSpecials #FoodLovers #DineLocal",
   },
   {
     id: 2,
-    title: "Property Showcase: Aksarben",
+    title: "Dish Spotlight: Signature Entrée",
     type: "Social",
     date: new Date(2025, 0, 10), // January 10, 2025 (Friday)
     time: "2:00 PM",
     color: "bg-accent",
     platform: "Instagram",
-    content: "✨ JUST LISTED in Aksarben Village! ✨\n\n🏡 4BR/3BA Contemporary Home\n💰 $485,000\n📍 Prime Aksarben location\n\n▫️ Open concept living\n▫️ Gourmet kitchen with granite counters\n▫️ Master suite with walk-in closet\n▫️ Private backyard oasis\n▫️ 2-car garage\n\nWalkable to shops, restaurants, and the new development! This won't last long in today's market.\n\nDM me for a private showing! 📲\n\n#AksarbenVillage #OmahaHomes #JustListed #RealEstateExpert",
+    content: "✨ DISH OF THE WEEK ✨\n\n🍖 Chef's Special Entrée\n💰 $24.95\n📍 Available all week!\n\n▫️ Locally sourced ingredients\n▫️ House-made sauce\n▫️ Seasonal vegetables\n▫️ Artisan bread\n▫️ Perfect wine pairing available\n\nCome taste what everyone's talking about! Tables are filling up fast.\n\nDM us for reservations! 📲\n\n#FoodPhotography #ChefSpecial #Foodie #RestaurantLife",
   },
   {
     id: 3,
-    title: "Home Buying Tips Video",
+    title: "Cooking Tips Video",
     type: "Video",
     date: new Date(2025, 0, 13), // January 13, 2025 (Monday)
     time: "9:00 AM",
     color: "bg-chart-3",
     platform: "YouTube",
-    content: "🎥 First-Time Home Buyer Tips for Omaha Market\n\nIn this video, I share the essential steps every first-time buyer should know when purchasing in the Omaha metro area.\n\n📋 What's covered:\n• Pre-approval process and local lenders\n• Neighborhood selection guide\n• Inspection priorities in Omaha homes\n• Closing cost expectations\n• Market timing strategies\n\nAs your local Omaha expert, I've helped hundreds of first-time buyers navigate this exciting journey. Let me help you find your dream home!\n\n💬 Questions? Drop them in the comments below!\n\n#FirstTimeBuyer #OmahaRealEstate #HomeBuyingTips #RealEstateEducation",
+    content: "🎥 Chef's Kitchen Tips for Home Cooks\n\nIn this video, our head chef shares essential techniques for elevating your home cooking.\n\n📋 What's covered:\n• Proper knife skills basics\n• Seasoning and flavor building\n• Temperature control tips\n• Presentation techniques\n• Secret sauce recipes\n\nAs passionate food lovers, we believe everyone can cook amazing meals at home!\n\n💬 Questions? Drop them in the comments below!\n\n#CookingTips #ChefSecrets #FoodEducation #HomeChef",
   },
   {
     id: 4,
-    title: "Weekend Open House",
+    title: "Weekend Brunch Feature",
     type: "Social",
     date: new Date(2025, 0, 18), // January 18, 2025 (Saturday)
     time: "11:00 AM",
     color: "bg-green-500",
     platform: "Facebook",
-    content: "🏠 OPEN HOUSE THIS WEEKEND! 🏠\n\n📍 123 Maple Street, Benson\n⏰ Saturday & Sunday 1-4 PM\n💰 $385,000\n\n✨ Features:\n• 3BR/2BA Craftsman style\n• Updated kitchen & baths\n• Hardwood floors throughout\n• Large fenced backyard\n• Walking distance to shops\n\nPerfect starter home or investment property! See you there!\n\n#OpenHouse #BensonNeighborhood #OmahaRealEstate",
+    content: "🥞 BRUNCH IS SERVED THIS WEEKEND! 🥞\n\n📍 [Restaurant Name]\n⏰ Saturday & Sunday 10 AM - 2 PM\n💰 Full Menu Starting at $12.95\n\n✨ Highlights:\n• Fluffy pancakes with fresh berries\n• Eggs Benedict three ways\n• Fresh-squeezed mimosas\n• Bottomless coffee\n• House-made pastries\n\nPerfect for catching up with friends or treating the family!\n\n#WeekendBrunch #BrunchLife #Foodie",
   },
   {
     id: 5,
-    title: "Market Trends Analysis",
+    title: "Restaurant News Update",
     type: "Blog",
     date: new Date(2025, 0, 24), // January 24, 2025 (Friday)
     time: "3:00 PM",
     color: "bg-indigo-500",
     platform: "LinkedIn",
-    content: "📊 Omaha Real Estate Market Trends - January 2025\n\nAs we move through the first quarter, here's what we're seeing in the Omaha metro area:\n\n🏠 INVENTORY: Up 12% from last month\n💰 MEDIAN PRICE: $425K (+6% YoY)\n📈 SALES VOLUME: Strong activity despite winter\n⏱️ DAYS ON MARKET: Averaging 22 days\n\nKey insights for buyers and sellers:\n• Inventory increasing gives buyers more options\n• Interest rates stabilizing around 6.8%\n• Spring market prep should start now\n\nThinking of making a move? Let's discuss your strategy.\n\n#OmahaRealEstate #MarketTrends #RealEstateExpert",
+    content: "📊 Restaurant Updates - January 2025\n\nAs we move through the new year, here's what's happening at our restaurant:\n\n🍽️ NEW MENU: Launching spring menu next month\n💰 SPECIAL EVENTS: Private dining now available\n📈 CATERING: Expanded service offerings\n⏱️ HOURS: Extended weekend hours\n\nKey updates for our guests:\n• New seasonal dishes coming soon\n• Private event space now bookable\n• Catering menu expanded\n\nThinking of hosting an event? Let's discuss how we can help.\n\n#RestaurantLife #DineLocal #FoodBusiness",
   }
 ];
 
@@ -526,7 +526,7 @@ export function ContentCalendar() {
   const generateContentPlanMutation = useMutation({
     mutationFn: async (weeks: number = 4) => {
       const response = await apiRequest('POST', '/api/content/generate-plan', {
-        targetAudience: 'home buyers and sellers',
+        targetAudience: 'food lovers and diners',
         specialties: [],
         weeks,
       });
@@ -762,13 +762,13 @@ export function ContentCalendar() {
       if (savedToLibrary === false) {
         toast({
           title: "Photo Uploaded",
-          description: "Your property photo has been uploaded but could not be saved to your library",
+          description: "Your food photo has been uploaded but could not be saved to your library",
           variant: "destructive",
         });
       } else {
         toast({
           title: "Photo Uploaded",
-          description: "Your property photo has been uploaded and saved to your library",
+          description: "Your food photo has been uploaded and saved to your library",
         });
       }
     }
@@ -851,7 +851,7 @@ export function ContentCalendar() {
           marketData: validMarketData.slice(0, 3), // Top 3 market trends
           timeframe: '15-days',
           focus: 'high-impact',
-          prompt: 'You are a Luxury real estate agent. Create 2 weeks worth of social media posts. Optimize what days are best for each platform.'
+          prompt: 'You are a popular restaurant owner. Create 2 weeks worth of social media posts. Optimize what days are best for each platform.'
         }),
         signal: controller.signal,
       });
@@ -1343,12 +1343,12 @@ export function ContentCalendar() {
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
                           >
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Property Image
+                            Upload Food Image
                           </ObjectUploader>
                         ) : (
                           <>
                             <Home className="h-12 w-12 mx-auto mb-2" />
-                            <div className="text-sm">Property Image</div>
+                            <div className="text-sm">Food Image</div>
                           </>
                         )}
                       </div>
@@ -1392,7 +1392,7 @@ export function ContentCalendar() {
                         </div>
                       </div>
                       <div>
-                        <div className="font-semibold text-sm">mikebjork_realtor</div>
+                        <div className="font-semibold text-sm">our_restaurant</div>
                         <div className="text-xs text-gray-500">Omaha, Nebraska</div>
                       </div>
                     </div>
@@ -1431,12 +1431,12 @@ export function ContentCalendar() {
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
                           >
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Property Image
+                            Upload Food Image
                           </ObjectUploader>
                         ) : (
                           <>
                             <Home className="h-12 w-12 mx-auto mb-2" />
-                            <div className="text-sm">Property Image</div>
+                            <div className="text-sm">Food Image</div>
                           </>
                         )}
                       </div>
@@ -1454,7 +1454,7 @@ export function ContentCalendar() {
                     </div>
                     <div className="text-sm font-semibold mb-1">183 likes</div>
                     <div className="text-sm">
-                      <span className="font-semibold">mikebjork_realtor</span>
+                      <span className="font-semibold">our_restaurant</span>
                       <span className="ml-1">
                         {isEditing ? (
                           <>
@@ -1491,8 +1491,8 @@ export function ContentCalendar() {
                       <span className="text-sm font-bold text-golden-foreground">MB</span>
                     </div>
                     <div>
-                      <div className="font-semibold text-sm">{userName} Real Estate</div>
-                      <div className="text-xs text-gray-500">Omaha Real Estate Expert</div>
+                      <div className="font-semibold text-sm">{userName} Restaurant</div>
+                      <div className="text-xs text-gray-500">Omaha's Favorite Dining Spot</div>
                     </div>
                   </div>
                   
@@ -1583,7 +1583,7 @@ export function ContentCalendar() {
                     </div>
                     <div>
                       <div className="font-semibold text-sm">{userName}</div>
-                      <div className="text-xs text-gray-500">Real Estate Professional at BHHS</div>
+                      <div className="text-xs text-gray-500">Restaurant Owner & Chef</div>
                       <div className="text-xs text-gray-400">
                         {format(new Date(), "MMM d, h:mm a")}
                       </div>
@@ -1612,7 +1612,7 @@ export function ContentCalendar() {
                     <div className="border rounded bg-gray-50 p-1 mb-3 relative">
                       <img 
                         src={photoPreview || savedPhotoUrl || ""} 
-                        alt="Property" 
+                        alt="Food" 
                         className="w-full aspect-video object-cover rounded"
                       />
                       {isEditing && (
@@ -1645,12 +1645,12 @@ export function ContentCalendar() {
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
                           >
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Property Image
+                            Upload Food Image
                           </ObjectUploader>
                         ) : (
                           <>
                             <Home className="h-8 w-8 mx-auto mb-2" />
-                            <div className="text-sm font-medium">Property Listing</div>
+                            <div className="text-sm font-medium">Menu Spotlight</div>
                             <div className="text-xs">Click to view details</div>
                           </>
                         )}
@@ -1720,26 +1720,6 @@ export function ContentCalendar() {
                   )}
                 </div>
               )}
-            </div>
-          )}
-          
-          {/* BHHS Compliance Checker */}
-          {previewContent && (
-            <div className="px-4 pt-3">
-              <ComplianceChecker
-                content={isEditing ? editedContent : (previewContent.content || "")}
-                platform={previewContent.platform || "general"}
-                hasMedia={!!(photoPreview || savedPhotoUrl)}
-                hasVideo={false}
-                onContentFix={(fixedContent) => {
-                  setEditedContent(fixedContent);
-                  if (!isEditing) {
-                    setIsEditing(true);
-                  }
-                }}
-                showGuidelines={false}
-                className="mb-2"
-              />
             </div>
           )}
           

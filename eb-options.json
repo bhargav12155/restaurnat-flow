@@ -1,0 +1,23 @@
+[
+  {"Namespace": "aws:autoscaling:launchconfiguration", "OptionName": "InstanceType", "Value": "t3.micro"},
+  {"Namespace": "aws:autoscaling:launchconfiguration", "OptionName": "IamInstanceProfile", "Value": "aws-elasticbeanstalk-ec2-role"},
+  {"Namespace": "aws:elasticbeanstalk:environment", "OptionName": "EnvironmentType", "Value": "SingleInstance"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "NODE_ENV", "Value": "production"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "PORT", "Value": "8080"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SESSION_SECRET", "Value": "***REMOVED***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "JWT_SECRET", "Value": "***REMOVED***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "AWS_REGION", "Value": "us-east-2"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "S3_BUCKET_NAME", "Value": "home-template-images"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "AWS_ACCESS_KEY_ID", "Value": "***REDACTED_KEY***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "AWS_SECRET_ACCESS_KEY", "Value": "***REDACTED_SECRET***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "DB_SCHEMA", "Value": "onrestuanrants"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "DB_AUTO_CREATE_SCHEMA", "Value": "false"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "DATABASE_URL", "Value": "***REMOVED***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "OPENAI_API_KEY", "Value": "***REMOVED***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "GEMINI_API_KEY", "Value": "***REMOVED***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_HOST", "Value": "smtp.gmail.com"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_PORT", "Value": "587"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_USER", "Value": "mygoldenbrick1@gmail.com"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_PASS", "Value": "***REMOVED***"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "HEYGEN_API_KEY", "Value": "***REMOVED***"}
+]

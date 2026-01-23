@@ -1081,7 +1081,7 @@ export function AvatarStudio() {
     mutationFn: async () => {
       const platform = PLATFORM_OPTIONS.find(p => p.id === selectedPlatform);
       const response = await apiRequest("POST", "/api/generate-script", {
-        topic: videoTitle || "professional real estate introduction",
+        topic: videoTitle || "professional restaurant introduction",
         videoType: "introduction",
         platform: platform?.name || "Instagram Reel",
         duration: platform?.duration || 30,
@@ -2583,7 +2583,7 @@ export function AvatarStudio() {
                     id="custom-prompt"
                     value={customPrompt}
                     onChange={(e) => setCustomPrompt(e.target.value)}
-                    placeholder="e.g., Focus on luxury homes in West Omaha, mention our 20 years of experience..."
+                    placeholder="e.g., Focus on our signature dishes, mention our 20 years of culinary experience..."
                     rows={2}
                     className="resize-none"
                     data-testid="input-custom-prompt"

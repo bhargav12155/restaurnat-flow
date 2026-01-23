@@ -39,7 +39,7 @@ const publicUserSchema = z.object({
 
 /**
  * POST /api/auth/agent/register
- * Register a new real estate agent
+ * Register a new restaurant owner
  */
 router.post("/agent/register", async (req: Request, res: Response) => {
   try {
@@ -95,7 +95,7 @@ router.post("/agent/register", async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/agent/login
- * Login a real estate agent
+ * Login a restaurant owner
  */
 router.post("/agent/login", async (req: Request, res: Response) => {
   try {
@@ -330,7 +330,7 @@ router.post("/login", async (req: Request, res: Response) => {
         return res.json({
           success: true,
           message: `Welcome ${
-            loginResult.isNewUser ? "to RealtyFlow" : "back"
+            loginResult.isNewUser ? "to RestaurantFlow" : "back"
           }!`,
           user: {
             id: loginResult.user.id,

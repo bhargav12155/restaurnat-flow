@@ -82,9 +82,9 @@ const DEMO_PROPERTIES = [
 const DEMO_SCHEDULED_POSTS = [
   {
     platform: "facebook",
-    postType: "just_listed",
-    content: "🏡 Just Listed! Beautiful 4BR/3.5BA home in Westside at $475,000. Open floor plan, gourmet kitchen, finished basement. Schedule your showing today! #OmahaRealEstate #JustListed",
-    hashtags: ["OmahaRealEstate", "JustListed", "WestsideHomes"],
+    postType: "new_menu",
+    content: "🍽️ New Menu Alert! Try our Chef's special 5-course tasting menu featuring locally-sourced ingredients. Reservations now open for this weekend! #OmahaFood #NewMenu",
+    hashtags: ["OmahaFood", "NewMenu", "OmahaDining"],
     scheduledFor: new Date(Date.now() + 24 * 60 * 60 * 1000),
     status: "pending",
     isAiGenerated: true,
@@ -93,9 +93,9 @@ const DEMO_SCHEDULED_POSTS = [
   },
   {
     platform: "instagram",
-    postType: "market_update",
-    content: "📊 Omaha Market Update: Home prices up 5% this quarter. Great time to list! DM for a free home valuation.",
-    hashtags: ["OmahaRealEstate", "MarketUpdate", "RealEstateAgent"],
+    postType: "featured_dish",
+    content: "📸 Featured Dish: Our signature ribeye steak with truffle butter is back by popular demand! DM for reservations.",
+    hashtags: ["OmahaRestaurants", "FoodieFinds", "OmahaEats"],
     scheduledFor: new Date(Date.now() + 48 * 60 * 60 * 1000),
     status: "pending",
     isAiGenerated: true,
@@ -104,9 +104,9 @@ const DEMO_SCHEDULED_POSTS = [
   },
   {
     platform: "linkedin",
-    postType: "open_house",
-    content: "Join us this Sunday for an Open House at 1234 Maple Street in Westside! 1-4 PM. This stunning 4BR home won't last long.",
-    hashtags: ["OpenHouse", "OmahaRealEstate", "BHHS"],
+    postType: "special_event",
+    content: "Join us this Sunday for our Wine Pairing Dinner at our Westside location! 6-9 PM. Limited seating available - reserve your table now.",
+    hashtags: ["WineDinner", "OmahaRestaurants", "FineWining"],
     scheduledFor: new Date(Date.now() + 72 * 60 * 60 * 1000),
     status: "approved",
     isAiGenerated: false,
@@ -116,8 +116,8 @@ const DEMO_SCHEDULED_POSTS = [
   {
     platform: "x",
     postType: "tip",
-    content: "🔑 Buying tip: Get pre-approved before house hunting to show sellers you're serious! #RealEstateTips #HomeBuyers",
-    hashtags: ["RealEstateTips", "HomeBuyers", "OmahaRealEstate"],
+    content: "🍴 Dining tip: Book weekend reservations early to secure your favorite table! Walk-ins welcome during weekdays. #OmahaDining #FoodTips",
+    hashtags: ["OmahaDining", "FoodTips", "OmahaRestaurants"],
     scheduledFor: new Date(Date.now() + 96 * 60 * 60 * 1000),
     status: "pending",
     isAiGenerated: true,
@@ -199,7 +199,7 @@ const DEMO_SOCIAL_ACCOUNTS = [
   {
     platform: "linkedin",
     isConnected: true,
-    accountUsername: "Nebraska Home Hub Real Estate",
+    accountUsername: "Omaha Restaurant Spotlight",
   },
   {
     platform: "x",

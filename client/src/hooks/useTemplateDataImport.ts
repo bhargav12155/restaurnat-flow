@@ -169,7 +169,7 @@ export function useTemplateDataImport() {
     if (window.self !== window.top) {
       try {
         window.parent.postMessage(
-          { source: "realtyflow", action: "requestTemplateData" },
+          { source: "restaurantflow", action: "requestTemplateData" },
           "*"
         );
       } catch (e) {

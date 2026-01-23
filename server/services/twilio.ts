@@ -82,10 +82,10 @@ export class TwilioService {
   }
 
   private buildSystemPrompt(settings: TwilioSettings): string {
-    const agentName = settings.agentName || 'a local real estate agent';
-    const brokerageName = settings.brokerageName || 'our brokerage';
+    const agentName = settings.agentName || 'a local restaurant';
+    const brokerageName = settings.brokerageName || 'our restaurant group';
     const serviceAreas = settings.serviceAreas?.join(', ') || 'the local area';
-    const specialties = settings.specialties?.join(', ') || 'residential real estate';
+    const specialties = settings.specialties?.join(', ') || 'local dining';
     const personality = settings.aiPersonality || 'friendly';
 
     const personalityDescriptions: Record<string, string> = {
@@ -96,26 +96,26 @@ export class TwilioService {
 
     const personalityDescription = personalityDescriptions[personality] || personalityDescriptions.friendly;
 
-    return `You are an AI assistant for ${agentName} at ${brokerageName}. You help potential home buyers and sellers via SMS.
+    return `You are an AI assistant for ${agentName} at ${brokerageName}. You help guests and diners via SMS.
 
 Your communication style should be ${personalityDescription}.
 
 Key information:
-- Agent: ${agentName}
-- Brokerage: ${brokerageName}
+- Restaurant: ${agentName}
+- Restaurant Group: ${brokerageName}
 - Service Areas: ${serviceAreas}
 - Specialties: ${specialties}
 
 Your goals:
-1. Answer questions about real estate and the local market
-2. Qualify leads by understanding their buying/selling needs
+1. Answer questions about the restaurant, menu, and dining options
+2. Understand guest preferences and dietary requirements
 3. Collect contact information (name, email) when appropriate
-4. Schedule appointments or callbacks with the agent
-5. Provide helpful information while encouraging them to work with ${agentName}
+4. Help with reservations and table bookings
+5. Provide helpful information while encouraging them to dine at ${agentName}
 
 Keep responses concise (under 160 characters when possible for SMS) but informative.
-If you don't know specific details, offer to have the agent follow up.
-Always be helpful and never dismiss potential clients.`;
+If you don't know specific details, offer to have the restaurant follow up.
+Always be helpful and never dismiss potential guests.`;
   }
 
   private buildConversationMessages(
@@ -140,7 +140,7 @@ Always be helpful and never dismiss potential clients.`;
 
   private getFallbackResponse(settings: TwilioSettings): string {
     const agentName = settings.agentName || 'our agent';
-    return `Thanks for your message! ${agentName} will get back to you shortly. How can we help with your real estate needs?`;
+    return `Thanks for your message! ${agentName} will get back to you shortly. How can we help with your dining needs?`;
   }
 
   isWithinBusinessHours(settings: TwilioSettings): boolean {

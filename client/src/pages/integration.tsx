@@ -18,7 +18,7 @@ export default function IntegrationPage() {
   const [isAutoLogging, setIsAutoLogging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check for auto-login parameters from NebraskaHomeHub
+  // Check for auto-login parameters from external integrations
   useEffect(() => {
     const checkAutoLogin = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -26,8 +26,8 @@ export default function IntegrationPage() {
       const autoLogin = urlParams.get("autoLogin");
       const source = urlParams.get("source");
 
-      // If coming from NebraskaHomeHub with auto-login
-      if (autoLogin === "true" && userEmail && source === "nebraska-home-hub") {
+      // If coming from external integration with auto-login
+      if (autoLogin === "true" && userEmail) {
         setIsAutoLogging(true);
         setError(null);
 
@@ -49,8 +49,8 @@ export default function IntegrationPage() {
         } finally {
           setIsAutoLogging(false);
         }
-      } else if (source === "nebraska-home-hub") {
-        // Coming from NebraskaHomeHub without auto-login, redirect to social tab
+      } else if (source) {
+        // Coming from external source without auto-login, redirect to social tab
         setLocation("/#social");
       }
     };
@@ -71,7 +71,7 @@ export default function IntegrationPage() {
             <Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin text-blue-600" />
             <h3 className="text-lg font-semibold mb-2">
               {isAutoLogging
-                ? "Connecting from NebraskaHomeHub..."
+                ? "Connecting to RestaurantFlow..."
                 : "Loading..."}
             </h3>
             <p className="text-gray-600">
@@ -91,14 +91,14 @@ export default function IntegrationPage() {
           <div className="flex items-center justify-center mb-4">
             <Sparkles className="w-10 h-10 text-blue-600 mr-3" />
             <h1 className="text-3xl font-bold text-gray-900">
-              RealtyFlow AI-SEO
+              RestaurantFlow AI-SEO
             </h1>
           </div>
           <p className="text-xl text-gray-600 mb-2">
             Social Media & Content Management
           </p>
           <p className="text-sm text-gray-500">
-            Connected from NebraskaHomeHub
+            Restaurant Marketing Tools
           </p>
 
           {user && (
@@ -106,8 +106,8 @@ export default function IntegrationPage() {
               <Alert className="border-green-200 bg-green-50">
                 <CheckCircle className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
-                  Welcome back, {user.email}! You're successfully connected from
-                  your NebraskaHomeHub account.
+                  Welcome back, {user.email}! You're successfully connected to
+                  RestaurantFlow.
                 </AlertDescription>
               </Alert>
             </div>
@@ -177,7 +177,7 @@ export default function IntegrationPage() {
             </CardHeader>
             <CardContent className="p-6">
               <p className="text-gray-600 mb-4">
-                Access the complete RealtyFlow dashboard with AI content
+                Access the complete RestaurantFlow dashboard with AI content
                 generation, SEO tools, and more.
               </p>
               <Button
@@ -196,7 +196,7 @@ export default function IntegrationPage() {
         <div className="mt-8 text-center">
           <div className="bg-white rounded-lg p-6 border border-gray-200">
             <h3 className="text-lg font-semibold mb-2">
-              What you get with RealtyFlow:
+              What you get with RestaurantFlow:
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
               <div className="flex items-center justify-center gap-2">
@@ -213,7 +213,7 @@ export default function IntegrationPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mt-3">
-              Connected from NebraskaHomeHub • Secure Integration • Real Estate
+              RestaurantFlow • Secure Integration • Restaurant Marketing
               AI Tools
             </p>
           </div>

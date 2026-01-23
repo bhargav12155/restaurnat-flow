@@ -206,30 +206,30 @@ export class HeyGenTemplateService {
     return await response.json();
   }
 
-  // Get popular templates for real estate
-  async getRealEstateTemplates() {
-    let realEstateTemplates: Template[] = [];
+  // Get popular templates for restaurants
+  async getRestaurantTemplates() {
+    let restaurantTemplates: Template[] = [];
     
     try {
       const allTemplates = await this.listTemplates();
       
-      // Filter for real estate related templates
-      const realEstateKeywords = ['property', 'real estate', 'home', 'house', 'listing', 'tour', 'walkthrough'];
+      // Filter for restaurant related templates
+      const restaurantKeywords = ['restaurant', 'food', 'menu', 'dining', 'chef', 'cuisine', 'culinary'];
       
-      realEstateTemplates = allTemplates.templates?.filter((template: Template) => {
+      restaurantTemplates = allTemplates.templates?.filter((template: Template) => {
         const searchString = `${template.name} ${template.description}`.toLowerCase();
-        return realEstateKeywords.some(keyword => searchString.includes(keyword));
+        return restaurantKeywords.some(keyword => searchString.includes(keyword));
       }) || [];
       
-      if (realEstateTemplates.length > 0) {
-        return { templates: realEstateTemplates };
+      if (restaurantTemplates.length > 0) {
+        return { templates: restaurantTemplates };
       }
     } catch (error) {
       console.log('Failed to fetch templates, returning suggestions instead');
     }
 
-    // If no real estate templates found, provide suggestions
-    if (realEstateTemplates.length === 0) {
+    // If no restaurant templates found, provide suggestions
+    if (restaurantTemplates.length === 0) {
       return {
         templates: [],
         suggestions: [
@@ -246,7 +246,7 @@ export class HeyGenTemplateService {
           },
           {
             name: "Market Update Template",
-            description: "Monthly real estate market analysis video",
+            description: "Monthly restaurant industry insights video",
             recommended_variables: {
               month: "text",
               market_stats: "text",
@@ -268,6 +268,6 @@ export class HeyGenTemplateService {
       };
     }
 
-    return { templates: realEstateTemplates };
+    return { templates: restaurantTemplates };
   }
 }

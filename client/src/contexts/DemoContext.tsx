@@ -20,44 +20,44 @@ const DEMO_SOCIAL_ACCOUNTS: DemoSocialAccount[] = [
   {
     id: 'demo-facebook',
     platform: 'facebook',
-    accountUsername: 'Nebraska Home Hub',
+    accountUsername: 'Demo Restaurant',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-instagram',
     platform: 'instagram',
-    accountUsername: '@nebraskahomehub',
+    accountUsername: '@demorestaurant',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-linkedin',
     platform: 'linkedin',
-    accountUsername: 'Nebraska Home Hub Real Estate',
+    accountUsername: 'Demo Restaurant',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-x',
     platform: 'x',
-    accountUsername: '@NebraskaHomeHub',
+    accountUsername: '@DemoRestaurant',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-youtube',
     platform: 'youtube',
-    accountUsername: 'Nebraska Home Hub Channel',
+    accountUsername: 'Demo Restaurant Channel',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-tiktok',
     platform: 'tiktok',
-    accountUsername: '@nebraskahomehub',
+    accountUsername: '@demorestaurant',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
   }
 ];
 

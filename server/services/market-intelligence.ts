@@ -60,7 +60,7 @@ export class MarketIntelligenceService {
         trend: d.trend
       }));
 
-      const prompt = `You are a real estate market analyst specializing in Omaha, Nebraska. Analyze this market data and provide actionable insights.
+      const prompt = `You are a restaurant industry analyst specializing in Omaha, Nebraska. Analyze this market data and provide actionable insights.
 
 **MARKET DATA:**
 ${JSON.stringify(marketSummary, null, 2)}
@@ -73,7 +73,7 @@ ${JSON.stringify(marketSummary, null, 2)}
 
 Generate a comprehensive market intelligence report with:
 
-1. **AI Market Summary** (2-3 sentences): Synthesize the overall market condition, key trends, and what it means for real estate agents and their clients.
+1. **AI Market Summary** (2-3 sentences): Synthesize the overall market condition, key trends, and what it means for restaurant owners and their customers.
 
 2. **Top 3 Trending Neighborhoods** (for each provide):
    - Short AI insight (1 sentence about why this neighborhood is noteworthy)
@@ -265,7 +265,7 @@ Return ONLY a valid JSON object with this structure:
     return {
       overview,
       trendingNeighborhoods,
-      aiSummary: `The Omaha real estate market is ${overview.marketCondition} with a median home price of $${overview.medianHomePrice.toLocaleString()} and homes selling in an average of ${overview.avgDaysOnMarket} days.`,
+      aiSummary: `The local restaurant industry is ${overview.marketCondition} with strong dining trends and restaurants achieving success in an average of ${overview.avgDaysOnMarket} days.`,
       contentOpportunities: [
         {
           title: 'Market Update Report',

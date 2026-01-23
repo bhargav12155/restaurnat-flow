@@ -46,7 +46,7 @@ export class AIContentCalendarGenerator {
 
     const days = weeks * 7;
     const areasText = serviceAreas.length > 0 ? serviceAreas.join(', ') : 'Omaha metro area';
-    const audienceText = targetAudience || 'home buyers and sellers';
+    const audienceText = targetAudience || 'food lovers and diners';
     const specialtiesText = specialties && specialties.length > 0 
       ? ` Specialties: ${specialties.join(', ')}.` 
       : '';
@@ -61,66 +61,52 @@ export class AIContentCalendarGenerator {
     const liConfig = PLATFORM_CONFIGS.linkedin;
     const xConfig = PLATFORM_CONFIGS.x;
 
-    const prompt = `You are a social media content strategist for real estate agents. Create a ${weeks}-week (${days}-day) content calendar for a real estate agent in Omaha, Nebraska.
+    const prompt = `You are a social media content strategist for restaurants. Create a ${weeks}-week (${days}-day) content calendar for a restaurant in Omaha, Nebraska.
 
 **Agent Profile:**
 - Service Areas: ${areasText}
 - Target Audience: ${audienceText}${specialtiesText}
 - Current Market Data: ${marketInsights || 'Strong Omaha market'}
 
+**🚨 CRITICAL: KEEP POSTS SHORT FOR MAXIMUM ENGAGEMENT 🚨**
+- Users scroll fast - you have 1.7 seconds to grab attention!
+- Optimal post length: 40-80 characters
+- Posts under 50 chars get 66% MORE engagement
+- Lead with emoji + hook, be punchy, no fluff!
+
 **Content Strategy:**
 Create exactly ${days} social media posts (one per day) that:
-1. Mix content types: 40% local market updates, 30% neighborhood spotlights, 20% buyer/seller tips, 10% community engagement
+1. Mix content types: 40% menu highlights, 30% specials, 20% behind-the-scenes, 10% community
 2. Rotate platforms: Facebook, Instagram, LinkedIn, X (Twitter)
 3. Vary posting times: mornings (9-10am), afternoons (2-3pm), evenings (6-7pm)
-4. Include relevant hashtags for Instagram posts only (1-2 hashtags max - 21% better engagement than 3+)
-5. Reference actual market data and neighborhoods from service areas
-6. CRITICAL: Optimize character count for each platform's engagement sweet spot
+4. Include 1-2 hashtags ONLY for Instagram
+5. Keep EVERY post SHORT: 40-80 characters max!
 
-**📊 Platform Character Optimization (FOLLOW THESE EXACTLY):**
+**📊 Platform Guidelines (KEEP POSTS SHORT!):**
 
-FACEBOOK:
-- Optimal: ${fbConfig.optimalCharacters.min}-${fbConfig.optimalCharacters.max} characters (posts under 50 get 66% more engagement!)
-- Truncates at: ${fbConfig.truncatesAt} chars - put hook FIRST
-- ${fbConfig.hashtagRecommendation}
-- Lead with attention-grabbing hook (users spend only 2.5 seconds scanning)
+FACEBOOK: 40-80 chars optimal (short posts get 2x engagement)
+INSTAGRAM: 40-100 chars optimal (first line is key!)  
+X (TWITTER): 71-100 chars optimal (under 100 gets 36% more engagement)
+LINKEDIN: 50-100 chars optimal for feed posts
 
-INSTAGRAM:
-- Optimal: ${igConfig.optimalCharacters.min}-${igConfig.optimalCharacters.max} characters for maximum engagement
-- Truncates at: ${igConfig.truncatesAt} chars - first line is critical!
-- ${igConfig.hashtagRecommendation}
-- Use emojis sparingly, line breaks strategically
+**EXAMPLE GOOD POSTS (follow this length):**
+✅ "🍽️ New brunch menu just dropped! Book your table now."
+✅ "🔥 Friday special: Half-price appetizers 4-6pm!"
+✅ "Chef's table is back this weekend. Limited spots!"
+✅ "🍕 Pizza night = family night. Join us tonight!"
 
-X (TWITTER):
-- Optimal: ${xConfig.optimalCharacters.min}-${xConfig.optimalCharacters.max} characters (36% more engagement!)
-- Maximum: ${xConfig.maxCharacters} chars (hard limit)
-- ${xConfig.hashtagRecommendation}
-- Create urgency or curiosity in every tweet
-
-LINKEDIN:
-- Optimal: ${liConfig.optimalCharacters.min}-${liConfig.optimalCharacters.max} characters (~25 words)
-- Truncates at: ${liConfig.truncatesAt} chars with 'See More'
-- ${liConfig.hashtagRecommendation}
-- Professional yet approachable tone, position as thought leader
-
-**Post Types:**
-- "local_market": Market updates, price trends, inventory levels
-- "neighborhood_spotlight": Highlight specific neighborhoods with amenities, lifestyle
-- "buyer_tips": First-time buyer advice, financing, inspections
-- "seller_tips": Staging, pricing strategy, market timing
-- "community": Local events, businesses, Omaha lifestyle
-
-💡 KEY INSIGHT: Average attention span is 1.7 seconds on mobile - LEAD WITH A STRONG HOOK!
+**EXAMPLE BAD POSTS (too long - DON'T do this):**
+❌ "We are thrilled to announce our exciting new menu featuring locally-sourced ingredients..."
 
 Return ONLY a valid JSON array with exactly ${days} posts in this structure:
 [
   {
     "platform": "facebook|instagram|linkedin|x",
-    "postType": "local_market|neighborhood_spotlight|buyer_tips|seller_tips|community",
-    "content": "engaging post text (OPTIMIZED for platform character count)",
-    "hashtags": ["tag1", "tag2"] (only for Instagram, 1-2 max, empty array for others),
+    "postType": "menu_highlight|special|behind_scenes|community|announcement",
+    "content": "SHORT punchy post (40-80 chars!)",
+    "hashtags": ["tag1"] (Instagram only, 1-2 max),
     "neighborhood": "neighborhood name or null",
-    "dayOffset": day_number (0-${days-1}, where 0 = tomorrow)
+    "dayOffset": day_number (0-${days-1})
   }
 ]`;
 
@@ -247,11 +233,11 @@ Return ONLY a valid JSON array with exactly ${days} posts in this structure:
     const today = new Date();
 
     const contentTemplates = [
-      { type: 'local_market', content: `Market update: The ${areas[0]} real estate market continues to show strong activity. Great time for both buyers and sellers!` },
-      { type: 'neighborhood_spotlight', content: `Spotlight on ${areas[0]}: This vibrant neighborhood offers excellent schools, parks, and convenient shopping. Perfect for families!` },
-      { type: 'buyer_tips', content: `First-time buyer tip: Get pre-approved before house hunting. It shows sellers you're serious and helps you understand your budget.` },
-      { type: 'seller_tips', content: `Seller strategy: Proper staging can increase your home's value by 5-10%. Let's discuss how to showcase your property's best features!` },
-      { type: 'community', content: `Love living in Omaha! Check out the local farmers market this weekend for fresh produce and community connections. 🌽` },
+      { type: 'local_market', content: `Food scene update: The ${areas[0]} restaurant scene continues to thrive with exciting new dishes and seasonal menus!` },
+      { type: 'neighborhood_spotlight', content: `Spotlight on ${areas[0]}: Discover the culinary gems in this vibrant neighborhood. Perfect for foodies looking for authentic flavors!` },
+      { type: 'dining_tips', content: `Dining tip: Make reservations for weekend dinners to ensure the best experience. Walk-ins welcome during weekdays!` },
+      { type: 'chef_special', content: `Chef's special: Our seasonal menu features locally-sourced ingredients at their peak freshness. Come taste the difference!` },
+      { type: 'community', content: `Love the Omaha food community! Check out the local farmers market this weekend for fresh produce and culinary inspiration. 🌽` },
     ];
 
     const fallbackPosts: InsertScheduledPost[] = [];
@@ -270,7 +256,7 @@ Return ONLY a valid JSON array with exactly ${days} posts in this structure:
         platform,
         postType: template.type,
         content: template.content,
-        hashtags: platform === 'instagram' ? ['OmahaRealEstate', 'NebraskaHomes'] : [],
+        hashtags: platform === 'instagram' ? ['OmahaRestaurants', 'OmahaFood'] : [],
         scheduledFor: scheduleDate,
         status: 'pending',
         isEdited: false,

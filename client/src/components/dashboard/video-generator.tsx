@@ -392,8 +392,8 @@ export function VideoGenerator() {
       duration: parseInt(duration),
       avatarId: selectedAvatar, // This is either a public avatar ID or photo avatar group_id
       tags: [
-        "OmahaRealEstate",
-        "RealEstate",
+        "FoodLovers",
+        "RestaurantLife",
         selectedNeighborhood,
         selectedVideoType,
         selectedVideoPlatform,
@@ -462,7 +462,7 @@ export function VideoGenerator() {
           AI Video Generator
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Create professional real estate videos with AI avatars for YouTube
+          Create professional restaurant videos with AI avatars for YouTube
         </p>
       </CardHeader>
       <CardContent>
@@ -1190,7 +1190,7 @@ export function VideoGenerator() {
                 Upload Your Own Video
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Upload your existing real estate videos to manage and share them
+                Upload your existing restaurant videos to manage and share them
                 through the platform
               </p>
             </div>
@@ -1463,7 +1463,7 @@ export function VideoGenerator() {
                             uploadToYoutubeMutation.mutate({
                               videoId: video.id,
                               title: video.title,
-                              description: `${video.topic} - Your Omaha Real Estate Expert`,
+                              description: `${video.topic} - Your Restaurant Marketing Expert`,
                               tags: video.tags,
                             })
                           }
