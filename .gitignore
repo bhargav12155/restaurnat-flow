@@ -48,3 +48,7 @@ vite.config.ts.*
 # Replit
 .replit
 replit.nix
+# Deployment artifacts
+deploy-*.zip
+deploy-tmp/
+eb-options.json
