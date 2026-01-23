@@ -1253,16 +1253,16 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
         </div>
       </CardHeader>
 
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         {/* Step 1: Choose Content Type */}
         {currentStep === 1 && (
-          <div className="space-y-6" data-testid="wizard-step-1-content">
-            <div className="text-center mb-6">
-              <h3 className="text-xl font-semibold text-foreground mb-2">What would you like to create?</h3>
-              <p className="text-muted-foreground">Choose the type of content that fits your needs</p>
+          <div className="space-y-4 sm:space-y-6" data-testid="wizard-step-1-content">
+            <div className="text-center mb-4 sm:mb-6">
+              <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-1 sm:mb-2">What would you like to create?</h3>
+              <p className="text-sm sm:text-base text-muted-foreground">Choose the type of content that fits your needs</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               {contentTypes.map((type) => {
                 const IconComponent = type.icon;
                 const isSelected = contentType === type.value;
@@ -1272,22 +1272,26 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     onClick={() => {
                       setContentType(type.value);
                     }}
-                    className={`relative p-6 rounded-xl border-2 transition-all text-left group hover:shadow-lg ${
+                    className={`relative p-3 sm:p-6 rounded-xl border-2 transition-all text-left group hover:shadow-lg active:scale-[0.98] ${
                       isSelected
                         ? "border-primary bg-primary/5 shadow-md"
                         : "border-border hover:border-primary/50 bg-card"
                     }`}
                     data-testid={`content-type-card-${type.value}`}
                   >
-                    <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${type.color} flex items-center justify-center mb-4`}>
-                      <IconComponent className="h-6 w-6 text-white" />
+                    <div className="flex sm:flex-col items-center sm:items-start gap-3 sm:gap-0">
+                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-gradient-to-br ${type.color} flex items-center justify-center sm:mb-4 flex-shrink-0`}>
+                        <IconComponent className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-foreground text-sm sm:text-base mb-0.5 sm:mb-1">{type.label}</h4>
+                        <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{type.description}</p>
+                      </div>
                     </div>
-                    <h4 className="font-semibold text-foreground mb-1">{type.label}</h4>
-                    <p className="text-sm text-muted-foreground">{type.description}</p>
                     {isSelected && (
-                      <div className="absolute top-3 right-3">
-                        <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg ring-2 ring-primary/30 ring-offset-2">
-                          <Check className="h-5 w-5 text-primary-foreground stroke-[3]" />
+                      <div className="absolute top-2 right-2 sm:top-3 sm:right-3">
+                        <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-primary flex items-center justify-center shadow-lg ring-2 ring-primary/30 ring-offset-1 sm:ring-offset-2">
+                          <Check className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground stroke-[3]" />
                         </div>
                       </div>
                     )}
@@ -1297,8 +1301,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
             </div>
 
             {/* Style Selection */}
-            <div className="mt-6 p-4 bg-muted/30 rounded-lg border">
-              <Label className="text-sm font-medium text-foreground mb-3 block">
+            <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-muted/30 rounded-lg border">
+              <Label className="text-sm font-medium text-foreground mb-2 sm:mb-3 block">
                 Content Style (Optional)
               </Label>
               <Select

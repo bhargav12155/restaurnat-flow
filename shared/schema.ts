@@ -62,9 +62,14 @@ export const publicUsers = pgTable(
     id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     email: text("email").notNull(),
     name: text("name"),
+    password: text("password"), // Hashed password for secure login
     agentSlug: text("agent_slug").notNull(),
     role: text("role").default("user"),
     preferences: jsonb("preferences"), // Store user preferences
+    // Email verification fields
+    emailVerified: boolean("email_verified").default(false),
+    verificationToken: text("verification_token"),
+    verificationTokenExpiry: timestamp("verification_token_expiry"),
     lastLogin: timestamp("last_login"),
     createdAt: timestamp("created_at").defaultNow(),
   },
