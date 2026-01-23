@@ -30,7 +30,7 @@ interface TemplateVariable {
   properties: any;
 }
 
-interface RealEstateTemplate {
+interface RestaurantTemplate {
   name: string;
   description: string;
   recommended_variables: Record<string, string>;
@@ -40,8 +40,8 @@ interface TemplatesResponse {
   templates: Template[];
 }
 
-interface RealEstateTemplatesResponse {
-  suggestions: RealEstateTemplate[];
+interface RestaurantTemplatesResponse {
+  suggestions: RestaurantTemplate[];
 }
 
 export function TemplateManager() {
@@ -57,9 +57,9 @@ export function TemplateManager() {
     queryKey: ['/api/templates'],
   });
 
-  // Query real estate templates
-  const { data: realEstateTemplates, isLoading: isLoadingRealEstate } = useQuery<RealEstateTemplatesResponse>({
-    queryKey: ['/api/templates/real-estate'],
+  // Query restaurant templates
+  const { data: restaurantTemplates, isLoading: isLoadingRestaurant } = useQuery<RestaurantTemplatesResponse>({
+    queryKey: ['/api/templates/restaurant'],
   });
 
   // Generate from template
@@ -144,10 +144,10 @@ export function TemplateManager() {
 
   const getTemplateIcon = (templateName: string) => {
     const name = templateName.toLowerCase();
-    if (name.includes('property') || name.includes('tour')) return <Home className="w-4 h-4" />;
-    if (name.includes('market')) return <TrendingUp className="w-4 h-4" />;
-    if (name.includes('agent') || name.includes('introduction')) return <Users className="w-4 h-4" />;
-    if (name.includes('listing')) return <Package className="w-4 h-4" />;
+    if (name.includes('dish') || name.includes('menu')) return <Home className="w-4 h-4" />;
+    if (name.includes('special') || name.includes('promo')) return <TrendingUp className="w-4 h-4" />;
+    if (name.includes('chef') || name.includes('introduction')) return <Users className="w-4 h-4" />;
+    if (name.includes('review') || name.includes('testimonial')) return <Package className="w-4 h-4" />;
     if (name.includes('neighborhood')) return <MapPin className="w-4 h-4" />;
     return <FileVideo className="w-4 h-4" />;
   };
@@ -221,7 +221,7 @@ export function TemplateManager() {
       <CardHeader>
         <CardTitle>Video Templates</CardTitle>
         <CardDescription>
-          Create videos from pre-designed templates optimized for real estate marketing
+          Create videos from pre-designed templates optimized for restaurant marketing
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -231,9 +231,9 @@ export function TemplateManager() {
               <FileVideo className="w-4 h-4 mr-2" />
               Browse
             </TabsTrigger>
-            <TabsTrigger value="real-estate" data-testid="tab-real-estate">
+            <TabsTrigger value="restaurant" data-testid="tab-restaurant">
               <Home className="w-4 h-4 mr-2" />
-              Real Estate
+              Restaurant
             </TabsTrigger>
             <TabsTrigger value="create" data-testid="tab-create">
               <Plus className="w-4 h-4 mr-2" />
@@ -250,7 +250,7 @@ export function TemplateManager() {
             ) : templates?.templates?.length === 0 ? (
               <Alert>
                 <AlertDescription>
-                  No templates available. Create your first template or check the Real Estate tab for suggestions.
+                  No templates available. Create your first template or check the Restaurant tab for suggestions.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -367,24 +367,24 @@ export function TemplateManager() {
             )}
           </TabsContent>
 
-          <TabsContent value="real-estate" className="space-y-4">
-            {isLoadingRealEstate ? (
+          <TabsContent value="restaurant" className="space-y-4">
+            {isLoadingRestaurant ? (
               <div className="text-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto" />
-                <p className="text-sm text-gray-500 mt-2">Loading real estate templates...</p>
+                <p className="text-sm text-gray-500 mt-2">Loading restaurant templates...</p>
               </div>
-            ) : realEstateTemplates?.suggestions ? (
+            ) : restaurantTemplates?.suggestions ? (
               <>
                 <Alert>
                   <FileText className="h-4 w-4" />
                   <AlertDescription>
-                    These are recommended template structures for real estate videos. 
+                    These are recommended template structures for restaurant videos. 
                     Use these as inspiration to create your own custom templates.
                   </AlertDescription>
                 </Alert>
                 
                 <div className="space-y-4">
-                  {realEstateTemplates.suggestions.map((template: RealEstateTemplate, index: number) => (
+                  {restaurantTemplates.suggestions.map((template: RestaurantTemplate, index: number) => (
                     <div
                       key={index}
                       className="border rounded-lg p-4 space-y-3"
@@ -423,9 +423,9 @@ export function TemplateManager() {
                   ))}
                 </div>
               </>
-            ) : realEstateTemplates?.suggestions && realEstateTemplates.suggestions.length > 0 ? (
+            ) : restaurantTemplates?.suggestions && restaurantTemplates.suggestions.length > 0 ? (
               <div className="grid grid-cols-2 gap-4">
-                {realEstateTemplates.suggestions.map((template: RealEstateTemplate, index: number) => (
+                {restaurantTemplates.suggestions.map((template: RestaurantTemplate, index: number) => (
                   <div
                     key={index}
                     className="border rounded-lg p-4 space-y-3"
@@ -460,7 +460,7 @@ export function TemplateManager() {
             ) : (
               <Alert>
                 <AlertDescription>
-                  No real estate templates available.
+                  No restaurant templates available.
                 </AlertDescription>
               </Alert>
             )}

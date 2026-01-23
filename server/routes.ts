@@ -8,6 +8,11 @@ import {
   pkceStore,
   tutorialVideos,
   updateScheduledPostSchema,
+  // Menu/Restaurant tables
+  foodCategories,
+  menuItems,
+  insertFoodCategorySchema,
+  insertMenuItemSchema,
 } from "@shared/schema";
 import crypto from "crypto";
 import { desc, eq, sql } from "drizzle-orm";
@@ -212,61 +217,61 @@ function generateFallbackScript(
   platform: string = "youtube"
 ): string {
   const videoTypeTemplates = {
-    market_update: `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices. Let's talk about the current real estate market in ${neighborhood}.
+    industry_update: `Hi there! Let's talk about the current restaurant industry trends in ${neighborhood}.
 
-The ${neighborhood} market has been showing some interesting trends lately. Home values have remained stable, and we're seeing consistent buyer interest in this area.
+The ${neighborhood} dining scene has been showing some interesting trends lately. Guest preferences have been evolving, and we're seeing exciting new culinary experiences in this area.
 
-For buyers, this means there are still good opportunities to find your perfect home in ${neighborhood}. For sellers, it's a great time to position your property competitively.
+For diners, this means there are amazing new restaurants to discover in ${neighborhood}. For restaurant owners, it's a great time to showcase your unique offerings.
 
-If you're thinking about buying or selling in ${neighborhood}, I'd love to help you navigate this market. Give me a call at Mike Bjork, your local Omaha real estate expert.
+If you're looking for the best dining experiences in ${neighborhood}, I'd love to share my recommendations. Your local Omaha food expert is here to help.
 
 Thanks for watching, and I'll see you in the next video!`,
 
-    neighborhood_tour: `Welcome to ${neighborhood}! I'm Mike Bjork with Berkshire Hathaway HomeServices, and I'm excited to show you why this neighborhood is such a special place to call home.
+    location_tour: `Welcome to ${neighborhood}! I'm excited to show you why this neighborhood is such a special place for food lovers.
 
-${neighborhood} offers a perfect blend of community charm and modern convenience. You'll find excellent schools, beautiful parks, and friendly neighbors who really care about maintaining the character of this area.
+${neighborhood} offers a perfect blend of culinary diversity and local charm. You'll find amazing eateries, cozy cafes, and innovative restaurants that really care about quality and flavor.
 
-The housing options here range from charming starter homes to spacious family properties, all with that distinctive ${neighborhood} character that residents love.
+The dining options here range from casual neighborhood spots to upscale dining experiences, all with that distinctive ${neighborhood} character that foodies love.
 
-If you're considering making ${neighborhood} your new home, I'd be happy to show you around and help you find the perfect property. Contact Mike Bjork, your Omaha real estate specialist.
+If you're looking to explore ${neighborhood}'s food scene, I'd be happy to share my top picks and hidden gems. Your Omaha dining specialist is here to guide you.
 
-Thanks for joining me on this tour of ${neighborhood}!`,
+Thanks for joining me on this culinary tour of ${neighborhood}!`,
 
-    buyer_tips: `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices, and today I want to share some essential tips for home buyers, especially if you're looking in the ${neighborhood} area.
+    diner_tips: `Hi there! Today I want to share some essential tips for dining out, especially if you're exploring the ${neighborhood} area.
 
-First, get pre-approved for your mortgage before you start shopping. This shows sellers you're serious and gives you a clear budget.
+First, make reservations when possible. Popular spots in ${neighborhood} can fill up quickly, especially on weekends.
 
-Second, work with a local agent who knows ${neighborhood} inside and out. I've been helping buyers find homes in this area for years, and local knowledge makes all the difference.
+Second, explore local favorites that know ${neighborhood} inside and out. Supporting neighborhood restaurants makes all the difference to the community.
 
-Third, don't skip the home inspection. It's your best protection against costly surprises down the road.
+Third, don't be afraid to try something new. The best dining experiences often come from stepping outside your comfort zone.
 
-If you're ready to start your home buying journey in ${neighborhood} or anywhere in Omaha, give me a call. Mike Bjork, here to help you every step of the way.
-
-Thanks for watching!`,
-
-    seller_guide: `Thinking about selling your home in ${neighborhood}? I'm Mike Bjork with Berkshire Hathaway HomeServices, and I want to help you get the best possible result.
-
-First, pricing is crucial. I'll provide you with a detailed market analysis to ensure your home is priced competitively for the ${neighborhood} market.
-
-Second, presentation matters. Small improvements can make a big difference in how quickly your home sells and for how much.
-
-Third, marketing is key. I'll make sure your ${neighborhood} home gets maximum exposure to qualified buyers.
-
-The ${neighborhood} market has unique characteristics, and as your local expert, I know exactly how to position your property for success.
-
-Ready to sell? Contact Mike Bjork, your trusted Omaha real estate professional.
+If you're ready to discover amazing food in ${neighborhood} or anywhere in Omaha, check out my recommendations. Here to help you find your next favorite meal.
 
 Thanks for watching!`,
 
-    moving_guide: `Planning a move to ${neighborhood}? I'm Mike Bjork with Berkshire Hathaway HomeServices, and I want to help make your transition as smooth as possible.
+    owner_guide: `Running a restaurant in ${neighborhood}? I want to help you get the best possible results for your business.
 
-${neighborhood} is a wonderful community with so much to offer. From great schools to local amenities, you'll find everything you need to feel right at home.
+First, quality is crucial. Maintaining consistent food and service will keep your ${neighborhood} customers coming back.
 
-When you're ready to make the move, I'll help you find the perfect property that fits your lifestyle and budget. I know the ${neighborhood} market inside and out.
+Second, presentation matters. Creating an inviting atmosphere can make a big difference in customer satisfaction and reviews.
 
-I can also connect you with trusted local services to help with your move - from movers to utility companies to the best local restaurants.
+Third, marketing is key. Make sure your ${neighborhood} restaurant gets maximum exposure to hungry customers.
 
-Moving to ${neighborhood} is an exciting step, and I'm here to help you every step of the way. Contact Mike Bjork, your Omaha real estate guide.
+The ${neighborhood} dining scene has unique characteristics, and understanding your local market is key to positioning your restaurant for success.
+
+Ready to grow your business? Your trusted Omaha restaurant industry expert is here to help.
+
+Thanks for watching!`,
+
+    food_scene_guide: `Exploring the ${neighborhood} food scene? I want to help make your culinary journey as delicious as possible.
+
+${neighborhood} is a wonderful area with so much to offer food lovers. From diverse cuisines to local favorites, you'll find everything you need to satisfy any craving.
+
+Whether you're looking for a quick bite or a memorable dining experience, I know the ${neighborhood} food scene inside and out.
+
+I can also share insider tips about the best times to visit, must-try dishes, and hidden gems that locals love.
+
+Exploring ${neighborhood}'s food scene is an exciting adventure, and I'm here to guide you every step of the way. Your Omaha food guide is at your service.
 
 Welcome to ${neighborhood}!`,
   };
@@ -280,12 +285,12 @@ Welcome to ${neighborhood}!`,
     // Make it more concise and punchy for Reels
     baseScript = baseScript
       .replace(
-        /Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices\./g,
-        "Hey! Mike Bjork here -"
+        /Hi there!/g,
+        "Hey foodie!"
       )
       .replace(
         /Thanks for watching!|Thanks for watching, and I'll see you in the next video!/g,
-        "Like & follow for more Omaha real estate tips! 🏠"
+        "Like & follow for more Omaha dining tips! 🍽️"
       )
       .split("\n")
       .slice(0, 4)
@@ -294,12 +299,12 @@ Welcome to ${neighborhood}!`,
     // Make it more casual and personal for Stories
     baseScript = baseScript
       .replace(
-        /Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices\./g,
-        "Quick update from Mike!"
+        /Hi there!/g,
+        "Quick food tip!"
       )
       .replace(
         /Thanks for watching!|Thanks for watching, and I'll see you in the next video!/g,
-        "DM me for details! 📱"
+        "DM me for recommendations! 📱"
       )
       .split("\n")
       .slice(0, 3)
@@ -309,57 +314,117 @@ Welcome to ${neighborhood}!`,
   return baseScript;
 }
 
-// Curated real estate stock images fallback (when no Pexels API key)
-function getRealEstateStockImages(query: string): Array<{
+// Curated restaurant stock images fallback (when no Pexels API key)
+function getRestaurantStockImages(query: string): Array<{
   id: string;
   url: string;
   thumbnail: string;
   alt: string;
   photographer: string;
 }> {
-  const stockImages: Record<string, Array<{ id: string; url: string; alt: string }>> = {
-    "home": [
-      { id: "home-1", url: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=80", alt: "Modern home exterior" },
-      { id: "home-2", url: "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800&q=80", alt: "Luxury home" },
-      { id: "home-3", url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80", alt: "Beautiful home" },
-      { id: "home-4", url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80", alt: "Contemporary home" },
-      { id: "home-5", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80", alt: "Modern architecture" },
-      { id: "home-6", url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=80", alt: "Suburban home" },
+  // Large collection of curated restaurant/food images from Unsplash
+  const allImages: Record<string, Array<{ id: string; url: string; alt: string }>> = {
+    "restaurant": [
+      { id: "rest-1", url: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80", alt: "Restaurant interior" },
+      { id: "rest-2", url: "https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80", alt: "Restaurant ambiance" },
+      { id: "rest-3", url: "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?w=800&q=80", alt: "Cozy restaurant" },
+      { id: "rest-4", url: "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=800&q=80", alt: "Fine dining" },
+      { id: "rest-5", url: "https://images.unsplash.com/photo-1537047902294-62a40c20a6ae?w=800&q=80", alt: "Restaurant bar" },
+      { id: "rest-6", url: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80", alt: "Modern restaurant" },
+      { id: "rest-7", url: "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800&q=80", alt: "Restaurant tables" },
+      { id: "rest-8", url: "https://images.unsplash.com/photo-1578474846511-04ba529f0b88?w=800&q=80", alt: "Restaurant patio" },
+      { id: "rest-9", url: "https://images.unsplash.com/photo-1544148103-0773bf10d330?w=800&q=80", alt: "Restaurant interior" },
+      { id: "rest-10", url: "https://images.unsplash.com/photo-1590846406792-0adc7f938f1d?w=800&q=80", alt: "Restaurant seating" },
+      { id: "rest-11", url: "https://images.unsplash.com/photo-1485182708500-e8f1f318ba72?w=800&q=80", alt: "Outdoor dining" },
+      { id: "rest-12", url: "https://images.unsplash.com/photo-1424847651672-bf20a4b0982b?w=800&q=80", alt: "Table setting" },
     ],
-    "interior": [
-      { id: "int-1", url: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80", alt: "Living room" },
-      { id: "int-2", url: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=80", alt: "Modern kitchen" },
-      { id: "int-3", url: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=800&q=80", alt: "Bedroom" },
+    "food": [
+      { id: "food-1", url: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80", alt: "Food platter" },
+      { id: "food-2", url: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80", alt: "Healthy bowl" },
+      { id: "food-3", url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&q=80", alt: "Pizza" },
+      { id: "food-4", url: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=800&q=80", alt: "Pancakes" },
+      { id: "food-5", url: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&q=80", alt: "Fresh salad" },
+      { id: "food-6", url: "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=800&q=80", alt: "Gourmet dish" },
+      { id: "food-7", url: "https://images.unsplash.com/photo-1482049016gy-2d1ec7ab7445?w=800&q=80", alt: "Breakfast" },
+      { id: "food-8", url: "https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=800&q=80", alt: "Steak dinner" },
+      { id: "food-9", url: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=800&q=80", alt: "Pasta dish" },
+      { id: "food-10", url: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=800&q=80", alt: "Asian cuisine" },
+      { id: "food-11", url: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&q=80", alt: "Healthy plate" },
+      { id: "food-12", url: "https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=800&q=80", alt: "Fresh ingredients" },
     ],
-    "neighborhood": [
-      { id: "nb-1", url: "https://images.unsplash.com/photo-1448630360428-65456885c650?w=800&q=80", alt: "Neighborhood street" },
-      { id: "nb-2", url: "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?w=800&q=80", alt: "Suburban neighborhood" },
+    "pizza": [
+      { id: "pizza-1", url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&q=80", alt: "Pizza" },
+      { id: "pizza-2", url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=800&q=80", alt: "Pepperoni pizza" },
+      { id: "pizza-3", url: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&q=80", alt: "Cheese pizza" },
+      { id: "pizza-4", url: "https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?w=800&q=80", alt: "Pizza slice" },
+      { id: "pizza-5", url: "https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?w=800&q=80", alt: "Wood fired pizza" },
+      { id: "pizza-6", url: "https://images.unsplash.com/photo-1588315029754-2dd089d39a1a?w=800&q=80", alt: "Fresh pizza" },
     ],
-    "sold": [
-      { id: "sold-1", url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80", alt: "Sold sign" },
-      { id: "sold-2", url: "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800&q=80", alt: "Real estate success" },
+    "burger": [
+      { id: "burger-1", url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80", alt: "Burger" },
+      { id: "burger-2", url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=800&q=80", alt: "Gourmet burger" },
+      { id: "burger-3", url: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=800&q=80", alt: "Cheeseburger" },
+      { id: "burger-4", url: "https://images.unsplash.com/photo-1586816001966-79b736744398?w=800&q=80", alt: "Double burger" },
+      { id: "burger-5", url: "https://images.unsplash.com/photo-1572802419224-296b0aeee0d9?w=800&q=80", alt: "Burger and fries" },
+      { id: "burger-6", url: "https://images.unsplash.com/photo-1594212699903-ec8a3eca50f5?w=800&q=80", alt: "Classic burger" },
     ],
-    "keys": [
-      { id: "key-1", url: "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?w=800&q=80", alt: "House keys" },
-      { id: "key-2", url: "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800&q=80", alt: "New home keys" },
+    "sushi": [
+      { id: "sushi-1", url: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&q=80", alt: "Sushi platter" },
+      { id: "sushi-2", url: "https://images.unsplash.com/photo-1553621042-f6e147245754?w=800&q=80", alt: "Sushi rolls" },
+      { id: "sushi-3", url: "https://images.unsplash.com/photo-1617196034796-73dfa7b1fd56?w=800&q=80", alt: "Nigiri sushi" },
+      { id: "sushi-4", url: "https://images.unsplash.com/photo-1611143669185-af224c5e3252?w=800&q=80", alt: "Sushi selection" },
+      { id: "sushi-5", url: "https://images.unsplash.com/photo-1583623025817-d180a2221d0a?w=800&q=80", alt: "Fresh sushi" },
+      { id: "sushi-6", url: "https://images.unsplash.com/photo-1563612116625-3012372fccce?w=800&q=80", alt: "Sashimi" },
     ],
-    "family": [
-      { id: "fam-1", url: "https://images.unsplash.com/photo-1581579438747-1dc8d17bbce4?w=800&q=80", alt: "Happy family" },
+    "dessert": [
+      { id: "des-1", url: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=800&q=80", alt: "Donuts" },
+      { id: "des-2", url: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&q=80", alt: "Chocolate cake" },
+      { id: "des-3", url: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=800&q=80", alt: "Ice cream" },
+      { id: "des-4", url: "https://images.unsplash.com/photo-1587314168485-3236d6710814?w=800&q=80", alt: "Cupcakes" },
+      { id: "des-5", url: "https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=800&q=80", alt: "Fruit tart" },
+      { id: "des-6", url: "https://images.unsplash.com/photo-1571115177098-24ec42ed204d?w=800&q=80", alt: "Cheesecake" },
+    ],
+    "coffee": [
+      { id: "cof-1", url: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80", alt: "Latte art" },
+      { id: "cof-2", url: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&q=80", alt: "Coffee cup" },
+      { id: "cof-3", url: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=800&q=80", alt: "Coffee beans" },
+      { id: "cof-4", url: "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=800&q=80", alt: "Cappuccino" },
+      { id: "cof-5", url: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=800&q=80", alt: "Espresso" },
+      { id: "cof-6", url: "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=800&q=80", alt: "Coffee shop" },
+    ],
+    "drinks": [
+      { id: "drink-1", url: "https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800&q=80", alt: "Cocktails" },
+      { id: "drink-2", url: "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=800&q=80", alt: "Wine" },
+      { id: "drink-3", url: "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=800&q=80", alt: "Beer" },
+      { id: "drink-4", url: "https://images.unsplash.com/photo-1536935338788-846bb9981813?w=800&q=80", alt: "Cocktail" },
+      { id: "drink-5", url: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&q=80", alt: "Mixed drinks" },
+      { id: "drink-6", url: "https://images.unsplash.com/photo-1582106245687-cbb466a9f07f?w=800&q=80", alt: "Refreshing drink" },
+    ],
+    "chef": [
+      { id: "chef-1", url: "https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=800&q=80", alt: "Chef cooking" },
+      { id: "chef-2", url: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=800&q=80", alt: "Chef preparing" },
+      { id: "chef-3", url: "https://images.unsplash.com/photo-1581299894007-aaa50297cf16?w=800&q=80", alt: "Professional chef" },
+      { id: "chef-4", url: "https://images.unsplash.com/photo-1600565193348-f74bd3c7ccdf?w=800&q=80", alt: "Kitchen chef" },
+      { id: "chef-5", url: "https://images.unsplash.com/photo-1507048331197-7d4ac70811cf?w=800&q=80", alt: "Chef at work" },
+      { id: "chef-6", url: "https://images.unsplash.com/photo-1583394293214-28ez30bd5d8c?w=800&q=80", alt: "Cooking" },
     ],
   };
 
-  // Find matching category or return all home images
+  // Find matching category
   const lowerQuery = query.toLowerCase();
-  let images = stockImages["home"];
+  let images = allImages["restaurant"]; // default
   
-  for (const [key, categoryImages] of Object.entries(stockImages)) {
+  for (const [key, categoryImages] of Object.entries(allImages)) {
     if (lowerQuery.includes(key)) {
       images = categoryImages;
       break;
     }
   }
 
-  return images.map(img => ({
+  // Shuffle images for variety on refresh
+  const shuffled = [...images].sort(() => Math.random() - 0.5);
+
+  return shuffled.map(img => ({
     ...img,
     thumbnail: img.url.replace("w=800", "w=400"),
     photographer: "Unsplash",
@@ -391,30 +456,30 @@ ${neighborhood} offers unique advantages that make it ideal for ${goal.toLowerCa
 ### What Makes ${neighborhood} Special
 - **Community:** Active neighborhood associations and local events
 - **Convenience:** Close to major employers, schools, and Omaha amenities
-- **Investment Value:** Properties hold value well and attract quality buyers
+- **Customer Loyalty:** Our guests return again and again for quality dining experiences
 
-## Professional Guidance You Can Trust
+## Professional Culinary Expertise You Can Trust
 
-As your local ${neighborhood} expert, I'm Mike Bjork with Berkshire Hathaway HomeServices. I've helped hundreds of families find their perfect home in this area.
+As your local ${neighborhood} restaurant, we've served thousands of guests looking for memorable dining experiences in this area.
 
-**Why work with me?**
-- 15+ years specializing in ${neighborhood} and surrounding areas
-- Licensed Nebraska realtor with deep local market knowledge
-- Access to off-market properties and exclusive listings
+**Why dine with us?**
+- Years of culinary expertise specializing in ${neighborhood} and surrounding areas
+- Deep understanding of local food preferences and seasonal ingredients
+- Exclusive menu items and chef's specials you won't find elsewhere
 
-## Ready to Explore ${neighborhood}?
+## Ready to Experience ${neighborhood} Dining?
 
-Whether you're a first-time buyer, growing family, or savvy investor, I'll help you understand if ${neighborhood} aligns with your goals.
+Whether you're planning a casual meal, family gathering, or special celebration, we'll help you create the perfect dining experience.
 
-**Contact Mike Bjork:**
+**Contact Us:**
 - Phone: (402) 555-0123
-- Email: mike@bjorkgroup.com
-- Office: Berkshire Hathaway HomeServices
+- Email: info@restaurantflow.com
+- Location: ${neighborhood}, Omaha
 
-*Serving ${neighborhood}, Omaha, and surrounding communities with personalized real estate expertise since 2008.*
+*Serving ${neighborhood}, Omaha, and surrounding communities with exceptional culinary experiences.*
 
 ---
-*This content was optimized for AI search engines to provide direct, helpful answers about ${neighborhood} real estate.*`;
+*This content was optimized for AI search engines to provide direct, helpful answers about ${neighborhood} dining.*`;
 }
 
 const validateTwilioRequest = (req: Request, res: Response, next: NextFunction) => {
@@ -471,7 +536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : "agent";
 
       const fallbackEmail =
-        req.user.email || `${sessionId}@placeholder.realtyflow`;
+        req.user.email || `${sessionId}@placeholder.restaurantflow`;
 
       user = await storage.createUser({
         username:
@@ -568,7 +633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Use the published deployment URL for consistent iframe embedding
-      const appUrl = "https://multi-users-realtyflow.replit.app";
+      const appUrl = "https://multi-users-restaurantflow.replit.app";
 
       const params = new URLSearchParams();
       if (userEmail) {
@@ -596,7 +661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           agentSlug: agentSlug,
           userEmail: userEmail || null,
         },
-        message: "RealtyFlow integration ready",
+        message: "RestaurantFlow integration ready",
       });
     } catch (error) {
       console.error("Integration endpoint error:", error);
@@ -817,17 +882,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const messages = [
         {
           role: "system" as const,
-          content: `You are a helpful AI assistant for real estate professionals in the Omaha, Nebraska area. 
+          content: `You are a helpful AI assistant for restaurant professionals in the Omaha, Nebraska area. 
 You help with:
 - Creating social media posts and marketing content
-- Writing blog articles and property descriptions
-- Answering real estate marketing questions
+- Writing blog articles and menu descriptions
+- Answering restaurant marketing questions
 - Providing market insights and advice
 - Generating image and video ideas
 
-${companyProfile ? `The user works for ${companyProfile.companyName || "a real estate company"} with tagline: "${companyProfile.tagline || ""}"` : ""}
+${companyProfile ? `The user works for ${companyProfile.companyName || "a restaurant"} with tagline: "${companyProfile.tagline || ""}"` : ""}
 
-Be professional, helpful, and focused on real estate marketing. Keep responses concise but informative.`
+Be professional, helpful, and focused on restaurant marketing. Keep responses concise but informative.`
         },
         ...conversationHistory.map((msg: { role: string; content: string }) => ({
           role: msg.role as "user" | "assistant",
@@ -985,7 +1050,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
         originalContent: content,
         customPrompt:
           prompt ||
-          "Optimize this post for SEO and engagement while maintaining professional tone for real estate audience in Omaha, Nebraska.",
+          "Optimize this post for SEO and engagement while maintaining professional tone for food and dining audience in Omaha, Nebraska.",
         platform: platform || "general",
         postType: postType || "general",
       });
@@ -1012,15 +1077,59 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
       const s3Service = new S3UploadService();
       
       const timestamp = Date.now();
-      const ext = req.file.originalname?.split('.').pop() || 'jpg';
+      const originalExt = (req.file.originalname?.split('.').pop() || 'jpg').toLowerCase();
+      
+      // Convert HEIC/HEIF to JPEG for browser compatibility
+      let imageBuffer = req.file.buffer;
+      let ext = originalExt;
+      let mimetype = req.file.mimetype || "image/jpeg";
+      
+      // Check if HEIC/HEIF format (iPhone photos)
+      if (['heic', 'heif'].includes(originalExt)) {
+        try {
+          console.log(`🔄 Converting ${originalExt.toUpperCase()} to JPEG using heic-convert...`);
+          const heicConvert = (await import("heic-convert")).default;
+          const outputBuffer = await heicConvert({
+            buffer: req.file.buffer,
+            format: 'JPEG',
+            quality: 0.9
+          });
+          imageBuffer = Buffer.from(outputBuffer);
+          ext = 'jpg';
+          mimetype = 'image/jpeg';
+          console.log(`✅ Converted HEIC to JPEG (${(imageBuffer.length / 1024).toFixed(1)}KB)`);
+        } catch (conversionError: any) {
+          console.error(`⚠️ HEIC conversion failed:`, conversionError.message);
+          // Return error since browser can't display HEIC
+          return res.status(400).json({ 
+            error: "HEIC format not supported. Please convert to JPG/PNG before uploading." 
+          });
+        }
+      }
+      // Convert other non-standard formats with sharp
+      else if (['webp', 'tiff', 'avif'].includes(originalExt)) {
+        try {
+          const sharp = (await import("sharp")).default;
+          console.log(`🔄 Converting ${originalExt.toUpperCase()} to JPEG...`);
+          imageBuffer = await sharp(req.file.buffer)
+            .jpeg({ quality: 90 })
+            .toBuffer();
+          ext = 'jpg';
+          mimetype = 'image/jpeg';
+          console.log(`✅ Converted to JPEG (${(imageBuffer.length / 1024).toFixed(1)}KB)`);
+        } catch (conversionError) {
+          console.error(`⚠️ Image conversion failed, using original:`, conversionError);
+        }
+      }
+      
       const filename = `reference-${userId}-${timestamp}.${ext}`;
       const s3Key = `reference-images/${userId}/${filename}`;
       
       // Upload with presigned URL (valid for 1 hour) so OpenAI can access it
       const url = await s3Service.uploadBuffer(
-        req.file.buffer, 
+        imageBuffer, 
         s3Key, 
-        req.file.mimetype || "image/jpeg",
+        mimetype,
         true, // return presigned URL
         3600 // 1 hour expiration
       );
@@ -1057,8 +1166,8 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
       };
       const size = sizeMap[aspectRatio] || "1024x1024";
 
-      // Build enhanced real estate prompt
-      let enhancedPrompt = `Professional real estate photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
+      // Build enhanced restaurant prompt
+      let enhancedPrompt = `Professional food photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
       
       // If a reference image is provided, analyze it with GPT-4 Vision and incorporate the description
       if (referenceImageUrl) {
@@ -1227,9 +1336,9 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
       // Use Pexels API (free)
       const pexelsApiKey = process.env.PEXELS_API_KEY;
       
-      // If no Pexels key, use curated real estate stock images
+      // If no Pexels key, use curated restaurant stock images
       if (!pexelsApiKey) {
-        const fallbackImages = getRealEstateStockImages(query as string);
+        const fallbackImages = getRestaurantStockImages(query as string);
         return res.json({ images: fallbackImages, source: "curated" });
       }
 
@@ -1262,83 +1371,83 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
     } catch (error) {
       console.error("Stock image search error:", error);
       // Fallback to curated images
-      const fallbackImages = getRealEstateStockImages((req.query.query as string) || "real estate");
+      const fallbackImages = getRestaurantStockImages((req.query.query as string) || "restaurant");
       res.json({ images: fallbackImages, source: "curated" });
     }
   });
 
-  // Real Estate Image Templates endpoint
+  // Restaurant Image Templates endpoint
   app.get("/api/images/templates", async (req, res) => {
     const templates = [
       {
-        id: "open-house",
-        name: "Open House Banner",
-        description: "Perfect for announcing open house events with warm, inviting imagery",
+        id: "grand-opening",
+        name: "Grand Opening Banner",
+        description: "Perfect for announcing grand opening events with warm, inviting imagery",
         category: "Events",
-        prompt: "Professional open house real estate banner with modern home exterior, warm welcoming atmosphere, sunshine, manicured lawn",
+        prompt: "Professional grand opening restaurant banner with elegant restaurant exterior, warm welcoming atmosphere, festive lighting, beautiful entrance",
         suggestedAspectRatio: "16:9",
         icon: "Home",
       },
       {
-        id: "just-listed",
-        name: "Just Listed",
-        description: "Showcase new listings with professional curb appeal photography",
-        category: "Listings",
-        prompt: "Elegant 'Just Listed' real estate promotional image with beautiful luxury home, professional photography, curb appeal",
+        id: "new-menu",
+        name: "New Menu Launch",
+        description: "Showcase new menu items with professional food photography",
+        category: "Menu",
+        prompt: "Elegant 'New Menu' restaurant promotional image with beautifully plated dishes, professional food photography, appetizing presentation",
         suggestedAspectRatio: "1:1",
         icon: "Tag",
       },
       {
-        id: "just-sold",
-        name: "Just Sold",
-        description: "Celebrate successful sales with celebratory imagery",
-        category: "Listings",
-        prompt: "Celebratory 'Sold' real estate image with beautiful home, SOLD sign, happy atmosphere, success theme",
+        id: "signature-dish",
+        name: "Signature Dish",
+        description: "Highlight your signature dishes with stunning food photography",
+        category: "Menu",
+        prompt: "Stunning signature dish food photography, beautifully plated gourmet meal, professional lighting, appetizing colors, restaurant quality",
         suggestedAspectRatio: "1:1",
         icon: "Check",
       },
       {
-        id: "market-update",
-        name: "Market Update",
-        description: "Professional graphics for market insights and data",
+        id: "seasonal-special",
+        name: "Seasonal Special",
+        description: "Professional graphics for seasonal menu updates and specials",
         category: "Content",
-        prompt: "Professional real estate market analysis graphic, clean modern design, charts and data visualization, business style",
+        prompt: "Professional seasonal restaurant special graphic, fresh ingredients, seasonal colors, clean modern design, appetizing food display",
         suggestedAspectRatio: "16:9",
         icon: "TrendingUp",
       },
       {
-        id: "neighborhood",
-        name: "Neighborhood Spotlight",
-        description: "Highlight local neighborhoods with scenic community imagery",
+        id: "local-spotlight",
+        name: "Local Ingredients Spotlight",
+        description: "Highlight locally sourced ingredients and farm partnerships",
         category: "Content",
-        prompt: "Beautiful neighborhood scene with tree-lined streets, well-maintained homes, community atmosphere, suburban charm",
+        prompt: "Beautiful local farm-to-table scene with fresh produce, artisan ingredients, community farmers market atmosphere, organic charm",
         suggestedAspectRatio: "16:9",
         icon: "MapPin",
       },
       {
-        id: "home-exterior",
-        name: "Home Exterior",
+        id: "restaurant-exterior",
+        name: "Restaurant Exterior",
         description: "Stunning exterior shots with perfect lighting and curb appeal",
-        category: "Property",
-        prompt: "Stunning modern home exterior, professional real estate photography, perfect lighting, curb appeal, landscaping",
+        category: "Ambiance",
+        prompt: "Stunning modern restaurant exterior, professional photography, perfect lighting, inviting entrance, beautiful landscaping",
         suggestedAspectRatio: "16:9",
         icon: "Building",
       },
       {
-        id: "home-interior",
-        name: "Home Interior",
-        description: "Beautiful interior photography with staging and natural light",
-        category: "Property",
-        prompt: "Beautiful modern home interior, open floor plan, natural lighting, staging, luxury finishes, real estate photography",
+        id: "restaurant-interior",
+        name: "Restaurant Interior",
+        description: "Beautiful interior photography with ambiance and natural light",
+        category: "Ambiance",
+        prompt: "Beautiful modern restaurant interior, elegant dining room, natural lighting, stylish decor, luxury finishes, food photography setting",
         suggestedAspectRatio: "4:3",
         icon: "Sofa",
       },
       {
-        id: "agent-branding",
-        name: "Agent Branding",
-        description: "Professional branding backgrounds for agent profiles",
+        id: "chef-branding",
+        name: "Chef Branding",
+        description: "Professional branding backgrounds for chef and restaurant profiles",
         category: "Personal",
-        prompt: "Professional real estate agent branding background, modern office setting, cityscape, business professional atmosphere",
+        prompt: "Professional restaurant chef branding background, modern kitchen setting, culinary atmosphere, business professional food industry",
         suggestedAspectRatio: "1:1",
         icon: "User",
       },
@@ -1366,7 +1475,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
         targetQueries: [
           question || `${goal} ${neighborhood}`,
           `best ${goal.toLowerCase()} ${neighborhood}`,
-          `${neighborhood} real estate ${goal.toLowerCase()}`,
+          `${neighborhood} restaurant ${goal.toLowerCase()}`,
         ],
       };
 
@@ -1404,7 +1513,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
           platform: platform.toLowerCase(),
           originalContent,
           contentType: contentType || "blog",
-          topic: topic || "real estate",
+          topic: topic || "restaurant",
           neighborhood: neighborhood || "Omaha",
           seoOptimized: seoOptimized !== false,
           longTailKeywords: longTailKeywords !== false,
@@ -3416,7 +3525,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
     }
 
     if (!isConnected) {
-      reasons.push("Connect this account to publish directly from RealtyFlow.");
+      reasons.push("Connect this account to publish directly from RestaurantFlow.");
     }
 
     if (PLATFORM_NOTES[platform]) {
@@ -3873,7 +3982,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
         {
           id: "61581294927027_122094900393043164",
           content:
-            "🏠 Winter 2025 Omaha Real Estate Market Update! ❄️\n\nThe Omaha market is showing remarkable resilience this winter season!",
+            "�️ Winter 2025 Omaha Restaurant Scene Update! ❄️\n\nThe Omaha dining scene is showing remarkable creativity this winter season!",
           pageId: "61581294927027",
           timestamp: new Date().toISOString(),
           platform: "facebook",
@@ -4924,12 +5033,12 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
 
         // Return instant fallback keywords for fast page load
         const fallbackKeywords = [
-          { id: "fb-1", userId, keyword: "Omaha homes for sale", searchVolume: 2400, currentRank: 5, difficulty: 50, neighborhood: null },
-          { id: "fb-2", userId, keyword: "real estate agent Omaha", searchVolume: 1800, currentRank: 8, difficulty: 45, neighborhood: null },
-          { id: "fb-3", userId, keyword: "houses for sale Omaha NE", searchVolume: 1500, currentRank: 12, difficulty: 40, neighborhood: null },
-          { id: "fb-4", userId, keyword: "Dundee homes for sale", searchVolume: 880, currentRank: 3, difficulty: 35, neighborhood: "Dundee" },
-          { id: "fb-5", userId, keyword: "West Omaha real estate", searchVolume: 720, currentRank: 6, difficulty: 42, neighborhood: "West Omaha" },
-          { id: "fb-6", userId, keyword: "Aksarben condos for sale", searchVolume: 480, currentRank: 4, difficulty: 38, neighborhood: "Aksarben" },
+          { id: "fb-1", userId, keyword: "best restaurants Omaha", searchVolume: 2400, currentRank: 5, difficulty: 50, neighborhood: null },
+          { id: "fb-2", userId, keyword: "restaurant Omaha", searchVolume: 1800, currentRank: 8, difficulty: 45, neighborhood: null },
+          { id: "fb-3", userId, keyword: "places to eat Omaha NE", searchVolume: 1500, currentRank: 12, difficulty: 40, neighborhood: null },
+          { id: "fb-4", userId, keyword: "Dundee restaurants", searchVolume: 880, currentRank: 3, difficulty: 35, neighborhood: "Dundee" },
+          { id: "fb-5", userId, keyword: "West Omaha dining", searchVolume: 720, currentRank: 6, difficulty: 42, neighborhood: "West Omaha" },
+          { id: "fb-6", userId, keyword: "Aksarben food scene", searchVolume: 480, currentRank: 4, difficulty: 38, neighborhood: "Aksarben" },
         ];
 
         // Trigger background AI generation (non-blocking)
@@ -5023,7 +5132,7 @@ Be professional, helpful, and focused on real estate marketing. Keep responses c
       const { keywords, marketData, timeframe, focus } = req.body;
 
       // Create AI prompt for intelligent content scheduling
-      const prompt = `You are an expert real estate marketing strategist and SEO specialist. Based on the following data, create an optimal 15-day content calendar for Mike Bjork's real estate business in Omaha, Nebraska.
+      const prompt = `You are an expert restaurant marketing strategist and SEO specialist. Based on the following data, create an optimal 15-day content calendar for a restaurant business in Omaha, Nebraska.
 
 SEO Keywords to target: ${keywords
         .map(
@@ -5035,16 +5144,22 @@ SEO Keywords to target: ${keywords
 Market Data: ${marketData
         .map(
           (m: any) =>
-            `${m.neighborhood}: $${m.averagePrice} avg price, ${m.daysOnMarket} days on market`
+            `${m.neighborhood}: popular dining area`
         )
         .join("; ")}
 
+🚨 CRITICAL REQUIREMENT: GENERATE SHORT, PUNCHY POSTS!
+- Target length: 40-80 characters per post
+- Lead with emoji + strong hook
+- Users scroll fast (1.7 seconds) - be concise!
+- NO long paragraphs or multiple sentences
+
 Requirements:
-1. Schedule content for maximum SEO impact and social media engagement
-2. Prioritize high-volume, low-competition keywords
-3. Include market trends and neighborhood highlights
-4. Optimize posting times for real estate audience (early morning, lunch, evening)
-5. Mix content types: market updates, property highlights, buyer/seller tips, neighborhood spotlights
+1. Schedule content for maximum social media engagement
+2. Prioritize high-engagement keywords
+3. Include food trends and seasonal highlights
+4. Optimize posting times for dining audience (lunch 11am-1pm, dinner 5-7pm, brunch Sat-Sun)
+5. Mix content types: menu highlights, specials, behind-the-scenes, community events
 6. Include specific posting dates and times
 7. Each piece should target primary keyword + local SEO
 
@@ -5055,9 +5170,9 @@ Return ONLY a JSON object with this structure:
     {
       "id": "unique-id",
       "title": "Content Title",
-      "content": "Full social media post content with hashtags",
-      "platform": "Facebook|Instagram|LinkedIn|YouTube",
-      "type": "Blog|Social|Video",
+      "content": "SHORT social media post (40-80 chars) with 1-2 hashtags",
+      "platform": "Facebook|Instagram|LinkedIn|X",
+      "type": "Social",
       "date": "2025-01-XX",
       "time": "XX:XX AM/PM",
       "targetKeyword": "primary keyword",
@@ -5068,7 +5183,7 @@ Return ONLY a JSON object with this structure:
   ]
 }
 
-Focus on: ${focus} content that drives leads and showcases local market expertise.`;
+Focus on: ${focus} content that drives foot traffic and showcases local dining expertise.`;
 
       // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
       const { unifiedAI } = await import("./services/unified-ai");
@@ -5102,113 +5217,105 @@ Focus on: ${focus} content that drives leads and showcases local market expertis
           contentCount: 8,
           schedule: [
             {
-              id: "fb-omaha-market-1",
-              title: "Omaha Market Update - January 2025",
-              content:
-                "🏠 OMAHA MARKET SPOTLIGHT 🏠\n\nThe Omaha real estate market is showing strong momentum this January! Here's what homeowners and buyers need to know:\n\n📈 Market Highlights:\n• Average home price: $285,000 (+3.2% from last year)\n• Days on market: 28 days (excellent for sellers!)\n• Inventory levels: Balanced market conditions\n\n🎯 Prime Neighborhoods to Watch:\n• Benson: Trendy area with great walkability\n• Dundee: Historic charm meets modern amenities\n• West Omaha: Family-friendly with top schools\n\nThinking of buying or selling? Let's discuss your goals! 💬\n\n#OmahaRealEstate #NebraskaHomes #BjorkGroup #RealEstateExpert #OmahaLife",
+              id: "fb-omaha-dining-1",
+              title: "Weekend Specials",
+              content: "🍽️ Weekend special: Chef's tasting menu is back! Reserve now. #OmahaDining",
               platform: "Facebook",
               type: "Social",
               date: "2025-01-02",
-              time: "8:00 AM",
-              targetKeyword: "Omaha real estate market",
+              time: "11:00 AM",
+              targetKeyword: "Omaha restaurants",
               seoScore: 85,
               expectedImpact: "high",
               color: "bg-blue-100",
             },
             {
-              id: "ig-buyer-tips-1",
-              title: "First-Time Buyer Tips",
-              content:
-                "🔑 FIRST-TIME BUYER SUCCESS TIPS! 🔑\n\nMaking homeownership dreams come true in Omaha! Here's my insider advice:\n\n✅ Get Pre-Approved First\n• Know your budget before house hunting\n• Shows sellers you're serious\n• Speeds up the buying process\n\n✅ Research Neighborhoods\n• Visit at different times of day\n• Check school ratings and commute times\n• Consider future resale value\n\n✅ Don't Skip the Inspection\n• Protect your investment\n• Negotiate repairs or price adjustments\n• Peace of mind is priceless\n\n🏡 Ready to start your journey? DM me for a free buyer consultation!\n\n#FirstTimeBuyer #OmahaHomes #RealEstateTips #BjorkGroup #NebraskaRealEstate",
+              id: "ig-food-1",
+              title: "Fresh Menu Item",
+              content: "🔥 New on the menu! Our signature steak is here. #OmahaFood",
               platform: "Instagram",
               type: "Social",
               date: "2025-01-05",
               time: "12:30 PM",
-              targetKeyword: "first time home buyer Omaha",
+              targetKeyword: "Omaha food",
               seoScore: 78,
               expectedImpact: "medium",
               color: "bg-green-100",
             },
             {
-              id: "li-investment-1",
-              title: "Investment Property Opportunities",
-              content:
-                "💰 INVESTMENT OPPORTUNITY ALERT 💰\n\nOmaha's rental market is thriving! Here's why smart investors are choosing Nebraska:\n\n📊 Key Investment Metrics:\n• Average rental yield: 8-12%\n• Strong job market driving demand\n• Affordable entry points compared to coastal markets\n• Growing tech and healthcare sectors\n\n🎯 Hot Investment Areas:\n• Near downtown redevelopment zones\n• University of Nebraska proximity\n• Emerging neighborhoods with infrastructure improvements\n\n🔍 What to Look For:\n• Properties under $200K with good bones\n• Multi-family opportunities\n• Areas with planned developments\n\nLet's discuss your investment strategy over coffee! ☕\n\n#RealEstateInvestment #OmahaInvestment #PropertyInvesting #BjorkGroup #WealthBuilding",
+              id: "li-business-1",
+              title: "Business Lunch Feature",
+              content: "💼 Business lunch special: $15 for entree + drink. Book your table!",
               platform: "LinkedIn",
-              type: "Blog",
+              type: "Social",
               date: "2025-01-08",
               time: "9:00 AM",
-              targetKeyword: "Omaha investment properties",
+              targetKeyword: "Omaha business lunch",
               seoScore: 82,
               expectedImpact: "high",
               color: "bg-purple-100",
             },
             {
-              id: "fb-neighborhood-spotlight-1",
-              title: "Neighborhood Spotlight: Benson",
-              content:
-                "🏘️ NEIGHBORHOOD SPOTLIGHT: BENSON 🏘️\n\nDiscover why Benson is becoming Omaha's hottest neighborhood!\n\n✨ What Makes Benson Special:\n• Walkable community with local character\n• Thriving arts scene and unique boutiques\n• Historic homes with modern renovations\n• Easy access to downtown (10 minutes!)\n\n🏠 Market Snapshot:\n• Average home price: $165,000\n• Typical days on market: 25 days\n• Mix of starter homes and investment properties\n\n🎨 Local Favorites:\n• Benson First Friday art walks\n• Local coffee shops and restaurants\n• Beautiful Benson Park\n\nCurious about Benson properties? Let's schedule a neighborhood tour!\n\n#BensonNebraska #OmahaNeighborhoods #BjorkGroup #CommunitySpotlight #OmahaLife",
+              id: "fb-neighborhood-1",
+              title: "Benson Spot",
+              content: "🏘️ Benson's best-kept secret: Happy hour 4-6pm daily! #BensonOmaha",
               platform: "Facebook",
               type: "Social",
               date: "2025-01-12",
               time: "6:00 PM",
-              targetKeyword: "Benson Omaha real estate",
+              targetKeyword: "Benson restaurants Omaha",
               seoScore: 80,
               expectedImpact: "medium",
               color: "bg-yellow-100",
             },
             {
-              id: "ig-selling-tips-1",
-              title: "Home Selling Preparation",
-              content:
-                "✨ PREPPING YOUR HOME TO SELL? ✨\n\nMaximize your home's value with these proven strategies!\n\n🎯 Top 5 Staging Tips:\n1️⃣ Declutter & Depersonalize\n• Let buyers envision their life here\n• Remove family photos and personal items\n\n2️⃣ Deep Clean Everything  \n• First impressions matter!\n• Consider professional cleaning\n\n3️⃣ Fresh Paint = Fresh Appeal\n• Neutral colors attract more buyers\n• Focus on high-traffic areas\n\n4️⃣ Enhance Curb Appeal\n• Trim landscaping, add flowers\n• Clean windows and front door\n\n5️⃣ Price Strategically\n• Market analysis is crucial\n• Price to sell, not to sit\n\n💡 Ready to list? I'll create a custom marketing plan for your home!\n\n#HomeSelling #RealEstateTips #OmahaRealEstate #BjorkGroup #HomeStaging",
+              id: "ig-brunch-1",
+              title: "Sunday Brunch",
+              content: "☀️ Sunday brunch is calling! Mimosas + eggs benny. #OmahaBrunch",
               platform: "Instagram",
               type: "Social",
               date: "2025-01-15",
               time: "11:00 AM",
-              targetKeyword: "sell house Omaha",
+              targetKeyword: "Omaha brunch",
               seoScore: 76,
               expectedImpact: "medium",
               color: "bg-red-100",
             },
             {
-              id: "yt-market-analysis-1",
-              title: "Q1 2025 Market Forecast",
-              content:
-                "🔮 Q1 2025 OMAHA REAL ESTATE FORECAST 🔮\n\nWhat to expect in the coming months:\n\n📈 Predictions for Q1:\n• Continued buyer demand with spring market approaching\n• Interest rates stabilizing around current levels\n• New construction picking up pace\n• Competitive market for well-priced homes\n\n🏡 Best Opportunities:\n• First-time buyers: Take advantage of programs\n• Sellers: List early to beat spring rush\n• Investors: Focus on emerging neighborhoods\n\n💼 Economic Factors:\n• Strong local job market\n• Population growth from relocations\n• Infrastructure investments boosting values\n\nWatch my full market analysis video (link in bio) for detailed insights!\n\n#MarketForecast #OmahaRealEstate #RealEstateExpert #Q12025 #BjorkGroup #MarketAnalysis",
-              platform: "YouTube",
-              type: "Video",
+              id: "x-special-1",
+              title: "Daily Special",
+              content: "🍕 Pizza night = family night. Half-price kids meals tonight!",
+              platform: "X",
+              type: "Social",
               date: "2025-01-18",
-              time: "10:00 AM",
-              targetKeyword: "Omaha real estate forecast 2025",
+              time: "5:00 PM",
+              targetKeyword: "Omaha family dining",
               seoScore: 88,
               expectedImpact: "high",
               color: "bg-indigo-100",
             },
             {
-              id: "fb-client-success-1",
-              title: "Client Success Story",
-              content:
-                "🎉 ANOTHER SUCCESSFUL CLOSING! 🎉\n\nCongratulations to the Johnson family on their beautiful new home in West Omaha!\n\n📖 Their Story:\n• First-time buyers from out of state\n• Needed guidance on neighborhoods and schools\n• Wanted move-in ready with modern updates\n• Closed in just 21 days!\n\n💬 What they said: \"Mike made relocating to Omaha stress-free. His local knowledge and attention to detail were exactly what we needed!\"\n\n🏠 The Property:\n• 4BR/3BA contemporary home\n• Top-rated Millard schools\n• Open floor plan with upgraded kitchen\n• Private backyard perfect for their kids\n\nEvery family's needs are unique. Let's find your perfect fit!\n\n#ClientSuccess #WestOmaha #NewHomeowners #BjorkGroup #RealEstateSuccess #MillardSchools",
+              id: "fb-event-1",
+              title: "Wine Night Event",
+              content: "🍷 Wine Wednesday: Half-price bottles + live jazz. Reserve now!",
               platform: "Facebook",
               type: "Social",
               date: "2025-01-22",
               time: "2:00 PM",
-              targetKeyword: "West Omaha real estate agent",
+              targetKeyword: "Omaha wine dining",
               seoScore: 84,
               expectedImpact: "high",
               color: "bg-emerald-100",
             },
             {
-              id: "li-market-trends-1",
-              title: "Technology Impact on Real Estate",
-              content:
-                "🚀 HOW TECHNOLOGY IS RESHAPING OMAHA REAL ESTATE 🚀\n\nThe digital transformation is changing how we buy and sell homes:\n\n💻 Virtual Tours & 3D Walkthroughs\n• 87% of buyers start their search online\n• Virtual staging reduces time on market\n• Remote buyers can tour from anywhere\n\n📱 AI-Powered Market Analysis\n• Predictive pricing models\n• Automated valuation tools\n• Real-time market insights\n\n🔍 Enhanced Property Research\n• Neighborhood analytics\n• School ratings and crime data\n• Walkability and amenity scores\n\n📈 The Result: Faster, smarter transactions for buyers and sellers.\n\nStaying ahead of technology trends helps my clients make informed decisions. What tech features matter most to you?\n\n#PropTech #RealEstateInnovation #DigitalMarketing #OmahaRealEstate #BjorkGroup #FutureOfRealEstate",
+              id: "li-catering-1",
+              title: "Catering Services",
+              content: "🎉 Catering your next corporate event? We've got you covered!",
               platform: "LinkedIn",
-              type: "Blog",
+              type: "Social",
               date: "2025-01-25",
               time: "8:30 AM",
-              targetKeyword: "real estate technology Omaha",
+              targetKeyword: "Omaha catering services",
               seoScore: 79,
               expectedImpact: "medium",
               color: "bg-cyan-100",
@@ -5715,12 +5822,21 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const { id } = req.params;
       const { content, scheduledFor, status, metadata } = req.body;
 
+      // Get existing post to merge metadata properly
+      const existingPost = await storage.getScheduledPostById(id);
+      if (!existingPost) {
+        return res.status(404).json({ error: "Scheduled post not found" });
+      }
+
       // Build update object, only including fields that were provided
       const updateData: Record<string, any> = {};
       if (content !== undefined) updateData.content = content;
       if (scheduledFor !== undefined) updateData.scheduledFor = new Date(scheduledFor);
       if (status !== undefined) updateData.status = status;
-      if (metadata !== undefined) updateData.metadata = metadata;
+      // Merge metadata instead of replacing it
+      if (metadata !== undefined) {
+        updateData.metadata = { ...(existingPost.metadata || {}), ...metadata };
+      }
 
       const updatedPost = await storage.updateScheduledPost(id, updateData);
 
@@ -16024,6 +16140,346 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error: any) {
       console.error("Error serving VEO video:", error);
       res.status(500).json({ error: "Failed to serve video" });
+    }
+  });
+
+  // =====================================================
+  // MENU ITEMS & FOOD CATEGORIES API ROUTES
+  // =====================================================
+
+  // --- FOOD CATEGORIES ---
+
+  // Get all categories for current user
+  app.get("/api/menu/categories", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const categories = await db
+        .select()
+        .from(foodCategories)
+        .where(eq(foodCategories.userId, userId))
+        .orderBy(foodCategories.displayOrder);
+
+      res.json(categories);
+    } catch (error: any) {
+      console.error("[Menu] Error fetching categories:", error);
+      res.status(500).json({ error: "Failed to fetch categories" });
+    }
+  });
+
+  // Create a new category
+  app.post("/api/menu/categories", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const parsed = insertFoodCategorySchema.safeParse({
+        ...req.body,
+        userId,
+      });
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid category data", details: parsed.error.errors });
+      }
+
+      const [category] = await db
+        .insert(foodCategories)
+        .values(parsed.data)
+        .returning();
+
+      res.status(201).json(category);
+    } catch (error: any) {
+      console.error("[Menu] Error creating category:", error);
+      res.status(500).json({ error: "Failed to create category" });
+    }
+  });
+
+  // Update a category
+  app.put("/api/menu/categories/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      const { id } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const [updated] = await db
+        .update(foodCategories)
+        .set(req.body)
+        .where(eq(foodCategories.id, id))
+        .returning();
+
+      if (!updated) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("[Menu] Error updating category:", error);
+      res.status(500).json({ error: "Failed to update category" });
+    }
+  });
+
+  // Delete a category
+  app.delete("/api/menu/categories/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      const { id } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      // First, unset categoryId on any menu items using this category
+      await db
+        .update(menuItems)
+        .set({ categoryId: null })
+        .where(eq(menuItems.categoryId, id));
+
+      const [deleted] = await db
+        .delete(foodCategories)
+        .where(eq(foodCategories.id, id))
+        .returning();
+
+      if (!deleted) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+
+      res.json({ success: true, deleted });
+    } catch (error: any) {
+      console.error("[Menu] Error deleting category:", error);
+      res.status(500).json({ error: "Failed to delete category" });
+    }
+  });
+
+  // --- MENU ITEMS ---
+
+  // Get all menu items for current user
+  app.get("/api/menu/items", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { categoryId, search } = req.query;
+
+      let query = db
+        .select({
+          id: menuItems.id,
+          userId: menuItems.userId,
+          categoryId: menuItems.categoryId,
+          name: menuItems.name,
+          description: menuItems.description,
+          price: menuItems.price,
+          specialPrice: menuItems.specialPrice,
+          isSpecial: menuItems.isSpecial,
+          specialEndDate: menuItems.specialEndDate,
+          ingredients: menuItems.ingredients,
+          dietaryTags: menuItems.dietaryTags,
+          allergens: menuItems.allergens,
+          spiceLevel: menuItems.spiceLevel,
+          calories: menuItems.calories,
+          preparationTime: menuItems.preparationTime,
+          servingSize: menuItems.servingSize,
+          imageUrls: menuItems.imageUrls,
+          videoUrl: menuItems.videoUrl,
+          availability: menuItems.availability,
+          popularityScore: menuItems.popularityScore,
+          isFeatured: menuItems.isFeatured,
+          isChefRecommended: menuItems.isChefRecommended,
+          tags: menuItems.tags,
+          metadata: menuItems.metadata,
+          createdAt: menuItems.createdAt,
+          updatedAt: menuItems.updatedAt,
+          categoryName: foodCategories.name,
+        })
+        .from(menuItems)
+        .leftJoin(foodCategories, eq(menuItems.categoryId, foodCategories.id))
+        .where(eq(menuItems.userId, userId));
+
+      const items = await query;
+
+      // Filter by categoryId if provided
+      let filtered = items;
+      if (categoryId && categoryId !== "all") {
+        filtered = filtered.filter(item => item.categoryId === categoryId);
+      }
+
+      // Filter by search if provided
+      if (search && typeof search === "string") {
+        const searchLower = search.toLowerCase();
+        filtered = filtered.filter(item =>
+          item.name.toLowerCase().includes(searchLower) ||
+          item.description?.toLowerCase().includes(searchLower) ||
+          item.tags?.some(tag => tag.toLowerCase().includes(searchLower))
+        );
+      }
+
+      res.json(filtered);
+    } catch (error: any) {
+      console.error("[Menu] Error fetching menu items:", error);
+      res.status(500).json({ error: "Failed to fetch menu items" });
+    }
+  });
+
+  // Get a single menu item
+  app.get("/api/menu/items/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      const { id } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const [item] = await db
+        .select()
+        .from(menuItems)
+        .where(eq(menuItems.id, id));
+
+      if (!item) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      // Verify ownership
+      if (item.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      res.json(item);
+    } catch (error: any) {
+      console.error("[Menu] Error fetching menu item:", error);
+      res.status(500).json({ error: "Failed to fetch menu item" });
+    }
+  });
+
+  // Create a new menu item
+  app.post("/api/menu/items", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const parsed = insertMenuItemSchema.safeParse({
+        ...req.body,
+        userId,
+      });
+
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid menu item data", details: parsed.error.errors });
+      }
+
+      const [item] = await db
+        .insert(menuItems)
+        .values(parsed.data)
+        .returning();
+
+      res.status(201).json(item);
+    } catch (error: any) {
+      console.error("[Menu] Error creating menu item:", error);
+      res.status(500).json({ error: "Failed to create menu item" });
+    }
+  });
+
+  // Update a menu item
+  app.put("/api/menu/items/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      const { id } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      // Verify ownership
+      const [existing] = await db
+        .select()
+        .from(menuItems)
+        .where(eq(menuItems.id, id));
+
+      if (!existing) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      if (existing.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const [updated] = await db
+        .update(menuItems)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(menuItems.id, id))
+        .returning();
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("[Menu] Error updating menu item:", error);
+      res.status(500).json({ error: "Failed to update menu item" });
+    }
+  });
+
+  // Delete a menu item
+  app.delete("/api/menu/items/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      const { id } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      // Verify ownership
+      const [existing] = await db
+        .select()
+        .from(menuItems)
+        .where(eq(menuItems.id, id));
+
+      if (!existing) {
+        return res.status(404).json({ error: "Menu item not found" });
+      }
+
+      if (existing.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      const [deleted] = await db
+        .delete(menuItems)
+        .where(eq(menuItems.id, id))
+        .returning();
+
+      res.json({ success: true, deleted });
+    } catch (error: any) {
+      console.error("[Menu] Error deleting menu item:", error);
+      res.status(500).json({ error: "Failed to delete menu item" });
+    }
+  });
+
+  // Get featured/recommended items (for quick content creation)
+  app.get("/api/menu/featured", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id?.toString();
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const featured = await db
+        .select()
+        .from(menuItems)
+        .where(eq(menuItems.userId, userId))
+        .orderBy(desc(menuItems.isFeatured), desc(menuItems.isChefRecommended), desc(menuItems.popularityScore));
+
+      res.json(featured.slice(0, 10)); // Top 10 featured/recommended
+    } catch (error: any) {
+      console.error("[Menu] Error fetching featured items:", error);
+      res.status(500).json({ error: "Failed to fetch featured items" });
     }
   });
 

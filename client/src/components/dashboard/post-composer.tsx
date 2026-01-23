@@ -326,17 +326,6 @@ export function PostComposer({ open, onOpenChange }: PostComposerProps) {
                 )}
               </div>
 
-              {postText.trim().length > 10 && (
-                <ComplianceChecker
-                  content={postText}
-                  platform={selectedPlatforms[0] || "general"}
-                  hasMedia={!!selectedMedia.id}
-                  hasVideo={selectedMedia.type === "video"}
-                  onContentFix={(fixedContent) => setPostText(fixedContent)}
-                  showGuidelines={true}
-                />
-              )}
-
               <div>
                 <Label>Select Platforms</Label>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">

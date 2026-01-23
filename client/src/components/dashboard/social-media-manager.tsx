@@ -45,10 +45,16 @@ import {
   Upload,
   Video,
   Twitter as X,
+  Utensils,
+  Flame,
+  ChefHat,
+  Star,
+  Clock,
+  PartyPopper,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { MediaLibrary } from "./media-library";
-import { PropertySelector } from "./property-selector";
+import { MenuItemSelector, MenuItem } from "./menu-item-selector";
 import { PostComposer } from "./post-composer";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
 
@@ -57,27 +63,6 @@ interface SocialMediaAccount {
   platform: string;
   isConnected: boolean;
   lastSync?: string;
-}
-
-interface Property {
-  id: string;
-  mlsId: string;
-  listPrice: number;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  bedrooms: number | null;
-  bathrooms: number | null;
-  squareFootage: number | null;
-  propertyType: string;
-  listingStatus: string;
-  listingDate: string;
-  description: string;
-  features: string[];
-  photoUrls: string[];
-  neighborhood: string | null;
-  agentName: string | null;
 }
 
 const platformIcons = {
@@ -89,41 +74,49 @@ const platformIcons = {
   youtube: { icon: Video, color: "text-red-600" },
 };
 
+// Restaurant/Food post types
 const postTypes = [
   {
-    id: "open_houses",
-    label: "Open Houses",
-    icon: Home,
-    color: "text-orange-600",
-    bgColor: "bg-orange-600/10",
+    id: "daily_special",
+    label: "Daily Special",
+    icon: Star,
+    color: "text-yellow-600",
+    bgColor: "bg-yellow-600/10",
   },
   {
-    id: "just_listed",
-    label: "Just Listed",
-    icon: Tag,
+    id: "new_item",
+    label: "New on Menu",
+    icon: Utensils,
     color: "text-blue-600",
     bgColor: "bg-blue-600/10",
   },
   {
-    id: "just_sold",
-    label: "Just Sold",
-    icon: CheckCircle,
-    color: "text-green-600",
-    bgColor: "bg-green-600/10",
-  },
-  {
-    id: "price_improvement",
-    label: "Price Decrease",
-    icon: TrendingDown,
+    id: "chef_pick",
+    label: "Chef's Pick",
+    icon: ChefHat,
     color: "text-purple-600",
     bgColor: "bg-purple-600/10",
   },
   {
-    id: "e_card",
-    label: "E-Card",
-    icon: CreditCard,
-    color: "text-teal-600",
-    bgColor: "bg-teal-600/10",
+    id: "food_photo",
+    label: "Food Photo",
+    icon: Image,
+    color: "text-pink-600",
+    bgColor: "bg-pink-600/10",
+  },
+  {
+    id: "limited_time",
+    label: "Limited Time",
+    icon: Clock,
+    color: "text-orange-600",
+    bgColor: "bg-orange-600/10",
+  },
+  {
+    id: "promo",
+    label: "Promotion",
+    icon: PartyPopper,
+    color: "text-green-600",
+    bgColor: "bg-green-600/10",
   },
   {
     id: "create_your_own",
@@ -137,59 +130,59 @@ const postTypes = [
 const scheduledPosts = [
   {
     id: 1,
-    content: "Market Update: Omaha home sales...",
+    content: "Today's Special: Chef's signature pasta...",
     date: "Tomorrow 9:00 AM",
     platforms: "FB, IG, LI",
   },
   {
     id: 2,
-    content: "New listing in Aksarben...",
+    content: "New menu item alert! Try our...",
     date: "Friday 2:00 PM",
     platforms: "All platforms",
   },
 ];
 
-// Stock real estate photos collection
+// Stock food photos collection
 const stockPhotos = [
   {
     id: 1,
-    url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&w=400&q=80",
-    title: "Modern House Exterior",
+    url: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80",
+    title: "Fresh Salad",
   },
   {
     id: 2,
-    url: "https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=400&q=80",
-    title: "Real Estate Keys",
+    url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?auto=format&fit=crop&w=400&q=80",
+    title: "Pizza",
   },
   {
     id: 3,
-    url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=400&q=80",
-    title: "Kitchen Interior",
+    url: "https://images.unsplash.com/photo-1482049016gy-2d6d-8d1e-8f1?auto=format&fit=crop&w=400&q=80",
+    title: "Gourmet Burger",
   },
   {
     id: 4,
-    url: "https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=400&q=80",
-    title: "Living Room",
+    url: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?auto=format&fit=crop&w=400&q=80",
+    title: "Pancakes",
   },
   {
     id: 5,
-    url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=400&q=80",
-    title: "Home Exterior",
+    url: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=400&q=80",
+    title: "Colorful Dish",
   },
   {
     id: 6,
-    url: "https://images.unsplash.com/photo-1613490493576-7fde63acd811?auto=format&fit=crop&w=400&q=80",
-    title: "Sold Sign",
+    url: "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?auto=format&fit=crop&w=400&q=80",
+    title: "Pasta Dish",
   },
   {
     id: 7,
-    url: "https://images.unsplash.com/photo-1582407947304-fd86f028f716?auto=format&fit=crop&w=400&q=80",
-    title: "House with Garden",
+    url: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=400&q=80",
+    title: "Plated Food",
   },
   {
     id: 8,
-    url: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=400&q=80",
-    title: "Neighborhood",
+    url: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=400&q=80",
+    title: "BBQ Ribs",
   },
 ];
 
@@ -198,7 +191,7 @@ export function SocialMediaManager() {
   const [aiPrompt, setAiPrompt] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [selectedPostType, setSelectedPostType] = useState<string | null>(null);
-  const [selectedProperty, setSelectedProperty] = useState<Property | null>(
+  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItem | null>(
     null,
   );
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
@@ -212,6 +205,7 @@ export function SocialMediaManager() {
     null,
   );
   const [showPostComposer, setShowPostComposer] = useState(false);
+  const [showQuickAddMenu, setShowQuickAddMenu] = useState(false);
   const { toast } = useToast();
 
   // Fetch company profile for dynamic content
@@ -682,7 +676,7 @@ export function SocialMediaManager() {
           "Your content has been posted to Facebook successfully.",
       });
       setPostContent("");
-      setSelectedProperty(null);
+      setSelectedMenuItem(null);
       setSelectedPostType(null);
       setSelectedFacebookPage("");
     },
@@ -726,350 +720,280 @@ export function SocialMediaManager() {
     },
   });
 
-  const generatePropertyContent = (
-    property: Property,
+  // Generate content for menu items (restaurant promotional posts)
+  const generateMenuItemContent = (
+    item: MenuItem,
     postType: string,
     platform: string,
   ) => {
-    const formatPrice = (price: number) => {
+    const formatPrice = (price: string | number) => {
+      const num = typeof price === "string" ? parseFloat(price) : price;
       return new Intl.NumberFormat("en-US", {
         style: "currency",
         currency: "USD",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(price);
+      }).format(num);
     };
 
-    const bedBathText = `${
-      property.bedrooms ? `🛏️ ${property.bedrooms} bed` : ""
-    } ${property.bathrooms ? `🛁 ${property.bathrooms} bath` : ""} ${
-      property.squareFootage
-        ? `📐 ${property.squareFootage.toLocaleString()} sqft`
-        : ""
-    }`;
-    const neighborhoodTag = property.neighborhood
-      ? property.neighborhood.replace(/\s+/g, "")
-      : "";
+    const dietaryEmojis = item.dietaryTags?.map(tag => {
+      const emojiMap: Record<string, string> = {
+        'vegetarian': '🥬',
+        'vegan': '🌱',
+        'gluten-free': '🌾',
+        'halal': '☪️',
+        'kosher': '✡️',
+        'dairy-free': '🥛',
+        'nut-free': '🥜',
+        'low-carb': '🥩',
+        'keto': '🥑',
+      };
+      return emojiMap[tag] || '';
+    }).filter(Boolean).join(' ') || '';
+
+    const spiceEmoji = item.spiceLevel && item.spiceLevel > 0 
+      ? '🌶️'.repeat(Math.min(item.spiceLevel, 5)) 
+      : '';
 
     const templates = {
-      just_listed: {
-        facebook: `🏠 JUST LISTED!
+      daily_special: {
+        facebook: `⭐ TODAY'S SPECIAL! ⭐
 
-${property.address}
-${property.city}, ${property.state} ${property.zipCode}
+${item.name}
+${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}${item.isSpecial ? ` (was ${formatPrice(item.price)})` : ''}
 
-💰 ${formatPrice(property.listPrice)}
-${bedBathText}
+${item.description || ''}
 
-${property.description.substring(0, 200)}...
+${dietaryEmojis ? `🏷️ ${dietaryEmojis}` : ''}
+${item.preparationTime ? `⏱️ Ready in ${item.preparationTime} min` : ''}
+${item.calories ? `🔥 ${item.calories} cal` : ''}
 
-${
-  property.neighborhood
-    ? `📍 Located in desirable ${property.neighborhood}`
-    : ""
-}
+Come taste what everyone's talking about! Available today only.
 
-Contact ${agentName} at ${brokerageName} for more information!
+📍 ${businessName}
 
-#JustListed #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} ${
-          neighborhoodTag ? `#${neighborhoodTag}` : ""
-        }`,
+#DailySpecial #FoodLovers #${businessName.replace(/\s+/g, '')} #Foodie #TodayOnly`,
 
-        instagram: `🏠 NEW LISTING ALERT!
+        instagram: `⭐ TODAY'S SPECIAL ⭐
 
-${property.address}
-${formatPrice(property.listPrice)}
+${item.name}
+${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}
 
-✨ ${property.bedrooms}BD ${property.bathrooms}BA${
-          property.squareFootage
-            ? ` | ${property.squareFootage.toLocaleString()} sqft`
-            : ""
-        }
+${item.description?.substring(0, 120) || ''}...
 
-${property.description.substring(0, 150)}...
+${dietaryEmojis} ${spiceEmoji}
 
-DM for details! 📩
+Available TODAY only! 🏃‍♂️
 
-#JustListed #OmahaHomes #RealEstate #${agentName.replace(/\s+/g, "")} ${
-          neighborhoodTag ? `#${neighborhoodTag}` : ""
-        }`,
+#DailySpecial #Foodie #${businessName.replace(/\s+/g, '')} #FoodPhotography`,
 
-        x: `🏠 JUST LISTED!\n\n${property.address}\n${formatPrice(
-          property.listPrice,
-        )}\n${property.bedrooms}BD ${
-          property.bathrooms
-        }BA\n\n${property.description.substring(
-          0,
-          100,
-        )}...\n\nContact ${agentName} for details!\n\n#JustListed #OmahaRealEstate`,
+        x: `⭐ TODAY'S SPECIAL!\n\n${item.name}\n${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}\n\n${item.description?.substring(0, 80) || ''}\n\n${dietaryEmojis}\n\n📍 ${businessName}\n\n#DailySpecial #Foodie`,
 
-        youtube: `🏠 NEW LISTING: ${property.address} | ${formatPrice(
-          property.listPrice,
-        )}
+        youtube: `⭐ TODAY'S SPECIAL: ${item.name}
 
-Welcome to this stunning ${property.bedrooms} bedroom, ${
-          property.bathrooms
-        } bathroom home in ${
-          property.neighborhood || property.city
-        }! This beautiful ${
-          property.squareFootage
-            ? property.squareFootage.toLocaleString() + " square foot "
-            : ""
-        }${property.propertyType.toLowerCase()} offers everything you've been looking for.
+Check out what our chef has prepared for today's special! This ${item.name} is available for a limited time at ${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}.
 
-${property.description}
+${item.description || ''}
 
-${
-  property.neighborhood
-    ? `Located in the desirable ${property.neighborhood} neighborhood, `
-    : ""
-}this property is perfectly positioned for ${
-          property.city
-        } living. Whether you're a first-time homebuyer or looking to upgrade, this home offers incredible value at ${formatPrice(
-          property.listPrice,
-        )}.
+${item.ingredients?.length ? `Made with: ${item.ingredients.join(', ')}` : ''}
 
-Key Features:
-${
-  property.features && Array.isArray(property.features)
-    ? property.features
-        .slice(0, 5)
-        .map((feature) => `• ${feature}`)
-        .join("\n")
-    : "• Beautifully maintained interior\n• Great neighborhood location\n• Move-in ready condition"
-}
-
-I'm ${agentName} with ${brokerageName}, and I'd love to show you this amazing property. Call or text me today to schedule your private showing!
-
-#JustListed #OmahaRealEstate #${
-          property.neighborhood
-            ? property.neighborhood.replace(/\s+/g, "")
-            : "OmahaHomes"
-        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #RealEstate #HomeTour`,
+${businessName}
+#DailySpecial #FoodLovers #ChefSpecial`,
       },
 
-      just_sold: {
-        facebook: `🎉 CONGRATULATIONS! SOLD!
+      new_item: {
+        facebook: `🆕 NEW ON THE MENU! 🆕
 
-${property.address}
-${property.city}, ${property.state}
+Introducing: ${item.name}
+${formatPrice(item.price)}
 
-Another successful closing! Thank you to my amazing clients for trusting me with their real estate needs.
+${item.description || ''}
 
-${
-  property.neighborhood
-    ? `Properties in ${property.neighborhood} continue to perform well in our market.`
-    : ""
-}
+${dietaryEmojis ? `Perfect for: ${dietaryEmojis}` : ''}
+${item.ingredients?.length ? `\nMade with: ${item.ingredients.slice(0, 5).join(', ')}` : ''}
 
-Thinking of buying or selling? I'd love to help you achieve your real estate goals!
+Be one of the first to try our newest creation! 
 
-${agentName} | ${brokerageName}
+📍 ${businessName}
 
-#JustSold #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #RealEstateSuccess`,
+#NewOnMenu #FoodLaunch #${businessName.replace(/\s+/g, '')} #Foodie #MustTry`,
 
-        instagram: `✅ SOLD!
+        instagram: `🆕 NEW MENU ITEM ALERT!
 
-${property.address}
+${item.name}
+${formatPrice(item.price)}
 
-Another happy client! 🙌
+${item.description?.substring(0, 100) || ''}
 
-${
-  property.neighborhood
-    ? `${property.neighborhood} market staying strong! 💪`
-    : ""
-}
+${dietaryEmojis} ${spiceEmoji}
 
-Ready to make your move? Let's chat! 📞
+Tag someone who needs to try this! 👇
 
-#Sold #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #RealEstateSuccess`,
+#NewOnMenu #Foodie #${businessName.replace(/\s+/g, '')} #FoodPhotography`,
 
-        x: `✅ SOLD!\n\n${
-          property.address
-        }\n\nAnother successful closing! 🎉\n\n${
-          property.neighborhood ? `${property.neighborhood} market strong!` : ""
-        }\n\n${agentName} | ${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")}\n\n#JustSold #OmahaRealEstate`,
+        x: `🆕 NEW ON THE MENU!\n\n${item.name} - ${formatPrice(item.price)}\n\n${item.description?.substring(0, 80) || ''}\n\n${dietaryEmojis}\n\n#NewOnMenu #Foodie`,
 
-        youtube: `🎉 SOLD! ${property.address} | Another Successful Closing!
+        youtube: `🆕 NEW MENU ITEM: ${item.name}
 
-I'm thrilled to share another successful sale in ${
-          property.neighborhood || property.city
-        }! This beautiful ${property.bedrooms} bedroom, ${
-          property.bathrooms
-        } bathroom home has found its perfect new owners.
+We're excited to introduce our newest addition to the menu! ${item.name} is now available for ${formatPrice(item.price)}.
 
-${property.description.substring(0, 300)}
+${item.description || ''}
 
-This ${
-          property.squareFootage
-            ? property.squareFootage.toLocaleString() + " square foot "
-            : ""
-        }property sold quickly, showcasing the continued strength of ${
-          property.neighborhood ? `the ${property.neighborhood}` : "our local"
-        } real estate market.
-
-What made this sale special:
-• Strategic pricing based on current market data
-• Professional marketing that attracted qualified buyers
-• Expert negotiation ensuring the best terms
-• Smooth closing process with clear communication
-
-${
-  property.neighborhood
-    ? `Properties in ${property.neighborhood} continue to perform exceptionally well, with strong buyer demand and competitive pricing.`
-    : "The Omaha market remains strong with excellent opportunities for both buyers and sellers."
-}
-
-Thinking about selling your home? I'd love to discuss your goals and show you how I can maximize your property's value in today's market.
-
-${agentName} | ${brokerageName}
-
-#JustSold #OmahaRealEstate #${
-          property.neighborhood
-            ? property.neighborhood.replace(/\s+/g, "")
-            : "OmahaHomes"
-        } #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #RealEstateSuccess #SoldHomes`,
+Come try it today at ${businessName}!
+#NewOnMenu #FoodLaunch #MustTry`,
       },
 
-      price_improvement: {
-        facebook: `💰 PRICE IMPROVEMENT!
+      chef_pick: {
+        facebook: `👨‍🍳 CHEF'S RECOMMENDATION 👨‍🍳
 
-${property.address}
-${property.city}, ${property.state} ${property.zipCode}
+${item.name}
+${formatPrice(item.price)}
 
-NOW ${formatPrice(property.listPrice)}
+Our chef's personal favorite and a must-try for food lovers!
 
-${bedBathText}
+${item.description || ''}
 
-${property.description.substring(0, 200)}...
+${dietaryEmojis ? `🏷️ ${dietaryEmojis}` : ''}
+${item.preparationTime ? `⏱️ ${item.preparationTime} min to perfection` : ''}
 
-${
-  property.neighborhood
-    ? `Don't miss this opportunity in ${property.neighborhood}!`
-    : "Don't miss this opportunity!"
-}
+Experience culinary excellence at ${businessName}!
 
-Contact ${agentName} at ${brokerageName} today!
+#ChefsPick #GourmetFood #${businessName.replace(/\s+/g, '')} #Foodie #ChefRecommends`,
 
-#PriceImprovement #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")} #Opportunity`,
+        instagram: `👨‍🍳 CHEF'S PICK 👨‍🍳
 
-        instagram: `💰 PRICE DROP ALERT!
+${item.name}
+${formatPrice(item.price)}
 
-${property.address}
-NOW ${formatPrice(property.listPrice)}!
+${item.description?.substring(0, 100) || ''}
 
-✨ ${property.bedrooms}BD ${property.bathrooms}BA
+Our chef's personal favorite! ⭐
 
-${property.description.substring(0, 120)}...
+${dietaryEmojis} ${spiceEmoji}
 
-${
-  property.neighborhood
-    ? `Great opportunity in ${property.neighborhood}!`
-    : "Great opportunity!"
-}
+#ChefsPick #Foodie #${businessName.replace(/\s+/g, '')} #GourmetFood`,
 
-DM me now! 📩
+        x: `👨‍🍳 CHEF'S PICK!\n\n${item.name} - ${formatPrice(item.price)}\n\n${item.description?.substring(0, 80) || ''}\n\nMust try! 🌟\n\n#ChefsPick #Foodie`,
 
-#PriceImprovement #OmahaHomes #Opportunity`,
+        youtube: `👨‍🍳 CHEF'S RECOMMENDATION: ${item.name}
 
-        x: `💰 PRICE IMPROVED!\n\n${property.address}\nNOW ${formatPrice(
-          property.listPrice,
-        )}!\n\n${property.bedrooms}BD ${property.bathrooms}BA\n\n${
-          property.neighborhood
-            ? `${property.neighborhood} opportunity!`
-            : "Great opportunity!"
-        }\n\n${agentName} | ${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")}\n\n#PriceImprovement`,
+Our head chef personally recommends this dish! ${item.name} at ${formatPrice(item.price)} is a true culinary masterpiece.
 
-        youtube: `💰 PRICE IMPROVEMENT! ${property.address} | Now ${formatPrice(
-          property.listPrice,
-        )}
+${item.description || ''}
 
-Exciting news! This beautiful ${property.bedrooms} bedroom, ${
-          property.bathrooms
-        } bathroom home just had a strategic price adjustment, making it an even better value for buyers!
-
-${property.description.substring(0, 300)}
-
-What makes this price improvement significant:
-• Reflects current market conditions
-• Creates opportunity for serious buyers
-• Perfect timing for today's market
-
-Don't wait on this opportunity! Contact ${agentName} at ${brokerageName} today.
-
-#PriceImprovement #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #RealEstateOpportunity`,
+${businessName}
+#ChefsPick #GourmetFood #Recommended`,
       },
 
-      open_houses: {
-        facebook: `🏠 OPEN HOUSE THIS WEEKEND!
+      food_photo: {
+        facebook: `📸 Looking delicious, isn't it?
 
-📍 ${property.address}
-${property.city}, ${property.state} ${property.zipCode}
+${item.name}
+${formatPrice(item.price)}
 
-🕐 Saturday & Sunday, 1:00 PM - 4:00 PM
+${item.description || ''}
 
-💰 ${formatPrice(property.listPrice)}
-${bedBathText}
+Tag someone who would love this! 👇
 
-${property.description.substring(0, 200)}...
+📍 ${businessName}
 
-${
-  property.neighborhood
-    ? `Come see why ${property.neighborhood} is such a desirable area!`
-    : "Come see this beautiful property!"
-}
+#FoodPhotography #Foodie #${businessName.replace(/\s+/g, '')} #Delicious`,
 
-No appointment necessary - just stop by!
+        instagram: `📸 Food that looks as good as it tastes!
 
-${agentName} | ${brokerageName}
+${item.name}
+${formatPrice(item.price)}
 
-#OpenHouse #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #WeekendViewing`,
+${dietaryEmojis} ${spiceEmoji}
 
-        instagram: `🏠 OPEN HOUSE ALERT!
+Double tap if you're hungry! ❤️
 
-📍 ${property.address}
-🕐 Sat & Sun 1-4pm
-💰 ${formatPrice(property.listPrice)}
+#FoodPhotography #Foodie #FoodPorn #${businessName.replace(/\s+/g, '')}`,
 
-✨ ${property.bedrooms}BD ${property.bathrooms}BA
+        x: `📸 ${item.name}\n${formatPrice(item.price)}\n\nLooks delicious, right? 😋\n\n📍 ${businessName}\n\n#FoodPhotography #Foodie`,
 
-${property.description.substring(0, 120)}...
+        youtube: `📸 ${item.name} | Food Photography
 
-${
-  property.neighborhood
-    ? `${property.neighborhood} living awaits!`
-    : "Your dream home awaits!"
-}
+Sometimes a dish is too beautiful not to share. This is our ${item.name} at ${formatPrice(item.price)}.
 
-See you there! 👋
+${item.description || ''}
 
-#OpenHouse #WeekendViewing #OmahaHomes`,
+${businessName}
+#FoodPhotography #Delicious`,
+      },
 
-        x: `🏠 OPEN HOUSE!\n\n📍 ${
-          property.address
-        }\n🕐 Sat & Sun 1-4pm\n💰 ${formatPrice(property.listPrice)}\n\n${
-          property.bedrooms
-        }BD ${property.bathrooms}BA\n\n${
-          property.neighborhood ? `${property.neighborhood} gem!` : "Must see!"
-        }\n\n${agentName} | ${brokerageName.split(" ").map((w: string) => w.charAt(0)).join("")}\n\n#OpenHouse`,
+      limited_time: {
+        facebook: `⏰ LIMITED TIME OFFER! ⏰
 
-        youtube: `🏠 OPEN HOUSE THIS WEEKEND! ${property.address}
+${item.name}
+${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}${item.isSpecial ? ` (Regular ${formatPrice(item.price)})` : ''}
 
-Join me Saturday & Sunday, 1:00 PM - 4:00 PM for an exclusive tour of this stunning ${
-          property.bedrooms
-        } bedroom, ${property.bathrooms} bathroom home!
+Don't miss out on this special offering!
 
-Price: ${formatPrice(property.listPrice)}
+${item.description || ''}
 
-${property.description.substring(0, 300)}
+${item.specialEndDate ? `Available until ${new Date(item.specialEndDate).toLocaleDateString()}` : 'While supplies last!'}
 
-No appointment necessary - just stop by! I'll be there to answer questions and show you everything this wonderful home has to offer.
+📍 ${businessName}
 
-Can't make the open house? Call or text me to schedule a private showing at your convenience.
+#LimitedTime #SpecialOffer #${businessName.replace(/\s+/g, '')} #DontMissOut`,
 
-${agentName} | ${brokerageName}
+        instagram: `⏰ LIMITED TIME ONLY!
 
-#OpenHouse #WeekendViewing #OmahaRealEstate #${agentName.replace(/\s+/g, "")} #HomeTour`,
+${item.name}
+${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}
+
+${item.description?.substring(0, 100) || ''}
+
+Get it before it's gone! 🏃‍♂️💨
+
+#LimitedTime #SpecialOffer #Foodie #${businessName.replace(/\s+/g, '')}`,
+
+        x: `⏰ LIMITED TIME!\n\n${item.name}\n${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}\n\nDon't miss out! 🏃‍♂️\n\n#LimitedTime #SpecialOffer`,
+
+        youtube: `⏰ LIMITED TIME: ${item.name}
+
+This special offering won't be around forever! Try our ${item.name} for ${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)} while you can.
+
+${item.description || ''}
+
+${businessName}
+#LimitedTime #SpecialOffer #GetItNow`,
+      },
+
+      promo: {
+        facebook: `🎉 SPECIAL PROMOTION! 🎉
+
+${item.name}
+NOW ${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}${item.isSpecial ? ` (Save from ${formatPrice(item.price)}!)` : ''}
+
+${item.description || ''}
+
+Share with friends and family! 
+
+📍 ${businessName}
+
+#Promotion #SpecialDeal #${businessName.replace(/\s+/g, '')} #FoodDeals`,
+
+        instagram: `🎉 PROMO TIME! 🎉
+
+${item.name}
+${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)} 🔥
+
+${item.description?.substring(0, 100) || ''}
+
+Tag someone who needs to know! 👇
+
+#Promotion #FoodDeals #${businessName.replace(/\s+/g, '')} #Savings`,
+
+        x: `🎉 PROMO ALERT!\n\n${item.name}\n${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}\n\n📍 ${businessName}\n\n#Promotion #FoodDeals`,
+
+        youtube: `🎉 SPECIAL PROMOTION: ${item.name}
+
+We're celebrating with a special deal! Get our ${item.name} for ${formatPrice(item.isSpecial && item.specialPrice ? item.specialPrice : item.price)}.
+
+${item.description || ''}
+
+Visit ${businessName} today!
+#Promotion #SpecialDeal #FoodLovers`,
       },
     };
 
@@ -1078,20 +1002,17 @@ ${agentName} | ${brokerageName}
       return postTypeTemplates[platform as keyof typeof postTypeTemplates];
     }
 
-    return `Check out this amazing property at ${
-      property.address
-    }! ${formatPrice(property.listPrice)} | Contact ${agentName} for details.`;
+    return `Try our delicious ${item.name}! ${formatPrice(item.price)} | ${businessName}`;
   };
 
   const handlePost = () => {
     let content = postContent.trim();
 
-    // If property is selected and no custom content, generate property-specific content
-    if (selectedProperty && !postContent.trim() && selectedPostType) {
-      // Use the first selected platform for content generation
+    // If menu item is selected and no custom content, generate menu item content
+    if (selectedMenuItem && !postContent.trim() && selectedPostType) {
       const primaryPlatform = selectedPlatforms[0] || "facebook";
-      content = generatePropertyContent(
-        selectedProperty,
+      content = generateMenuItemContent(
+        selectedMenuItem,
         selectedPostType,
         primaryPlatform,
       );
@@ -1101,7 +1022,7 @@ ${agentName} | ${brokerageName}
       toast({
         title: "Content Required",
         description:
-          "Please enter content to post or select a property with post type",
+          "Please enter content to post or select a menu item with post type",
         variant: "destructive",
       });
       return;
@@ -1381,8 +1302,8 @@ ${agentName} | ${brokerageName}
                   </div>
                   <Button
                     onClick={() => {
-                      const videoTitle = postContent.trim() || "Real Estate Video Update";
-                      const videoDescription = postContent.trim() || "Check out this update from my real estate business!";
+                      const videoTitle = postContent.trim() || "Restaurant Video Update";
+                      const videoDescription = postContent.trim() || "Check out what's cooking at our restaurant!";
                       
                       postMutation.mutate({
                         content: videoTitle.substring(0, 100),
@@ -1409,14 +1330,15 @@ ${agentName} | ${brokerageName}
             <h3 className="text-sm font-medium text-foreground">Quick Post</h3>
           </div>
 
-          {/* Property Selector */}
+          {/* Menu Item Selector */}
           <div className="space-y-2">
             <div className="text-xs font-medium text-muted-foreground mb-2">
-              Property Listing (Optional)
+              Select Menu Item (Optional)
             </div>
-            <PropertySelector
-              onSelectProperty={setSelectedProperty}
-              selectedProperty={selectedProperty}
+            <MenuItemSelector
+              onSelectMenuItem={setSelectedMenuItem}
+              selectedMenuItem={selectedMenuItem}
+              showQuickAdd={true}
             />
           </div>
 
@@ -1441,16 +1363,16 @@ ${agentName} | ${brokerageName}
                       selectedPostType === type.id ? null : type.id;
                     setSelectedPostType(newType);
 
-                    // Auto-generate content if property is selected
+                    // Auto-generate content if menu item is selected
                     if (
-                      selectedProperty &&
+                      selectedMenuItem &&
                       newType &&
                       selectedPlatforms.length > 0 &&
                       type.id !== "create_your_own"
                     ) {
                       const primaryPlatform = selectedPlatforms[0];
-                      const generatedContent = generatePropertyContent(
-                        selectedProperty,
+                      const generatedContent = generateMenuItemContent(
+                        selectedMenuItem,
                         newType,
                         primaryPlatform,
                       );
@@ -1564,8 +1486,8 @@ ${agentName} | ${brokerageName}
               selectedPostType
                 ? `Enter details for ${postTypes
                     .find((t) => t.id === selectedPostType)
-                    ?.label.toLowerCase()} post (address, price, features, etc.)...`
-                : "Share market insights, property highlights, or select a post type above and click AI Optimize..."
+                    ?.label.toLowerCase()} post (dish name, ingredients, special offers, etc.)...`
+                : "Share what's cooking, menu highlights, or select a post type above and click AI Optimize..."
             }
             value={postContent}
             onChange={(e) => setPostContent(e.target.value)}
@@ -1593,17 +1515,6 @@ ${agentName} | ${brokerageName}
               tone preferences
             </p>
           </div>
-
-          {postContent.trim().length > 10 && (
-            <ComplianceChecker
-              content={postContent}
-              platform={selectedPlatforms[0] || "general"}
-              hasMedia={selectedMediaIds.length > 0}
-              hasVideo={false}
-              onContentFix={(fixedContent) => setPostContent(fixedContent)}
-              showGuidelines={true}
-            />
-          )}
 
           {selectedPlatforms.length > 0 && (
             <div className="text-xs text-muted-foreground">
@@ -1644,40 +1555,46 @@ ${agentName} | ${brokerageName}
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 bg-golden-accent rounded-full flex items-center justify-center">
                           <span className="text-xs font-bold text-golden-foreground">
-                            {agentName.split(' ').map((n: string) => n.charAt(0)).join('').substring(0, 2)}
+                            {businessName.split(' ').map((n: string) => n.charAt(0)).join('').substring(0, 2)}
                           </span>
                         </div>
                         <div className="flex-1">
                           <div className="font-medium text-sm text-foreground">
-                            {agentName}
+                            {businessName}
                           </div>
                           <div className="text-xs text-muted-foreground mb-2">
-                            {businessName} at {brokerageName}
+                            {brokerageName}
                           </div>
                           <div className="text-sm text-foreground whitespace-pre-wrap">
                             {postContent}
                           </div>
-                          {selectedProperty && (
+                          {selectedMenuItem && (
                             <div className="mt-3 p-3 bg-background rounded-md border">
-                              <div className="font-medium text-sm">
-                                {selectedProperty.address}
+                              <div className="font-medium text-sm flex items-center gap-2">
+                                {selectedMenuItem.name}
+                                {selectedMenuItem.isFeatured && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+                                {selectedMenuItem.isChefRecommended && <ChefHat className="h-3 w-3 text-purple-500" />}
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {selectedProperty.city},{" "}
-                                {selectedProperty.state}
+                              <div className="text-xs text-muted-foreground line-clamp-2">
+                                {selectedMenuItem.description}
                               </div>
                               <div className="text-sm font-medium mt-1">
-                                $
-                                {selectedProperty.listPrice?.toLocaleString() ||
-                                  "0"}
+                                ${parseFloat(selectedMenuItem.price).toFixed(2)}
+                                {selectedMenuItem.isSpecial && selectedMenuItem.specialPrice && (
+                                  <span className="ml-2 text-xs line-through text-muted-foreground">
+                                    ${parseFloat(selectedMenuItem.specialPrice).toFixed(2)}
+                                  </span>
+                                )}
                               </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {selectedProperty.bedrooms || 0}bd •{" "}
-                                {selectedProperty.bathrooms || 0}ba •{" "}
-                                {selectedProperty.squareFootage?.toLocaleString() ||
-                                  "0"}{" "}
-                                sq ft
-                              </div>
+                              {selectedMenuItem.dietaryTags && selectedMenuItem.dietaryTags.length > 0 && (
+                                <div className="flex gap-1 mt-1 flex-wrap">
+                                  {selectedMenuItem.dietaryTags.slice(0, 3).map(tag => (
+                                    <span key={tag} className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1716,7 +1633,7 @@ ${agentName} | ${brokerageName}
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-xs">
-                    <p>AI Optimize enhances your post content with better engagement and professional messaging. It analyzes your text and suggests improvements for clarity, tone, and real estate marketing best practices to help get more visibility and responses from your audience.</p>
+                    <p>AI Optimize enhances your post content with better engagement and professional messaging. It analyzes your text and suggests improvements for clarity, tone, and restaurant marketing best practices to help get more visibility and responses from your audience.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

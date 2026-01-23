@@ -402,14 +402,14 @@ export class MemStorage implements IStorage {
   }
 
   private seedData() {
-    // Create default user (Mike Bjork)
+    // Create default user (Demo User)
     const userId = randomUUID();
     const user: User = {
       id: userId,
-      username: "mikebjork",
+      username: "demouser",
       password: "password",
-      name: "Mike Bjork",
-      email: "mike@bjorkgroup.com",
+      name: "Demo Restaurant",
+      email: "demo@restaurantflow.com",
       role: "team_lead",
       createdAt: new Date(),
     };
@@ -1134,7 +1134,7 @@ export class MemStorage implements IStorage {
         content,
         hashtags:
           platform === "instagram"
-            ? ["OmahaRealEstate", "MovingToOmaha", "NebraskaHomes"]
+            ? ["OmahaFood", "OmahaRestaurants", "OmahaDining"]
             : [],
         scheduledFor: scheduleDate,
         status: "pending",
@@ -1159,7 +1159,7 @@ export class MemStorage implements IStorage {
       userId,
       name: `${displayName} - Professional`,
       description:
-        "Professional real estate agent avatar for client-facing content",
+        "Professional restaurant owner avatar for client-facing content",
       avatarImageUrl: null, // Would be set when user uploads their photo
       voiceId: "119caed25533477ba63822d5d1552d25", // HeyGen default professional voice
       style: "professional",
@@ -1174,21 +1174,21 @@ export class MemStorage implements IStorage {
   private createSampleVideoContent(userId: string) {
     const sampleTopics = [
       {
-        title: "Why Dundee is Perfect for Families",
-        topic: "Dundee neighborhood family benefits",
-        videoType: "neighborhood_tour",
+        title: "Why Dundee is Perfect for Foodies",
+        topic: "Dundee neighborhood dining scene",
+        videoType: "location_tour",
         neighborhood: "Dundee",
       },
       {
-        title: "Moving to Omaha: Your Complete Guide",
-        topic: "Complete relocation guide for Omaha",
-        videoType: "moving_guide",
+        title: "Exploring Omaha's Food Scene: Your Complete Guide",
+        topic: "Complete food scene guide for Omaha",
+        videoType: "food_scene_guide",
         neighborhood: null,
       },
       {
-        title: "Omaha Market Update - January 2025",
-        topic: "Current market trends and opportunities",
-        videoType: "market_update",
+        title: "Omaha Restaurant Industry Update - January 2025",
+        topic: "Current dining trends and opportunities",
+        videoType: "industry_update",
         neighborhood: null,
       },
     ];
@@ -1201,7 +1201,7 @@ export class MemStorage implements IStorage {
           Array.from(this.avatars.values()).find((a) => a.userId === userId)
             ?.id || null,
         title: sample.title,
-        script: `Welcome! Today I want to talk about ${sample.topic}. As your local Omaha real estate expert, I'm here to provide you with valuable insights that can help with your real estate decisions.`,
+        script: `Welcome! Today I want to talk about ${sample.topic}. As your local Omaha restaurant expert, I'm here to provide you with valuable insights that can help with your dining decisions.`,
         topic: sample.topic,
         neighborhood: sample.neighborhood,
         videoType: sample.videoType,
@@ -1217,9 +1217,9 @@ export class MemStorage implements IStorage {
         heygenVoiceId: null,
         heygenTemplateId: null,
         tags: [
-          "OmahaRealEstate",
-          "RealEstateExpert",
-          "HomesBuying",
+          "OmahaFood",
+          "RestaurantOwner",
+          "DiningOut",
           "Nebraska",
         ],
         seoOptimized: false,

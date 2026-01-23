@@ -49,10 +49,10 @@ const quickActions: QuickAction[] = [
     starterPrompt: "Write a blog article about ",
   },
   {
-    id: "property-description",
-    label: "Property Description",
+    id: "menu-description",
+    label: "Menu Item Description",
     icon: <Home className="h-4 w-4" />,
-    starterPrompt: "Generate a compelling property description for a ",
+    starterPrompt: "Generate a compelling menu item description for ",
   },
   {
     id: "generate-image",
@@ -214,7 +214,7 @@ export function AIAssistantDialog({ open, onOpenChange }: AIAssistantDialogProps
                 How can I help you today?
               </h3>
               <p className="text-sm max-w-sm">
-                I can help you create social media posts, blog articles, property descriptions, and more. 
+                I can help you create social media posts, blog articles, menu descriptions, and more. 
                 Try one of the quick actions above or type your own message.
               </p>
             </div>

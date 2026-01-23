@@ -435,7 +435,7 @@ export class OpenAIService {
       // Use profile data (will show placeholders like "[Your Name]" if not set up)
       const agentName = request.companyProfile?.agentName || profile.agentName || "[Your Name]";
       const businessName = request.companyProfile?.businessName || profile.businessName || profile.brokerageName || "[Your Business]";
-      const agentTitle = request.companyProfile?.agentTitle || profile.agentTitle || "real estate professional";
+      const agentTitle = request.companyProfile?.agentTitle || profile.agentTitle || "restaurant professional";
 
       const response = await multiOpenAI.makeRequest(
         "content",
@@ -446,7 +446,7 @@ export class OpenAIService {
               {
                 role: "system",
                 content:
-                  `You are an expert real estate content writer and SEO specialist focused on the Omaha, Nebraska market. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName} in Omaha. Always include ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON.`,
+                  `You are an expert restaurant content writer and SEO specialist focused on the Omaha, Nebraska dining scene. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName} in Omaha. Always include ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON.`,
               },
               {
                 role: "user",
@@ -486,7 +486,7 @@ export class OpenAIService {
     if (request.neighborhood) {
       prompt += ` focusing on the ${request.neighborhood} neighborhood in Omaha, Nebraska`;
     } else {
-      prompt += ` for the Omaha, Nebraska real estate market`;
+      prompt += ` for the Omaha, Nebraska dining scene`;
     }
 
     // Add custom AI instructions if provided
@@ -504,9 +504,13 @@ export class OpenAIService {
       - Focus on providing valuable information to potential buyers/sellers`;
     } else if (request.type === "social") {
       prompt += `
-      - Create engaging social media content (150-300 characters)
-      - Include relevant hashtags
-      - Focus on engagement and lead generation`;
+      🚨 CRITICAL: Generate a SHORT, punchy social post!
+      - TARGET LENGTH: 40-80 characters (optimal engagement)
+      - Lead with emoji + strong hook
+      - Be concise - users scroll in 1.7 seconds!
+      - Include 1-2 relevant hashtags max
+      - Example: "🍽️ Friday special: Half-price apps 4-6pm! #OmahaDining"
+      - DO NOT write long paragraphs or multiple sentences`;
     } else if (request.type === "property_feature") {
       if (request.propertyData) {
         const property = request.propertyData;
@@ -535,10 +539,10 @@ export class OpenAIService {
     if (request.seoOptimized) {
       prompt += `
       - Optimize for SEO with natural keyword integration (aim for 80%+ SEO score)
-      - Include relevant long-tail keywords for Omaha real estate
+      - Include relevant long-tail keywords for Omaha restaurants
       - Use proper heading structure (H1, H2, H3) for blog posts
       - Include location-specific keywords and neighborhood mentions
-      - Add schema markup opportunities (business, local business, real estate)
+      - Add schema markup opportunities (business, local business, restaurant)
       - Suggest internal linking opportunities to related content
       - Optimize content length (800-1200 words for blogs, 150-300 for social)
       - Include call-to-action phrases that convert leads
@@ -553,17 +557,17 @@ export class OpenAIService {
     prompt += `
     
     IMPORTANT BRANDING REQUIREMENTS:
-    - Include "Mike Bjork" by name in the content for SEO benefits
-    - Reference "Berkshire Hathaway HomeServices" when appropriate  
-    - Position Mike as the local Omaha real estate expert
-    - Include contact encouragement (call/email Mike Bjork)
-    - Use phrases like "Mike Bjork, your Omaha real estate agent" or "Mike Bjork at Berkshire Hathaway HomeServices"
+    - Include the restaurant name in the content for SEO benefits
+    - Reference the restaurant brand when appropriate  
+    - Position as the local Omaha restaurant expert
+    - Include contact encouragement (call/visit the restaurant)
+    - Use phrases like "your Omaha restaurant" or "Omaha's favorite dining destination"
     
     SEO OPTIMIZATION REQUIREMENTS FOR 80%+ SCORE:
     - Primary keyword should appear in title, first paragraph, and naturally throughout
     - Include 2-3 secondary keywords with good density (1-2%)
     - Add location-specific terms: "Omaha," neighborhood names, "Nebraska"
-    - Include semantic keywords related to real estate: "homes for sale," "property values," "market trends"
+    - Include semantic keywords related to restaurants: "best restaurants," "dining experience," "menu specials"
     - Optimize meta description to 150-160 characters with primary keyword
     - Structure content with proper headings and subheadings
     - Include actionable advice and valuable information
@@ -608,13 +612,13 @@ export class OpenAIService {
   ): Promise<any> {
     try {
       // Use company profile data or generic fallback
-      const agentName = companyProfile?.agentName || "your local real estate agent";
+      const agentName = companyProfile?.agentName || "your local restaurant";
       const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "our brokerage";
       
       let prompt = `Create a ${platform} post about "${topic}" for ${
         neighborhood || "Omaha"
-      } real estate. 
-      Include ${agentName} as the real estate agent and reference ${businessName}.
+      } dining. 
+      Include ${agentName} as the restaurant owner and reference ${businessName}.
       
 Platform-specific requirements for ${platform}:`;
 
@@ -627,8 +631,8 @@ Platform-specific requirements for ${platform}:`;
 - Longer form content acceptable (300-600 characters for maximum engagement)
 - Focus on industry insights, market data, and professional expertise
 - Use first-person perspective from ${agentName} to build personal connection
-- Add value for other real estate professionals and potential clients
-- Include professional hashtags (2-3 maximum, e.g., #RealEstate #OmahaHomes)
+- Add value for other restaurant professionals and potential customers
+- Include professional hashtags (2-3 maximum, e.g., #OmahaFood #OmahaRestaurants)
 - Structure: Strong opening hook → Value/insight → Call-to-action
 - Assume this will accompany a professional graphic/image
 - End with clear, professional CTA (e.g., "Learn more", "Contact us", "Subscribe")
@@ -670,11 +674,11 @@ Platform-specific requirements for ${platform}:`;
       
       prompt += `\n\nMake it engaging and appropriate for ${platform}'s format and audience.
 
-IMPORTANT COMPLIANCE REQUIREMENT (BHHS Ambassador Real Estate):
-- The brokerage name "BHHS Ambassador Real Estate" MUST appear in the FIRST LINE of the post
-- The brokerage name must be equal to or more prominent than the agent name
-- For advertising content (property listings, agent services), brokerage visibility is mandatory
-- Format the first line as: "BHHS Ambassador Real Estate | [Your hook/content]" or similar prominent placement`;
+IMPORTANT BRANDING REQUIREMENT:
+- The restaurant name MUST appear prominently in the post
+- The restaurant brand should be equal to or more prominent than individual names
+- For promotional content (menu items, specials), restaurant visibility is mandatory
+- Format with strong restaurant branding and appetizing descriptions`;
 
       const response = await multiOpenAI.makeRequest(
         "social",
@@ -685,7 +689,7 @@ IMPORTANT COMPLIANCE REQUIREMENT (BHHS Ambassador Real Estate):
               {
                 role: "system",
                 content:
-                  "You are a social media content creator for BHHS Ambassador Real Estate. Create engaging posts optimized for each platform with platform-specific best practices. IMPORTANT: Always include 'BHHS Ambassador Real Estate' prominently in the first line of every post to meet brokerage compliance requirements.",
+                  "You are a social media content creator for restaurants. Create engaging posts optimized for each platform with platform-specific best practices. IMPORTANT: Always include the restaurant name prominently in every post to build brand recognition.",
               },
               { role: "user", content: prompt },
             ],
@@ -705,14 +709,14 @@ IMPORTANT COMPLIANCE REQUIREMENT (BHHS Ambassador Real Estate):
     } catch (error) {
       console.error("Social media post generation error:", error);
       
-      // Use company profile data in fallback or generic text with BHHS compliance
-      const agentName = companyProfile?.agentName || "your real estate agent";
-      const agentHashtag = companyProfile?.agentName ? agentName.replace(/\s+/g, '') : "RealEstate";
+      // Use company profile data in fallback or generic text with restaurant branding
+      const agentName = companyProfile?.agentName || "your restaurant";
+      const agentHashtag = companyProfile?.agentName ? agentName.replace(/\s+/g, '') : "OmahaFood";
       
       return {
-        content: `BHHS Ambassador Real Estate | ${topic} in ${
+        content: `${topic} in ${
           neighborhood || "Omaha"
-        }!\n\nContact ${agentName} for expert guidance. #OmahaRealEstate #BHHSAmbassador #${agentHashtag}`,
+        }!\n\nVisit ${agentName} for an amazing dining experience. #OmahaFood #OmahaDining #${agentHashtag}`,
         platform,
         topic,
         neighborhood,
@@ -735,7 +739,7 @@ IMPORTANT COMPLIANCE REQUIREMENT (BHHS Ambassador Real Estate):
               {
                 role: "system",
                 content:
-                  "You are an expert social media content strategist specializing in real estate marketing. Generate comprehensive, SEO-optimized content plans with authentic engagement strategies. Always respond with valid JSON.",
+                  "You are an expert social media content strategist specializing in restaurant marketing. Generate comprehensive, SEO-optimized content plans with authentic engagement strategies. Always respond with valid JSON.",
               },
               {
                 role: "user",
@@ -762,8 +766,8 @@ IMPORTANT COMPLIANCE REQUIREMENT (BHHS Ambassador Real Estate):
   private getFallbackContentPlan(durationDays: number = 30): any {
     const platforms = ['facebook', 'instagram', 'linkedin', 'x'];
     const themes = [
-      'Market Update', 'Neighborhood Spotlight', 'Buyer Tips', 
-      'Seller Guide', 'Investment Insights', 'Community Events', 'Success Stories'
+      'Menu Spotlight', 'Chef Special', 'Dining Tips', 
+      'Seasonal Menu', 'Food Insights', 'Community Events', 'Customer Stories'
     ];
     const days = [];
     
@@ -776,11 +780,11 @@ IMPORTANT COMPLIANCE REQUIREMENT (BHHS Ambassador Real Estate):
         theme: `${theme}`,
         posts: platformsToday.map((platform, idx) => ({
           platform,
-          postType: 'market_update',
-          content: `Day ${i}: Omaha real estate ${theme.toLowerCase()}. Contact us to learn more about buying or selling in Omaha! #OmahaRealEstate #NebraskaHomes`,
-          hashtags: ['#OmahaRealEstate', '#NebraskaHomes', '#RealEstateTips'],
-          cta: 'Contact us today!',
-          keywordsUsed: ['omaha real estate', 'nebraska homes'],
+          postType: 'restaurant_update',
+          content: `Day ${i}: Omaha dining ${theme.toLowerCase()}. Visit us to experience amazing food in Omaha! #OmahaFood #OmahaRestaurants`,
+          hashtags: ['#OmahaFood', '#OmahaRestaurants', '#OmahaDining'],
+          cta: 'Visit us today!',
+          keywordsUsed: ['omaha food', 'omaha restaurants'],
           recommendedTime: idx === 0 ? '09:00' : '13:00',
           neighborhood: 'Omaha'
         }))
@@ -816,7 +820,7 @@ Original Content: "${originalContent}"
 
 Platform: ${platform}
 Content Type: ${contentType || "general"}
-Topic: ${topic || "real estate"}
+Topic: ${topic || "restaurant"}
 Neighborhood: ${neighborhood || "Omaha"}
 
 Platform-specific requirements:`;
@@ -846,9 +850,9 @@ Platform-specific requirements:`;
 - Write compelling 2-3 sentence introduction that delivers value immediately
 - Longer form content acceptable (300-600 characters for maximum engagement)
 - Focus on industry insights, market data, and professional expertise
-- Use first-person perspective from Mike Bjork to build personal connection
-- Add value for other real estate professionals and potential clients
-- Include professional hashtags (2-3 maximum, e.g., #RealEstate #OmahaHomes)
+- Use first-person perspective from the restaurant owner to build personal connection
+- Add value for other restaurant professionals and potential clients
+- Include professional hashtags (2-3 maximum, e.g., #OmahaFood #OmahaRestaurants)
 - Structure: Strong opening hook → Value/insight → Call-to-action
 - Assume this will accompany a professional graphic/image
 - End with clear, professional CTA (e.g., "Learn more", "Contact us", "Subscribe")
@@ -869,7 +873,7 @@ Platform-specific requirements:`;
           prompt += `
 - Create detailed, keyword-rich video description (300+ words)
 - Include compelling title with local keywords
-- Add 3-5 strategic hashtags (#OmahaRealEstate #MikeBjork)
+- Add 3-5 strategic hashtags (#OmahaFood #OmahaRestaurants)
 - Structure with intro, main points, and strong CTA
 - Include timestamps for video sections
 - Add contact information and social links
@@ -887,14 +891,14 @@ Platform-specific requirements:`;
       if (seoOptimized) {
         prompt += `
 - Include location-specific keywords (Omaha, Nebraska)
-- Incorporate real estate terms naturally
-- Mention Mike Bjork and Berkshire Hathaway HomeServices
+- Incorporate food and dining terms naturally
+- Mention the restaurant name and RestaurantFlow platform
 - Use keywords that improve search visibility`;
       }
 
       if (longTailKeywords) {
         prompt += `
-- Include long-tail keywords like "best real estate agent in Omaha"
+- Include long-tail keywords like "best restaurant in Omaha"
 - Use specific neighborhood names when relevant
 - Include property-type specific terms`;
       }
@@ -902,10 +906,10 @@ Platform-specific requirements:`;
       prompt += `
 
 CRITICAL SEO REQUIREMENTS FOR 80%+ SCORE:
-- MUST include "Mike Bjork" and "Omaha" for local SEO (25 points)
-- Add "Berkshire Hathaway HomeServices" for authority (15 points) 
+- MUST include restaurant name and "Omaha" for local SEO (25 points)
+- Add "RestaurantFlow" for platform authority (15 points) 
 - Include neighborhood/location-specific keywords (20 points)
-- Use real estate action words: "homes for sale", "buying", "selling" (10 points)
+- Use restaurant action words: "dining", "menu", "reservations" (10 points)
 - Add year/current market references for freshness (10 points)
 - Include phone number or contact CTA for conversions (20 points)
 
@@ -916,7 +920,7 @@ Respond with JSON in this format:
   "content": "SEO-optimized content for ${platform} with 80%+ score focus",
   "platform": "${platform}",
   "optimization": "specific SEO optimizations made to reach 80%+ score",
-  "hashtags": ["#OmahaRealEstate", "#MikeBjork", "#SEOOptimized"],
+  "hashtags": ["#OmahaFood", "#OmahaRestaurants", "#SEOOptimized"],
   "characterCount": 250,
   "seoScore": 85,
   "seoOptimizations": "detailed list of SEO improvements made",
@@ -932,7 +936,7 @@ Respond with JSON in this format:
               {
                 role: "system",
                 content:
-                  "You are a social media optimization expert specializing in real estate content. Optimize content for maximum engagement on each platform while maintaining professional branding.",
+                  "You are a social media optimization expert specializing in restaurant content. Optimize content for maximum engagement on each platform while maintaining professional branding.",
               },
               { role: "user", content: prompt },
             ],
@@ -961,10 +965,10 @@ Respond with JSON in this format:
         content: `${params.originalContent.substring(
           0,
           200
-        )}... Contact Mike Bjork at Berkshire Hathaway HomeServices for expert SEO-optimized guidance! #OmahaRealEstate #MikeBjork #SEOExpert`,
+        )}... Contact us for expert SEO-optimized restaurant guidance! #OmahaFood #OmahaRestaurants #SEOExpert`,
         platform: params.platform,
         optimization: "SEO-focused optimization applied with 80%+ target score",
-        hashtags: ["#OmahaRealEstate", "#MikeBjork", "#SEOExpert"],
+        hashtags: ["#OmahaFood", "#OmahaRestaurants", "#SEOExpert"],
         characterCount: 280,
         engagementTips:
           "Content optimized for search visibility and engagement",
@@ -994,7 +998,7 @@ Respond with JSON in this format:
   }): Promise<string> {
     try {
       // Use company profile data or fallback to defaults
-      const agentName = companyProfile?.agentName || "Mike Bjork";
+      const agentName = companyProfile?.agentName || "Restaurant Owner";
       const locationText = neighborhood ? `${neighborhood}, Omaha` : "Omaha";
       
       const platformOptimizations: Record<string, { style: string; structure: string; tone: string; focus: string; tips: string }> = {
@@ -1053,7 +1057,7 @@ Respond with JSON in this format:
       const normalizedPlatform = platform || "Instagram Reel";
       const platformConfig = platformOptimizations[normalizedPlatform] || platformOptimizations["Instagram Reel"];
 
-      let prompt = `Create a ${duration}-second video script for ${agentName}, a real estate agent in ${locationText}.
+      let prompt = `Create a ${duration}-second video script for ${agentName}, a restaurant owner in ${locationText}.
 
 CRITICAL: The script must be exactly ${duration} seconds when spoken at a natural pace (approximately ${Math.round(duration * 2.5)} words).
 
@@ -1064,7 +1068,7 @@ Style: ${platformConfig.style}
 Structure: ${platformConfig.structure}
 Tone: ${platformConfig.tone}
 Focus: ${platformConfig.focus}
-Target: Potential home buyers/sellers in the Omaha area
+Target: Potential diners/food lovers in the Omaha area
 
 Platform-specific requirements:
 ${platformConfig.tips}
@@ -1087,7 +1091,7 @@ Write the script that ${agentName} will read directly to camera:`;
             messages: [
               {
                 role: "system",
-                content: `You are a professional video script writer specializing in real estate social media content. You create concise, engaging scripts optimized for specific platforms and durations.
+                content: `You are a professional video script writer specializing in restaurant social media content. You create concise, engaging scripts optimized for specific platforms and durations.
 
 CRITICAL RULES:
 1. Output ONLY the script text - no stage directions, no brackets, no timestamps
@@ -1108,17 +1112,17 @@ CRITICAL RULES:
       console.error("Video script generation error:", error);
 
       // Use company profile data in fallback or defaults
-      const agentName = companyProfile?.agentName || "Mike Bjork";
-      const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "Berkshire Hathaway HomeServices";
+      const agentName = companyProfile?.agentName || "Restaurant Owner";
+      const businessName = companyProfile?.businessName || companyProfile?.brokerageName || "RestaurantFlow";
 
       // Return fallback script
       return `Hi, I'm ${agentName} with ${businessName} here in Omaha. 
 
-Today I want to talk to you about ${topic} in ${neighborhood}. As your local real estate expert, I've seen firsthand how this area continues to attract families and professionals looking for their perfect home.
+Today I want to talk to you about ${topic} in ${neighborhood}. As your local restaurant expert, I've seen firsthand how this area continues to attract food lovers and culinary enthusiasts looking for their perfect dining experience.
 
-The ${neighborhood} market offers unique opportunities whether you're buying your first home or looking to upgrade. I'd love to help you navigate these opportunities and find exactly what you're looking for.
+The ${neighborhood} food scene offers unique opportunities whether you're looking for a casual meal or a special occasion dinner. I'd love to help you discover the best flavors and experiences our restaurant has to offer.
 
-Ready to explore ${neighborhood}? Give me a call or send me an email. I'm ${agentName}, and I'm here to make your real estate dreams a reality in Omaha.`;
+Ready to explore ${neighborhood}? Give me a call or make a reservation. I'm ${agentName}, and I'm here to make your dining dreams a reality in Omaha.`;
     }
   }
 
@@ -1132,56 +1136,56 @@ Ready to explore ${neighborhood}? Give me a call or send me an email. I'm ${agen
       blog: {
         title: `${topic} in ${
           neighborhood || "Omaha"
-        } - Expert Real Estate Guide by Mike Bjork | Berkshire Hathaway HomeServices`,
-        content: `🏡 Looking for expert guidance on ${topic.toLowerCase()} in ${
+        } - Expert Restaurant Guide | Omaha Dining`,
+        content: `🍽️ Looking for expert guidance on ${topic.toLowerCase()} in ${
           neighborhood || "Omaha"
-        }? Mike Bjork at Berkshire Hathaway HomeServices is your trusted local real estate professional with proven results.
+        }? We are your trusted local restaurant with proven culinary excellence.
 
-🎯 Why Choose Mike Bjork for ${topic} in ${neighborhood || "Omaha"}:
-• 500+ successful real estate transactions in Omaha, Nebraska
+🎯 Why Choose Us for ${topic} in ${neighborhood || "Omaha"}:
+• Award-winning cuisine in Omaha, Nebraska
 • Deep knowledge of ${
           neighborhood || "all Omaha"
-        } neighborhoods and market trends
-• Personalized service tailored to your unique needs
-• Access to exclusive listings and off-market opportunities
-• Expert negotiation skills saving clients thousands
+        } food scene and culinary trends
+• Personalized service tailored to your dining needs
+• Access to exclusive menu items and seasonal specials
+• Expert chefs creating memorable experiences
 
-📍 Omaha Real Estate Market Expertise:
-Mike Bjork specializes in helping families find their perfect home in ${
+📍 Omaha Restaurant Expertise:
+We specialize in helping food lovers find their perfect dining experience in ${
           neighborhood || "Omaha"
-        }. Whether you're buying your first home or selling to upgrade, Mike's proven track record speaks for itself.
+        }. Whether you're looking for a casual meal or a special celebration, our proven track record speaks for itself.
 
-💰 Ready to get started with ${topic.toLowerCase()}? Contact Mike Bjork today:
-📞 Call: (402) 555-MIKE
-🌐 Visit: BjorkGroup.com
-📧 Email: mike@bjorkgroup.com
+💰 Ready to get started with ${topic.toLowerCase()}? Contact us today:
+📞 Call: (402) 555-DINE
+🌐 Visit: our website
+📧 Email: info@restaurant.com
 
-#OmahaRealEstate #MikeBjork #BerkshireHathawayHomeServices #${(
+#OmahaFood #OmahaRestaurants #OmahaDining #${(
           neighborhood || "Omaha"
-        ).replace(/\s+/g, "")}Homes`,
+        ).replace(/\s+/g, "")}Food`,
       },
       social: {
         title: `${topic} in ${
           neighborhood || "Omaha"
-        } - Mike Bjork Real Estate Expert`,
-        content: `🏡 Thinking about ${topic.toLowerCase()} in ${
+        } - Your Local Restaurant Expert`,
+        content: `🍽️ Thinking about ${topic.toLowerCase()} in ${
           neighborhood || "Omaha"
-        }? Mike Bjork at Berkshire Hathaway HomeServices is your local real estate expert! 
+        }? We are your local restaurant expert! 
 
-✅ 500+ successful transactions in Omaha, Nebraska
-✅ Deep ${neighborhood || "Omaha"} market knowledge  
-✅ Personalized service and expert guidance
-✅ Proven results that save you time and money
+✅ Award-winning cuisine in Omaha, Nebraska
+✅ Deep ${neighborhood || "Omaha"} food scene knowledge  
+✅ Personalized service and expert culinary guidance
+✅ Memorable dining experiences every time
 
-Ready to make your move in ${
+Ready to experience the best in ${
           neighborhood || "Omaha"
-        }? Contact Mike Bjork today for expert real estate advice!
+        }? Contact us today for a reservation!
 
-📞 (402) 555-MIKE | 🌐 BjorkGroup.com
+📞 (402) 555-DINE | 🌐 Visit us online
 
-#OmahaRealEstate #MikeBjork #BerkshireHathawayHomeServices #${(
+#OmahaFood #OmahaRestaurants #OmahaDining #${(
           neighborhood || "Omaha"
-        ).replace(/\s+/g, "")}Homes #ExpertAdvice`,
+        ).replace(/\s+/g, "")}Food #FoodieLife`,
       },
     };
 
@@ -1193,18 +1197,18 @@ Ready to make your move in ${
       title: content.title,
       content: content.content,
       keywords: [
-        "Mike Bjork",
-        "Omaha real estate",
-        "Berkshire Hathaway HomeServices",
+        "Omaha restaurant",
+        "Omaha dining",
+        "Omaha food",
         neighborhood || "Omaha",
         topic,
         "Nebraska",
-        "expert",
-        "homes for sale",
+        "reservations",
+        "menu",
       ],
-      metaDescription: `Expert real estate guidance for ${topic} in ${
+      metaDescription: `Expert restaurant guidance for ${topic} in ${
         neighborhood || "Omaha"
-      } with Mike Bjork at Berkshire Hathaway HomeServices. 500+ successful transactions. Call (402) 555-MIKE today!`,
+      }. Award-winning cuisine and memorable dining experiences. Call (402) 555-DINE today!`,
       seoScore: 88, // High SEO score ensuring 80%+ target
       wordCount: content.content.split(" ").length,
       seoBreakdown: {
@@ -1295,12 +1299,12 @@ Platform: ${platform}
 Post Type: ${postType}
 
 Requirements:
-- Maintain Mike Bjork's professional brand voice
+- Maintain the restaurant's professional brand voice
 - Include relevant Omaha, Nebraska local SEO keywords
 - Optimize for ${platform} platform best practices
 - Keep content engaging and authentic
 - Ensure call-to-action is clear
-- Target real estate audience in Omaha market
+- Target food and dining audience in Omaha market
 
 Please enhance this content while keeping the same core message and format.`;
 
@@ -1313,7 +1317,7 @@ Please enhance this content while keeping the same core message and format.`;
               {
                 role: "system",
                 content:
-                  "You are an expert content optimizer specializing in real estate social media and SEO for the Omaha, Nebraska market. Enhance content while maintaining authenticity and professional tone.",
+                  "You are an expert content optimizer specializing in restaurant social media and SEO for the Omaha, Nebraska market. Enhance content while maintaining authenticity and professional tone.",
               },
               {
                 role: "user",

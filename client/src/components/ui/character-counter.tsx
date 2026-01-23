@@ -68,7 +68,7 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
     maxCharacters: 4000,
     optimalCharacters: { min: 100, max: 150 },
     truncatesAt: 150,
-    hashtagRecommendation: "3-5 trending hashtags relevant to real estate",
+    hashtagRecommendation: "3-5 trending hashtags relevant to food and dining",
     notes: "Strong hook in opening is critical",
     engagementTip: "The first 2 seconds of your caption need to hook viewers immediately",
   },

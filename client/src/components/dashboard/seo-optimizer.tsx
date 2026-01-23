@@ -49,7 +49,7 @@ export function SEOOptimizer() {
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/seo/keywords/generate', {
         location: 'Omaha, Nebraska',
-        businessType: 'real estate agent'
+        businessType: 'restaurant'
       });
       return await response.json();
     },
@@ -57,7 +57,7 @@ export function SEOOptimizer() {
       setAiGeneratedKeywords(data);
       toast({
         title: "✨ AI Keywords Generated!",
-        description: `Generated ${data.length} optimized keywords for your real estate business.`,
+        description: `Generated ${data.length} optimized keywords for your restaurant business.`,
       });
     },
     onError: (error) => {
@@ -312,9 +312,9 @@ export function SEOOptimizer() {
                         🔥 Do This Week - High Impact
                       </h3>
                       <div className="space-y-2 text-sm text-orange-900 dark:text-orange-100">
-                        <div>• Create 1 video about "buying a home in Dundee" (150 people search this monthly)</div>
-                        <div>• Post 3 new property photos to Instagram with neighborhood hashtags</div>
-                        <div>• Write a blog post about "Aksarben neighborhood guide for families"</div>
+                        <div>• Create 1 video about "best brunch spots in Dundee" (150 people search this monthly)</div>
+                        <div>• Post 3 new food photos to Instagram with local dining hashtags</div>
+                        <div>• Write a blog post about "Guide to dining in Aksarben neighborhood"</div>
                       </div>
                     </div>
                     
@@ -324,10 +324,10 @@ export function SEOOptimizer() {
                         📅 Do This Month - Steady Growth
                       </h3>
                       <div className="space-y-2 text-sm text-blue-900 dark:text-blue-100">
-                        <div>• Get 2 reviews from recent clients on Google Business</div>
-                        <div>• Partner with a local Omaha business for website link exchange</div>
-                        <div>• Update all property listings with better descriptions</div>
-                        <div>• Start an email newsletter for your buyer/seller lists</div>
+                        <div>• Get 2 reviews from recent customers on Google Business</div>
+                        <div>• Partner with a local business for website link exchange</div>
+                        <div>• Update all menu items with better descriptions</div>
+                        <div>• Start an email newsletter for your loyal customers</div>
                       </div>
                     </div>
                     

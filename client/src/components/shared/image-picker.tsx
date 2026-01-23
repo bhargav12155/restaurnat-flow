@@ -83,6 +83,13 @@ export function ImagePicker({
   const [activeTab, setActiveTab] = useState("ai");
   const [previewImage, setPreviewImage] = useState<string | null>(selectedImage || null);
 
+  // Sync previewImage when selectedImage prop changes
+  useEffect(() => {
+    if (selectedImage) {
+      setPreviewImage(selectedImage);
+    }
+  }, [selectedImage]);
+
   // AI Generate state
   const [aiPrompt, setAiPrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState(
@@ -104,7 +111,7 @@ export function ImagePicker({
   const [videoReferenceUploading, setVideoReferenceUploading] = useState(false);
 
   // Stock Images state
-  const [stockQuery, setStockQuery] = useState("real estate");
+  const [stockQuery, setStockQuery] = useState("restaurant food");
   const [stockOrientation, setStockOrientation] = useState("landscape");
   const [debouncedQuery, setDebouncedQuery] = useState(stockQuery);
 
@@ -309,7 +316,8 @@ export function ImagePicker({
   const clearSelection = () => {
     setPreviewImage(null);
     setGeneratedImage(null);
-    onSelect("");
+    // Don't call onSelect("") here - just clear local preview state
+    // The user can close the dialog without selecting anything
   };
 
   // Download generated image to device
@@ -396,13 +404,13 @@ export function ImagePicker({
   const stockImages = stockData?.images || [];
 
   return (
-    <div className={`space-y-4 ${className}`} data-testid="image-picker">
+    <div className={`space-y-3 ${className}`} data-testid="image-picker">
       {/* Preview Section */}
       {previewImage && (
         <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-4">
-              <div className="relative w-32 h-32 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+          <CardContent className="p-3">
+            <div className="flex items-start gap-3">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                 <img
                   src={previewImage}
                   alt="Selected"
@@ -411,8 +419,15 @@ export function ImagePicker({
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium mb-2">Selected Image</p>
-                <p className="text-xs text-muted-foreground truncate mb-3">{previewImage}</p>
+                <p className="text-sm font-medium mb-1">Selected Image</p>
+                <a 
+                  href={previewImage} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline mb-2 inline-block"
+                >
+                  View larger image ↗
+                </a>
                 <div className="flex gap-2">
                   <Button
                     size="sm"
@@ -440,38 +455,32 @@ export function ImagePicker({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="ai" data-testid="tab-ai-generate">
-            <Wand2 className="h-4 w-4 mr-1" />
+        <TabsList className="grid w-full grid-cols-4 h-9">
+          <TabsTrigger value="ai" data-testid="tab-ai-generate" className="text-xs px-1">
+            <Wand2 className="h-3 w-3 sm:mr-1" />
             <span className="hidden sm:inline">AI Image</span>
-            <span className="sm:hidden">Image</span>
           </TabsTrigger>
-          <TabsTrigger value="video" data-testid="tab-ai-video">
-            <Video className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline">AI Video</span>
-            <span className="sm:hidden">Video</span>
+          <TabsTrigger value="stock" data-testid="tab-stock-images" className="text-xs px-1">
+            <Search className="h-3 w-3 sm:mr-1" />
+            <span className="hidden sm:inline">Stock</span>
           </TabsTrigger>
-          <TabsTrigger value="stock" data-testid="tab-stock-images">
-            <Search className="h-4 w-4 mr-1" />
-            Stock
+          <TabsTrigger value="upload" data-testid="tab-upload" className="text-xs px-1">
+            <Upload className="h-3 w-3 sm:mr-1" />
+            <span className="hidden sm:inline">Upload</span>
           </TabsTrigger>
-          <TabsTrigger value="upload" data-testid="tab-upload">
-            <Upload className="h-4 w-4 mr-1" />
-            Upload
-          </TabsTrigger>
-          <TabsTrigger value="mls" data-testid="tab-mls-photos">
-            <Home className="h-4 w-4 mr-1" />
-            MLS
+          <TabsTrigger value="mls" data-testid="tab-mls-photos" className="text-xs px-1">
+            <Home className="h-3 w-3 sm:mr-1" />
+            <span className="hidden sm:inline">Photos</span>
           </TabsTrigger>
         </TabsList>
 
         {/* AI Generate Tab */}
-        <TabsContent value="ai" className="space-y-4 mt-4">
+        <TabsContent value="ai" className="space-y-3 mt-3">
           {/* Templates */}
           {templates.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Quick Templates</Label>
-              <div className="flex flex-wrap gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Quick Templates</Label>
+              <div className="flex flex-wrap gap-1.5">
                 {templates.map((template) => (
                   <Button
                     key={template.id}
@@ -479,7 +488,7 @@ export function ImagePicker({
                     size="sm"
                     onClick={() => handleTemplateClick(template)}
                     data-testid={`button-template-${template.id}`}
-                    className="text-xs"
+                    className="text-xs h-7 px-2"
                   >
                     <Sparkles className="h-3 w-3 mr-1" />
                     {template.name}
@@ -490,12 +499,12 @@ export function ImagePicker({
           )}
 
           {/* Prompt Input */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <Label htmlFor="ai-prompt">Image Description</Label>
+              <Label htmlFor="ai-prompt" className="text-xs">Image Description</Label>
               <div className="flex items-center gap-2">
                 <Select value={logoOption} onValueChange={(v) => setLogoOption(v as typeof logoOption)}>
-                  <SelectTrigger className="w-[160px] h-8 text-xs" data-testid="select-logo-option">
+                  <SelectTrigger className="w-[140px] h-7 text-xs" data-testid="select-logo-option">
                     <SelectValue placeholder="Add logo..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -511,8 +520,9 @@ export function ImagePicker({
               id="ai-prompt"
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder="Describe the image you want to generate... e.g., 'Modern luxury home with pool at sunset'"
-              rows={3}
+              placeholder="Describe the image you want to generate..."
+              rows={2}
+              className="text-sm"
               data-testid="textarea-ai-prompt"
             />
             {logoOption !== "none" && (
@@ -527,28 +537,28 @@ export function ImagePicker({
           </div>
 
           {/* Reference Image Upload */}
-          <div className="space-y-2">
-            <Label>Reference Image (Optional)</Label>
+          <div className="space-y-1">
+            <Label className="text-xs">Reference Image (Optional)</Label>
             {imageReferenceUrl ? (
-              <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30">
-                <div className="w-16 h-16 rounded overflow-hidden flex-shrink-0">
+              <div className="flex items-center gap-2 p-2 border rounded-lg bg-muted/30">
+                <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0">
                   <img src={imageReferenceUrl} alt="Reference" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Reference uploaded</p>
-                  <p className="text-xs text-muted-foreground">AI will use this as inspiration</p>
+                  <p className="text-xs font-medium">Reference uploaded</p>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setImageReferenceUrl(null)}
                   data-testid="button-remove-image-reference"
+                  className="h-7 w-7 p-0"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3 w-3" />
                 </Button>
               </div>
             ) : (
-              <div className="border-2 border-dashed rounded-lg p-4 text-center">
+              <div className="border-2 border-dashed rounded-lg p-2 text-center">
                 <input
                   type="file"
                   accept="image/*"
@@ -564,14 +574,13 @@ export function ImagePicker({
                 <label htmlFor="image-reference-upload" className="cursor-pointer">
                   {imageReferenceUploading ? (
                     <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Uploading...</span>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span className="text-xs">Uploading...</span>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                      <Upload className="h-6 w-6" />
-                      <span className="text-sm">Upload reference image</span>
-                      <span className="text-xs">AI will match style/composition</span>
+                    <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                      <Upload className="h-4 w-4" />
+                      <span className="text-xs">Upload reference image</span>
                     </div>
                   )}
                 </label>
@@ -580,11 +589,11 @@ export function ImagePicker({
           </div>
 
           {/* Options Row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Aspect Ratio</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Aspect Ratio</Label>
               <Select value={aspectRatio} onValueChange={setAspectRatio}>
-                <SelectTrigger data-testid="select-aspect-ratio">
+                <SelectTrigger data-testid="select-aspect-ratio" className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -596,16 +605,16 @@ export function ImagePicker({
                 </SelectContent>
               </Select>
               {platform && PLATFORM_ASPECT_SUGGESTIONS[platform] && (
-                <p className="text-xs text-muted-foreground">
-                  Recommended for {platform}: {PLATFORM_ASPECT_SUGGESTIONS[platform]}
+                <p className="text-[10px] text-muted-foreground">
+                  Recommended: {PLATFORM_ASPECT_SUGGESTIONS[platform]}
                 </p>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label>Style</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Style</Label>
               <Select value={style} onValueChange={setStyle}>
-                <SelectTrigger data-testid="select-style">
+                <SelectTrigger data-testid="select-style" className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -623,7 +632,7 @@ export function ImagePicker({
           <Button
             onClick={handleGenerate}
             disabled={generateMutation.isPending || !aiPrompt.trim()}
-            className="w-full"
+            className="w-full h-9"
             data-testid="button-generate-image"
           >
             {generateMutation.isPending ? (
@@ -698,7 +707,7 @@ export function ImagePicker({
               id="video-prompt"
               value={videoPrompt}
               onChange={(e) => setVideoPrompt(e.target.value)}
-              placeholder="Describe the video you want to generate... e.g., 'Aerial view of luxury home with pool surrounded by trees'"
+              placeholder="Describe the video you want to generate... e.g., 'Steaming pasta dish with fresh herbs being plated by a chef'"
               rows={3}
               data-testid="textarea-video-prompt"
             />
@@ -942,7 +951,7 @@ export function ImagePicker({
                 >
                   <img
                     src={photoUrl}
-                    alt={`Property photo ${index + 1}`}
+                    alt={`Menu photo ${index + 1}`}
                     className="w-full h-full object-cover"
                   />
                   {previewImage === photoUrl && (
@@ -958,9 +967,9 @@ export function ImagePicker({
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <Home className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="mb-2">No MLS photos available</p>
+              <p className="mb-2">No menu photos available</p>
               <p className="text-xs">
-                Select a property first to see its photos here
+                Select a menu item first to see its photos here
               </p>
             </div>
           )}

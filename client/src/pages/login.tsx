@@ -110,7 +110,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     if (isInIframe()) {
       console.log("In iframe - requesting user data from parent window");
       window.parent.postMessage(
-        { source: "realtyflow", action: "requestUserData" },
+        { source: "restaurantflow", action: "requestUserData" },
         "*", // Will be validated by the parent
       );
     }
@@ -121,7 +121,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     };
   }, [universalLogin, onSuccess]);
 
-  // Check for auto-login from URL parameters (iMakePage or NebraskaHomeHub)
+  // Check for auto-login from URL parameters (iMakePage or external integration)
   useEffect(() => {
     const checkAutoLogin = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -161,9 +161,9 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
         return;
       }
 
-      // Priority 2: NebraskaHomeHub URL parameters
-      if (autoLogin === "true" && userEmail && source === "nebraska-home-hub") {
-        console.log("Auto-login detected from NebraskaHomeHub for:", userEmail);
+      // Priority 2: External integration URL parameters
+      if (autoLogin === "true" && userEmail) {
+        console.log("Auto-login detected from external integration for:", userEmail);
         setIsAutoLogging(true);
         setUserIdentifier(userEmail);
 
@@ -171,7 +171,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
           const loginResult = await universalLogin(userEmail);
 
           if (loginResult.success) {
-            setSuccess("Welcome from NebraskaHomeHub!");
+            setSuccess("Welcome to RestaurantFlow!");
             setTimeout(() => handleLoginSuccess(), 1000);
           } else {
             setLocalError(
@@ -210,7 +210,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     const loginResult = await universalLogin(identifier);
 
     if (loginResult.success) {
-      setSuccess("Welcome to RealtyFlow!");
+      setSuccess("Welcome to RestaurantFlow!");
       setTimeout(() => handleLoginSuccess(), 1000);
     } else {
       setLocalError(
@@ -255,8 +255,8 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">RealtyFlow</CardTitle>
-          <CardDescription>Multi-User Real Estate Platform</CardDescription>
+          <CardTitle className="text-2xl font-bold">RestaurantFlow</CardTitle>
+          <CardDescription>Multi-User Restaurant Marketing Platform</CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -293,7 +293,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
                 type="text"
                 value={userIdentifier}
                 onChange={(e) => setUserIdentifier(e.target.value)}
-                placeholder="Enter your email or agent code"
+                placeholder="Enter your email or restaurant code"
                 disabled={isLoading}
                 className="text-center"
                 autoFocus
@@ -329,7 +329,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
               <p className="text-xs text-gray-500">
                 Use your email address for client access
                 <br />
-                or agent code for professional features
+                or restaurant code for professional features
               </p>
 
               <div className="relative">

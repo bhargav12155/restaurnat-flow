@@ -100,14 +100,6 @@ const navigationItems = [
         key: "streaming-avatar",
         isPageLink: true,
       },
-      {
-        icon: Home,
-        label: "Property Tours",
-        href: "/dashboard#property-tour",
-        key: "property-tour",
-        isPageLink: true,
-        badge: "NEW",
-      },
     ],
   },
   { icon: Search, label: "SEO Optimizer", href: "/dashboard#seo", key: "seo", isPageLink: true },
@@ -132,7 +124,7 @@ const navigationItems = [
 const quickActions = [
   { icon: Plus, label: "New Blog Post", href: "/dashboard?type=blog#ai-content", contentType: "blog" },
   { icon: Camera, label: "Social Post", href: "/dashboard?type=social#ai-content", contentType: "social" },
-  { icon: Home, label: "Property Feature", href: "/dashboard?type=property_feature#ai-content", contentType: "property_feature" },
+  { icon: Home, label: "Menu Item Feature", href: "/dashboard?type=property_feature#ai-content", contentType: "property_feature" },
 ];
 
 interface SidebarProps {

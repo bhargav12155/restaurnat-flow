@@ -226,7 +226,7 @@ export default function UnifiedCalendarPage() {
   const rawName = user?.name || user?.email?.split('@')[0];
   const userName = rawName 
     ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
-    : "Agent";
+    : "Owner";
 
   const eventForm = useForm<EventFormData>({
     resolver: zodResolver(eventFormSchema),
@@ -429,7 +429,7 @@ export default function UnifiedCalendarPage() {
   const generateContentPlanMutation = useMutation({
     mutationFn: async (weeks: number = 4) => {
       const response = await apiRequest('POST', '/api/content/generate-plan', {
-        targetAudience: 'home buyers and sellers',
+        targetAudience: 'food lovers and diners',
         specialties: [],
         weeks,
       });
@@ -639,7 +639,7 @@ export default function UnifiedCalendarPage() {
 
   function getCategoryColor(category: string | null) {
     switch (category) {
-      case "real_estate": return "bg-blue-500";
+      case "restaurant": return "bg-blue-500";
       case "market": return "bg-green-500";
       case "festival": return "bg-purple-500";
       case "networking": return "bg-orange-500";
@@ -914,7 +914,7 @@ export default function UnifiedCalendarPage() {
                               </FormControl>
                               <SelectContent>
                                 <SelectItem value="community">Community</SelectItem>
-                                <SelectItem value="real_estate">Real Estate</SelectItem>
+                                <SelectItem value="food_events">Food Events</SelectItem>
                                 <SelectItem value="market">Market</SelectItem>
                                 <SelectItem value="festival">Festival</SelectItem>
                                 <SelectItem value="networking">Networking</SelectItem>
@@ -1261,26 +1261,26 @@ export default function UnifiedCalendarPage() {
                         const lowerContent = content.toLowerCase();
                         
                         const advertisingIndicators = [
-                          'just listed', 'just sold', 'open house', 'for sale', 'price reduced',
-                          'new listing', 'coming soon', 'pending', 'under contract', 'sold!',
-                          'featured property', 'dream home', 'call me', 'contact me', 'dm me',
-                          'reach out', 'schedule a showing', 'home buyer', 'home seller',
-                          'real estate', 'property tour', 'market update', 'mortgage',
-                          'investment property', 'first time buyer'
+                          'daily special', 'new menu', 'grand opening', 'happy hour', 'price special',
+                          'new dish', 'coming soon', 'limited time', 'sold out', 'now serving',
+                          'featured item', 'chef special', 'call us', 'contact us', 'dm us',
+                          'reach out', 'make a reservation', 'food lover', 'dine with us',
+                          'restaurant', 'kitchen tour', 'menu update', 'catering',
+                          'private dining', 'takeout special'
                         ];
                         const isAdvertising = advertisingIndicators.some(indicator => lowerContent.includes(indicator));
                         
                         if (isAdvertising) {
-                          const hasBranding = lowerContent.includes('bhhs') || 
-                            lowerContent.includes('berkshire') || 
-                            lowerContent.includes('bhhs ambassador') ||
-                            lowerContent.includes('ambassador real estate');
+                          const hasBranding = lowerContent.includes('our restaurant') || 
+                            lowerContent.includes('chef') || 
+                            lowerContent.includes('kitchen') ||
+                            lowerContent.includes('menu');
                           if (!hasBranding) {
-                            issues.push({ message: 'Missing BHHS branding (required for ads)', severity: 'error' });
+                            issues.push({ message: 'Missing restaurant branding (recommended for ads)', severity: 'warning' });
                           }
                         }
                         
-                        const prohibitedTerms = ['brokerage owner', 'principal broker'];
+                        const prohibitedTerms = ['competitor name'];
                         prohibitedTerms.forEach(term => {
                           if (lowerContent.includes(term)) {
                             issues.push({ message: `Term "${term}" requires broker license`, severity: 'error' });

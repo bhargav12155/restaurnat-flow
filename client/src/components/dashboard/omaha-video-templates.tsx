@@ -12,13 +12,13 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { 
   MapPin, 
-  Home, 
+  Utensils, 
   TrendingUp, 
   Users, 
-  Car,
-  GraduationCap,
-  Snowflake,
-  DollarSign,
+  ChefHat,
+  Sparkles,
+  Clock,
+  Star,
   Play,
   Copy,
   Wand2
@@ -31,190 +31,230 @@ interface VideoTemplate {
   category: string;
   icon: any;
   duration: number;
-  neighborhood?: string;
+  cuisine?: string;
   script: string;
   hooks: string[];
   callToAction: string;
   tags: string[];
 }
 
-const omahaVideoTemplates: VideoTemplate[] = [
-  // Neighborhood Spotlights
+const restaurantVideoTemplates: VideoTemplate[] = [
+  // Dish Spotlights
   {
-    id: "dundee-family",
-    title: "Dundee: Perfect for Growing Families",
-    description: "Showcase Dundee's family-friendly amenities and charm",
-    category: "neighborhood",
-    icon: Home,
+    id: "signature-dish",
+    title: "Signature Dish Showcase",
+    description: "Highlight your most popular and signature dishes",
+    category: "dishes",
+    icon: Utensils,
     duration: 90,
-    neighborhood: "Dundee",
-    script: `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices. Today I want to talk about why Dundee is absolutely perfect for growing families.
+    cuisine: "Any",
+    script: `Hi, I'm the chef at [Restaurant Name]. Today I want to introduce you to our signature dish that customers can't stop talking about.
 
-Picture this: tree-lined streets where kids can safely ride bikes, walkable neighborhoods where you can stroll to local cafes, and a community that truly feels like home. That's Dundee.
+This is our [Dish Name] - a perfect combination of [key ingredients] that we've perfected over years of careful preparation.
 
-What makes Dundee special? First, the schools. You're looking at some of Omaha's top-rated districts with excellent programs. Second, the parks - Elmwood Park is literally in your backyard with playgrounds, trails, and community events year-round.
+What makes this dish special? First, we source only the finest ingredients. Our [main ingredient] is [sourcing detail]. Second, the preparation - we [preparation method] to ensure every bite is absolutely perfect.
 
-But here's what really sets Dundee apart - the sense of community. Neighbors know each other. Local businesses thrive. And you're just minutes from downtown Omaha while feeling like you're in a small town.
+The flavors here are incredible - you'll taste the [flavor notes] that blend together harmoniously. It's the dish that keeps our regulars coming back week after week.
 
-Home values here have consistently appreciated, making it not just a great place to live, but a smart investment for your family's future.
+But here's our secret - it's all about the love and passion we put into every plate. Our kitchen team takes pride in creating something truly memorable for you.
 
-Ready to explore what Dundee has to offer? Call me at 402-XXX-XXXX. I know this neighborhood inside and out, and I'd love to show you why families choose Dundee.`,
+Whether you're celebrating a special occasion or just treating yourself, this dish will not disappoint.
+
+Ready to try it for yourself? Make a reservation today or stop by our restaurant. I promise you won't be disappointed.`,
     hooks: [
-      "What if I told you there's a neighborhood where kids still play outside?",
-      "Looking for a place where neighbors actually know each other?",
-      "Here's why smart families are choosing Dundee..."
+      "Want to know what dish our customers can't stop ordering?",
+      "Here's the dish that put our restaurant on the map...",
+      "This signature dish has a secret ingredient you'd never guess..."
     ],
-    callToAction: "Ready to find your dream home in Dundee? Call Mike at 402-XXX-XXXX",
-    tags: ["Dundee", "FamilyHomes", "OmahaNeighborhoods", "SafeForKids"]
+    callToAction: "Ready to taste the difference? Book your table today!",
+    tags: ["SignatureDish", "FoodLovers", "MustTry", "ChefSpecial"]
   },
   {
-    id: "aksarben-luxury",
-    title: "Aksarben Village: Luxury Living Redefined",
-    description: "Highlight Aksarben's modern amenities and lifestyle",
-    category: "neighborhood",
-    icon: TrendingUp,
+    id: "seasonal-special",
+    title: "Seasonal Special Announcement",
+    description: "Announce limited-time seasonal menu items",
+    category: "dishes",
+    icon: Sparkles,
     duration: 75,
-    neighborhood: "Aksarben",
-    script: `If you're looking for luxury living in Omaha, Aksarben Village is where it's happening.
+    cuisine: "Any",
+    script: `Exciting news from our kitchen! For a limited time, we're featuring something truly special on our menu.
 
-This isn't just a neighborhood - it's a lifestyle. Imagine walking out your front door to world-class dining, shopping, and entertainment. The CHI Health Center, Baxter Arena, and some of Omaha's best restaurants are literally at your doorstep.
+Introducing our [Seasonal Dish Name] - a celebration of the season's freshest ingredients.
 
-The homes here? Stunning. We're talking modern condos with floor-to-ceiling windows, luxury townhomes with rooftop decks, and amenities that feel like a five-star resort. Pool, fitness center, concierge services - it's all here.
+We're using [seasonal ingredients] that are at their absolute peak right now. This dish captures everything we love about this time of year.
 
-And here's something most people don't know - Aksarben has some of the best appreciation rates in Omaha. You're not just buying a home, you're making a smart investment in one of the city's fastest-growing areas.
+The [description of key components] are sourced locally from [local farm/supplier], ensuring maximum freshness and flavor.
 
-Whether you're a young professional, empty nester, or anyone who appreciates the finer things in life, Aksarben Village delivers luxury without compromise.
+Our chef has crafted this dish to bring you [flavor profile] that you simply can't get any other time of year.
 
-Want to see what luxury living really looks like? I'm Mike Bjork, and I'd love to show you around Aksarben Village. Call me today.`,
+But here's the thing - this won't last forever. Once the season changes, this dish goes away until next year.
+
+Don't miss your chance to experience this seasonal masterpiece. Available now through [end date].
+
+Come in and taste what the season has to offer!`,
     hooks: [
-      "What does $500K buy you in Omaha's hottest neighborhood?",
-      "Here's where Omaha's professionals are choosing to live...",
-      "Luxury living in Omaha just got an upgrade..."
+      "This dish is only available for the next few weeks...",
+      "Here's why seasonal eating just tastes better...",
+      "The ingredient we've been waiting all year for has arrived..."
     ],
-    callToAction: "Experience Aksarben luxury. Call Mike at 402-XXX-XXXX for a private tour",
-    tags: ["Aksarben", "LuxuryHomes", "ModernLiving", "CondoLife"]
+    callToAction: "Limited time only! Visit us before [end date] to try this special",
+    tags: ["SeasonalMenu", "LimitedTime", "FreshIngredients", "ChefSpecial"]
   },
   
-  // Moving to Omaha Guides
+  // Behind the Scenes
   {
-    id: "moving-guide-overview",
-    title: "Moving to Omaha: Your Complete Guide",
-    description: "Comprehensive overview for people relocating to Omaha",
-    category: "moving",
-    icon: Users,
+    id: "kitchen-tour",
+    title: "Behind the Scenes Kitchen Tour",
+    description: "Give customers a peek into your kitchen operations",
+    category: "behind-scenes",
+    icon: ChefHat,
     duration: 120,
-    script: `Thinking about moving to Omaha? You're making a smart choice, and I'm here to tell you why.
+    script: `Welcome to our kitchen! Today I'm taking you behind the scenes to show you where the magic happens.
 
-First, let's talk opportunity. Omaha is home to five Fortune 500 companies - Berkshire Hathaway, Union Pacific, ConAgra, Mutual of Omaha, and Kiewit. The job market is strong, unemployment is low, and there's room to grow your career.
+First, let's talk about our prep station. Every morning at [time], our team starts preparing ingredients fresh. Nothing sits around here - we believe in cooking with the freshest ingredients possible.
 
-Now, the cost of living - this is where Omaha really shines. Your dollar goes further here. The median home price is about 30% below the national average, but you're not sacrificing quality of life. We have world-class healthcare, excellent schools, and a thriving arts and culture scene.
+Here's our main cooking line. You'll see our [equipment] where we [cooking technique]. The heat, the flames, the sizzle - this is where dishes come to life.
 
-Worried about harsh winters? Yes, we get snow, but the city handles it well, and there's something magical about Nebraska's four distinct seasons. Plus, summer festivals, farmer's markets, and outdoor activities make up for any winter blues.
+Our team is incredible. We have [number] talented cooks who've been with us for [time period]. They know every dish inside and out.
 
-The neighborhoods? Incredible variety. Want urban living? Check out downtown or Midtown. Family-oriented? Dundee, Benson, or West Omaha. Looking for luxury? Aksarben Village has you covered.
+Quality control is everything. Every plate that leaves this kitchen is checked to make sure it meets our standards. We're not happy unless you're delighted.
 
-Here's the bottom line - Omaha offers big city opportunities with small town values, all at a price that won't break the bank.
+And here's something most people don't see - our cleaning routine. A clean kitchen is a safe kitchen, and we take that seriously.
 
-Ready to make Omaha home? I'm Mike Bjork, your local expert who can help you navigate this transition seamlessly.`,
+This kitchen is the heart of our restaurant. It's where passion meets skill, and where your meal is prepared with care.
+
+Next time you dine with us, know that this is the team and the kitchen working hard to give you an amazing experience.`,
     hooks: [
-      "Why are people leaving expensive cities for Omaha?",
-      "Here's what $300K gets you in Omaha vs. other cities...",
-      "The Omaha secret that's changing lives..."
+      "Ever wondered what happens before your food arrives?",
+      "Most restaurants won't show you their kitchen. Here's ours...",
+      "The secret to great food starts in this room..."
     ],
-    callToAction: "Ready to call Omaha home? Let's talk: 402-XXX-XXXX",
-    tags: ["MovingToOmaha", "RelocationGuide", "CostOfLiving", "NewToOmaha"]
+    callToAction: "Now that you've seen the kitchen, come taste the results!",
+    tags: ["BehindTheScenes", "KitchenTour", "FoodPrep", "RestaurantLife"]
   },
   {
-    id: "winter-guide",
-    title: "Omaha Winters: What to Really Expect",
-    description: "Honest guide about winter living in Omaha",
-    category: "moving",
-    icon: Snowflake,
+    id: "meet-the-chef",
+    title: "Meet the Chef Story",
+    description: "Personal introduction from your head chef",
+    category: "behind-scenes",
+    icon: Users,
     duration: 90,
-    script: `Let's talk about the elephant in the room - Omaha winters. If you're moving here from warmer climates, you probably have questions.
+    script: `Hi, I'm [Chef Name], and I want to share my story with you.
 
-Yes, it gets cold. Yes, we get snow. But here's what the weather apps don't tell you - Omaha handles winter beautifully.
+I fell in love with cooking when I was [age/circumstances]. There was something magical about transforming simple ingredients into something that brought joy to people.
 
-The city's snow removal is top-notch. Main roads are cleared quickly, and neighborhoods follow close behind. Your commute isn't going to be derailed by every snowstorm.
+I trained at [culinary background] and worked at [notable experience]. But opening this restaurant was always my dream.
 
-Heating costs? With good insulation and efficient systems, most homes run $150-250 per month in the coldest months. Factor in our lower overall cost of living, and you're still ahead.
+My cooking philosophy is simple: [philosophy]. I believe that great food doesn't need to be complicated - it needs to be made with quality ingredients and genuine care.
 
-But here's the real truth about Omaha winters - the community comes alive. Ice skating at Turner Park, winter festivals downtown, cozy neighborhood coffee shops. There's something special about Nebraska hospitality in winter - neighbors help neighbors, and everyone looks out for each other.
+Every dish on our menu has a story. Some are inspired by my grandmother's recipes. Others are my own creations that I've refined over years of experimentation.
 
-And spring? When those first warm days hit in March, you appreciate them in a way you never did in warmer climates.
+What I love most about this job is seeing your faces when you taste something that hits just right. That moment when a dish exceeds expectations - that's why I do this.
 
-My advice? Invest in a good coat, embrace the seasons, and discover why so many people who move here for work end up staying for life.
+Our team shares this passion. We're not just preparing food - we're creating experiences and memories for you.
 
-Questions about winter living in Omaha? I've been here my whole life - call me and let's talk real talk about what to expect.`,
+I'd love for you to come in and taste what we've created. Let me cook for you.`,
     hooks: [
-      "Here's the truth about Omaha winters nobody tells you...",
-      "Why winter might be your favorite season in Omaha...",
-      "Scared of Nebraska winters? Watch this first..."
+      "Here's how a childhood memory became our most popular dish...",
+      "Why I left a successful career to open this restaurant...",
+      "The moment that changed how I think about food forever..."
     ],
-    callToAction: "Winter questions? Get honest answers from a local: 402-XXX-XXXX",
-    tags: ["OmahaWinter", "MovingToOmaha", "WinterLiving", "SeasonalGuide"]
+    callToAction: "Come meet the team and taste the passion in every dish",
+    tags: ["MeetTheChef", "ChefStory", "Passion", "FoodJourney"]
   },
   
-  // Market Updates
+  // Promotions
   {
-    id: "market-update-january",
-    title: "Omaha Market Update - January 2025",
-    description: "Current market trends and opportunities",
-    category: "market",
-    icon: TrendingUp,
-    duration: 105,
-    script: `It's January 2025, and the Omaha real estate market is telling an interesting story. Let me break down what you need to know.
+    id: "happy-hour",
+    title: "Happy Hour Promotion",
+    description: "Promote your happy hour specials",
+    category: "promotions",
+    icon: Clock,
+    duration: 60,
+    script: `Happy hour just got happier at [Restaurant Name]!
 
-First, inventory - we're sitting at about 2.1 months of supply, which is still a seller's market, but it's more balanced than we've seen in years. This means buyers have more choices, and sellers need to price strategically.
+Every [days] from [start time] to [end time], we're offering incredible deals you won't want to miss.
 
-Home prices? The median sale price hit $285,000 last month, up 4.2% year over year. That's healthy appreciation without the crazy spikes we saw in 2021-2022.
+First, drinks. [Drink specials details]. Perfect for unwinding after work with friends or colleagues.
 
-Here's what's hot: Move-in ready homes under $350K are still moving fast. Luxury properties over $500K are taking longer but commanding top dollar when priced right.
+But we didn't forget about the food. Our happy hour menu includes [food specials]. These aren't just appetizers - these are chef-crafted dishes at prices that'll make you smile.
 
-Interest rates are hovering around 6.8%, which has definitely cooled some buyer activity, but here's the thing - rates always fluctuate. The home you buy today will outlast multiple rate cycles.
+Our atmosphere during happy hour is perfect - lively enough for fun, relaxed enough for conversation. It's become the go-to spot for [target audience].
 
-My prediction for 2025? Continued moderate appreciation, better selection for buyers, and opportunities for both sides if you work with an agent who knows the local market.
+Here's a tip: our [popular happy hour item] sells out fast. Come early to make sure you get one.
 
-Whether you're buying or selling this year, timing and strategy matter more than ever. That's where having a local expert makes all the difference.
+Happy hour at [Restaurant Name] - where good food, great drinks, and better company come together.
 
-Want the inside scoop on your specific neighborhood or price range? Let's talk about your goals and how this market can work for you.`,
+See you at happy hour!`,
     hooks: [
-      "What nobody's telling you about Omaha's 2025 market...",
-      "Is now the right time to buy or sell in Omaha?",
-      "Here's what changed in Omaha real estate this month..."
+      "Here's how to eat like a king for half the price...",
+      "The best kept happy hour secret in [city]...",
+      "Why everyone's talking about our happy hour specials..."
     ],
-    callToAction: "Get your personalized market analysis: 402-XXX-XXXX",
-    tags: ["MarketUpdate", "OmahaRealEstate", "January2025", "MarketTrends"]
+    callToAction: "Join us for happy hour [days] from [time]!",
+    tags: ["HappyHour", "Specials", "DrinkDeals", "FoodDeals"]
+  },
+  {
+    id: "weekend-brunch",
+    title: "Weekend Brunch Feature",
+    description: "Highlight your weekend brunch offerings",
+    category: "promotions",
+    icon: Star,
+    duration: 75,
+    script: `Weekends were made for brunch, and brunch was perfected at [Restaurant Name].
+
+Every [Saturday/Sunday/Both], from [time] to [time], we transform into brunch paradise.
+
+Let me tell you about our highlights. Our [signature brunch item] is legendary - [description]. People drive from across town just for this dish.
+
+We've got something for everyone. Classic eggs benedict? Absolutely. Fluffy pancakes? Of course. Something more adventurous? Our [unique dish] will surprise and delight.
+
+And let's talk about our brunch drinks. Our [mimosa flight/bloody mary bar/specialty cocktail] is the perfect way to start your weekend.
+
+The vibe here on weekend mornings is unbeatable. Sun coming through the windows, great music, the aroma of fresh coffee and cooking - it's the perfect way to slow down and enjoy.
+
+Pro tip: Make a reservation. Our brunch tends to fill up quickly, and we'd hate for you to miss out.
+
+Start your weekend right with brunch at [Restaurant Name].`,
+    hooks: [
+      "Here's why our brunch is worth setting an alarm on the weekend...",
+      "The brunch dish that has a 2-week wait list...",
+      "Weekend plans? We've got you covered..."
+    ],
+    callToAction: "Reserve your brunch table now!",
+    tags: ["WeekendBrunch", "BrunchLife", "SaturdayBrunch", "SundayFunday"]
   },
   
-  // Buyer/Seller Education
+  // Reviews & Testimonials
   {
-    id: "first-time-buyer",
-    title: "First-Time Homebuyer Tips for Omaha",
-    description: "Essential advice for first-time buyers in the Omaha market",
-    category: "education",
-    icon: GraduationCap,
-    duration: 135,
-    script: `Buying your first home in Omaha? Congratulations! This is one of the most exciting steps you'll ever take. Let me share some insider tips that'll save you time, money, and stress.
+    id: "customer-testimonial",
+    title: "Customer Testimonial Feature",
+    description: "Share customer love and reviews",
+    category: "testimonials",
+    icon: Star,
+    duration: 60,
+    script: `We love hearing from our customers, and today we want to share some of that love with you.
 
-First, get pre-approved before you look at a single house. In this market, sellers want to see that letter. It shows you're serious and helps you understand your budget. In Omaha, you can find great starter homes from $180K-$280K.
+[Customer Name] said: "[Testimonial quote]"
 
-Second, think beyond the mortgage payment. Budget for property taxes (Nebraska's are reasonable), insurance, utilities, and maintenance. In Omaha, expect about $200-300 monthly for taxes and insurance on a typical starter home.
+[Another Customer] shared: "[Testimonial quote]"
 
-Third, choose your neighborhood carefully. Commute times, school districts, and future development all impact your investment. West Omaha offers newer construction, Midtown has character and walkability, and up-and-coming areas like Benson offer great value.
+And [Customer] mentioned: "[Testimonial quote]"
 
-Here's what I tell all my first-time buyers: Your first home doesn't have to be your forever home. Buy something you can afford, build equity for 3-5 years, then upgrade if needed.
+Reviews like these remind us why we do what we do. Every dish we prepare, every customer we serve - it all matters.
 
-And please, don't skip the inspection. Even new construction needs a professional once-over. It's $500 that could save you thousands.
+We're not just trying to feed you - we're trying to create memorable experiences that bring you back again and again.
 
-Ready to start your home search? I work with amazing first-time buyers every day, and I'd love to help you navigate this process with confidence.`,
+To everyone who's left us a review, shared our restaurant with friends, or simply smiled after a great meal - thank you. You're the reason we're here.
+
+Haven't visited yet? Come see what everyone's talking about. We'd love to add you to our family of happy customers.`,
     hooks: [
-      "What I wish every first-time buyer knew before starting...",
-      "The first-time buyer mistakes that cost thousands...",
-      "Here's how to buy your first home like a pro..."
+      "Here's what our customers are saying about us...",
+      "These reviews made our whole team smile...",
+      "Find out why customers keep coming back..."
     ],
-    callToAction: "Ready to buy your first home? Let's start the journey: 402-XXX-XXXX",
-    tags: ["FirstTimeBuyer", "Homebuying101", "OmahaHomes", "BuyerTips"]
+    callToAction: "Join our happy customers - book your table today!",
+    tags: ["CustomerLove", "Reviews", "Testimonials", "5Stars"]
   }
 ];
 
@@ -262,10 +302,10 @@ export function OmahaVideoTemplates() {
       title: customTitle,
       script: customScript,
       topic: selectedTemplate.description,
-      neighborhood: selectedTemplate.neighborhood || null,
-      videoType: selectedTemplate.category === "neighborhood" ? "neighborhood_tour" : 
-                 selectedTemplate.category === "moving" ? "moving_guide" :
-                 selectedTemplate.category === "market" ? "market_update" : "buyer_tips",
+      cuisine: selectedTemplate.cuisine || null,
+      videoType: selectedTemplate.category === "dishes" ? "dish_showcase" : 
+                 selectedTemplate.category === "behind-scenes" ? "behind_scenes" :
+                 selectedTemplate.category === "promotions" ? "promotion" : "testimonial",
       duration: selectedTemplate.duration,
       tags: selectedTemplate.tags,
       status: "ready"
@@ -281,60 +321,60 @@ export function OmahaVideoTemplates() {
   };
 
   const categorizedTemplates = {
-    neighborhood: omahaVideoTemplates.filter(t => t.category === "neighborhood"),
-    moving: omahaVideoTemplates.filter(t => t.category === "moving"),
-    market: omahaVideoTemplates.filter(t => t.category === "market"),
-    education: omahaVideoTemplates.filter(t => t.category === "education"),
+    dishes: restaurantVideoTemplates.filter(t => t.category === "dishes"),
+    "behind-scenes": restaurantVideoTemplates.filter(t => t.category === "behind-scenes"),
+    promotions: restaurantVideoTemplates.filter(t => t.category === "promotions"),
+    testimonials: restaurantVideoTemplates.filter(t => t.category === "testimonials"),
   };
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-lg font-semibold text-foreground flex items-center">
-          <MapPin className="mr-2 h-5 w-5" />
-          Omaha Video Templates
+          <Utensils className="mr-2 h-5 w-5" />
+          Restaurant Video Templates
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Pre-built video scripts tailored to the Omaha real estate market
+          Pre-built video scripts tailored for restaurant marketing
         </p>
       </CardHeader>
       
       <CardContent>
-        <Tabs defaultValue="neighborhood" className="w-full">
+        <Tabs defaultValue="dishes" className="w-full">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="neighborhood">Neighborhoods</TabsTrigger>
-            <TabsTrigger value="moving">Moving Guide</TabsTrigger>
-            <TabsTrigger value="market">Market Updates</TabsTrigger>
-            <TabsTrigger value="education">Education</TabsTrigger>
+            <TabsTrigger value="dishes">Dish Spotlights</TabsTrigger>
+            <TabsTrigger value="behind-scenes">Behind Scenes</TabsTrigger>
+            <TabsTrigger value="promotions">Promotions</TabsTrigger>
+            <TabsTrigger value="testimonials">Testimonials</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="neighborhood" className="space-y-4 mt-4">
+          <TabsContent value="dishes" className="space-y-4 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {categorizedTemplates.neighborhood.map((template) => (
+              {categorizedTemplates.dishes.map((template) => (
                 <TemplateCard key={template.id} template={template} onUse={handleUseTemplate} />
               ))}
             </div>
           </TabsContent>
           
-          <TabsContent value="moving" className="space-y-4 mt-4">
+          <TabsContent value="behind-scenes" className="space-y-4 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {categorizedTemplates.moving.map((template) => (
+              {categorizedTemplates["behind-scenes"].map((template) => (
                 <TemplateCard key={template.id} template={template} onUse={handleUseTemplate} />
               ))}
             </div>
           </TabsContent>
           
-          <TabsContent value="market" className="space-y-4 mt-4">
+          <TabsContent value="promotions" className="space-y-4 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {categorizedTemplates.market.map((template) => (
+              {categorizedTemplates.promotions.map((template) => (
                 <TemplateCard key={template.id} template={template} onUse={handleUseTemplate} />
               ))}
             </div>
           </TabsContent>
           
-          <TabsContent value="education" className="space-y-4 mt-4">
+          <TabsContent value="testimonials" className="space-y-4 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {categorizedTemplates.education.map((template) => (
+              {categorizedTemplates.testimonials.map((template) => (
                 <TemplateCard key={template.id} template={template} onUse={handleUseTemplate} />
               ))}
             </div>
@@ -364,9 +404,9 @@ export function OmahaVideoTemplates() {
                     <Badge className="bg-blue-100 text-blue-700">
                       {selectedTemplate.duration} seconds
                     </Badge>
-                    {selectedTemplate.neighborhood && (
+                    {selectedTemplate.cuisine && (
                       <Badge className="ml-2 bg-green-100 text-green-700">
-                        📍 {selectedTemplate.neighborhood}
+                        🍽️ {selectedTemplate.cuisine}
                       </Badge>
                     )}
                   </div>
@@ -440,9 +480,9 @@ function TemplateCard({ template, onUse }: { template: VideoTemplate; onUse: (te
           <Badge className="text-xs bg-blue-100 text-blue-700">
             {template.duration}s
           </Badge>
-          {template.neighborhood && (
+          {template.cuisine && (
             <Badge className="text-xs bg-green-100 text-green-700">
-              📍 {template.neighborhood}
+              🍽️ {template.cuisine}
             </Badge>
           )}
         </div>

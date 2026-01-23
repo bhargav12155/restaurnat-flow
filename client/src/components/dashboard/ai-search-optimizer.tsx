@@ -53,12 +53,12 @@ const aiSearchTips: AISearchTip[] = [
     description: "AI searches look for clear entity relationships. Make sure your name, business, and location are consistently mentioned together.",
     impact: "high",
     implemented: false,
-    action: "Include '[Your Name], [Your Brokerage], Omaha' in every piece of content"
+    action: "Include '[Your Restaurant Name], [Your Location]' in every piece of content"
   },
   {
     category: "Conversational Content",
     title: "Answer Questions Directly",
-    description: "AI searches favor content that directly answers questions people ask about real estate.",
+    description: "AI searches favor content that directly answers questions people ask about restaurants and food.",
     impact: "high",
     implemented: false,
     action: "Start content with 'If you're wondering...' or 'Here's what you need to know about...'"
@@ -77,7 +77,7 @@ const aiSearchTips: AISearchTip[] = [
     description: "AI search engines rely heavily on structured data to understand your content.",
     impact: "high",
     implemented: false,
-    action: "Add LocalBusiness, RealEstateAgent, and FAQPage schema to your website"
+    action: "Add LocalBusiness, Restaurant, and FAQPage schema to your website"
   },
   {
     category: "Authority Signals",
@@ -238,14 +238,14 @@ export function AISearchOptimizer() {
   ];
 
   const optimizationGoals = [
-    "Best neighborhoods for families",
-    "Luxury homes and properties", 
-    "First-time homebuyer advice",
-    "Investment property opportunities",
-    "Moving to Omaha guide",
-    "Market trends and analysis",
-    "School district information",
-    "Local amenities and lifestyle"
+    "Best restaurants for families",
+    "Fine dining and special occasions", 
+    "First-time visitor dining tips",
+    "Catering and event opportunities",
+    "Dining in Omaha guide",
+    "Food trends and analysis",
+    "Dietary options information",
+    "Local cuisine and atmosphere"
   ];
 
   return (
@@ -466,7 +466,7 @@ export function AISearchOptimizer() {
                   AI Search Optimization Preview
                 </h3>
                 <div className="text-sm space-y-2">
-                  <p><strong>Entity Focus:</strong> {agentName} + {selectedNeighborhood || "Omaha"} + Real Estate</p>
+                  <p><strong>Entity Focus:</strong> {agentName} + {selectedNeighborhood || "Your City"} + Restaurant</p>
                   <p><strong>Question Format:</strong> Direct answers to "{customQuestion || optimizationGoal}"</p>
                   <p><strong>Local Authority:</strong> Specific neighborhood insights and market data</p>
                   <p><strong>Conversational Tone:</strong> Natural language that matches how people ask AI</p>

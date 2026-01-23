@@ -126,7 +126,7 @@ export function ComplianceChecker({
             <CardTitle className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4" />
-                <span>BHHS Compliance Check</span>
+                <span>Brand Compliance Check</span>
               </div>
               <Badge 
                 variant={hasErrors ? "destructive" : "default"}
@@ -188,7 +188,7 @@ export function ComplianceChecker({
             {result.isCompliant && !hasWarnings && (
               <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                 <CheckCircle className="h-4 w-4" />
-                <span className="text-sm">Content meets BHHS compliance requirements</span>
+                <span className="text-sm">Content meets brand compliance requirements</span>
               </div>
             )}
           </CardContent>
@@ -206,7 +206,7 @@ export function ComplianceChecker({
             >
               <div className="flex items-center gap-2">
                 <Building2 className="h-4 w-4" />
-                <span className="text-xs">BHHS Ambassador Compliance Guidelines</span>
+                <span className="text-xs">Brand Compliance Guidelines</span>
               </div>
               <ChevronDown className={`h-4 w-4 transition-transform ${isGuidelinesOpen ? "rotate-180" : ""}`} />
             </Button>
@@ -314,7 +314,7 @@ export function ComplianceStatusBadge({
               ? "Non-compliant: " + result.issues.filter(i => i.type === "error")[0]?.message
               : hasWarnings 
                 ? "Review needed: " + result.issues.filter(i => i.type === "warning")[0]?.message
-                : "Compliant with BHHS guidelines"
+                : "Compliant with brand guidelines"
             }
           </p>
         </TooltipContent>

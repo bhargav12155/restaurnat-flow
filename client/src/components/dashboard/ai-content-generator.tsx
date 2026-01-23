@@ -121,7 +121,7 @@ interface Property {
   propertyType: string;
   description?: string;
   yearBuilt?: number;
-  listingAgent?: string;
+  menuItemOwner?: string;
   photos?: string[];
 }
 
@@ -142,9 +142,9 @@ const contentTypes = [
   },
   { 
     value: "property_feature", 
-    label: "Property Feature", 
+    label: "Menu Item Feature", 
     icon: Home,
-    description: "Showcase a specific listing",
+    description: "Showcase a specific dish or special",
     color: "from-amber-500 to-orange-500"
   },
 ];
@@ -247,7 +247,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
   }, []);
   const [topic, setTopic] = useState("");
   const [aiPrompt, setAiPrompt] = useState(
-    "Create engaging, SEO-optimized content for Omaha real estate that drives leads and builds trust with potential clients."
+    "Create engaging, SEO-optimized content for your restaurant that drives leads and builds trust with potential clients."
   );
   const [neighborhood, setNeighborhood] = useState("All Omaha Areas");
   const [seoOptimized, setSeoOptimized] = useState(true);
@@ -260,7 +260,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     property_feature: "None",
     market_analysis: "Market data",
     newsletter: "Things around town",
-    listing_description: "Luxury",
+    menu_description: "Luxury",
   });
   const [lastGenerated, setLastGenerated] = useState<GeneratedContent | null>(
     null
@@ -296,7 +296,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     mlsNumber: "",
     address: "",
     city: "",
-    listingAgent: "",
+    menuItemOwner: "",
   });
 
   // Google Places autocomplete states
@@ -940,7 +940,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     toast({
       title: "Posting to Website",
       description: `Publishing "${
-        lastGenerated?.title || "Real Estate Content"
+        lastGenerated?.title || "Restaurant Content"
       }" to your website...`,
     });
 
@@ -1094,9 +1094,9 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
     if (contentType === "property_feature" && !selectedProperty) {
       toast({
-        title: "Property Required",
+        title: "Menu Item Required",
         description:
-          "Please search and select a property for property feature content",
+          "Please search and select a menu item for menu item feature content",
         variant: "destructive",
       });
       return;
@@ -1347,26 +1347,26 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               </h3>
               <p className="text-muted-foreground">
                 {contentType === "property_feature" 
-                  ? "Search for a property to feature" 
+                  ? "Search for a menu item to feature" 
                   : "Enter keywords or a topic for your content"}
               </p>
             </div>
 
-            {/* Property Selection (only for Property Feature) */}
+            {/* Menu Item Selection (only for Menu Item Feature) */}
             {contentType === "property_feature" ? (
               <div className="space-y-4">
                 <div className="p-4 bg-muted/30 rounded-lg border">
                   <div className="flex items-center space-x-2 mb-4">
                     <Home className="h-5 w-5 text-primary" />
                     <Label className="text-sm font-medium text-foreground">
-                      Search Property from MLS
+                      Search Menu Items
                     </Label>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <Label htmlFor="mls-number" className="text-xs text-muted-foreground mb-1 block">
-                        MLS#
+                        Item ID
                       </Label>
                       <Input
                         id="mls-number"
@@ -1447,7 +1447,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   htmlFor="listing-agent"
                   className="text-xs text-muted-foreground mb-1 block"
                 >
-                  Listing Agent
+                  Chef/Owner
                 </Label>
                 <Input
                   id="listing-agent"
@@ -1478,13 +1478,13 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               data-testid="button-search-properties"
             >
               <Search className="mr-2 h-4 w-4" />
-              {isSearchingProperties ? "Searching..." : "Search Properties"}
+              {isSearchingProperties ? "Searching..." : "Search Menu Items"}
             </Button>
 
             {properties && properties.length > 0 && (
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">
-                  Found Properties
+                  Found Items
                 </Label>
                 <div className="max-h-32 overflow-y-auto space-y-2">
                   {properties.map((property) => (
@@ -1521,7 +1521,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               <div className="p-4 bg-muted/30 rounded-lg border space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-semibold text-foreground">
-                    Selected Property
+                    Selected Menu Item
                   </h4>
                   <Button
                     variant="outline"
@@ -1530,12 +1530,12 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     className="h-7 text-xs"
                     data-testid="button-clear-property"
                   >
-                    Change Property
+                    Change Item
                   </Button>
                 </div>
                 
                 <div className="flex gap-4">
-                  {/* Property Image */}
+                  {/* Menu Item Image */}
                   <div className="w-28 h-28 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
                     {selectedProperty.photos?.[0] ? (
                       <img 
@@ -1550,7 +1550,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     )}
                   </div>
                   
-                  {/* Property Details */}
+                  {/* Menu Item Details */}
                   <div className="flex-1 space-y-2">
                     <div>
                       <h5 className="font-semibold text-base text-foreground line-clamp-1">
@@ -1580,11 +1580,11 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     
                     <div className="flex items-center justify-between pt-1 border-t">
                       <div className="text-xs text-muted-foreground">
-                        MLS# {selectedProperty.mlsNumber}
+                        Item# {selectedProperty.mlsNumber}
                       </div>
                       {selectedProperty.listingAgent && (
                         <div className="text-xs text-muted-foreground">
-                          Agent: {selectedProperty.listingAgent}
+                          Chef: {selectedProperty.listingAgent}
                         </div>
                       )}
                     </div>
@@ -1595,7 +1595,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
             </div>
             </div>
             ) : (
-              /* Topic Input for non-property content */
+              /* Topic Input for non-menu-item content */
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="topic" className="text-sm font-medium text-foreground mb-2 block">
@@ -1603,7 +1603,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   </Label>
                   <Input
                     id="topic"
-                    placeholder="e.g., Dundee neighborhood guide, luxury homes Aksarben"
+                    placeholder="e.g., Seasonal specials, Brunch menu highlights"
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     className="w-full text-lg py-6"
@@ -1923,25 +1923,6 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   <div className="prose prose-sm max-w-none text-sm text-foreground whitespace-pre-wrap">
                     {lastGenerated.content}
                   </div>
-                )}
-                
-                {/* BHHS Compliance Check */}
-                {((isEditing && editedContent.trim().length > 10) || 
-                  (!isEditing && lastGenerated.content.trim().length > 10)) && (
-                  <ComplianceChecker
-                    content={isEditing ? editedContent : lastGenerated.content}
-                    platform="general"
-                    hasMedia={false}
-                    hasVideo={false}
-                    onContentFix={(fixedContent) => {
-                      setEditedContent(fixedContent);
-                      if (!isEditing) {
-                        setIsEditing(true);
-                      }
-                    }}
-                    showGuidelines={false}
-                    className="mt-3"
-                  />
                 )}
               </div>
             )}
@@ -2419,7 +2400,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                       </div>
                       <div>
                         <div className="font-semibold text-sm">
-                          mikebjork_realtor
+                          our_restaurant
                         </div>
                         <div className="text-xs text-gray-500">
                           Omaha, Nebraska
@@ -2471,7 +2452,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     </div>
                     <div className="text-sm font-semibold mb-1">127 likes</div>
                     <div className="text-sm max-h-32 overflow-y-auto">
-                      <span className="font-semibold">mikebjork_realtor</span>
+                      <span className="font-semibold">our_restaurant</span>
                       <span className="ml-1">
                         {isEditing ? (
                           <Textarea
@@ -2511,7 +2492,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     <div className="flex-1">
                       <div className="font-semibold text-sm">{agentName}</div>
                       <div className="text-xs text-gray-500">
-                        Real Estate Professional at {brokerageName}
+                        Restaurant Professional at {brokerageName}
                       </div>
                       <div className="text-xs text-gray-400">
                         {format(new Date(), "MMM d, h:mm a")}
@@ -2583,7 +2564,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                         {businessName}
                       </div>
                       <div className="text-xs text-gray-500">
-                        Omaha Real Estate Expert
+                        Restaurant Marketing Expert
                       </div>
                     </div>
                     <Button
@@ -2627,7 +2608,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
                   <div className="space-y-2">
                     <div className="text-sm font-semibold line-clamp-2">
-                      {lastGenerated?.title || "Real Estate Video Content"}
+                      {lastGenerated?.title || "Restaurant Video Content"}
                     </div>
                     {isEditing ? (
                       <Textarea
@@ -2848,7 +2829,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               </div>
 
               <div className="text-xs text-muted-foreground text-center">
-                Choose from our curated collection of professional real estate
+                Choose from our curated collection of professional restaurant
                 photos.
               </div>
             </TabsContent>

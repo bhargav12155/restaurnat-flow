@@ -5,7 +5,8 @@ import {
   integer,
   jsonb,
   numeric,
-  pgTable,
+  pgSchema,
+  pgTable as basePgTable,
   real,
   serial,
   text,
@@ -15,6 +16,15 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+const ACTIVE_DB_SCHEMA = (process.env.DB_SCHEMA || "public").trim() || "public";
+const pgTable: typeof basePgTable = ((...args: any[]) => {
+  if (ACTIVE_DB_SCHEMA === "public") {
+    return (basePgTable as any)(...args);
+  }
+  const schema = pgSchema(ACTIVE_DB_SCHEMA);
+  return (schema.table as any)(...args);
+}) as any;
 
 // Session storage table (required for Replit Auth)
 export const sessions = pgTable(
@@ -65,18 +75,75 @@ export const publicUsers = pgTable(
 );
 
 // =====================================================
-// 2. CONTENT PIECES TABLE (AI Generated Content)
+// 2. FOOD CATEGORIES TABLE (Restaurant Menu Categories)
+// =====================================================
+export const foodCategories = pgTable("food_categories", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(), // "Pizza", "Pasta", "Appetizers", etc.
+  description: text("description"),
+  displayOrder: integer("display_order").default(0),
+  icon: text("icon"), // emoji or icon name
+  imageUrl: text("image_url"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// =====================================================
+// 3. MENU ITEMS TABLE (Restaurant Dishes)
+// =====================================================
+export const menuItems = pgTable("menu_items", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  categoryId: varchar("category_id"), // references foodCategories
+  name: text("name").notNull(),
+  description: text("description"),
+  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  // Optional pricing
+  specialPrice: numeric("special_price", { precision: 10, scale: 2 }),
+  isSpecial: boolean("is_special").default(false),
+  specialEndDate: timestamp("special_end_date"),
+  // Food details
+  ingredients: text("ingredients").array(),
+  dietaryTags: text("dietary_tags").array(), // "vegetarian", "vegan", "gluten-free", "halal", "kosher"
+  allergens: text("allergens").array(), // "dairy", "nuts", "shellfish", "soy", "eggs", "wheat"
+  spiceLevel: integer("spice_level").default(0), // 0-5 scale
+  calories: integer("calories"),
+  preparationTime: integer("preparation_time"), // in minutes
+  servingSize: text("serving_size"), // "1 person", "2-3 persons", etc.
+  // Media
+  imageUrls: text("image_urls").array(),
+  videoUrl: text("video_url"),
+  // Status
+  availability: text("availability").default("available"), // "available", "sold_out", "seasonal", "limited"
+  popularityScore: integer("popularity_score").default(0), // 0-100
+  isFeatured: boolean("is_featured").default(false),
+  isChefRecommended: boolean("is_chef_recommended").default(false),
+  // Metadata
+  tags: text("tags").array(), // custom tags for search
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// =====================================================
+// 4. CONTENT PIECES TABLE (AI Generated Content)
 // =====================================================
 export const contentPieces = pgTable("content_pieces", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  type: text("type").notNull(), // 'blog', 'social', 'property_feature'
+  type: text("type").notNull(), // 'blog', 'social', 'menu_highlight', 'daily_special', 'chef_recommendation'
   title: text("title").notNull(),
   content: text("content").notNull(),
   keywords: text("keywords").array(),
   neighborhood: text("neighborhood"),
+  menuItemId: varchar("menu_item_id"), // NEW: link to menu item
   seoOptimized: boolean("seo_optimized").default(false),
   status: text("status").notNull().default("draft"), // 'draft', 'published', 'scheduled'
   publishedAt: timestamp("published_at"),
@@ -87,7 +154,7 @@ export const contentPieces = pgTable("content_pieces", {
 });
 
 // =====================================================
-// 3. SCHEDULED POSTS TABLE (Social Media)
+// 5. SCHEDULED POSTS TABLE (Social Media)
 // =====================================================
 export const scheduledPosts = pgTable("scheduled_posts", {
   id: varchar("id")
@@ -95,7 +162,8 @@ export const scheduledPosts = pgTable("scheduled_posts", {
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   platform: text("platform").notNull(), // 'facebook', 'instagram', 'linkedin', 'x'
-  postType: text("post_type"), // 'open_houses', 'just_listed', 'just_sold', etc.
+  postType: text("post_type"), // 'daily_special', 'new_item', 'chef_pick', 'food_photo', 'behind_scenes', 'promo', 'event'
+  menuItemId: varchar("menu_item_id"), // NEW: link to menu item being promoted
   content: text("content").notNull(),
   hashtags: text("hashtags").array(),
   scheduledFor: timestamp("scheduled_for").notNull(),
@@ -500,6 +568,19 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
 });
 
+// Food Categories insert schema
+export const insertFoodCategorySchema = createInsertSchema(foodCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Menu Items insert schema
+export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertContentPieceSchema = createInsertSchema(contentPieces).omit({
   id: true,
   createdAt: true,
@@ -622,6 +703,12 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type PublicUser = typeof publicUsers.$inferSelect;
 export type InsertPublicUser = typeof publicUsers.$inferInsert;
+
+// Food & Menu Types
+export type FoodCategory = typeof foodCategories.$inferSelect;
+export type InsertFoodCategory = z.infer<typeof insertFoodCategorySchema>;
+export type MenuItem = typeof menuItems.$inferSelect;
+export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
 
 export type ContentPiece = typeof contentPieces.$inferSelect;
 export type InsertContentPiece = z.infer<typeof insertContentPieceSchema>;

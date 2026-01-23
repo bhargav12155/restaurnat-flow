@@ -115,7 +115,7 @@ export function BrandSettings() {
   });
 
   const [brandDescription, setBrandDescription] = useState(
-    'Golden Brick Real Estate - Premium luxury properties in Omaha, Nebraska. Specializing in high-end residential and commercial real estate with personalized service and expert market knowledge.'
+    'Your Restaurant Name - Exceptional dining experiences with fresh, locally-sourced ingredients. Specializing in [cuisine type] with a warm atmosphere and passionate service.'
   );
 
   const [socialConnections, setSocialConnections] = useState({

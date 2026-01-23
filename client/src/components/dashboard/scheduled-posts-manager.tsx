@@ -124,13 +124,13 @@ const aiPresets = [
     id: "seo", 
     name: "SEO Focus",
     description: "Add keywords & hashtags for discoverability",
-    prompt: "Optimize this post for search and discoverability. Add relevant real estate keywords naturally, include location-specific terms for Omaha/Nebraska, and suggest 3-5 relevant hashtags at the end."
+    prompt: "Optimize this post for search and discoverability. Add relevant food and restaurant keywords naturally, include location-specific terms, and suggest 3-5 relevant hashtags at the end."
   },
   { 
     id: "compliance", 
-    name: "Compliance-Safe",
-    description: "Ensure brokerage-compliant language",
-    prompt: "Review and rewrite this post to ensure it's compliant with real estate advertising regulations. Avoid making guarantees or promises about property values, use appropriate disclosures, and maintain professional language."
+    name: "Brand-Safe",
+    description: "Ensure brand-compliant language",
+    prompt: "Review and rewrite this post to ensure it's compliant with food advertising regulations. Avoid making health claims that aren't substantiated, use appropriate language, and maintain professional tone."
   },
   { 
     id: "shorten", 
@@ -142,7 +142,7 @@ const aiPresets = [
     id: "expand", 
     name: "Add Detail",
     description: "Expand with more compelling content",
-    prompt: "Expand this post with more detail and context. Add storytelling elements, paint a picture for the reader, and include more specific benefits or features."
+    prompt: "Expand this post with more detail and context. Add storytelling elements, describe the flavors and experience, and include more specific benefits or features."
   },
   { 
     id: "custom", 
@@ -166,7 +166,7 @@ export function ScheduledPostsManager() {
   const rawName = user?.name || user?.email?.split('@')[0];
   const userName = rawName 
     ? rawName.charAt(0).toUpperCase() + rawName.slice(1) // Capitalize first letter
-    : "Real Estate Agent";
+    : "Restaurant Owner";
   const [isEditingWithAI, setIsEditingWithAI] = useState(false);
   const [aiEditContent, setAiEditContent] = useState("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);
@@ -315,12 +315,26 @@ export function ScheduledPostsManager() {
       });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       toast({
         title: "Photo Attached!",
         description: "Photo has been attached to your post.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      // Update the previewPost state with the new image
+      if (previewPost && previewPost.id === variables.id) {
+        setPreviewPost({
+          ...previewPost,
+          metadata: { ...previewPost.metadata, imageUrl: variables.imageUrl }
+        });
+      }
+      // Update the selectedPost state with the new image (for edit dialog)
+      if (selectedPost && selectedPost.id === variables.id) {
+        setSelectedPost({
+          ...selectedPost,
+          metadata: { ...selectedPost.metadata, imageUrl: variables.imageUrl }
+        });
+      }
       setShowPhotoDialog(false);
       setSelectedPhoto(null);
       setUploadingPostId(null);
@@ -346,7 +360,9 @@ export function ScheduledPostsManager() {
 
   const handleUploadPhoto = (post: ScheduledPost) => {
     setUploadingPostId(post.id);
-    setSelectedPhoto(null);
+    // Preserve existing image from post metadata if available
+    const existingImage = post.metadata?.imageUrl as string | undefined;
+    setSelectedPhoto(existingImage || null);
     setShowPhotoDialog(true);
   };
 
@@ -912,24 +928,6 @@ export function ScheduledPostsManager() {
                 )}
               </div>
 
-              {/* BHHS Compliance Check */}
-              {(editContent.trim().length > 10 || aiEditContent.trim().length > 10) && (
-                <ComplianceChecker
-                  content={editMode === "manual" ? editContent : aiEditContent}
-                  platform={selectedPost?.platform || "general"}
-                  hasMedia={!!selectedPost?.metadata?.imageUrl}
-                  hasVideo={false}
-                  onContentFix={(fixedContent) => {
-                    if (editMode === "manual") {
-                      setEditContent(fixedContent);
-                    } else {
-                      setAiEditContent(fixedContent);
-                    }
-                  }}
-                  showGuidelines={false}
-                />
-              )}
-
               {/* Schedule Date/Time */}
               <div>
                 <Label htmlFor="edit-scheduled" className="text-sm font-medium">
@@ -1022,8 +1020,14 @@ export function ScheduledPostsManager() {
       </Dialog>
       
       {/* Enhanced Preview Dialog */}
-      <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden">
+      <Dialog open={showPreview} onOpenChange={(open) => {
+        if (!open && isEditingWithAI) {
+          // Reset AI editing state when closing
+          setIsEditingWithAI(false);
+        }
+        setShowPreview(open);
+      }}>
+        <DialogContent className="max-w-sm p-0 overflow-hidden" hideCloseButton={isEditingWithAI}>
           <DialogHeader className="sr-only">
             <DialogTitle>Post Preview</DialogTitle>
           </DialogHeader>
@@ -1037,13 +1041,6 @@ export function ScheduledPostsManager() {
                       <Sparkles className="h-4 w-4 text-golden-accent" />
                       AI Content Editor
                     </h3>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => setIsEditingWithAI(false)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
                   </div>
                   <Textarea
                     value={aiEditContent}
@@ -1107,6 +1104,52 @@ export function ScheduledPostsManager() {
                       onClick={() => setShowPromptEditor(!showPromptEditor)}
                     >
                       Prompt
+                    </Button>
+                  </div>
+                  {/* Apply / Cancel buttons */}
+                  <div className="flex gap-2 pt-2 border-t">
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      onClick={async () => {
+                        if (!previewPost || !aiEditContent.trim()) return;
+                        try {
+                          await apiRequest('PUT', `/api/scheduled-posts/${previewPost.id}`, {
+                            content: aiEditContent
+                          });
+                          // Update local state
+                          setPreviewPost({ ...previewPost, content: aiEditContent });
+                          if (selectedPost && selectedPost.id === previewPost.id) {
+                            setSelectedPost({ ...selectedPost, content: aiEditContent });
+                            setEditContent(aiEditContent);
+                          }
+                          queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+                          toast({
+                            title: "Content Saved",
+                            description: "Your enhanced content has been saved."
+                          });
+                          setIsEditingWithAI(false);
+                        } catch (error) {
+                          toast({
+                            title: "Save Failed",
+                            description: "Unable to save content.",
+                            variant: "destructive"
+                          });
+                        }
+                      }}
+                    >
+                      <Check className="h-3 w-3 mr-1" />
+                      Apply
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setAiEditContent(previewPost.content);
+                        setIsEditingWithAI(false);
+                      }}
+                    >
+                      Cancel
                     </Button>
                   </div>
                 </div>
@@ -1258,7 +1301,7 @@ export function ScheduledPostsManager() {
                         </div>
                         <div>
                           <div className="font-semibold text-sm">{userName}</div>
-                          <div className="text-xs text-gray-500">Real Estate Professional at BHHS</div>
+                          <div className="text-xs text-gray-500">Restaurant Professional</div>
                           <div className="text-xs text-gray-400">
                             {format(new Date(previewPost.scheduledFor), "MMM d, h:mm a")}
                           </div>
@@ -1285,7 +1328,7 @@ export function ScheduledPostsManager() {
                       <div className="border rounded bg-gray-50 p-4">
                         <div className="text-center text-gray-600">
                           <Home className="h-8 w-8 mx-auto mb-2" />
-                          <div className="text-sm font-medium">Property Listing</div>
+                          <div className="text-sm font-medium">Restaurant Feature</div>
                           <div className="text-xs">Click to view details</div>
                         </div>
                       </div>
@@ -1316,30 +1359,31 @@ export function ScheduledPostsManager() {
       
       {/* Photo Upload Dialog - Enhanced with AI Image Generation */}
       <Dialog open={showPhotoDialog} onOpenChange={setShowPhotoDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Add Image to Post</DialogTitle>
-            <DialogDescription>
-              Generate with AI, search stock images, upload your own, or select from MLS listings
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[85vh] overflow-hidden flex flex-col p-4 sm:p-6">
+          <DialogHeader className="flex-shrink-0 pb-2">
+            <DialogTitle className="text-base sm:text-lg">Add Image to Post</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              Generate with AI, search stock images, upload your own, or select from your menu photos
             </DialogDescription>
           </DialogHeader>
           
-          <ImagePicker
-            onSelect={(imageUrl) => {
-              handlePhotoUploadComplete(imageUrl);
-              setShowPhotoDialog(false);
-            }}
-            platform={previewPost?.platform}
-            selectedImage={selectedPhoto}
-            mlsPhotos={[
-              "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800&h=600&fit=crop",
-              "https://images.unsplash.com/photo-1554995207-c18c203602cb?w=800&h=600&fit=crop",
-              "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&h=600&fit=crop",
-              "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=800&h=600&fit=crop",
-              "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&h=600&fit=crop",
-              "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=600&fit=crop",
-            ]}
-          />
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <ImagePicker
+              onSelect={(imageUrl) => {
+                handlePhotoUploadComplete(imageUrl);
+              }}
+              platform={selectedPost?.platform || previewPost?.platform}
+              selectedImage={selectedPhoto}
+              mlsPhotos={[
+                "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&h=600&fit=crop",
+                "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&h=600&fit=crop",
+                "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=800&h=600&fit=crop",
+                "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&h=600&fit=crop",
+                "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&h=600&fit=crop",
+                "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=800&h=600&fit=crop",
+              ]}
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </Card>

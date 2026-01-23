@@ -17,63 +17,63 @@ interface GeneratedContent {
 
 const contentTypePatterns: Record<ContentType, RegExp[]> = {
   listing: [
-    /listing|property (for sale|available)|beds?|baths?|square feet|sq\.?\s*ft/i,
-    /\$\d{3},\d{3}|\d+k price/i,
+    /menu item|dish|special|appetizer|entree|dessert|signature/i,
+    /\$\d+\.\d{2}|price/i,
   ],
   market_update: [
-    /market (update|report|analysis|trends?)/i,
-    /inventory|average price|median|sales? (data|statistics)/i,
+    /restaurant (update|news|announcement)/i,
+    /new menu|seasonal|limited time|special event/i,
   ],
   buyer_tips: [
-    /buyer|buying (a )?home|first.?time (buyer|home)/i,
-    /(tips|advice|guide) (for|to) buy/i,
+    /dine|dining|foodie|eating out/i,
+    /(tips|advice|guide) (for|to) (order|dine)/i,
   ],
   seller_tips: [
-    /seller|selling (your )?home|list(ing)? (your )?home/i,
-    /(tips|advice|guide) (for|to) sell/i,
+    /catering|event|private dining|group/i,
+    /(tips|advice|guide) (for|to) (host|cater)/i,
   ],
   neighborhood: [
-    /neighborhood|community|area|district/i,
+    /restaurant|location|area|neighborhood/i,
     /(dundee|aksarben|benson|old market|blackstone|elkhorn|millard)/i,
   ],
   investment: [
-    /investment|ROI|rental (property|income)|investor/i,
-    /cash flow|appreciation|flip/i,
+    /franchise|partnership|restaurant business/i,
+    /catering|private events|bulk orders/i,
   ],
-  testimonial: [/review|testimonial|client (said|says)|success story/i],
+  testimonial: [/review|testimonial|customer (said|says)|yelp|google review/i],
   general: [],
 };
 
 const audiencePersonaPatterns: Record<AudiencePersona, RegExp[]> = {
   first_time_buyer: [
-    /first.?time (buyer|home|purchase)/i,
-    /new (to|buyer|homeowner)/i,
+    /first.?time (visitor|diner|customer)/i,
+    /new (to|customer|guest)/i,
   ],
   luxury_buyer: [
-    /luxury|upscale|premium|high.?end|executive/i,
-    /\$\d{3},\d{3}|\$[5-9]\d{2}k|million/i,
+    /fine dining|upscale|premium|gourmet|chef's table/i,
+    /tasting menu|prix fixe|omakase/i,
   ],
-  seller: [/sell(ing|er)|list(ing)?/i, /ready to sell|thinking of selling/i],
-  investor: [/invest(or|ment)|rental|portfolio|passive income/i],
-  relocating: [/relocat(e|ing)|moving to|new to (omaha|the area)/i],
+  seller: [/catering|host(ing)|private event/i, /ready to (book|host)/i],
+  investor: [/franchise|partnership|restaurant owner/i],
+  relocating: [/new to (town|the area)|visiting|tourist/i],
   general: [],
 };
 
 const contentIntentPatterns: Record<ContentIntent, RegExp[]> = {
-  educate: [/learn|guide|tips|how to|understand|explained/i],
+  educate: [/learn|guide|tips|how to|ingredients|explained/i],
   convert: [
-    /call (me|us|now)|contact|schedule|book|free consult|let's (talk|discuss)/i,
+    /call (me|us|now)|reserve|book|order now|visit us|come in/i,
   ],
   engage: [/what do you think|share your|comment|let me know/i, /\?$/],
-  inform: [/update|report|data|statistics|announcement/i],
-  inspire: [/dream|imagine|your (future|perfect)|beautiful|stunning/i],
+  inform: [/update|announcement|new|special|hours/i],
+  inspire: [/delicious|mouthwatering|amazing|beautiful|stunning/i],
 };
 
 const propertyClassPatterns: Record<PropertyClass, RegExp[]> = {
-  luxury: [/luxury|upscale|estate|executive|million/i, /\$[5-9]\d{2}k|million/i],
-  mid_market: [/\$[2-4]\d{2}k|family home|suburban/i],
-  starter: [/starter|first.?time|affordable|under \$200k/i],
-  investment: [/investment|rental|flip|ROI/i],
+  luxury: [/fine dining|upscale|gourmet|chef's table|prix fixe/i],
+  mid_market: [/casual dining|family restaurant|neighborhood spot/i],
+  starter: [/quick bite|casual|affordable|lunch special/i],
+  investment: [/catering|events|franchise/i],
   general: [],
 };
 
@@ -310,7 +310,7 @@ export function scorePlatform(
       reasons.push("Data-driven content builds credibility on LinkedIn");
     }
     score += 5;
-    reasons.push("Professional real estate content fits LinkedIn");
+    reasons.push("Professional restaurant content fits LinkedIn");
   } else if (platform === "X (Twitter)") {
     if (profile.wordCount <= 200) {
       score += 15;
@@ -338,11 +338,11 @@ export function scorePlatform(
       profile.contentType === "neighborhood"
     ) {
       score += 15;
-      reasons.push("Visual property content performs well on TikTok");
+      reasons.push("Visual food content performs well on TikTok");
     }
     if (profile.audiencePersona === "first_time_buyer") {
       score += 10;
-      reasons.push("TikTok's younger audience matches first-time buyers");
+      reasons.push("TikTok's younger audience loves discovering new restaurants");
     }
   } else if (platform === "YouTube") {
     if (profile.wordCount >= 300) {
@@ -364,21 +364,21 @@ export function scorePlatform(
   let optimization = "";
   if (platform === "Instagram") {
     optimization = profile.hasHashtags
-      ? "Add property photos or infographic"
-      : "Add hashtags like #OmahaHomes #RealEstate";
+      ? "Add food photos or behind-the-scenes content"
+      : "Add hashtags like #Foodie #RestaurantLife";
   } else if (platform === "Facebook") {
     optimization = profile.hasQuestions
-      ? "Share to local Omaha groups"
+      ? "Share to local food groups"
       : "Add engagement question at the end";
   } else if (platform === "LinkedIn") {
     optimization =
-      "Frame as professional insight: 'As your Omaha real estate expert...'";
+      "Frame as professional insight: 'As a restaurant professional...'";
   } else if (platform === "X (Twitter)") {
-    optimization = "Add trending local hashtags like #OmahaLife";
+    optimization = "Add trending local hashtags like #FoodieFinds";
   } else if (platform === "TikTok") {
-    optimization = "Create quick home tour or tip video with trending audio";
+    optimization = "Create quick dish reveal or kitchen tour with trending audio";
   } else if (platform === "YouTube") {
-    optimization = "Create detailed walkthrough or market analysis video";
+    optimization = "Create detailed cooking tutorial or restaurant tour video";
   }
 
   return {

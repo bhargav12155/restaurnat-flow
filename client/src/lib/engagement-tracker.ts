@@ -1,20 +1,20 @@
-// Engagement Tracking Library for Nebraska Home Hub
+// Engagement Tracking Library for RestaurantFlow
 // Tracks user behavior, generates leads automatically
 
 interface EngagementTracker {
   sessionId: string;
-  agentSlug: string;
+  restaurantSlug: string;
   startTime: number;
   lastHeartbeatTime: number;
-  propertyViews: Map<string, number>;
-  interactions: Array<{ type: string; timestamp: number; propertyId?: string }>;
+  menuItemViews: Map<string, number>;
+  interactions: Array<{ type: string; timestamp: number; menuItemId?: string }>;
   isTracking: boolean;
 }
 
-class PropertyEngagementService {
+class MenuEngagementService {
   private tracker: EngagementTracker | null = null;
   private pageStartTime: number = Date.now();
-  private currentPropertyId: string | null = null;
+  private currentMenuItemId: string | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private apiBaseUrl: string;
 
@@ -22,8 +22,8 @@ class PropertyEngagementService {
     this.apiBaseUrl = apiBaseUrl;
   }
 
-  public initialize(options: { page: string; agentSlug: string }): void {
-    const { page, agentSlug } = options;
+  public initialize(options: { page: string; restaurantSlug: string }): void {
+    const { page, restaurantSlug } = options;
     
     if (typeof window === "undefined") return;
 
@@ -36,10 +36,10 @@ class PropertyEngagementService {
 
     this.tracker = {
       sessionId,
-      agentSlug,
+      restaurantSlug,
       startTime: Date.now(),
       lastHeartbeatTime: Date.now(),
-      propertyViews: new Map(),
+      menuItemViews: new Map(),
       interactions: [],
       isTracking: true,
     };
@@ -67,7 +67,7 @@ class PropertyEngagementService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.tracker.sessionId,
-          agentSlug: this.tracker.agentSlug,
+          restaurantSlug: this.tracker.restaurantSlug,
           pageVisited: page,
           deviceType: this.getDeviceType(),
         }),
@@ -111,12 +111,12 @@ class PropertyEngagementService {
     this.tracker.lastHeartbeatTime = now;
 
     try {
-      await fetch(`${this.apiBaseUrl}/api/track/property-interaction`, {
+      await fetch(`${this.apiBaseUrl}/api/track/menu-interaction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.tracker.sessionId,
-          agentSlug: this.tracker.agentSlug,
+          restaurantSlug: this.tracker.restaurantSlug,
           interactionType: "session_heartbeat",
           timeSpentSeconds: timeDelta,
           currentUrl: window.location.pathname,
@@ -139,7 +139,7 @@ class PropertyEngagementService {
     });
 
     window.addEventListener("beforeunload", () => {
-      this.endPropertyView();
+      this.endMenuItemView();
     });
   }
 
@@ -147,7 +147,7 @@ class PropertyEngagementService {
     if (this.tracker) {
       this.tracker.isTracking = false;
     }
-    this.endPropertyView();
+    this.endMenuItemView();
   }
 
   private resumeTracking(): void {
@@ -157,56 +157,56 @@ class PropertyEngagementService {
     }
   }
 
-  public async trackPropertyView(propertyId: string): Promise<void> {
+  public async trackMenuItemView(menuItemId: string): Promise<void> {
     if (!this.tracker) return;
 
-    // End previous property view
-    this.endPropertyView();
+    // End previous menu item view
+    this.endMenuItemView();
 
-    // Start new property view
-    this.currentPropertyId = propertyId;
+    // Start new menu item view
+    this.currentMenuItemId = menuItemId;
     this.pageStartTime = Date.now();
 
     // Track the view
-    const viewCount = (this.tracker.propertyViews.get(propertyId) || 0) + 1;
-    this.tracker.propertyViews.set(propertyId, viewCount);
+    const viewCount = (this.tracker.menuItemViews.get(menuItemId) || 0) + 1;
+    this.tracker.menuItemViews.set(menuItemId, viewCount);
 
     this.tracker.interactions.push({
       type: "view",
       timestamp: Date.now(),
-      propertyId,
+      menuItemId,
     });
 
     try {
-      await fetch(`${this.apiBaseUrl}/api/track/property-interaction`, {
+      await fetch(`${this.apiBaseUrl}/api/track/menu-interaction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.tracker.sessionId,
-          agentSlug: this.tracker.agentSlug,
-          propertyId,
+          restaurantSlug: this.tracker.restaurantSlug,
+          menuItemId,
           interactionType: "view",
           currentUrl: window.location.pathname,
         }),
       });
     } catch (error) {
-      console.warn("Failed to track property view:", error);
+      console.warn("Failed to track menu item view:", error);
     }
   }
 
-  private endPropertyView(): void {
-    if (!this.currentPropertyId || !this.tracker) return;
+  private endMenuItemView(): void {
+    if (!this.currentMenuItemId || !this.tracker) return;
 
     const timeSpent = Math.floor((Date.now() - this.pageStartTime) / 1000);
 
     if (timeSpent > 2) {
-      fetch(`${this.apiBaseUrl}/api/track/property-interaction`, {
+      fetch(`${this.apiBaseUrl}/api/track/menu-interaction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.tracker.sessionId,
-          agentSlug: this.tracker.agentSlug,
-          propertyId: this.currentPropertyId,
+          restaurantSlug: this.tracker.restaurantSlug,
+          menuItemId: this.currentMenuItemId,
           interactionType: "view_end",
           timeSpentSeconds: timeSpent,
           currentUrl: window.location.pathname,
@@ -214,31 +214,31 @@ class PropertyEngagementService {
       }).catch(() => {});
     }
 
-    this.currentPropertyId = null;
+    this.currentMenuItemId = null;
   }
 
-  public async trackPropertyLike(propertyId: string, liked: boolean): Promise<void> {
+  public async trackMenuItemLike(menuItemId: string, liked: boolean): Promise<void> {
     if (!this.tracker) return;
 
     this.tracker.interactions.push({
       type: liked ? "like" : "unlike",
       timestamp: Date.now(),
-      propertyId,
+      menuItemId,
     });
 
     try {
-      await fetch(`${this.apiBaseUrl}/api/track/property-like`, {
+      await fetch(`${this.apiBaseUrl}/api/track/menu-like`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.tracker.sessionId,
-          agentSlug: this.tracker.agentSlug,
-          propertyId,
+          restaurantSlug: this.tracker.restaurantSlug,
+          menuItemId,
           liked,
         }),
       });
     } catch (error) {
-      console.warn("Failed to track property like:", error);
+      console.warn("Failed to track menu item like:", error);
     }
 
     // Check if engagement threshold met
@@ -247,7 +247,7 @@ class PropertyEngagementService {
 
   public async trackInteraction(
     type: string,
-    propertyId?: string,
+    menuItemId?: string,
     value?: string,
     timeSpentSeconds?: number
   ): Promise<void> {
@@ -256,17 +256,17 @@ class PropertyEngagementService {
     this.tracker.interactions.push({
       type,
       timestamp: Date.now(),
-      propertyId,
+      menuItemId,
     });
 
     try {
-      await fetch(`${this.apiBaseUrl}/api/track/property-interaction`, {
+      await fetch(`${this.apiBaseUrl}/api/track/menu-interaction`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.tracker.sessionId,
-          agentSlug: this.tracker.agentSlug,
-          propertyId: propertyId || null,
+          restaurantSlug: this.tracker.restaurantSlug,
+          menuItemId: menuItemId || null,
           interactionType: type,
           interactionValue: value || null,
           timeSpentSeconds: timeSpentSeconds || 0,
@@ -292,23 +292,23 @@ class PropertyEngagementService {
 
     const sessionTime = Math.floor((Date.now() - this.tracker.startTime) / 1000);
     const likeCount = this.tracker.interactions.filter((i) => i.type === "like").length;
-    const viewCount = this.tracker.propertyViews.size;
+    const viewCount = this.tracker.menuItemViews.size;
     const interactionCount = this.tracker.interactions.length;
 
     // Scoring algorithm
     if (sessionTime > 300) score += 20; // > 5 minutes
-    if (viewCount > 3) score += 15; // Viewed multiple properties
-    if (likeCount > 0) score += likeCount * 10; // Liked properties
+    if (viewCount > 3) score += 15; // Viewed multiple menu items
+    if (likeCount > 0) score += likeCount * 10; // Liked menu items
     if (interactionCount > 5) score += 10; // High interaction
     if (sessionTime > 600) score += 15; // > 10 minutes
 
     // Determine reason
     if (likeCount >= 2) {
-      reason = "liked_multiple_properties";
+      reason = "liked_multiple_menu_items";
     } else if (sessionTime > 600) {
       reason = "spent_long_time_on_site";
     } else if (viewCount > 5) {
-      reason = "viewed_many_properties";
+      reason = "viewed_many_menu_items";
     } else if (interactionCount > 8) {
       reason = "high_interaction_activity";
     }
@@ -331,7 +331,7 @@ class PropertyEngagementService {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: this.tracker.sessionId,
-          agentSlug: this.tracker.agentSlug,
+          restaurantSlug: this.tracker.restaurantSlug,
         }),
       });
 
@@ -349,13 +349,13 @@ class PropertyEngagementService {
     return {
       sessionId: this.tracker.sessionId,
       sessionDuration: Math.floor((Date.now() - this.tracker.startTime) / 1000),
-      propertiesViewed: this.tracker.propertyViews.size,
+      menuItemsViewed: this.tracker.menuItemViews.size,
       interactions: this.tracker.interactions.length,
     };
   }
 
   public destroy(): void {
-    this.endPropertyView();
+    this.endMenuItemView();
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
     }
@@ -364,55 +364,55 @@ class PropertyEngagementService {
 }
 
 // Singleton instance
-let globalTracker: PropertyEngagementService | null = null;
+let globalTracker: MenuEngagementService | null = null;
 
 export function initializeEngagementTracking(
   apiBaseUrl?: string
-): PropertyEngagementService;
+): MenuEngagementService;
 export function initializeEngagementTracking(options: {
   page: string;
-  agentSlug: string;
+  restaurantSlug: string;
   apiBaseUrl?: string;
-}): PropertyEngagementService;
+}): MenuEngagementService;
 export function initializeEngagementTracking(
-  optionsOrUrl?: string | { page: string; agentSlug: string; apiBaseUrl?: string }
-): PropertyEngagementService {
+  optionsOrUrl?: string | { page: string; restaurantSlug: string; apiBaseUrl?: string }
+): MenuEngagementService {
   if (typeof window === "undefined") {
-    return new PropertyEngagementService("");
+    return new MenuEngagementService("");
   }
 
   if (!globalTracker) {
     const baseUrl = typeof optionsOrUrl === "string" ? optionsOrUrl : (optionsOrUrl?.apiBaseUrl || "");
-    globalTracker = new PropertyEngagementService(baseUrl);
+    globalTracker = new MenuEngagementService(baseUrl);
   }
 
   if (typeof optionsOrUrl === "object") {
     globalTracker.initialize({
       page: optionsOrUrl.page,
-      agentSlug: optionsOrUrl.agentSlug,
+      restaurantSlug: optionsOrUrl.restaurantSlug,
     });
   }
 
   return globalTracker;
 }
 
-export function getEngagementTracker(): PropertyEngagementService | null {
+export function getEngagementTracker(): MenuEngagementService | null {
   return globalTracker;
 }
 
-export function trackPropertyView(propertyId: string): void {
-  globalTracker?.trackPropertyView(propertyId);
+export function trackMenuItemView(menuItemId: string): void {
+  globalTracker?.trackMenuItemView(menuItemId);
 }
 
-export function trackPropertyLike(propertyId: string, liked: boolean): void {
-  globalTracker?.trackPropertyLike(propertyId, liked);
+export function trackMenuItemLike(menuItemId: string, liked: boolean): void {
+  globalTracker?.trackMenuItemLike(menuItemId, liked);
 }
 
-export function trackPropertyInteraction(
+export function trackMenuInteraction(
   type: string,
-  propertyId?: string,
+  menuItemId?: string,
   value?: string,
   timeSpentSeconds?: number
 ): void {
-  globalTracker?.trackInteraction(type, propertyId, value, timeSpentSeconds);
+  globalTracker?.trackInteraction(type, menuItemId, value, timeSpentSeconds);
 }

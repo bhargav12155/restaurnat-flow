@@ -618,7 +618,7 @@ export function TwilioSettings() {
                       <Input
                         data-testid="input-specialties"
                         {...field}
-                        placeholder="e.g., First-time buyers, Luxury homes, Investment properties (comma-separated)"
+                        placeholder="e.g., Brunch, Fine Dining, Catering, Private Events (comma-separated)"
                       />
                     </FormControl>
                     <FormDescription>

@@ -67,20 +67,20 @@ export class SEOService {
 
   async suggestContentTopics(neighborhood?: string): Promise<string[]> {
     const baseTopics = [
-      'First-time home buyer guide',
-      'Luxury home features that matter',
-      'Understanding the mortgage process',
-      'Home staging tips for quick sales',
+      'First-time diner guide',
+      'Luxury dining experiences that matter',
+      'Understanding the reservation process',
+      'Menu presentation tips for quick sales',
       'Market trends and predictions',
-      'Investment property opportunities',
+      'Investment opportunities in dining',
     ];
 
     const neighborhoodTopics = neighborhood ? [
       `${neighborhood} neighborhood guide`,
       `Best restaurants in ${neighborhood}`,
-      `${neighborhood} school district overview`,
+      `${neighborhood} food scene overview`,
       `Parks and recreation in ${neighborhood}`,
-      `${neighborhood} real estate market analysis`,
+      `${neighborhood} restaurant guide`,
     ] : [];
 
     return [...baseTopics, ...neighborhoodTopics];
@@ -88,7 +88,7 @@ export class SEOService {
 
   async generateTopKeywordsWithAI(
     location: string = 'Omaha, Nebraska',
-    businessType: string = 'real estate agent',
+    businessType: string = 'restaurant',
     marketData?: any[]
   ): Promise<AIGeneratedKeyword[]> {
     try {
@@ -117,7 +117,7 @@ ${marketSummary}
 Based on this live market data, generate keywords that reflect current market conditions.`;
       }
 
-      const prompt = `You are an expert SEO specialist for real estate. Generate the top 12 most valuable SEO keywords for a ${businessType} in ${location}.${marketContext}
+      const prompt = `You are an expert SEO specialist for restaurants. Generate the top 12 most valuable SEO keywords for a ${businessType} in ${location}.${marketContext}
 
 For each keyword, provide:
 1. The exact keyword phrase (optimized for local SEO)
@@ -192,18 +192,18 @@ Return ONLY a valid JSON array with this exact structure:
 
   private getFallbackKeywords(): AIGeneratedKeyword[] {
     return [
-      { keyword: 'omaha real estate agent', currentRank: 3, searchVolume: 1200, difficulty: 75, neighborhood: undefined },
-      { keyword: 'dundee homes for sale', currentRank: 1, searchVolume: 450, difficulty: 45, neighborhood: 'Dundee' },
-      { keyword: 'aksarben real estate', currentRank: 2, searchVolume: 380, difficulty: 52, neighborhood: 'Aksarben' },
-      { keyword: 'blackstone district homes', currentRank: 5, searchVolume: 290, difficulty: 48, neighborhood: 'Blackstone' },
-      { keyword: 'best realtor omaha nebraska', currentRank: 4, searchVolume: 950, difficulty: 82, neighborhood: undefined },
-      { keyword: 'omaha luxury homes', currentRank: 7, searchVolume: 720, difficulty: 68, neighborhood: undefined },
-      { keyword: 'west omaha houses', currentRank: 6, searchVolume: 540, difficulty: 58, neighborhood: 'West Omaha' },
-      { keyword: 'sell my house fast omaha', currentRank: 8, searchVolume: 680, difficulty: 71, neighborhood: undefined },
-      { keyword: 'downtown omaha condos', currentRank: 3, searchVolume: 410, difficulty: 55, neighborhood: 'Downtown' },
-      { keyword: 'omaha first time home buyer', currentRank: 9, searchVolume: 580, difficulty: 64, neighborhood: undefined },
-      { keyword: 'omaha real estate market trends', currentRank: 12, searchVolume: 320, difficulty: 59, neighborhood: undefined },
-      { keyword: 'relocating to omaha', currentRank: 15, searchVolume: 890, difficulty: 47, neighborhood: undefined },
+      { keyword: 'omaha restaurants', currentRank: 3, searchVolume: 1200, difficulty: 75, neighborhood: undefined },
+      { keyword: 'dundee dining', currentRank: 1, searchVolume: 450, difficulty: 45, neighborhood: 'Dundee' },
+      { keyword: 'aksarben restaurants', currentRank: 2, searchVolume: 380, difficulty: 52, neighborhood: 'Aksarben' },
+      { keyword: 'blackstone district restaurants', currentRank: 5, searchVolume: 290, difficulty: 48, neighborhood: 'Blackstone' },
+      { keyword: 'best restaurants omaha nebraska', currentRank: 4, searchVolume: 950, difficulty: 82, neighborhood: undefined },
+      { keyword: 'omaha fine dining', currentRank: 7, searchVolume: 720, difficulty: 68, neighborhood: undefined },
+      { keyword: 'west omaha restaurants', currentRank: 6, searchVolume: 540, difficulty: 58, neighborhood: 'West Omaha' },
+      { keyword: 'best brunch omaha', currentRank: 8, searchVolume: 680, difficulty: 71, neighborhood: undefined },
+      { keyword: 'downtown omaha restaurants', currentRank: 3, searchVolume: 410, difficulty: 55, neighborhood: 'Downtown' },
+      { keyword: 'omaha food guide', currentRank: 9, searchVolume: 580, difficulty: 64, neighborhood: undefined },
+      { keyword: 'omaha restaurant trends', currentRank: 12, searchVolume: 320, difficulty: 59, neighborhood: undefined },
+      { keyword: 'where to eat omaha', currentRank: 15, searchVolume: 890, difficulty: 47, neighborhood: undefined },
     ];
   }
 

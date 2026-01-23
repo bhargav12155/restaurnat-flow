@@ -223,7 +223,7 @@ export function PhotoAvatarManager() {
   const [showGroupNameDialog, setShowGroupNameDialog] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState("");
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
-    name: "Mike Bjork Professional Avatar",
+    name: "Professional Restaurant Avatar",
     age: "Early Middle Age",
     gender: "Man",
     ethnicity: "White",
@@ -231,7 +231,7 @@ export function PhotoAvatarManager() {
     pose: "half_body",
     style: "Realistic",
     appearance:
-      "Professional real estate agent, well-groomed, confident smile, business attire",
+      "Professional restaurant owner/chef, well-groomed, confident smile, business attire",
   });
 
   // Query avatar groups
@@ -457,7 +457,7 @@ export function PhotoAvatarManager() {
           step: 'generating_looks',
           message: 'Generating 4 professional looks...',
           groupName: group.name,
-          details: 'Executive, Friendly Agent, Property Tour, Modern Professional'
+          details: 'Executive, Friendly Chef, Kitchen Tour, Modern Professional'
         });
         
         setLookGenerationStatus(prev => ({
@@ -467,8 +467,8 @@ export function PhotoAvatarManager() {
             progress: 10,
             looks: [
               { label: 'professional-executive', name: 'Executive' },
-              { label: 'professional-friendly', name: 'Friendly Agent' },
-              { label: 'professional-outdoor', name: 'Property Tour' },
+              { label: 'professional-friendly', name: 'Friendly Chef' },
+              { label: 'professional-outdoor', name: 'Kitchen Tour' },
               { label: 'professional-modern', name: 'Modern Professional' }
             ]
           }

@@ -57,7 +57,7 @@ export default function ProtectedRoute({
             Agent Access Required
           </h2>
           <p className="text-gray-600 mb-4">
-            This page is restricted to registered real estate agents only.
+            This page is restricted to registered restaurant owners only.
           </p>
           <button
             onClick={() => (window.location.href = "/login")}

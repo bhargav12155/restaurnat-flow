@@ -4,7 +4,7 @@ interface OptimizationPrereqsParams {
   contentType: string;
   topic: string;
   lastGenerated: { content?: string } | null;
-  selectedProperty: any | null;
+  selectedMenuItem: any | null;
   isGenerating: boolean;
   isPending: boolean;
 }
@@ -28,7 +28,7 @@ function validateOptimizationPrereqs(
     contentType,
     topic,
     lastGenerated,
-    selectedProperty,
+    selectedMenuItem,
     isGenerating,
     isPending,
   } = params;
@@ -47,8 +47,8 @@ function validateOptimizationPrereqs(
     unmetReasons.push("Generate content first before optimizing");
   }
 
-  // Check 2: Topic validation (for non-property_feature types)
-  if (contentType !== "property_feature") {
+  // Check 2: Topic validation (for non-menu_item_feature types)
+  if (contentType !== "menu_item_feature") {
     const hasTopic = topic.trim().length > 0;
     checklistItems.push({
       id: "has-topic",
@@ -60,16 +60,16 @@ function validateOptimizationPrereqs(
     }
   }
 
-  // Check 3: Property selection (for property_feature type)
-  if (contentType === "property_feature") {
-    const hasProperty = Boolean(selectedProperty);
+  // Check 3: Menu item selection (for menu_item_feature type)
+  if (contentType === "menu_item_feature") {
+    const hasMenuItem = Boolean(selectedMenuItem);
     checklistItems.push({
-      id: "has-property",
-      label: "Property selected",
-      isMet: hasProperty,
+      id: "has-menu-item",
+      label: "Menu item selected",
+      isMet: hasMenuItem,
     });
-    if (!hasProperty) {
-      unmetReasons.push("Select a property to feature");
+    if (!hasMenuItem) {
+      unmetReasons.push("Select a menu item to feature");
     }
   }
 
@@ -102,7 +102,7 @@ export function useOptimizationPrereqs(
       params.contentType,
       params.topic,
       params.lastGenerated?.content,
-      params.selectedProperty,
+      params.selectedMenuItem,
       params.isGenerating,
       params.isPending,
     ]

@@ -233,7 +233,7 @@ class UnifiedAIService {
     // Fallback to generic generate
     const prompt = `Write a ${length} blog post about "${topic}" in a ${tone} tone. Format the content in Markdown.`;
     return this.generate(prompt, {
-      systemPrompt: 'You are a professional content writer specializing in real estate and local market insights.',
+      systemPrompt: 'You are a professional content writer specializing in restaurants and local dining.',
       temperature: 0.7,
       maxTokens: 2000
     });
@@ -279,7 +279,7 @@ class UnifiedAIService {
     const prompt = `Write a compelling property description for ${address}. ${neighborhoodText}${featureText}${priceText}Make it engaging and highlight key selling points.`;
     
     return this.generate(prompt, {
-      systemPrompt: 'You are a professional real estate copywriter who creates compelling property descriptions.',
+      systemPrompt: 'You are a professional restaurant copywriter who creates compelling menu descriptions.',
       temperature: 0.8,
       maxTokens: 500
     });
@@ -315,7 +315,7 @@ class UnifiedAIService {
     // Fallback to generic generate
     const fullMessage = context ? `Context: ${context}\n\nUser: ${message}` : message;
     return this.generate(fullMessage, {
-      systemPrompt: 'You are a helpful real estate assistant.',
+      systemPrompt: 'You are a helpful restaurant assistant.',
       temperature: 0.7,
       maxTokens: 1000
     });
@@ -324,11 +324,11 @@ class UnifiedAIService {
   async generateStructuredContent(request: ContentGenerationRequest): Promise<GeneratedContent> {
     try {
       const prompt = this.buildContentPrompt(request);
-      const agentName = request.companyProfile?.agentName || "your local real estate agent";
-      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our brokerage";
-      const agentTitle = request.companyProfile?.agentTitle || "real estate agent";
+      const agentName = request.companyProfile?.agentName || "your local restaurant";
+      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our restaurant group";
+      const agentTitle = request.companyProfile?.agentTitle || "restaurant owner";
 
-      const systemPrompt = `You are an expert real estate content writer and SEO specialist focused on the Omaha, Nebraska market. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName} in Omaha. Always include ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON.`;
+      const systemPrompt = `You are an expert restaurant content writer and SEO specialist focused on the Omaha, Nebraska market. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName} in Omaha. Always include ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON.`;
 
       const response = await this.generate(prompt, {
         systemPrompt,
@@ -361,7 +361,17 @@ class UnifiedAIService {
     if (request.neighborhood) {
       prompt += ` focusing on the ${request.neighborhood} neighborhood in Omaha, Nebraska`;
     } else {
-      prompt += ` for the Omaha, Nebraska real estate market`;
+      prompt += ` for the Omaha, Nebraska dining scene`;
+    }
+
+    // Add platform-specific length guidance for social posts
+    if (request.type === 'social') {
+      prompt += `\n\n**CRITICAL LENGTH REQUIREMENT**: Generate a SHORT, punchy social post. 
+      - Target 40-80 characters for maximum engagement
+      - Lead with a strong hook or emoji
+      - Be concise and impactful
+      - No long paragraphs or multiple sentences
+      - Example good length: "🍽️ New menu alert! Our chef's tasting menu is back. Book now!"`;
     }
 
     if (request.aiPrompt) {
@@ -369,7 +379,7 @@ class UnifiedAIService {
     }
 
     if (request.keywords && request.keywords.length > 0) {
-      prompt += `\n\nInclude these keywords: ${request.keywords.join(', ')}`;
+      prompt += `\n\nInclude these keywords naturally: ${request.keywords.join(', ')}`;
     }
 
     if (request.seoOptimized) {
@@ -377,7 +387,7 @@ class UnifiedAIService {
     }
 
     if (request.longTailKeywords) {
-      prompt += `\n\nInclude long-tail keywords relevant to Omaha real estate buyers and sellers.`;
+      prompt += `\n\nInclude long-tail keywords relevant to Omaha diners and food lovers.`;
     }
 
     if (request.localSeoFocus) {
@@ -394,15 +404,15 @@ class UnifiedAIService {
   }
 
   private getFallbackContent(request: ContentGenerationRequest): GeneratedContent {
-    const agentName = request.companyProfile?.agentName || "your local real estate agent";
-    const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our brokerage";
+    const agentName = request.companyProfile?.agentName || "your local restaurant";
+    const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our restaurant";
 
     return {
-      title: `${request.topic} - ${request.neighborhood || 'Omaha'} Real Estate`,
-      content: `Looking for expert real estate guidance in ${request.neighborhood || 'Omaha'}? Contact ${agentName} with ${businessName} for professional service and local market expertise. Whether you're buying or selling, we're here to help you achieve your real estate goals.`,
+      title: `${request.topic} - ${request.neighborhood || 'Omaha'} Restaurant Guide`,
+      content: `Looking for expert dining recommendations in ${request.neighborhood || 'Omaha'}? Visit ${agentName} with ${businessName} for exceptional cuisine and local dining expertise. Whether you're looking for fine dining or casual eats, we're here to help you discover the best restaurants in Omaha.`,
       keywords: [
-        'Omaha real estate',
-        request.neighborhood ? `${request.neighborhood} homes` : 'Nebraska homes',
+        'Omaha restaurants',
+        request.neighborhood ? `${request.neighborhood} restaurants` : 'Nebraska dining',
         request.topic
       ],
       metaDescription: `${request.topic} in ${request.neighborhood || 'Omaha'} with ${agentName}`,

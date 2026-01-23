@@ -179,7 +179,7 @@ export class SocialMediaService {
         snippet: {
           title: title,
           description: description,
-          tags: ["real estate", "Omaha", "property", "home", "marketing"],
+          tags: ["restaurant", "Omaha", "dining", "food", "marketing"],
           categoryId: "28", // Science & Technology category
         },
         status: {
@@ -803,7 +803,7 @@ export class SocialMediaService {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
-          "User-Agent": "RealEstateAI/1.0",
+          "User-Agent": "RestaurantFlowAI/1.0",
         },
         body: JSON.stringify(tweetData),
       });
@@ -909,7 +909,7 @@ export class SocialMediaService {
         method: "DELETE",
         headers: {
           Authorization: authHeader["Authorization"],
-          "User-Agent": "RealEstateAI/1.0",
+          "User-Agent": "RestaurantFlowAI/1.0",
         },
       });
 

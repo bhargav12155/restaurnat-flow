@@ -131,7 +131,7 @@ export class MLSService {
         features: ["Open Floor Plan", "Updated Kitchen", "Large Backyard", "Hardwood Floors"],
         photoUrls: ["https://via.placeholder.com/400x300/4a90e2/ffffff?text=Property+Image"],
         neighborhood: "Dundee",
-        agentName: "Mike Bjork",
+        agentName: "Restaurant Owner",
       },
       {
         id: "sample-2", 
@@ -171,7 +171,7 @@ export class MLSService {
         features: ["Luxury Finishes", "Finished Basement", "Walk-in Closets", "Granite Countertops"],
         photoUrls: ["https://via.placeholder.com/400x300/27ae60/ffffff?text=Luxury+Home"],
         neighborhood: "Aksarben",
-        agentName: "Mike Bjork",
+        agentName: "Restaurant Owner",
       }
     ];
 

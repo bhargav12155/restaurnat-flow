@@ -42,7 +42,7 @@ export default function ProfilePage() {
 
                 <div className="mt-2">
                   {user.type === "agent" ? (
-                    <Badge className="bg-blue-100 text-blue-800">Agent</Badge>
+                    <Badge className="bg-orange-100 text-orange-800">Restaurant Owner</Badge>
                   ) : (
                     <Badge className="bg-green-100 text-green-800">
                       Client
@@ -78,7 +78,7 @@ export default function ProfilePage() {
               <div className="flex justify-between">
                 <span className="text-gray-500">Account Type:</span>
                 <span className="font-medium">
-                  {user.type === "agent" ? "Real Estate Agent" : "Client"}
+                  {user.type === "agent" ? "Restaurant Owner" : "Customer"}
                 </span>
               </div>
               <div className="flex justify-between">
