@@ -6,7 +6,7 @@
 set -e
 
 APP_NAME="restaurantflow-app"
-ENV_NAME="restaurantflow-env"
+ENV_NAME="restaurantflow-prod"
 S3_BUCKET="elasticbeanstalk-us-east-2-117984642146"
 REGION="us-east-2"
 
