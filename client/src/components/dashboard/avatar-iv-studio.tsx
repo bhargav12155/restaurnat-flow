@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient, downloadFile } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useBusinessType } from "@/hooks/useBusinessType";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useLocation } from "wouter";
 import {
@@ -77,13 +78,41 @@ const MOTION_PROMPTS = [
   { id: "friendly", label: "Friendly", prompt: "friendly customer service representative" },
 ];
 
-const SCRIPT_STYLES = [
-  { id: "menu_showcase", label: "Menu Showcase", description: "Showcase menu items and specials" },
-  { id: "dish_spotlight", label: "Dish Spotlight", description: "Quick attention-grabbing dish preview" },
-  { id: "restaurant_update", label: "Restaurant Update", description: "Local restaurant news and updates" },
-  { id: "chef_intro", label: "Chef Introduction", description: "Professional chef/owner introduction" },
-  { id: "neighborhood_guide", label: "Area Guide", description: "Local area highlights and food scene" },
-];
+// Dynamic script styles based on business type
+const getScriptStyles = (businessType: string) => {
+  if (businessType === 'restaurant') {
+    return [
+      { id: "menu_showcase", label: "Menu Showcase", description: "Showcase menu items and specials" },
+      { id: "dish_spotlight", label: "Dish Spotlight", description: "Quick attention-grabbing dish preview" },
+      { id: "restaurant_update", label: "Restaurant Update", description: "Local restaurant news and updates" },
+      { id: "chef_intro", label: "Chef Introduction", description: "Professional chef/owner introduction" },
+      { id: "neighborhood_guide", label: "Area Guide", description: "Local area highlights and food scene" },
+    ];
+  } else if (businessType === 'home_services') {
+    return [
+      { id: "service_showcase", label: "Service Showcase", description: "Showcase services and specialties" },
+      { id: "project_spotlight", label: "Project Spotlight", description: "Quick attention-grabbing project preview" },
+      { id: "business_update", label: "Business Update", description: "Company news and updates" },
+      { id: "team_intro", label: "Team Introduction", description: "Professional team/owner introduction" },
+      { id: "neighborhood_guide", label: "Service Area Guide", description: "Local area highlights and service coverage" },
+    ];
+  } else if (businessType === 'real_estate') {
+    return [
+      { id: "listing_showcase", label: "Listing Showcase", description: "Showcase properties and listings" },
+      { id: "property_spotlight", label: "Property Spotlight", description: "Quick attention-grabbing property preview" },
+      { id: "market_update", label: "Market Update", description: "Local market news and updates" },
+      { id: "agent_intro", label: "Agent Introduction", description: "Professional agent introduction" },
+      { id: "neighborhood_guide", label: "Neighborhood Guide", description: "Local area highlights and amenities" },
+    ];
+  }
+  return [
+    { id: "product_showcase", label: "Product Showcase", description: "Showcase products and offerings" },
+    { id: "item_spotlight", label: "Item Spotlight", description: "Quick attention-grabbing item preview" },
+    { id: "business_update", label: "Business Update", description: "Company news and updates" },
+    { id: "team_intro", label: "Team Introduction", description: "Professional team/owner introduction" },
+    { id: "neighborhood_guide", label: "Area Guide", description: "Local area highlights" },
+  ];
+};
 
 const STEPS = [
   { id: 1, title: "Upload Photo", icon: Image },
@@ -176,6 +205,8 @@ interface VideoJob {
 export function AvatarIVStudio() {
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
+  const { businessType } = useBusinessType();
+  const SCRIPT_STYLES = getScriptStyles(businessType || 'restaurant');
   const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);

@@ -20,6 +20,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useBusinessType } from "@/hooks/useBusinessType";
+import { getBusinessLabels } from "@/lib/businessType";
 import { friendlyError, messages } from "@/lib/messages";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -187,6 +190,7 @@ const stockPhotos = [
 ];
 
 export function SocialMediaManager() {
+  const { data: businessData, businessType, businessTypeLabel } = useBusinessType();
   const [postContent, setPostContent] = useState("");
   const [aiPrompt, setAiPrompt] = useState("");
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -217,10 +221,12 @@ export function SocialMediaManager() {
     queryKey: ["/api/company/profile"],
   });
 
-  // Get agent name and brokerage with smart defaults
-  const agentName = companyProfile?.agentName || "[Your Name]";
-  const brokerageName = companyProfile?.brokerageName || "[Your Brokerage]";
-  const businessName = companyProfile?.businessName || "[Your Business]";
+  // Get agent name and brokerage with smart defaults from user profile
+  const { user } = useAuth();
+  const userFirstName = user?.email?.split('@')[0] || 'Professional';
+  const agentName = companyProfile?.agentName || userFirstName;
+  const brokerageName = companyProfile?.brokerageName || companyProfile?.businessName || 'Your Company';
+  const businessName = companyProfile?.businessName || 'Your Business';
 
   // OAuth-enabled platforms (only platforms with full OAuth backend support)
   const oauthPlatforms = [
@@ -1127,9 +1133,8 @@ Visit ${businessName} today!
             const PlatformIcon = platformInfo.icon;
 
             return (
-              <>
+              <div key={account.id}>
                 <div
-                  key={account.id}
                   className="flex items-center justify-between"
                 >
                   <div className="flex items-center space-x-3">
@@ -1265,7 +1270,7 @@ Visit ${businessName} today!
                     )}
                   </div>
                 )}
-              </>
+              </div>
             );
           })}
         </div>
@@ -1302,8 +1307,8 @@ Visit ${businessName} today!
                   </div>
                   <Button
                     onClick={() => {
-                      const videoTitle = postContent.trim() || "Restaurant Video Update";
-                      const videoDescription = postContent.trim() || "Check out what's cooking at our restaurant!";
+                      const videoTitle = postContent.trim() || `${businessTypeLabel} Video Update`;
+                      const videoDescription = postContent.trim() || `Check out what's new at our ${(businessTypeLabel || 'restaurant').toLowerCase()}!`;
                       
                       postMutation.mutate({
                         content: videoTitle.substring(0, 100),
@@ -1330,10 +1335,10 @@ Visit ${businessName} today!
             <h3 className="text-sm font-medium text-foreground">Quick Post</h3>
           </div>
 
-          {/* Menu Item Selector */}
+          {/* Item Selector */}
           <div className="space-y-2">
             <div className="text-xs font-medium text-muted-foreground mb-2">
-              Select Menu Item (Optional)
+              Select Item (Optional)
             </div>
             <MenuItemSelector
               onSelectMenuItem={setSelectedMenuItem}
@@ -1633,7 +1638,7 @@ Visit ${businessName} today!
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-xs">
-                    <p>AI Optimize enhances your post content with better engagement and professional messaging. It analyzes your text and suggests improvements for clarity, tone, and restaurant marketing best practices to help get more visibility and responses from your audience.</p>
+                    <p>AI Optimize enhances your post content with better engagement and professional messaging. It analyzes your text and suggests improvements for clarity, tone, and marketing best practices to help get more visibility and responses from your audience.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

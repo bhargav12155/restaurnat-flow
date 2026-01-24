@@ -25,6 +25,8 @@ interface ContentGenerationRequest {
   localSeoFocus?: boolean;
   propertyData?: any;
   companyProfile?: any;
+  businessType?: string;
+  businessSubtype?: string;
 }
 
 interface GeneratedContent {
@@ -324,11 +326,14 @@ class UnifiedAIService {
   async generateStructuredContent(request: ContentGenerationRequest): Promise<GeneratedContent> {
     try {
       const prompt = this.buildContentPrompt(request);
-      const agentName = request.companyProfile?.agentName || "your local restaurant";
-      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our restaurant group";
-      const agentTitle = request.companyProfile?.agentTitle || "restaurant owner";
+      const agentName = request.companyProfile?.agentName || "your local business";
+      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our company";
+      const agentTitle = request.companyProfile?.agentTitle || "owner";
 
-      const systemPrompt = `You are an expert restaurant content writer and SEO specialist focused on the Omaha, Nebraska market. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName} in Omaha. Always include ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON.`;
+      const businessTypeLabel = this.describeBusinessType(request.businessType) || 'Restaurant';
+      const businessSubtypeLabel = this.describeBusinessSubtype(request.businessSubtype);
+
+      const systemPrompt = `You are an expert ${businessTypeLabel.toLowerCase()} content writer and SEO specialist. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName}. Always weave in ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON. Make sure tone, examples, CTAs, and terminology match ${businessTypeLabel}${businessSubtypeLabel ? ` (${businessSubtypeLabel})` : ""}.`;
 
       const response = await this.generate(prompt, {
         systemPrompt,
@@ -356,12 +361,19 @@ class UnifiedAIService {
   }
 
   private buildContentPrompt(request: ContentGenerationRequest): string {
-    let prompt = `Generate ${request.type} content about "${request.topic}"`;
+    const businessTypeLabel = this.describeBusinessType(request.businessType);
+    const businessSubtypeLabel = this.describeBusinessSubtype(request.businessSubtype);
+
+    let prompt = `Generate ${request.type} content about "${request.topic}" for a ${businessTypeLabel}`;
+
+    if (businessSubtypeLabel) {
+      prompt += ` (${businessSubtypeLabel})`;
+    }
 
     if (request.neighborhood) {
-      prompt += ` focusing on the ${request.neighborhood} neighborhood in Omaha, Nebraska`;
+      prompt += ` focusing on the ${request.neighborhood} area`;
     } else {
-      prompt += ` for the Omaha, Nebraska dining scene`;
+      prompt += ` for the local market`;
     }
 
     // Add platform-specific length guidance for social posts
@@ -387,11 +399,11 @@ class UnifiedAIService {
     }
 
     if (request.longTailKeywords) {
-      prompt += `\n\nInclude long-tail keywords relevant to Omaha diners and food lovers.`;
+      prompt += `\n\nInclude long-tail keywords relevant to this ${(businessTypeLabel || 'restaurant').toLowerCase()} audience.`;
     }
 
     if (request.localSeoFocus) {
-      prompt += `\n\nFocus on local Omaha SEO by mentioning specific neighborhoods, landmarks, and local insights.`;
+      prompt += `\n\nFocus on local SEO by mentioning specific neighborhoods, landmarks, and local insights.`;
     }
 
     if (request.propertyData) {
@@ -404,21 +416,75 @@ class UnifiedAIService {
   }
 
   private getFallbackContent(request: ContentGenerationRequest): GeneratedContent {
-    const agentName = request.companyProfile?.agentName || "your local restaurant";
-    const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our restaurant";
+    const businessTypeLabel = this.describeBusinessType(request.businessType);
+    const businessSubtypeLabel = this.describeBusinessSubtype(request.businessSubtype);
+    const agentName = request.companyProfile?.agentName || "your local expert";
+    const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our company";
 
     return {
-      title: `${request.topic} - ${request.neighborhood || 'Omaha'} Restaurant Guide`,
-      content: `Looking for expert dining recommendations in ${request.neighborhood || 'Omaha'}? Visit ${agentName} with ${businessName} for exceptional cuisine and local dining expertise. Whether you're looking for fine dining or casual eats, we're here to help you discover the best restaurants in Omaha.`,
+      title: `${request.topic} - ${request.neighborhood || 'Local'} ${businessTypeLabel} Guide`,
+      content: `Looking for trusted insights in ${request.neighborhood || 'your area'}? ${agentName} at ${businessName} specializes in ${businessSubtypeLabel || businessTypeLabel}. Get actionable advice tailored to your needs.`,
       keywords: [
-        'Omaha restaurants',
-        request.neighborhood ? `${request.neighborhood} restaurants` : 'Nebraska dining',
+        `${businessTypeLabel} tips`,
+        request.neighborhood ? `${request.neighborhood} ${businessTypeLabel}` : 'local business tips',
         request.topic
       ],
-      metaDescription: `${request.topic} in ${request.neighborhood || 'Omaha'} with ${agentName}`,
+      metaDescription: `${request.topic} for ${businessTypeLabel} in ${request.neighborhood || 'your area'} with ${agentName}`,
       seoScore: 45,
       wordCount: 50
     };
+  }
+
+  private describeBusinessType(type?: string): string {
+    const map: Record<string, string> = {
+      restaurant: "Restaurant & Food Service",
+      home_services: "Home Services",
+      real_estate: "Real Estate",
+      retail: "Retail & E-commerce",
+      professional_services: "Professional Services",
+      general: "General Business",
+    };
+    return map[type || ""] || "Restaurant & Food Service";
+  }
+
+  private describeBusinessSubtype(subtype?: string): string {
+    const map: Record<string, string> = {
+      fine_dining: "Fine Dining",
+      fast_casual: "Fast Casual",
+      cafe: "Café & Coffee Shop",
+      bar_pub: "Bar & Pub",
+      food_truck: "Food Truck",
+      catering: "Catering Service",
+      bakery: "Bakery",
+      quick_service: "Quick Service",
+      plumbing: "Plumbing",
+      hvac: "HVAC",
+      electrical: "Electrical",
+      cleaning: "Cleaning Service",
+      landscaping: "Landscaping",
+      roofing: "Roofing",
+      painting: "Painting",
+      handyman: "Handyman",
+      residential: "Residential Sales",
+      commercial: "Commercial Real Estate",
+      property_management: "Property Management",
+      rental: "Rental Services",
+      investment: "Investment Properties",
+      fashion: "Fashion & Apparel",
+      electronics: "Electronics",
+      beauty: "Beauty & Cosmetics",
+      sports: "Sports & Fitness",
+      home_goods: "Home Goods",
+      specialty: "Specialty Store",
+      legal: "Legal Services",
+      accounting: "Accounting & Tax",
+      consulting: "Consulting",
+      marketing: "Marketing Agency",
+      insurance: "Insurance",
+      financial: "Financial Services",
+      other: "Other",
+    };
+    return map[subtype || ""] || "";
   }
 
   getStatus() {

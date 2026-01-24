@@ -166,7 +166,7 @@ export function ScheduledPostsManager() {
   const rawName = user?.name || user?.email?.split('@')[0];
   const userName = rawName 
     ? rawName.charAt(0).toUpperCase() + rawName.slice(1) // Capitalize first letter
-    : "Restaurant Owner";
+    : "Business Owner";
   const [isEditingWithAI, setIsEditingWithAI] = useState(false);
   const [aiEditContent, setAiEditContent] = useState("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);

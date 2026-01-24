@@ -23,6 +23,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessType } from "@/hooks/useBusinessType";
 import { apiRequest } from "@/lib/queryClient";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -72,13 +73,41 @@ interface VideoContent {
   createdAt: string;
 }
 
-const videoTypes = [
-  { value: "menu_feature", label: "Menu Feature", icon: "🍽️" },
-  { value: "restaurant_tour", label: "Restaurant Tour", icon: "🏠" },
-  { value: "chef_spotlight", label: "Chef Spotlight", icon: "👨‍🍳" },
-  { value: "special_event", label: "Special Event", icon: "🎉" },
-  { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
-];
+// Dynamic video types based on business type - populated in component
+const getVideoTypes = (businessType: string) => {
+  if (businessType === 'restaurant') {
+    return [
+      { value: "menu_feature", label: "Menu Feature", icon: "🍽️" },
+      { value: "restaurant_tour", label: "Restaurant Tour", icon: "🏠" },
+      { value: "chef_spotlight", label: "Chef Spotlight", icon: "👨‍🍳" },
+      { value: "special_event", label: "Special Event", icon: "🎉" },
+      { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
+    ];
+  } else if (businessType === 'home_services') {
+    return [
+      { value: "service_feature", label: "Service Feature", icon: "🔧" },
+      { value: "business_tour", label: "Business Tour", icon: "🏠" },
+      { value: "team_spotlight", label: "Team Spotlight", icon: "👷" },
+      { value: "special_event", label: "Special Offer", icon: "🎉" },
+      { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
+    ];
+  } else if (businessType === 'real_estate') {
+    return [
+      { value: "property_feature", label: "Property Feature", icon: "🏡" },
+      { value: "neighborhood_tour", label: "Neighborhood Tour", icon: "🏠" },
+      { value: "agent_spotlight", label: "Agent Spotlight", icon: "👔" },
+      { value: "open_house", label: "Open House", icon: "🎉" },
+      { value: "market_update", label: "Market Update", icon: "📊" },
+    ];
+  }
+  return [
+    { value: "product_feature", label: "Product Feature", icon: "📦" },
+    { value: "business_tour", label: "Business Tour", icon: "🏠" },
+    { value: "team_spotlight", label: "Team Spotlight", icon: "👥" },
+    { value: "special_event", label: "Special Event", icon: "🎉" },
+    { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
+  ];
+};
 
 const videoPlatforms = [
   {
@@ -110,6 +139,8 @@ const neighborhoods = [
 ];
 
 export function VideoGenerator() {
+  const { businessType } = useBusinessType();
+  const videoTypes = getVideoTypes(businessType || 'restaurant');
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
   const [avatarType, setAvatarType] = useState<
     "public" | "talking_photo" | "custom"
@@ -392,8 +423,8 @@ export function VideoGenerator() {
       duration: parseInt(duration),
       avatarId: selectedAvatar, // This is either a public avatar ID or photo avatar group_id
       tags: [
-        "FoodLovers",
-        "RestaurantLife",
+        businessType === 'restaurant' ? "FoodLovers" : businessType === 'home_services' ? "HomeServices" : businessType === 'real_estate' ? "RealEstate" : "Business",
+        businessType === 'restaurant' ? "RestaurantLife" : businessType === 'home_services' ? "ProServices" : businessType === 'real_estate' ? "PropertyTour" : "BusinessLife",
         selectedNeighborhood,
         selectedVideoType,
         selectedVideoPlatform,
@@ -1463,7 +1494,7 @@ export function VideoGenerator() {
                             uploadToYoutubeMutation.mutate({
                               videoId: video.id,
                               title: video.title,
-                              description: `${video.topic} - Your Restaurant Marketing Expert`,
+                              description: `${video.topic} - Your Business Marketing Expert`,
                               tags: video.tags,
                             })
                           }

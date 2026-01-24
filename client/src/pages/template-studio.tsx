@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessType } from "@/hooks/useBusinessType";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { 
   Home, 
@@ -543,6 +544,7 @@ function GeneratedVideoCard({ video }: { video: GeneratedVideo }) {
 }
 
 export default function TemplateStudioPage() {
+  const { businessType, businessTypeLabel = 'Restaurant' } = useBusinessType();
   const [selectedTemplate, setSelectedTemplate] = useState<VideoTemplateWithVariables | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
@@ -582,7 +584,7 @@ export default function TemplateStudioPage() {
                 Video Template Studio
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground hidden md:block">
-                Create professional restaurant marketing videos using pre-built templates
+                Create professional {businessTypeLabel.toLowerCase()} marketing videos using pre-built templates
               </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">

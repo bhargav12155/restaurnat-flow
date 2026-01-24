@@ -26,6 +26,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDemo } from "@/contexts/DemoContext";
+import { useBusinessType } from "@/hooks/useBusinessType";
 import demoMotionVideo from "@assets/preview_video_target_(1)_1765290240595.mp4";
 import demoFinalVideo from "@assets/preview_video_target_(1)_1765291235450.mp4";
 import demoEditLookResult from "@assets/demo-edit-look-result.jpg";
@@ -155,6 +156,7 @@ export function AvatarStudio() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { isDemo } = useDemo();
+  const { businessType, businessSubtype } = useBusinessType();
   
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedAvatarGroup, setSelectedAvatarGroup] = useState<string>("");
@@ -2583,7 +2585,7 @@ export function AvatarStudio() {
                     id="custom-prompt"
                     value={customPrompt}
                     onChange={(e) => setCustomPrompt(e.target.value)}
-                    placeholder="e.g., Focus on our signature dishes, mention our 20 years of culinary experience..."
+                    placeholder={businessType === 'restaurant' ? 'e.g., Focus on our signature dishes, mention our 20 years of culinary experience...' : businessType === 'home_services' ? `e.g., Highlight our certified technicians, mention our ${businessSubtype === 'plumbing' ? '24/7 emergency services' : businessSubtype === 'hvac' ? 'energy-efficient solutions' : 'quality workmanship'}...` : businessType === 'real_estate' ? 'e.g., Focus on prime locations, mention our market expertise...' : 'e.g., Focus on our key features, mention our experience...'}
                     rows={2}
                     className="resize-none"
                     data-testid="input-custom-prompt"

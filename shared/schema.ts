@@ -70,6 +70,9 @@ export const publicUsers = pgTable(
     emailVerified: boolean("email_verified").default(false),
     verificationToken: text("verification_token"),
     verificationTokenExpiry: timestamp("verification_token_expiry"),
+    // Business type configuration
+    businessType: text("business_type").default("restaurant"),
+    businessSubtype: text("business_subtype").default("fast_casual"),
     lastLogin: timestamp("last_login"),
     createdAt: timestamp("created_at").defaultNow(),
   },
