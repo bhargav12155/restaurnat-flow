@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { useFacebookPages } from "@/hooks/use-facebook-pages";
 import { FacebookPageSelector } from "@/components/facebook/facebook-page-selector";
 import { useInstagramAccounts } from "@/hooks/use-instagram-accounts";
@@ -52,6 +53,9 @@ import {
   Wand2,
   ArrowRight,
 } from "lucide-react";
+import { useBusinessType } from "@/hooks/useBusinessType";
+import { getBusinessLabels } from "@/lib/businessType";
+import { getBusinessTerminology } from "@/lib/businessTerminology";
 import {
   FaFacebook,
   FaInstagram,
@@ -140,13 +144,6 @@ const contentTypes = [
     description: "Quick posts for social media",
     color: "from-purple-500 to-pink-500"
   },
-  { 
-    value: "property_feature", 
-    label: "Menu Item Feature", 
-    icon: Home,
-    description: "Showcase a specific dish or special",
-    color: "from-amber-500 to-orange-500"
-  },
 ];
 
 const WIZARD_STEPS = [
@@ -221,6 +218,42 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
   
   const [contentType, setContentType] = useState("blog");
 
+  // Business type context
+  const { data: businessData } = useBusinessType();
+  const businessType = businessData?.businessType || "restaurant";
+  const businessSubtype = businessData?.businessSubtype || "fast_casual";
+  const { typeLabel: businessTypeLabel, subtypeLabel: businessSubtypeLabel } = getBusinessLabels(
+    businessType,
+    businessSubtype
+  );
+  const businessHandle = `our_${businessType.replace(/[^a-z0-9]/gi, "") || "business"}`;
+  const terms = getBusinessTerminology(businessType, businessSubtype);
+
+  // Dynamic content types based on business
+  const contentTypes = [
+    { 
+      value: "blog", 
+      label: "Blog Post", 
+      icon: FileText,
+      description: "Long-form articles for your website",
+      color: "from-blue-500 to-blue-600"
+    },
+    { 
+      value: "social", 
+      label: "Social Post", 
+      icon: Share2,
+      description: "Quick posts for social media",
+      color: "from-purple-500 to-pink-500"
+    },
+    { 
+      value: "property_feature", 
+      label: `${terms.itemCapitalized} Feature`, 
+      icon: Home,
+      description: `Showcase a specific ${terms.item}`,
+      color: "from-amber-500 to-orange-500"
+    },
+  ];
+
   // Handle URL parameters for quick actions (e.g., ?type=blog)
   useEffect(() => {
     const handleUrlChange = () => {
@@ -246,9 +279,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     };
   }, []);
   const [topic, setTopic] = useState("");
-  const [aiPrompt, setAiPrompt] = useState(
-    "Create engaging, SEO-optimized content for your restaurant that drives leads and builds trust with potential clients."
-  );
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiPromptUserUpdated, setAiPromptUserUpdated] = useState(false);
   const [neighborhood, setNeighborhood] = useState("All Omaha Areas");
   const [seoOptimized, setSeoOptimized] = useState(true);
   const [longTailKeywords, setLongTailKeywords] = useState(true);
@@ -275,6 +307,13 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
   );
   const [viewingPlatform, setViewingPlatform] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const defaultPrompt = `Create engaging, SEO-optimized content for your ${(businessTypeLabel || 'restaurant').toLowerCase()} that drives leads and builds trust with potential clients.`;
+    if (!aiPromptUserUpdated && aiPrompt !== defaultPrompt) {
+      setAiPrompt(defaultPrompt);
+    }
+  }, [aiPrompt, aiPromptUserUpdated, businessTypeLabel]);
 
   // Content editing states
   const [isEditing, setIsEditing] = useState(false);
@@ -328,10 +367,12 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     queryKey: ["/api/company/profile"],
   });
 
-  // Get agent name and brokerage with smart defaults
-  const agentName = (companyProfile as any)?.agentName || "[Your Name]";
-  const brokerageName = (companyProfile as any)?.brokerageName || "[Your Brokerage]";
-  const businessName = (companyProfile as any)?.businessName || "[Your Business]";
+  // Get agent name and brokerage with smart defaults from user profile
+  const { user } = useAuth();
+  const userFirstName = user?.email?.split('@')[0] || 'Professional';
+  const agentName = (companyProfile as any)?.agentName || userFirstName;
+  const brokerageName = (companyProfile as any)?.brokerageName || (companyProfile as any)?.businessName || 'Your Company';
+  const businessName = (companyProfile as any)?.businessName || 'Your Business';
 
   // Facebook Pages hook for page selection
   const {
@@ -940,7 +981,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     toast({
       title: "Posting to Website",
       description: `Publishing "${
-        lastGenerated?.title || "Restaurant Content"
+        lastGenerated?.title || `${businessTypeLabel} Content`
       }" to your website...`,
     });
 
@@ -984,6 +1025,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
       contentType: string;
       topic: string;
       neighborhood: string;
+      businessType: string;
+      businessSubtype: string;
     }
   >({
     mutationFn: async ({
@@ -992,6 +1035,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
       contentType,
       topic,
       neighborhood,
+      businessType,
+      businessSubtype,
     }) => {
       const response = await apiRequest(
         "POST",
@@ -1004,6 +1049,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
           neighborhood,
           seoOptimized: true,
           longTailKeywords: true,
+          businessType,
+          businessSubtype,
         }
       );
       return await response.json();
@@ -1079,6 +1126,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
       contentType,
       topic,
       neighborhood,
+      businessType,
+      businessSubtype,
     });
   };
 
@@ -1094,9 +1143,9 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
     if (contentType === "property_feature" && !selectedProperty) {
       toast({
-        title: "Menu Item Required",
+        title: `${terms.itemCapitalized} Required`,
         description:
-          "Please search and select a menu item for menu item feature content",
+          `Please search and select a ${terms.item} for ${terms.item} feature content`,
         variant: "destructive",
       });
       return;
@@ -1111,7 +1160,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
     generateContentMutation.mutate({
       type: contentType,
       topic: topic.trim(),
-      aiPrompt: enhancedPrompt,
+      aiPrompt: `${enhancedPrompt}\n\nBusiness Context: ${businessTypeLabel} (${businessSubtypeLabel}). Tailor all examples, CTAs, and language to this industry.`,
       neighborhood:
         neighborhood === "All Omaha Areas" ? undefined : neighborhood,
       seoOptimized,
@@ -1119,6 +1168,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
       localSeoFocus: true,
       propertyData:
         contentType === "property_feature" ? selectedProperty : undefined,
+      businessType,
+      businessSubtype,
     });
   };
 
@@ -1189,18 +1240,25 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               <p className="text-sm text-muted-foreground">
                 Create professional content in 4 simple steps
               </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">Business:</span>
+                <span className="px-2 py-1 rounded-full bg-primary/10 text-primary text-xs">
+                  {businessTypeLabel}
+                </span>
+                <span className="px-2 py-1 rounded-full bg-muted text-foreground/80 text-xs">
+                  {businessSubtypeLabel}
+                </span>
+              </div>
             </div>
           </div>
-          <Badge
-            variant="secondary"
-            className={
-              isActive
-                ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700"
-                : "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700"
-            }
-          >
-            {isActive ? "Ready" : "Setup Required"}
-          </Badge>
+          {isActive && (
+            <Badge
+              variant="secondary"
+              className="bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700"
+            >
+              Ready
+            </Badge>
+          )}
         </div>
 
         {/* Step Indicator */}
@@ -1351,19 +1409,19 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               </h3>
               <p className="text-muted-foreground">
                 {contentType === "property_feature" 
-                  ? "Search for a menu item to feature" 
+                  ? `Search for a ${terms.item} to feature` 
                   : "Enter keywords or a topic for your content"}
               </p>
             </div>
 
-            {/* Menu Item Selection (only for Menu Item Feature) */}
+            {/* Item Selection (only for Item Feature) */}
             {contentType === "property_feature" ? (
               <div className="space-y-4">
                 <div className="p-4 bg-muted/30 rounded-lg border">
                   <div className="flex items-center space-x-2 mb-4">
                     <Home className="h-5 w-5 text-primary" />
                     <Label className="text-sm font-medium text-foreground">
-                      Search Menu Items
+                      {terms.searchItem}
                     </Label>
                   </div>
 
@@ -1482,13 +1540,13 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               data-testid="button-search-properties"
             >
               <Search className="mr-2 h-4 w-4" />
-              {isSearchingProperties ? "Searching..." : "Search Menu Items"}
+              {isSearchingProperties ? "Searching..." : terms.searchItem}
             </Button>
 
             {properties && properties.length > 0 && (
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">
-                  Found Items
+                  Found {terms.itemsCapitalized}
                 </Label>
                 <div className="max-h-32 overflow-y-auto space-y-2">
                   {properties.map((property) => (
@@ -1525,7 +1583,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               <div className="p-4 bg-muted/30 rounded-lg border space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-semibold text-foreground">
-                    Selected Menu Item
+                    Selected {terms.itemCapitalized}
                   </h4>
                   <Button
                     variant="outline"
@@ -1534,12 +1592,12 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     className="h-7 text-xs"
                     data-testid="button-clear-property"
                   >
-                    Change Item
+                    Change {terms.itemCapitalized}
                   </Button>
                 </div>
                 
                 <div className="flex gap-4">
-                  {/* Menu Item Image */}
+                  {/* Item Image */}
                   <div className="w-28 h-28 bg-muted rounded-lg flex-shrink-0 overflow-hidden">
                     {selectedProperty.photos?.[0] ? (
                       <img 
@@ -1607,7 +1665,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   </Label>
                   <Input
                     id="topic"
-                    placeholder="e.g., Seasonal specials, Brunch menu highlights"
+                    placeholder={businessType === 'restaurant' ? 'e.g., Seasonal specials, Brunch menu highlights' : businessType === 'home_services' ? `e.g., ${businessSubtype === 'plumbing' ? 'Emergency services, Drain cleaning' : businessSubtype === 'hvac' ? 'AC maintenance, Heating repair' : 'Professional services, Expert solutions'}` : businessType === 'real_estate' ? 'e.g., New listings, Open house events' : 'e.g., New arrivals, Special promotions'}
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     className="w-full text-lg py-6"
@@ -1741,7 +1799,10 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                   id="ai-prompt"
                   placeholder="Tell the AI exactly how to create your content..."
                   value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
+                  onChange={(e) => {
+                    setAiPromptUserUpdated(true);
+                    setAiPrompt(e.target.value);
+                  }}
                   className="w-full resize-none"
                   rows={3}
                   data-testid="input-ai-prompt"
@@ -2404,7 +2465,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                       </div>
                       <div>
                         <div className="font-semibold text-sm">
-                          our_restaurant
+                          {businessHandle}
                         </div>
                         <div className="text-xs text-gray-500">
                           Omaha, Nebraska
@@ -2456,7 +2517,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     </div>
                     <div className="text-sm font-semibold mb-1">127 likes</div>
                     <div className="text-sm max-h-32 overflow-y-auto">
-                      <span className="font-semibold">our_restaurant</span>
+                      <span className="font-semibold">{businessHandle}</span>
                       <span className="ml-1">
                         {isEditing ? (
                           <Textarea
@@ -2496,7 +2557,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     <div className="flex-1">
                       <div className="font-semibold text-sm">{agentName}</div>
                       <div className="text-xs text-gray-500">
-                        Restaurant Professional at {brokerageName}
+                        {businessTypeLabel} Professional at {brokerageName}
                       </div>
                       <div className="text-xs text-gray-400">
                         {format(new Date(), "MMM d, h:mm a")}
@@ -2535,7 +2596,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     <div className="border rounded bg-gray-50 p-1 mb-3">
                       <img
                         src={photoPreview}
-                        alt="Restaurant"
+                          alt={businessTypeLabel}
                         className="w-full aspect-video object-cover rounded"
                       />
                     </div>
@@ -2545,7 +2606,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                       <div className="text-center text-gray-600">
                         <Home className="h-8 w-8 mx-auto mb-2" />
                         <div className="text-sm font-medium">
-                          Restaurant Feature
+                            {businessTypeLabel} Feature
                         </div>
                         <div className="text-xs">Click to view details</div>
                       </div>
@@ -2568,7 +2629,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                         {businessName}
                       </div>
                       <div className="text-xs text-gray-500">
-                        Restaurant Marketing Expert
+                        {businessTypeLabel} Marketing Expert
                       </div>
                     </div>
                     <Button
@@ -2612,7 +2673,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
 
                   <div className="space-y-2">
                     <div className="text-sm font-semibold line-clamp-2">
-                      {lastGenerated?.title || "Restaurant Video Content"}
+                      {lastGenerated?.title || `${businessTypeLabel} Video Content`}
                     </div>
                     {isEditing ? (
                       <Textarea
@@ -2833,8 +2894,7 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
               </div>
 
               <div className="text-xs text-muted-foreground text-center">
-                Choose from our curated collection of professional restaurant
-                photos.
+                Choose from our curated collection of professional {(businessTypeLabel || 'restaurant').toLowerCase()} photos.
               </div>
             </TabsContent>
 

@@ -49,10 +49,10 @@ const quickActions: QuickAction[] = [
     starterPrompt: "Write a blog article about ",
   },
   {
-    id: "menu-description",
-    label: "Menu Item Description",
+    id: "item-description",
+    label: "Item Description",
     icon: <Home className="h-4 w-4" />,
-    starterPrompt: "Generate a compelling menu item description for ",
+    starterPrompt: "Generate a compelling description for ",
   },
   {
     id: "generate-image",

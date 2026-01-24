@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessType } from "@/hooks/useBusinessType";
+import { getBusinessLabels } from "@/lib/businessType";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Wand2,
@@ -79,6 +81,13 @@ export function ImagePicker({
   selectedImage,
   className = "",
 }: ImagePickerProps) {
+  const { data: businessData, businessType } = useBusinessType();
+  const { typeLabel: businessTypeLabel } = getBusinessLabels(
+    businessData?.businessType,
+    businessData?.businessSubtype
+  );
+  const businessLabelLower = (businessTypeLabel || 'restaurant').toLowerCase();
+  const defaultStockQuery = `${businessLabelLower} visuals`;
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("ai");
   const [previewImage, setPreviewImage] = useState<string | null>(selectedImage || null);
@@ -111,7 +120,8 @@ export function ImagePicker({
   const [videoReferenceUploading, setVideoReferenceUploading] = useState(false);
 
   // Stock Images state
-  const [stockQuery, setStockQuery] = useState("restaurant food");
+  const [stockQuery, setStockQuery] = useState(defaultStockQuery);
+  const [stockQueryUserUpdated, setStockQueryUserUpdated] = useState(false);
   const [stockOrientation, setStockOrientation] = useState("landscape");
   const [debouncedQuery, setDebouncedQuery] = useState(stockQuery);
 
@@ -129,6 +139,13 @@ export function ImagePicker({
     }, 500);
     return () => clearTimeout(timer);
   }, [stockQuery]);
+
+  useEffect(() => {
+    if (!stockQueryUserUpdated && stockQuery !== defaultStockQuery) {
+      setStockQuery(defaultStockQuery);
+      setDebouncedQuery(defaultStockQuery);
+    }
+  }, [defaultStockQuery, stockQuery, stockQueryUserUpdated]);
 
   // Fetch templates
   const { data: templatesData } = useQuery<{ templates: ImageTemplate[] }>({
@@ -707,7 +724,7 @@ export function ImagePicker({
               id="video-prompt"
               value={videoPrompt}
               onChange={(e) => setVideoPrompt(e.target.value)}
-              placeholder="Describe the video you want to generate... e.g., 'Steaming pasta dish with fresh herbs being plated by a chef'"
+              placeholder={businessType === 'restaurant' ? "Describe the video you want to generate... e.g., 'Steaming pasta dish with fresh herbs being plated by a chef'" : businessType === 'home_services' ? "Describe the video you want to generate... e.g., 'Professional technician installing modern HVAC system'" : businessType === 'real_estate' ? "Describe the video you want to generate... e.g., 'Luxury home exterior with landscaped yard at sunset'" : "Describe the video you want to generate... e.g., 'Professional product showcase with modern lighting'"}
               rows={3}
               data-testid="textarea-video-prompt"
             />
@@ -859,7 +876,10 @@ export function ImagePicker({
             <div className="flex-1">
               <Input
                 value={stockQuery}
-                onChange={(e) => setStockQuery(e.target.value)}
+                onChange={(e) => {
+                  setStockQueryUserUpdated(true);
+                  setStockQuery(e.target.value);
+                }}
                 placeholder="Search stock images..."
                 data-testid="input-stock-search"
               />
@@ -967,9 +987,9 @@ export function ImagePicker({
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <Home className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="mb-2">No menu photos available</p>
+              <p className="mb-2">No item photos available</p>
               <p className="text-xs">
-                Select a menu item first to see its photos here
+                Select an item first to see its photos here
               </p>
             </div>
           )}

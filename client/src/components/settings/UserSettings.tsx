@@ -21,6 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { CompanyProfile } from "./CompanyProfile";
 import { SocialSetupReminder } from "@/components/dashboard/social-setup-reminder";
+import { BusinessTypeSettings } from "./BusinessTypeSettings";
 
 interface SocialMediaUrls {
   facebook: string;
@@ -192,6 +193,7 @@ export function UserSettings() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="business">Business Type</TabsTrigger>
           <TabsTrigger value="company">Company Profile</TabsTrigger>
         </TabsList>
 
@@ -230,6 +232,10 @@ export function UserSettings() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="business">
+          <BusinessTypeSettings />
         </TabsContent>
 
         <TabsContent value="company">

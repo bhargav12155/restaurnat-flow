@@ -20,11 +20,23 @@ import { VideoTemplates } from "@/components/dashboard/video-templates";
 import { Sidebar } from "@/components/layout/sidebar";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useBusinessType, getBusinessLabels, BUSINESS_TYPES } from "@/hooks/useBusinessType";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { VERSION_DISPLAY } from "@/lib/version";
-import { Sparkles } from "lucide-react";
+import { Sparkles, ChevronDown, Building2, Utensils, Home, Building, Briefcase, Store } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -35,6 +47,62 @@ export default function Dashboard() {
   const { user, isAuthenticated } = useAuth();
   const [location] = useLocation();
   const aiAssistant = useAIAssistantDialog();
+  const { toast } = useToast();
+  const { 
+    businessType,
+    businessSubtype,
+    businessTypeLabel = 'Restaurant', 
+    businessSubtypeLabel,
+    updateBusinessType,
+    isUpdating 
+  } = useBusinessType();
+
+  // Debug log
+  console.log("[Dashboard] Business type state:", { businessType, businessSubtype, businessTypeLabel, businessSubtypeLabel });
+
+  // Only show subtype label if it matches the current business type
+  const VALID_SUBTYPES: Record<string, string[]> = {
+    restaurant: ['fast_casual', 'fine_dining', 'cafe', 'bar', 'food_truck', 'bakery'],
+    home_services: ['plumbing', 'hvac', 'electrical', 'landscaping', 'cleaning', 'roofing'],
+    real_estate: ['residential', 'commercial', 'luxury', 'property_management'],
+    retail: ['clothing', 'electronics', 'grocery', 'specialty'],
+    professional_services: ['legal', 'accounting', 'consulting', 'medical'],
+  };
+  
+  const isSubtypeValidForType = VALID_SUBTYPES[businessType]?.includes(businessSubtype);
+  const displayLabel = isSubtypeValidForType && businessSubtypeLabel ? businessSubtypeLabel : businessTypeLabel;
+
+  // Handle business type change
+  const handleBusinessTypeChange = (newType: string) => {
+    console.log("[Dashboard] handleBusinessTypeChange called with:", newType);
+    updateBusinessType(newType, {
+      onSuccess: () => {
+        toast({
+          title: "Business Type Updated",
+          description: `Switched to ${getBusinessLabels(newType)} mode`,
+        });
+      },
+      onError: () => {
+        toast({
+          title: "Update Failed",
+          description: "Could not update business type. Please try again.",
+          variant: "destructive",
+        });
+      },
+    });
+  };
+
+  // Get icon for business type
+  const getBusinessIcon = (type: string) => {
+    switch (type) {
+      case "restaurant": return <Utensils className="h-4 w-4" />;
+      case "home_services": return <Home className="h-4 w-4" />;
+      case "real_estate": return <Building className="h-4 w-4" />;
+      case "retail": return <Store className="h-4 w-4" />;
+      case "professional_services": return <Briefcase className="h-4 w-4" />;
+      default: return <Building2 className="h-4 w-4" />;
+    }
+  };
 
   // Connect to WebSocket for real-time updates
   const { isConnected, lastMessage } = useWebSocket({
@@ -138,14 +206,48 @@ export default function Dashboard() {
         <header className="bg-card border-b border-border px-3 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-2 sm:gap-4">
             <div className="min-w-0 flex-1">
-              <h1 className="text-lg sm:text-2xl font-semibold text-foreground truncate">
-                <span className="hidden sm:inline">
-                  AI SEO & Social Media Dashboard
-                </span>
-                <span className="sm:hidden">Dashboard</span>
-              </h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-2xl font-semibold text-foreground truncate">
+                  <span className="hidden sm:inline">
+                    AI SEO & Social Media Dashboard
+                  </span>
+                  <span className="sm:hidden">Dashboard</span>
+                </h1>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button 
+                      type="button"
+                      className="inline-flex items-center rounded-full border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80 text-xs cursor-pointer gap-1"
+                    >
+                      {getBusinessIcon(businessType)}
+                      {displayLabel}
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-56">
+                    <DropdownMenuLabel>Switch Business Type</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {BUSINESS_TYPES.map((type) => (
+                      <DropdownMenuItem
+                        key={type.value}
+                        onClick={() => handleBusinessTypeChange(type.value)}
+                        className={businessType === type.value ? "bg-accent" : ""}
+                        disabled={isUpdating}
+                      >
+                        <span className="flex items-center gap-2">
+                          {getBusinessIcon(type.value)}
+                          {type.label}
+                        </span>
+                        {businessType === type.value && (
+                          <span className="ml-auto text-primary">✓</span>
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               <p className="text-xs sm:text-sm text-muted-foreground hidden md:block">
-                Automated content generation for restaurant marketing
+                Automated content generation for {businessTypeLabel.toLowerCase()} marketing
               </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">

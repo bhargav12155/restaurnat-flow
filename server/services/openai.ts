@@ -794,6 +794,58 @@ IMPORTANT BRANDING REQUIREMENT:
     return { days };
   }
 
+  private describeBusinessType(type?: string): string {
+    const map: Record<string, string> = {
+      restaurant: "Restaurant & Food Service",
+      home_services: "Home Services",
+      real_estate: "Real Estate",
+      retail: "Retail & E-commerce",
+      professional_services: "Professional Services",
+      general: "General Business",
+    };
+    return map[type || ""] || "General Business";
+  }
+
+  private describeBusinessSubtype(subtype?: string): string {
+    const map: Record<string, string> = {
+      fine_dining: "Fine Dining",
+      fast_casual: "Fast Casual",
+      cafe: "Café & Coffee Shop",
+      bar_pub: "Bar & Pub",
+      food_truck: "Food Truck",
+      catering: "Catering Service",
+      bakery: "Bakery",
+      quick_service: "Quick Service",
+      plumbing: "Plumbing",
+      hvac: "HVAC",
+      electrical: "Electrical",
+      cleaning: "Cleaning Service",
+      landscaping: "Landscaping",
+      roofing: "Roofing",
+      painting: "Painting",
+      handyman: "Handyman",
+      residential: "Residential Sales",
+      commercial: "Commercial Real Estate",
+      property_management: "Property Management",
+      rental: "Rental Services",
+      investment: "Investment Properties",
+      fashion: "Fashion & Apparel",
+      electronics: "Electronics",
+      beauty: "Beauty & Cosmetics",
+      sports: "Sports & Fitness",
+      home_goods: "Home Goods",
+      specialty: "Specialty Store",
+      legal: "Legal Services",
+      accounting: "Accounting & Tax",
+      consulting: "Consulting",
+      marketing: "Marketing Agency",
+      insurance: "Insurance",
+      financial: "Financial Services",
+      other: "Other",
+    };
+    return map[subtype || ""] || "";
+  }
+
   async generatePlatformSpecificContent(params: {
     platform: string;
     originalContent: string;
@@ -802,6 +854,8 @@ IMPORTANT BRANDING REQUIREMENT:
     neighborhood?: string;
     seoOptimized?: boolean;
     longTailKeywords?: boolean;
+    businessType?: string;
+    businessSubtype?: string;
   }): Promise<any> {
     try {
       const {
@@ -812,7 +866,12 @@ IMPORTANT BRANDING REQUIREMENT:
         neighborhood,
         seoOptimized,
         longTailKeywords,
+        businessType,
+        businessSubtype,
       } = params;
+
+      const businessTypeLabel = this.describeBusinessType(businessType);
+      const businessSubtypeLabel = this.describeBusinessSubtype(businessSubtype);
 
       let prompt = `Optimize the following content for ${platform} while maintaining the core message:
 
@@ -820,8 +879,9 @@ Original Content: "${originalContent}"
 
 Platform: ${platform}
 Content Type: ${contentType || "general"}
-Topic: ${topic || "restaurant"}
-Neighborhood: ${neighborhood || "Omaha"}
+Topic: ${topic || "content"}
+Neighborhood: ${neighborhood || "Local"}
+Business Context: ${businessTypeLabel}${businessSubtypeLabel ? ` (${businessSubtypeLabel})` : ""}
 
 Platform-specific requirements:`;
 
@@ -850,9 +910,9 @@ Platform-specific requirements:`;
 - Write compelling 2-3 sentence introduction that delivers value immediately
 - Longer form content acceptable (300-600 characters for maximum engagement)
 - Focus on industry insights, market data, and professional expertise
-- Use first-person perspective from the restaurant owner to build personal connection
-- Add value for other restaurant professionals and potential clients
-- Include professional hashtags (2-3 maximum, e.g., #OmahaFood #OmahaRestaurants)
+- Use first-person perspective from the business owner/leader to build personal connection
+- Add value for industry peers and potential clients
+- Include professional hashtags (2-3 maximum) relevant to the business context
 - Structure: Strong opening hook → Value/insight → Call-to-action
 - Assume this will accompany a professional graphic/image
 - End with clear, professional CTA (e.g., "Learn more", "Contact us", "Subscribe")

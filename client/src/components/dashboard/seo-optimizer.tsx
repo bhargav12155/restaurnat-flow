@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle, AlertCircle, TrendingUp, TrendingDown, Search, Globe, Smartphone, Sparkles, Loader2, Calendar, Info } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessType } from "@/hooks/useBusinessType";
 import { useLocation } from "wouter";
 
 interface SeoKeyword {
@@ -34,6 +35,7 @@ const getRankColor = (rank: number) => {
 export function SEOOptimizer() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { businessType, businessTypeLabel } = useBusinessType();
   const [showFullReport, setShowFullReport] = useState(false);
   const [aiGeneratedKeywords, setAiGeneratedKeywords] = useState<SeoKeyword[] | null>(null);
   
@@ -49,7 +51,7 @@ export function SEOOptimizer() {
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/seo/keywords/generate', {
         location: 'Omaha, Nebraska',
-        businessType: 'restaurant'
+        businessType: businessType
       });
       return await response.json();
     },
@@ -57,7 +59,7 @@ export function SEOOptimizer() {
       setAiGeneratedKeywords(data);
       toast({
         title: "✨ AI Keywords Generated!",
-        description: `Generated ${data.length} optimized keywords for your restaurant business.`,
+        description: `Generated ${data.length} optimized keywords for your ${(businessTypeLabel || 'restaurant').toLowerCase()} business.`,
       });
     },
     onError: (error) => {
@@ -312,9 +314,9 @@ export function SEOOptimizer() {
                         🔥 Do This Week - High Impact
                       </h3>
                       <div className="space-y-2 text-sm text-orange-900 dark:text-orange-100">
-                        <div>• Create 1 video about "best brunch spots in Dundee" (150 people search this monthly)</div>
-                        <div>• Post 3 new food photos to Instagram with local dining hashtags</div>
-                        <div>• Write a blog post about "Guide to dining in Aksarben neighborhood"</div>
+                        <div>• Create 1 video about {businessType === 'restaurant' ? '"best brunch spots in Dundee"' : businessType === 'home_services' ? '"best home service tips for your area"' : businessType === 'real_estate' ? '"best neighborhoods in your market"' : '"top tips in your industry"'} (150 people search this monthly)</div>
+                        <div>• Post 3 new {businessType === 'restaurant' ? 'food' : businessType === 'home_services' ? 'project' : businessType === 'real_estate' ? 'property' : 'showcase'} photos to Instagram with local hashtags</div>
+                        <div>• Write a blog post about {businessType === 'restaurant' ? '"Guide to dining in Aksarben neighborhood"' : businessType === 'home_services' ? '"Home maintenance tips for the season"' : businessType === 'real_estate' ? '"Guide to buying in your local market"' : '"Expert guide for your area"'}</div>
                       </div>
                     </div>
                     
@@ -324,10 +326,10 @@ export function SEOOptimizer() {
                         📅 Do This Month - Steady Growth
                       </h3>
                       <div className="space-y-2 text-sm text-blue-900 dark:text-blue-100">
-                        <div>• Get 2 reviews from recent customers on Google Business</div>
+                        <div>• Get 2 reviews from recent {businessType === 'restaurant' ? 'customers' : businessType === 'home_services' ? 'clients' : businessType === 'real_estate' ? 'clients' : 'customers'} on Google Business</div>
                         <div>• Partner with a local business for website link exchange</div>
-                        <div>• Update all menu items with better descriptions</div>
-                        <div>• Start an email newsletter for your loyal customers</div>
+                        <div>• Update all {businessType === 'restaurant' ? 'menu items' : businessType === 'home_services' ? 'service listings' : businessType === 'real_estate' ? 'property listings' : 'product listings'} with better descriptions</div>
+                        <div>• Start an email newsletter for your loyal {businessType === 'restaurant' ? 'customers' : businessType === 'home_services' ? 'clients' : businessType === 'real_estate' ? 'clients' : 'customers'}</div>
                       </div>
                     </div>
                     

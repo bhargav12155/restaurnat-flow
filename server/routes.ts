@@ -30,6 +30,7 @@ import { ObjectNotFoundError, ObjectStorageService, objectStorageClient } from "
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
 import demoRoutes from "./routes/demo";
+import { setupBusinessTypeRoutes } from "./routes/business-type";
 import { HeyGenService } from "./services/heygen";
 import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
 import { HeyGenStreamingService } from "./services/heygen-streaming";
@@ -48,6 +49,7 @@ import { SocialMediaError, socialMediaService } from "./services/socialMedia";
 import { seedVideoTemplates } from "./services/template-seeder";
 import { twilioService } from "./services/twilio";
 import { storage } from "./storage";
+import { publicUsers } from "@shared/schema";
 import twilio from "twilio";
 import { realtimeService } from "./websocket";
 
@@ -574,6 +576,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const s3Service = new S3UploadService();
     return s3Service.getS3Url(urlOrKey);
   };
+
+  const getBusinessContext = async (req: any) => {
+    const defaultContext = {
+      businessType: "restaurant",
+      businessSubtype: "fast_casual",
+    };
+
+    const userId = req?.user?.id;
+    if (!userId) return defaultContext;
+
+    try {
+      const numericId = Number(userId);
+      const [record] = await db
+        .select({
+          businessType: publicUsers.businessType,
+          businessSubtype: publicUsers.businessSubtype,
+        })
+        .from(publicUsers)
+        .where(eq(publicUsers.id, isNaN(numericId) ? userId : numericId))
+        .limit(1);
+
+      return {
+        businessType: record?.businessType || defaultContext.businessType,
+        businessSubtype: record?.businessSubtype || defaultContext.businessSubtype,
+      };
+    } catch (error) {
+      console.error("Failed to resolve business context", error);
+      return defaultContext;
+    }
+  };
+
+  const describeBusinessType = (type?: string) => {
+    const labels: Record<string, string> = {
+      restaurant: "Restaurant & Food Service",
+      home_services: "Home Services",
+      real_estate: "Real Estate",
+      retail: "Retail & E-commerce",
+      professional_services: "Professional Services",
+      general: "General Business",
+    };
+    return labels[type || ""] || labels.restaurant;
+  };
+
+  const describeBusinessSubtype = (subtype?: string) => {
+    const labels: Record<string, string> = {
+      fine_dining: "Fine Dining",
+      fast_casual: "Fast Casual",
+      cafe: "Cafe & Coffee Shop",
+      bar_pub: "Bar & Pub",
+      food_truck: "Food Truck",
+      catering: "Catering Service",
+      bakery: "Bakery",
+      quick_service: "Quick Service",
+      plumbing: "Plumbing",
+      hvac: "HVAC",
+      electrical: "Electrical",
+      cleaning: "Cleaning Service",
+      landscaping: "Landscaping",
+      roofing: "Roofing",
+      painting: "Painting",
+      handyman: "Handyman",
+      residential: "Residential Sales",
+      commercial: "Commercial Real Estate",
+      property_management: "Property Management",
+      rental: "Rental Services",
+      investment: "Investment Properties",
+      fashion: "Fashion & Apparel",
+      electronics: "Electronics",
+      beauty: "Beauty & Cosmetics",
+      sports: "Sports & Fitness",
+      home_goods: "Home Goods",
+      specialty: "Specialty Store",
+      legal: "Legal Services",
+      accounting: "Accounting & Tax",
+      consulting: "Consulting",
+      marketing: "Marketing Agency",
+      insurance: "Insurance",
+      financial: "Financial Services",
+      other: "Other",
+    };
+    return labels[subtype || ""] || labels.fast_casual;
+  };
   // =====================================================
   // NEBRASKA HOME HUB INTEGRATION ENDPOINT
   // =====================================================
@@ -688,6 +772,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/auth", authRoutes);
   app.use("/api/user", userRoutes);
   app.use("/api/demo", demoRoutes);
+  
+  // Business Type Settings
+  setupBusinessTypeRoutes(app);
 
   // API Key Management
   app.get("/api/openai/status", async (req, res) => {
@@ -923,7 +1010,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
   });
 
   // Content generation endpoints
-  app.post("/api/content/generate", async (req, res) => {
+  app.post("/api/content/generate", requireAuth, async (req, res) => {
     try {
       const {
         type,
@@ -935,14 +1022,18 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         longTailKeywords,
         localSeoFocus,
         propertyData,
+        businessType,
+        businessSubtype,
       } = req.body;
 
-      // Fetch company profile for dynamic personalization
+      // Fetch company profile and business context for personalization
       const userId = req.user?.id;
       let companyProfile = null;
       if (userId) {
         companyProfile = await storage.getCompanyProfile(userId);
       }
+
+      const businessContext = await getBusinessContext(req);
 
       // Use unified AI service (GitHub Copilot primary, OpenAI fallback)
       const { unifiedAI } = await import("./services/unified-ai");
@@ -957,6 +1048,8 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         localSeoFocus,
         propertyData,
         companyProfile: companyProfile || undefined,
+        businessType: businessType || businessContext.businessType,
+        businessSubtype: businessSubtype || businessContext.businessSubtype,
       });
 
       // Save to storage
@@ -1156,6 +1249,13 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         return res.status(400).json({ error: "Prompt is required" });
       }
 
+      const businessContext = await getBusinessContext(req);
+      const businessTypeLabel = describeBusinessType(businessContext.businessType);
+      const businessSubtypeLabel = describeBusinessSubtype(businessContext.businessSubtype);
+      const businessDescriptor = businessSubtypeLabel
+        ? `${businessTypeLabel} (${businessSubtypeLabel})`
+        : businessTypeLabel;
+
       // Map aspect ratio to DALL-E size
       const sizeMap: Record<string, string> = {
         "1:1": "1024x1024",
@@ -1166,8 +1266,8 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       };
       const size = sizeMap[aspectRatio] || "1024x1024";
 
-      // Build enhanced restaurant prompt
-      let enhancedPrompt = `Professional food photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
+      // Build enhanced business-aware prompt
+      let enhancedPrompt = `Professional ${businessDescriptor.toLowerCase()} visuals: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing for a ${businessDescriptor.toLowerCase()}.`;
       
       // If a reference image is provided, analyze it with GPT-4 Vision and incorporate the description
       if (referenceImageUrl) {
@@ -1177,7 +1277,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
             "Describe this image's visual style, composition, colors, and key elements. Be concise but detailed about the aesthetic qualities."
           );
           if (referenceDescription) {
-            enhancedPrompt = `Create an image inspired by this reference style: ${referenceDescription}. Applied to: ${prompt}. High quality, ${style} style, suitable for social media marketing.`;
+            enhancedPrompt = `Create an image inspired by this reference style: ${referenceDescription}. Applied to: ${prompt} for a ${businessDescriptor.toLowerCase()}. High quality, ${style} style, suitable for social media marketing.`;
             console.log(`✅ Reference analyzed, enhanced prompt created`);
           }
         } catch (refError) {
@@ -1489,7 +1589,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
   });
 
   // Platform-specific content regeneration endpoint
-  app.post("/api/content/regenerate-for-platform", async (req, res) => {
+  app.post("/api/content/regenerate-for-platform", requireAuth, async (req, res) => {
     try {
       const {
         platform,
@@ -1499,6 +1599,8 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         neighborhood,
         seoOptimized,
         longTailKeywords,
+        businessType,
+        businessSubtype,
       } = req.body;
 
       if (!platform || !originalContent) {
@@ -1508,15 +1610,19 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       }
 
       // Generate platform-optimized content using OpenAI
+      const businessContext = await getBusinessContext(req);
+
       const platformOptimizedContent =
         await openaiService.generatePlatformSpecificContent({
           platform: platform.toLowerCase(),
           originalContent,
           contentType: contentType || "blog",
-          topic: topic || "restaurant",
-          neighborhood: neighborhood || "Omaha",
+          topic: topic || "content",
+          neighborhood: neighborhood || "Local",
           seoOptimized: seoOptimized !== false,
           longTailKeywords: longTailKeywords !== false,
+          businessType: businessType || businessContext.businessType,
+          businessSubtype: businessSubtype || businessContext.businessSubtype,
         });
 
       res.json(platformOptimizedContent);
@@ -7991,8 +8097,7 @@ Return JSON: { "content": "post text with emojis", "hashtags": ["tag1", "tag2"] 
       const targetPlatforms = platforms || ['facebook', 'instagram', 'linkedin', 'x'];
       const suggestions: any[] = [];
 
-      const { UnifiedAIService } = await import('./services/unified-ai');
-      const aiService = new UnifiedAIService();
+      const { unifiedAI } = await import('./services/unified-ai');
 
       for (const platform of targetPlatforms) {
         try {
@@ -8013,7 +8118,7 @@ Create an engaging post that:
 
 Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"] }`;
 
-          const result = await aiService.generate(prompt, { jsonMode: true });
+          const result = await unifiedAI.generate(prompt, { jsonMode: true });
           let parsed: any = {};
           
           try {
@@ -13969,26 +14074,39 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      // Use partial schema to allow any subset of fields
-      const validation = insertCompanyProfileSchema.partial().safeParse({
+      console.log("[company-profile POST] Request body:", req.body);
+      console.log("[company-profile POST] userId (raw):", userId, typeof userId);
+
+      // Build the profile data with userId as string
+      const userIdString = String(userId);
+      console.log("[company-profile POST] userId (converted):", userIdString, typeof userIdString);
+
+      const profileData = {
         ...req.body,
-        userId,
-      });
+        userId: userIdString,
+      };
+
+      console.log("[company-profile POST] profileData before validation:", JSON.stringify(profileData, null, 2));
+      console.log("[company-profile POST] profileData.userId type:", typeof profileData.userId);
+
+      // Use partial schema to allow any subset of fields
+      const validation = insertCompanyProfileSchema.partial().safeParse(profileData);
 
       if (!validation.success) {
-        console.error("Company profile validation errors:", validation.error.errors);
+        console.error("[company-profile POST] Validation errors:", validation.error.errors);
+        console.error("[company-profile POST] Full validation error:", JSON.stringify(validation.error, null, 2));
         return res.status(400).json({
           error: "Invalid company profile data",
           details: validation.error.errors,
         });
       }
 
-      // Ensure userId is always included
-      const profileData = { ...validation.data, userId: String(userId) };
-      const profile = await storage.upsertCompanyProfile(profileData as any);
+      console.log("[company-profile POST] Validated data:", validation.data);
+      const profile = await storage.upsertCompanyProfile(validation.data as any);
+      console.log("[company-profile POST] Saved successfully");
       res.json(profile);
     } catch (error) {
-      console.error("Error saving company profile:", error);
+      console.error("[company-profile POST] Error saving company profile:", error);
       res.status(500).json({ error: "Failed to save company profile" });
     }
   });

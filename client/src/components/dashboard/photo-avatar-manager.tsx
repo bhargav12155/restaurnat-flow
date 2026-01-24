@@ -34,6 +34,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessType } from "@/hooks/useBusinessType";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -185,6 +186,7 @@ interface PhotoGenerationRequest {
 
 export function PhotoAvatarManager() {
   const { toast } = useToast();
+  const { businessType, businessTypeLabel } = useBusinessType();
   const [selectedTab, setSelectedTab] = useState("generate");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -222,16 +224,53 @@ export function PhotoAvatarManager() {
   const [motionType, setMotionType] = useState<string>("consistent");
   const [showGroupNameDialog, setShowGroupNameDialog] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState("");
+  
+  // Get business-aware default persona
+  const getDefaultPersona = () => {
+    switch (businessType) {
+      case 'restaurant':
+        return {
+          name: "Professional Restaurant Avatar",
+          appearance: "Professional restaurant owner/chef, well-groomed, confident smile, business attire"
+        };
+      case 'home_services':
+        return {
+          name: "Professional Service Expert Avatar",
+          appearance: "Professional home service technician, clean uniform, friendly smile, trustworthy demeanor"
+        };
+      case 'real_estate':
+        return {
+          name: "Professional Real Estate Avatar",
+          appearance: "Professional real estate agent, business attire, confident smile, approachable demeanor"
+        };
+      case 'retail':
+        return {
+          name: "Professional Retail Avatar",
+          appearance: "Professional store owner, business casual, welcoming smile, approachable demeanor"
+        };
+      case 'professional_services':
+        return {
+          name: "Professional Consultant Avatar",
+          appearance: "Professional consultant, business formal attire, confident smile, trustworthy demeanor"
+        };
+      default:
+        return {
+          name: "Professional Business Avatar",
+          appearance: "Professional business owner, business attire, confident smile, approachable demeanor"
+        };
+    }
+  };
+  
+  const defaultPersona = getDefaultPersona();
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
-    name: "Professional Restaurant Avatar",
+    name: defaultPersona.name,
     age: "Early Middle Age",
     gender: "Man",
     ethnicity: "White",
     orientation: "vertical",
     pose: "half_body",
     style: "Realistic",
-    appearance:
-      "Professional restaurant owner/chef, well-groomed, confident smile, business attire",
+    appearance: defaultPersona.appearance,
   });
 
   // Query avatar groups

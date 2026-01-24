@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessType } from "@/hooks/useBusinessType";
+import { getBusinessLabels } from "@/lib/businessType";
 import { 
   MapPin, 
   Utensils, 
@@ -259,6 +261,18 @@ Haven't visited yet? Come see what everyone's talking about. We'd love to add yo
 ];
 
 export function OmahaVideoTemplates() {
+  const { data: businessData } = useBusinessType();
+  const { typeLabel: businessTypeLabel } = getBusinessLabels(
+    businessData?.businessType,
+    businessData?.businessSubtype
+  );
+  const businessLabelLower = (businessTypeLabel || 'restaurant').toLowerCase();
+  const personalizeText = (text: string) => {
+    if (!text) return text;
+    return text
+      .replace(/Restaurant/gi, businessTypeLabel)
+      .replace(/restaurant/gi, businessLabelLower);
+  };
   const [selectedTemplate, setSelectedTemplate] = useState<VideoTemplate | null>(null);
   const [customScript, setCustomScript] = useState("");
   const [customTitle, setCustomTitle] = useState("");
@@ -291,8 +305,8 @@ export function OmahaVideoTemplates() {
 
   const handleUseTemplate = (template: VideoTemplate) => {
     setSelectedTemplate(template);
-    setCustomScript(template.script);
-    setCustomTitle(template.title);
+    setCustomScript(personalizeText(template.script));
+    setCustomTitle(personalizeText(template.title));
   };
 
   const handleCreateFromTemplate = () => {
@@ -321,10 +335,18 @@ export function OmahaVideoTemplates() {
   };
 
   const categorizedTemplates = {
-    dishes: restaurantVideoTemplates.filter(t => t.category === "dishes"),
-    "behind-scenes": restaurantVideoTemplates.filter(t => t.category === "behind-scenes"),
-    promotions: restaurantVideoTemplates.filter(t => t.category === "promotions"),
-    testimonials: restaurantVideoTemplates.filter(t => t.category === "testimonials"),
+    dishes: restaurantVideoTemplates
+      .filter(t => t.category === "dishes")
+      .map(t => ({ ...t, title: personalizeText(t.title), description: personalizeText(t.description) })),
+    "behind-scenes": restaurantVideoTemplates
+      .filter(t => t.category === "behind-scenes")
+      .map(t => ({ ...t, title: personalizeText(t.title), description: personalizeText(t.description) })),
+    promotions: restaurantVideoTemplates
+      .filter(t => t.category === "promotions")
+      .map(t => ({ ...t, title: personalizeText(t.title), description: personalizeText(t.description) })),
+    testimonials: restaurantVideoTemplates
+      .filter(t => t.category === "testimonials")
+      .map(t => ({ ...t, title: personalizeText(t.title), description: personalizeText(t.description) })),
   };
 
   return (
@@ -332,10 +354,11 @@ export function OmahaVideoTemplates() {
       <CardHeader>
         <CardTitle className="text-lg font-semibold text-foreground flex items-center">
           <Utensils className="mr-2 h-5 w-5" />
-          Restaurant Video Templates
+          <span>Industry Video Templates</span>
+          <Badge variant="outline" className="ml-2 text-xs font-normal">{businessTypeLabel}</Badge>
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Pre-built video scripts tailored for restaurant marketing
+          Pre-built video scripts tailored for {businessLabelLower} marketing
         </p>
       </CardHeader>
       

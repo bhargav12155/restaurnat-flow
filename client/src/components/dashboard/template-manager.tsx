@@ -13,6 +13,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileVideo, Plus, Copy, Trash2, Edit, Play, Loader2, Home, TrendingUp, Users, Package, MapPin, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useBusinessType } from '@/hooks/useBusinessType';
+import { getBusinessLabels } from '@/lib/businessType';
 
 interface Template {
   template_id: string;
@@ -46,6 +48,11 @@ interface RestaurantTemplatesResponse {
 
 export function TemplateManager() {
   const { toast } = useToast();
+  const { data: businessData } = useBusinessType();
+  const { typeLabel: businessTypeLabel } = getBusinessLabels(
+    businessData?.businessType,
+    businessData?.businessSubtype
+  );
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [variables, setVariables] = useState<Record<string, any>>({});
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -219,9 +226,12 @@ export function TemplateManager() {
   return (
     <Card data-testid="card-template-manager">
       <CardHeader>
-        <CardTitle>Video Templates</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <span>Video Templates</span>
+          <Badge variant="outline" className="text-xs font-normal">{businessTypeLabel}</Badge>
+        </CardTitle>
         <CardDescription>
-          Create videos from pre-designed templates optimized for restaurant marketing
+          Create videos from pre-designed templates optimized for {(businessTypeLabel || 'restaurant').toLowerCase()} marketing
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -233,7 +243,7 @@ export function TemplateManager() {
             </TabsTrigger>
             <TabsTrigger value="restaurant" data-testid="tab-restaurant">
               <Home className="w-4 h-4 mr-2" />
-              Restaurant
+              {businessTypeLabel}
             </TabsTrigger>
             <TabsTrigger value="create" data-testid="tab-create">
               <Plus className="w-4 h-4 mr-2" />
@@ -250,7 +260,7 @@ export function TemplateManager() {
             ) : templates?.templates?.length === 0 ? (
               <Alert>
                 <AlertDescription>
-                  No templates available. Create your first template or check the Restaurant tab for suggestions.
+                  No templates available. Create your first template or check the {businessTypeLabel} tab for suggestions.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -371,14 +381,14 @@ export function TemplateManager() {
             {isLoadingRestaurant ? (
               <div className="text-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto" />
-                <p className="text-sm text-gray-500 mt-2">Loading restaurant templates...</p>
+                <p className="text-sm text-gray-500 mt-2">Loading {(businessTypeLabel || 'restaurant').toLowerCase()} templates...</p>
               </div>
             ) : restaurantTemplates?.suggestions ? (
               <>
                 <Alert>
                   <FileText className="h-4 w-4" />
                   <AlertDescription>
-                    These are recommended template structures for restaurant videos. 
+                    These are recommended template structures for {(businessTypeLabel || 'restaurant').toLowerCase()} videos. 
                     Use these as inspiration to create your own custom templates.
                   </AlertDescription>
                 </Alert>

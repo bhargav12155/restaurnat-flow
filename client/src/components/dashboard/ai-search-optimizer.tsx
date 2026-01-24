@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { useBusinessType } from "@/hooks/useBusinessType";
 import { 
   Brain, 
   Search, 
@@ -46,106 +48,125 @@ interface AISearchTip {
   action: string;
 }
 
-const aiSearchTips: AISearchTip[] = [
-  {
-    category: "Entity Optimization",
-    title: "Establish Clear Business Entity",
-    description: "AI searches look for clear entity relationships. Make sure your name, business, and location are consistently mentioned together.",
-    impact: "high",
-    implemented: false,
-    action: "Include '[Your Restaurant Name], [Your Location]' in every piece of content"
-  },
-  {
-    category: "Conversational Content",
-    title: "Answer Questions Directly",
-    description: "AI searches favor content that directly answers questions people ask about restaurants and food.",
-    impact: "high",
-    implemented: false,
-    action: "Start content with 'If you're wondering...' or 'Here's what you need to know about...'"
-  },
-  {
-    category: "Local Authority",
-    title: "Hyperlocal Expertise",
-    description: "AI gives preference to content that demonstrates deep local knowledge and expertise.",
-    impact: "high",
-    implemented: false,
-    action: "Mention specific streets, schools, businesses, and local events in your content"
-  },
-  {
-    category: "Structured Data",
-    title: "Schema Markup Implementation",
-    description: "AI search engines rely heavily on structured data to understand your content.",
-    impact: "high",
-    implemented: false,
-    action: "Add LocalBusiness, Restaurant, and FAQPage schema to your website"
-  },
-  {
-    category: "Authority Signals",
-    title: "Professional Credentials",
-    description: "AI searches look for expertise indicators and professional qualifications.",
-    impact: "medium",
-    implemented: false,
-    action: "Always mention your licenses, certifications, and years of experience"
-  },
-  {
-    category: "Conversational Content",
-    title: "FAQ Format Content",
-    description: "AI searches love FAQ-style content that matches how people ask questions.",
-    impact: "high",
-    implemented: false,
-    action: "Create content in Q&A format: 'What's the best neighborhood in Omaha for families?'"
-  },
-  {
-    category: "Local Authority",
-    title: "Market Data Citations",
-    description: "AI gives credibility to content that cites specific, current market data.",
-    impact: "medium",
-    implemented: false,
-    action: "Include recent sale prices, market trends, and neighborhood statistics"
-  },
-  {
-    category: "Entity Optimization",
-    title: "Neighborhood Entity Building",
-    description: "Build strong entity relationships between you and specific Omaha neighborhoods.",
-    impact: "high",
-    implemented: false,
-    action: "Consistently create content about the same 5-7 neighborhoods you specialize in"
-  },
-  {
-    category: "Structured Data",
-    title: "Advanced Review Schema",
-    description: "AI platforms heavily weight customer reviews and ratings in search results.",
-    impact: "high",
-    implemented: false,
-    action: "Implement Review and AggregateRating schema with client testimonials"
-  },
-  {
-    category: "Conversational Content",
-    title: "Video Content with Transcripts",
-    description: "AI searches now index video content through transcripts and captions.",
-    impact: "high",
-    implemented: false,
-    action: "Add AI-readable transcripts to all video tours and menu features"
-  },
-  {
-    category: "Structured Data",
-    title: "Featured Snippet Optimization",
-    description: "Structure content for zero-click searches and AI-powered answer boxes.",
-    impact: "high",
-    implemented: false,
-    action: "Use tables, lists, and step-by-step formats for complex topics"
-  },
-  {
-    category: "Entity Optimization",
-    title: "Knowledge Graph Integration",
-    description: "Build comprehensive entity relationships across all major platforms.",
-    impact: "high",
-    implemented: false,
-    action: "Ensure consistent NAP (Name, Address, Phone) across 50+ directories"
-  }
-];
+// Function to generate business-aware AI search tips
+const getAiSearchTips = (businessType: string): AISearchTip[] => {
+  const businessEntityLabels: Record<string, { entity: string; content: string; schema: string }> = {
+    restaurant: { entity: 'Restaurant', content: 'restaurants and food', schema: 'LocalBusiness, Restaurant, and FAQPage' },
+    home_services: { entity: 'Home Service Business', content: 'home services and repairs', schema: 'LocalBusiness, HomeAndConstructionBusiness, and FAQPage' },
+    real_estate: { entity: 'Real Estate Agency', content: 'real estate and properties', schema: 'RealEstateAgent, LocalBusiness, and FAQPage' },
+    retail: { entity: 'Retail Store', content: 'products and shopping', schema: 'LocalBusiness, Store, and FAQPage' },
+    professional_services: { entity: 'Professional Service', content: 'professional services', schema: 'LocalBusiness, ProfessionalService, and FAQPage' },
+    general: { entity: 'Business', content: 'your industry', schema: 'LocalBusiness and FAQPage' }
+  };
+  
+  const labels = businessEntityLabels[businessType] || businessEntityLabels.general;
+  
+  return [
+    {
+      category: "Entity Optimization",
+      title: "Establish Clear Business Entity",
+      description: "AI searches look for clear entity relationships. Make sure your name, business, and location are consistently mentioned together.",
+      impact: "high",
+      implemented: false,
+      action: `Include '[Your ${labels.entity} Name], [Your Location]' in every piece of content`
+    },
+    {
+      category: "Conversational Content",
+      title: "Answer Questions Directly",
+      description: `AI searches favor content that directly answers questions people ask about ${labels.content}.`,
+      impact: "high",
+      implemented: false,
+      action: "Start content with 'If you're wondering...' or 'Here's what you need to know about...'"
+    },
+    {
+      category: "Local Authority",
+      title: "Hyperlocal Expertise",
+      description: "AI gives preference to content that demonstrates deep local knowledge and expertise.",
+      impact: "high",
+      implemented: false,
+      action: "Mention specific streets, schools, businesses, and local events in your content"
+    },
+    {
+      category: "Structured Data",
+      title: "Schema Markup Implementation",
+      description: "AI search engines rely heavily on structured data to understand your content.",
+      impact: "high",
+      implemented: false,
+      action: `Add ${labels.schema} schema to your website`
+    },
+    {
+      category: "Authority Signals",
+      title: "Professional Credentials",
+      description: "AI searches look for expertise indicators and professional qualifications.",
+      impact: "medium",
+      implemented: false,
+      action: "Always mention your licenses, certifications, and years of experience"
+    },
+    {
+      category: "Conversational Content",
+      title: "FAQ Format Content",
+      description: "AI searches love FAQ-style content that matches how people ask questions.",
+      impact: "high",
+      implemented: false,
+      action: "Create content in Q&A format: 'What's the best neighborhood in Omaha for families?'"
+    },
+    {
+      category: "Local Authority",
+      title: "Market Data Citations",
+      description: "AI gives credibility to content that cites specific, current market data.",
+      impact: "medium",
+      implemented: false,
+      action: businessType === 'real_estate' ? "Include recent sale prices, market trends, and neighborhood statistics" : 
+              businessType === 'restaurant' ? "Include local dining trends, popular cuisines, and customer preferences" :
+              "Include industry trends, local market data, and customer insights"
+    },
+    {
+      category: "Entity Optimization",
+      title: "Neighborhood Entity Building",
+      description: "Build strong entity relationships between you and specific local areas.",
+      impact: "high",
+      implemented: false,
+      action: "Consistently create content about the same 5-7 neighborhoods or areas you serve"
+    },
+    {
+      category: "Structured Data",
+      title: "Advanced Review Schema",
+      description: "AI platforms heavily weight customer reviews and ratings in search results.",
+      impact: "high",
+      implemented: false,
+      action: "Implement Review and AggregateRating schema with client testimonials"
+    },
+    {
+      category: "Conversational Content",
+      title: "Video Content with Transcripts",
+      description: "AI searches now index video content through transcripts and captions.",
+      impact: "high",
+      implemented: false,
+      action: businessType === 'real_estate' ? "Add AI-readable transcripts to all video tours and property features" :
+              businessType === 'restaurant' ? "Add AI-readable transcripts to all video tours and menu features" :
+              "Add AI-readable transcripts to all your video content"
+    },
+    {
+      category: "Structured Data",
+      title: "Featured Snippet Optimization",
+      description: "Structure content for zero-click searches and AI-powered answer boxes.",
+      impact: "high",
+      implemented: false,
+      action: "Use tables, lists, and step-by-step formats for complex topics"
+    },
+    {
+      category: "Entity Optimization",
+      title: "Knowledge Graph Integration",
+      description: "Build comprehensive entity relationships across all major platforms.",
+      impact: "high",
+      implemented: false,
+      action: "Ensure consistent NAP (Name, Address, Phone) across 50+ directories"
+    }
+  ];
+};
 
 export function AISearchOptimizer() {
+  const { businessType, businessTypeLabel } = useBusinessType();
   const [selectedNeighborhood, setSelectedNeighborhood] = useState("");
   const [optimizationGoal, setOptimizationGoal] = useState("");
   const [customQuestion, setCustomQuestion] = useState("");
@@ -165,12 +186,14 @@ export function AISearchOptimizer() {
     queryKey: ["/api/company/profile"],
   });
 
-  // Get agent name and brokerage with smart defaults
-  const agentName = companyProfile?.agentName || "[Your Name]";
-  const brokerageName = companyProfile?.brokerageName || "[Your Brokerage]";
+  // Get agent name and brokerage with smart defaults from user profile
+  const { user } = useAuth();
+  const userFirstName = user?.email?.split('@')[0] || 'Professional';
+  const agentName = companyProfile?.agentName || userFirstName;
+  const brokerageName = companyProfile?.brokerageName || companyProfile?.businessName || 'Your Company';
 
   // Calculate real optimization score based on profile completeness
-  const hasAgentName = agentName !== "[Your Name]";
+  const hasAgentName = !!companyProfile?.agentName;
   const hasBrokerage = brokerageName !== "[Your Brokerage]";
   const hasPhone = !!companyProfile?.phone;
   const hasAddress = !!companyProfile?.address;
@@ -477,7 +500,7 @@ export function AISearchOptimizer() {
           
           <TabsContent value="tips" className="space-y-4 mt-4">
             <div className="space-y-4">
-              {aiSearchTips.map((tip, index) => (
+              {getAiSearchTips(businessType).map((tip, index) => (
                 <div key={index} className="border rounded-lg p-4" data-testid={`ai-tip-${index}`}>
                   <div className="flex items-start justify-between mb-2">
                     <div>
