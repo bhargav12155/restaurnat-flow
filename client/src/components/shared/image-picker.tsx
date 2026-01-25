@@ -255,65 +255,12 @@ export function ImagePicker({
     }
   };
 
-  // AI Video generation (2-step: generate image, then animate with Kling)
+  // AI Video generation - removed, use Video Generation page instead
   const handleGenerateVideo = async () => {
-    if (!videoPrompt.trim()) {
-      toast({
-        title: "Prompt Required",
-        description: "Please enter a description for your video.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setVideoGenerationStep("generating-image");
-      setGeneratedVideo(null);
-
-      // Step 1: Generate an AI image from the prompt
-      const imageResponse = await apiRequest("POST", "/api/images/generate", {
-        prompt: videoPrompt,
-        aspectRatio: videoAspectRatio,
-        style: "photorealistic",
-        referenceImageUrl: videoReferenceUrl || undefined,
-      });
-      const imageData = await imageResponse.json();
-      
-      if (!imageData.imageUrl) {
-        throw new Error("Failed to generate image for video");
-      }
-
-      setVideoGenerationStep("generating-video");
-
-      // Step 2: Generate motion video from the image using Kling
-      const videoResponse = await apiRequest("POST", "/api/kling/generate-motion", {
-        imageUrl: imageData.imageUrl,
-        prompt: videoPrompt,
-        duration: videoDuration,
-        aspectRatio: videoAspectRatio === "9:16" ? "9:16" : "16:9",
-      });
-      const videoData = await videoResponse.json();
-
-      if (!videoData.videoUrl) {
-        throw new Error("Video is being generated. Check back in a few minutes.");
-      }
-
-      setGeneratedVideo(videoData.videoUrl);
-      setPreviewImage(videoData.videoUrl);
-      setVideoGenerationStep("done");
-      
-      toast({
-        title: "Video Generated!",
-        description: "Your AI video is ready. Click Confirm to attach it.",
-      });
-    } catch (error: any) {
-      setVideoGenerationStep("idle");
-      toast({
-        title: "Video Generation Failed",
-        description: error.message || "Failed to generate video. Please try again.",
-        variant: "destructive",
-      });
-    }
+    toast({
+      title: "Video Generation Moved",
+      description: "Please use the Video Generation page to create videos with your avatars.",
+    });
   };
 
   const handleImageSelect = (imageUrl: string) => {

@@ -71,6 +71,16 @@ interface PhotoAvatarGroup {
   }>;
 }
 
+interface VideoAvatar {
+  id: string;
+  heygenAvatarId: string;
+  avatarName: string;
+  status: string;
+  thumbnailUrl?: string;
+  previewVideoUrl?: string;
+  voiceId?: string;
+}
+
 interface VideoGeneration {
   video_id: string;
   status: string;
@@ -80,8 +90,10 @@ interface VideoGeneration {
 }
 
 export function VideoGenerationManager() {
+  const [avatarType, setAvatarType] = useState<"photo" | "video">("photo"); // New: Avatar type selector
   const [selectedAvatarGroup, setSelectedAvatarGroup] = useState<string>("");
   const [selectedAvatarLook, setSelectedAvatarLook] = useState<string>("");
+  const [selectedVideoAvatar, setSelectedVideoAvatar] = useState<string>(""); // New: Video avatar selection
   const [script, setScript] = useState("");
   const [title, setTitle] = useState("");
   const [isTestMode, setIsTestMode] = useState(false);
@@ -97,6 +109,16 @@ export function VideoGenerationManager() {
   const [videoToDelete, setVideoToDelete] = useState<{ id: string; title: string } | null>(null);
 
   const { toast } = useToast();
+
+  // Fetch Video Avatars (trained instant avatars from video uploads)
+  const { data: videoAvatars = [], isLoading: videoAvatarsLoading } = useQuery<VideoAvatar[]>({
+    queryKey: ["/api/video-avatars"],
+  });
+
+  // Filter to only complete video avatars
+  const readyVideoAvatars = videoAvatars.filter((a) => 
+    a.status === "complete" || a.status === "completed" || a.status === "ready"
+  );
 
   // Fetch user's custom recorded voices from regular avatars
   const { data: customAvatarsData } = useQuery<any[]>({
@@ -255,9 +277,11 @@ export function VideoGenerationManager() {
       title: string;
       test: boolean;
       isTalkingPhoto?: boolean;
+      isVideoAvatar?: boolean;
       voiceSpeed?: number;
       voiceId?: string;
       customVoiceAvatarId?: string;
+      voiceLibraryId?: string;
     }) => {
       console.log("🎬 Frontend: Generating video with data:", data);
       const response = await apiRequest("POST", "/api/videos/generate", data);
@@ -310,10 +334,15 @@ export function VideoGenerationManager() {
   }, [showVideoDialog, currentVideo?.video_id]);
 
   const handleGenerateVideo = () => {
-    if (!selectedAvatarLook) {
+    // Determine which avatar to use based on avatar type
+    const avatarId = avatarType === "video" ? selectedVideoAvatar : selectedAvatarLook;
+    
+    if (!avatarId) {
       toast({
         title: "No Avatar Selected",
-        description: "Please select an avatar look to use for the video",
+        description: avatarType === "video" 
+          ? "Please select a video avatar to use for the video"
+          : "Please select an avatar look to use for the video",
         variant: "destructive",
       });
       return;
@@ -333,7 +362,19 @@ export function VideoGenerationManager() {
     let voiceLibraryId: string | undefined;
     let customVoiceAvatarId: string | undefined;
 
-    if (manualVoiceId.trim()) {
+    // For video avatars, use their built-in voice by default
+    if (avatarType === "video") {
+      const selectedAvatar = readyVideoAvatars.find(a => a.heygenAvatarId === selectedVideoAvatar);
+      if (selectedAvatar?.voiceId && !manualVoiceId.trim()) {
+        finalVoiceId = selectedAvatar.voiceId;
+        console.log("🎤 Using video avatar's built-in voice:", finalVoiceId);
+      } else if (manualVoiceId.trim()) {
+        finalVoiceId = manualVoiceId.trim();
+        console.log("🎤 Using manual Voice ID override:", finalVoiceId);
+      } else {
+        finalVoiceId = selectedVoiceId;
+      }
+    } else if (manualVoiceId.trim()) {
       // Manual Voice ID takes priority
       finalVoiceId = manualVoiceId.trim();
       console.log("🎤 Using manual Voice ID:", finalVoiceId);
@@ -364,12 +405,13 @@ export function VideoGenerationManager() {
     }
 
     generateVideoMutation.mutate({
-      avatarId: selectedAvatarLook,
+      avatarId,
       script: script.trim(),
       title: title.trim() || "AI Avatar Video",
       test: isTestMode,
-      // Photo avatar looks are talking photos in HeyGen's API
-      isTalkingPhoto: true,
+      // Video avatars are NOT talking photos, photo avatar looks ARE
+      isTalkingPhoto: avatarType === "photo",
+      isVideoAvatar: avatarType === "video",
       voiceSpeed: parseFloat(voiceSpeed),
       voiceId: finalVoiceId,
       customVoiceAvatarId,
@@ -422,14 +464,113 @@ export function VideoGenerationManager() {
       <CardHeader>
         <CardTitle className="text-xl font-semibold text-foreground flex items-center">
           <Video className="mr-2 h-5 w-5" />
-          Video Generation with Photo Avatars
+          Video Generation
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Create talking videos using your trained photo avatars
+          Create talking videos using your trained avatars
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Avatar Group Selection */}
+        {/* Avatar Type Selection */}
+        <div>
+          <Label className="text-sm font-medium mb-3 block">Choose Avatar Type</Label>
+          <div className="flex gap-4">
+            <Button
+              variant={avatarType === "video" ? "default" : "outline"}
+              className={`flex-1 h-auto py-4 ${avatarType === "video" ? "bg-primary" : ""}`}
+              onClick={() => {
+                setAvatarType("video");
+                setSelectedAvatarGroup("");
+                setSelectedAvatarLook("");
+              }}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <User className="h-6 w-6" />
+                <span className="font-medium">Video Avatar</span>
+                <span className="text-xs opacity-80">Trained from video uploads</span>
+                {readyVideoAvatars.length > 0 && (
+                  <Badge variant="secondary" className="mt-1">{readyVideoAvatars.length} ready</Badge>
+                )}
+              </div>
+            </Button>
+            <Button
+              variant={avatarType === "photo" ? "default" : "outline"}
+              className={`flex-1 h-auto py-4 ${avatarType === "photo" ? "bg-primary" : ""}`}
+              onClick={() => {
+                setAvatarType("photo");
+                setSelectedVideoAvatar("");
+              }}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <Eye className="h-6 w-6" />
+                <span className="font-medium">Photo Avatar</span>
+                <span className="text-xs opacity-80">Talking photo avatars</span>
+                {avatarGroups.length > 0 && (
+                  <Badge variant="secondary" className="mt-1">{avatarGroups.length} groups</Badge>
+                )}
+              </div>
+            </Button>
+          </div>
+        </div>
+
+        {/* Video Avatar Selection */}
+        {avatarType === "video" && (
+          <div>
+            <Label className="text-sm font-medium">Select Video Avatar</Label>
+            {videoAvatarsLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="border-2 rounded-lg p-3 border-muted animate-pulse">
+                    <div className="w-full h-24 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-20 mx-auto" />
+                  </div>
+                ))}
+              </div>
+            ) : readyVideoAvatars.length === 0 ? (
+              <div className="mt-2 p-6 border-2 border-dashed border-muted rounded-lg text-center">
+                <User className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  No video avatars available. Go to Video Avatars to upload and train one.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-2">
+                {readyVideoAvatars.map((avatar) => (
+                  <div
+                    key={avatar.heygenAvatarId}
+                    className={`border-2 rounded-lg p-3 cursor-pointer transition-all ${
+                      selectedVideoAvatar === avatar.heygenAvatarId
+                        ? "border-primary bg-primary/5 shadow-md"
+                        : "border-muted hover:border-primary/50"
+                    }`}
+                    onClick={() => setSelectedVideoAvatar(avatar.heygenAvatarId)}
+                  >
+                    {avatar.thumbnailUrl ? (
+                      <img
+                        src={avatar.thumbnailUrl}
+                        alt={avatar.avatarName}
+                        className="w-full h-24 object-cover rounded mb-2"
+                      />
+                    ) : (
+                      <div className="w-full h-24 bg-gradient-to-br from-purple-100 to-blue-100 rounded mb-2 flex items-center justify-center">
+                        <User className="h-10 w-10 text-purple-400" />
+                      </div>
+                    )}
+                    <p className="text-sm font-medium text-center truncate">{avatar.avatarName}</p>
+                    {avatar.voiceId && (
+                      <p className="text-xs text-center text-green-600 flex items-center justify-center gap-1 mt-1">
+                        <Mic className="h-3 w-3" /> Voice included
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Photo Avatar Group Selection */}
+        {avatarType === "photo" && (
         <div>
           <Label htmlFor="avatar-group-select" className="text-sm font-medium">
             Select Photo Avatar Group
@@ -496,9 +637,10 @@ export function VideoGenerationManager() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Avatar Look Selection */}
-        {selectedAvatarGroup && (
+        {/* Avatar Look Selection - Only show for photo avatars */}
+        {avatarType === "photo" && selectedAvatarGroup && (
           <div>
             <Label htmlFor="avatar-look-select" className="text-sm font-medium">
               Select Avatar Look
@@ -582,75 +724,89 @@ export function VideoGenerationManager() {
           </div>
         </div>
 
-        {/* Voice Selection */}
-        <div>
-          <Label htmlFor="voice-select" className="text-sm font-medium flex items-center gap-2">
-            <Mic className="w-4 h-4 text-[#D4AF37]" />
-            Voice Selection
-          </Label>
-          <Select
-            value={selectedVoiceId}
-            onValueChange={setSelectedVoiceId}
-          >
-            <SelectTrigger id="voice-select" data-testid="select-voice-id">
-              <SelectValue placeholder="Choose a voice" />
-            </SelectTrigger>
-            <SelectContent>
-              {/* My Custom Voices Section */}
-              {customVoices.length > 0 && (
-                <>
-                  <div className="px-2 py-1.5 text-xs font-semibold text-[#D4AF37] bg-[#D4AF37]/10">
-                    🎤 My Recorded Voices
-                  </div>
-                  {customVoices.map((voice: any) => (
-                    <SelectItem key={voice.id} value={voice.id}>
-                      {voice.name}
-                    </SelectItem>
-                  ))}
-                  <div className="border-t my-1" />
-                </>
-              )}
+        {/* Voice Selection - Only show for Photo Avatars (Video Avatars have built-in voice) */}
+        {avatarType === "photo" && (
+          <div>
+            <Label htmlFor="voice-select" className="text-sm font-medium flex items-center gap-2">
+              <Mic className="w-4 h-4 text-[#D4AF37]" />
+              Voice Selection
+            </Label>
+            <Select
+              value={selectedVoiceId}
+              onValueChange={setSelectedVoiceId}
+            >
+              <SelectTrigger id="voice-select" data-testid="select-voice-id">
+                <SelectValue placeholder="Choose a voice" />
+              </SelectTrigger>
+              <SelectContent>
+                {/* My Custom Voices Section */}
+                {customVoices.length > 0 && (
+                  <>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-[#D4AF37] bg-[#D4AF37]/10">
+                      🎤 My Recorded Voices
+                    </div>
+                    {customVoices.map((voice: any) => (
+                      <SelectItem key={voice.id} value={voice.id}>
+                        {voice.name}
+                      </SelectItem>
+                    ))}
+                    <div className="border-t my-1" />
+                  </>
+                )}
 
-              {/* Professional Voices Section */}
-              <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">
-                🎭 Professional Voices
-              </div>
-              {PROFESSIONAL_VOICES.map((voice) => (
-                <SelectItem key={voice.id} value={voice.id}>
-                  {voice.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {customVoices.length === 0 && (
-            <p className="text-xs text-gray-500 mt-1">
-              💡 Tip: Record your voice in the Avatar Creator to use your own voice!
+                {/* Professional Voices Section */}
+                <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">
+                  🎭 Professional Voices
+                </div>
+                {PROFESSIONAL_VOICES.map((voice) => (
+                  <SelectItem key={voice.id} value={voice.id}>
+                    {voice.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {customVoices.length === 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Tip: Record your voice in the Avatar Creator to use your own voice!
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Video Avatar Voice Info */}
+        {avatarType === "video" && selectedVideoAvatar && (
+          <div className="bg-green-50 border border-green-200 rounded-md p-3">
+            <p className="text-sm text-green-800 flex items-center gap-2">
+              <Mic className="w-4 h-4" />
+              ✓ Using built-in voice from your trained video avatar
             </p>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Manual Voice ID Override */}
-        <div>
-          <Label htmlFor="manual-voice-id" className="text-sm font-medium flex items-center gap-2">
-            <Mic className="w-4 h-4 text-blue-500" />
-            Voice ID Override (Optional)
-          </Label>
-          <Input
-            id="manual-voice-id"
-            data-testid="input-manual-voice-id"
-            value={manualVoiceId}
-            onChange={(e) => setManualVoiceId(e.target.value)}
-            placeholder="e.g., 119caed25533477ba63822d5d1552d25"
-            className={`font-mono text-sm ${manualVoiceId.trim() && manualVoiceId.trim().length < 32 ? 'border-yellow-500' : ''}`}
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            {manualVoiceId.trim() 
-              ? manualVoiceId.trim().length >= 32
-                ? "✓ Using manual Voice ID - dropdown selection will be ignored"
-                : "⚠️ HeyGen Voice IDs are typically 32 characters"
-              : "Leave empty to use dropdown selection above. Get Voice IDs from HeyGen dashboard."}
-          </p>
-        </div>
+        {/* Manual Voice ID Override - Only for Photo Avatars */}
+        {avatarType === "photo" && (
+          <div>
+            <Label htmlFor="manual-voice-id" className="text-sm font-medium flex items-center gap-2">
+              <Mic className="w-4 h-4 text-blue-500" />
+              Voice ID Override (Optional)
+            </Label>
+            <Input
+              id="manual-voice-id"
+              data-testid="input-manual-voice-id"
+              value={manualVoiceId}
+              onChange={(e) => setManualVoiceId(e.target.value)}
+              placeholder="e.g., 119caed25533477ba63822d5d1552d25"
+              className={`font-mono text-sm ${manualVoiceId.trim() && manualVoiceId.trim().length < 32 ? 'border-yellow-500' : ''}`}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              {manualVoiceId.trim() 
+                ? manualVoiceId.trim().length >= 32
+                  ? "✓ Using manual Voice ID - dropdown selection will be ignored"
+                  : "⚠️ HeyGen Voice IDs are typically 32 characters"
+                : "Leave empty to use dropdown selection above. Get Voice IDs from HeyGen dashboard."}
+            </p>
+          </div>
+        )}
 
         {/* Voice Speed Control */}
         <div>
@@ -699,18 +855,26 @@ export function VideoGenerationManager() {
 
         {/* Generate Button */}
         <div className="flex flex-col items-center space-y-2">
-          {(!selectedAvatarLook || !script.trim()) && (
+          {(!(avatarType === "video" ? selectedVideoAvatar : selectedAvatarLook) || !script.trim()) && (
             <div className="text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-md">
-              {!selectedAvatarLook && !script.trim() && "⚠️ Please select an avatar look and enter a script"}
-              {!selectedAvatarLook && script.trim() && "⚠️ Please select an avatar look above"}
-              {selectedAvatarLook && !script.trim() && "⚠️ Please enter a script"}
+              {!(avatarType === "video" ? selectedVideoAvatar : selectedAvatarLook) && !script.trim() && (
+                avatarType === "video" 
+                  ? "⚠️ Please select a video avatar and enter a script"
+                  : "⚠️ Please select an avatar look and enter a script"
+              )}
+              {!(avatarType === "video" ? selectedVideoAvatar : selectedAvatarLook) && script.trim() && (
+                avatarType === "video"
+                  ? "⚠️ Please select a video avatar above"
+                  : "⚠️ Please select an avatar look above"
+              )}
+              {(avatarType === "video" ? selectedVideoAvatar : selectedAvatarLook) && !script.trim() && "⚠️ Please enter a script"}
             </div>
           )}
           <Button
             onClick={handleGenerateVideo}
             disabled={
               generateVideoMutation.isPending ||
-              !selectedAvatarLook ||
+              !(avatarType === "video" ? selectedVideoAvatar : selectedAvatarLook) ||
               !script.trim()
             }
             size="lg"
@@ -893,19 +1057,32 @@ export function VideoGenerationManager() {
       </Dialog>
     </Card>
 
-    {/* Processing Videos Section */}
-    {processingVideos.length > 0 && (
-      <Card className="mt-6 border-blue-200 dark:border-blue-800">
-        <CardHeader>
-          <CardTitle className="text-xl font-semibold text-foreground flex items-center">
+    {/* Processing Videos Section - Always visible */}
+    <Card className="mt-6 border-blue-200 dark:border-blue-800">
+      <CardHeader>
+        <CardTitle className="text-xl font-semibold text-foreground flex items-center">
+          {processingVideos.length > 0 ? (
             <RefreshCw className="mr-2 h-5 w-5 text-blue-500 animate-spin" />
-            Processing Videos
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Videos currently being generated
-          </p>
-        </CardHeader>
-        <CardContent>
+          ) : (
+            <Clock className="mr-2 h-5 w-5 text-blue-500" />
+          )}
+          Processing Videos
+          {processingVideos.length > 0 && (
+            <Badge className="ml-2 bg-blue-100 text-blue-700">{processingVideos.length}</Badge>
+          )}
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Videos currently being generated will appear here
+        </p>
+      </CardHeader>
+      <CardContent>
+        {processingVideos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Clock className="h-12 w-12 text-gray-300 mb-3" />
+            <p className="text-gray-500">No videos currently processing</p>
+            <p className="text-sm text-gray-400 mt-1">When you generate a video, it will appear here</p>
+          </div>
+        ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {processingVideos.map((video) => (
               <div
@@ -953,23 +1130,32 @@ export function VideoGenerationManager() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-    )}
+        )}
+      </CardContent>
+    </Card>
 
-    {/* My Generated Videos Section */}
-    {completedVideos.length > 0 && (
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-xl font-semibold text-foreground flex items-center">
-            <Play className="mr-2 h-5 w-5 text-[#D4AF37]" />
-            My Generated Videos
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Previously generated avatar videos
-          </p>
-        </CardHeader>
-        <CardContent>
+    {/* My Generated Videos Section - Always visible */}
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="text-xl font-semibold text-foreground flex items-center">
+          <Play className="mr-2 h-5 w-5 text-[#D4AF37]" />
+          My Generated Videos
+          {completedVideos.length > 0 && (
+            <Badge className="ml-2 bg-green-100 text-green-700">{completedVideos.length}</Badge>
+          )}
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Your completed avatar videos
+        </p>
+      </CardHeader>
+      <CardContent>
+        {completedVideos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Video className="h-12 w-12 text-gray-300 mb-3" />
+            <p className="text-gray-500">No videos generated yet</p>
+            <p className="text-sm text-gray-400 mt-1">Generate your first video using the form above</p>
+          </div>
+        ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {completedVideos.map((video) => (
               <div
@@ -1052,9 +1238,9 @@ export function VideoGenerationManager() {
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
-    )}
+        )}
+      </CardContent>
+    </Card>
 
     {/* Library Video Player Dialog */}
     <Dialog open={showLibraryVideoDialog} onOpenChange={setShowLibraryVideoDialog}>

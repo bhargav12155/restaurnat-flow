@@ -112,7 +112,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     if (isInIframe()) {
       console.log("In iframe - requesting user data from parent window");
       window.parent.postMessage(
-        { source: "restaurantflow", action: "requestUserData" },
+        { source: "marketingflow", action: "requestUserData" },
         "*", // Will be validated by the parent
       );
     }
@@ -173,7 +173,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
           const loginResult = await universalLogin(userEmail);
 
           if (loginResult.success) {
-            setSuccess("Welcome to RestaurantFlow!");
+            setSuccess("Welcome to MarketingFlow!");
             setTimeout(() => handleLoginSuccess(), 1000);
           } else {
             setLocalError(
@@ -228,7 +228,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
       const data = await response.json();
 
       if (data.success) {
-        setSuccess("Welcome to RestaurantFlow!");
+        setSuccess("Welcome to MarketingFlow!");
         // Refresh auth state to recognize the new session
         await checkAuth();
         setTimeout(() => handleLoginSuccess(), 500);
@@ -261,7 +261,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     const loginResult = await universalLogin(identifier);
 
     if (loginResult.success) {
-      setSuccess("Welcome to RestaurantFlow!");
+      setSuccess("Welcome to MarketingFlow!");
       setTimeout(() => handleLoginSuccess(), 1000);
     } else {
       setLocalError(
@@ -306,8 +306,8 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-orange-50 to-red-100 p-4 sm:p-6">
       <Card className="w-full max-w-md mx-auto shadow-xl border-0 sm:border">
         <CardHeader className="text-center px-6 pt-8 pb-4 sm:px-8 sm:pt-10">
-          <CardTitle className="text-2xl sm:text-3xl font-bold">🍽️ RestaurantFlow</CardTitle>
-          <CardDescription className="text-base mt-2">Restaurant Marketing Platform</CardDescription>
+          <CardTitle className="text-2xl sm:text-3xl font-bold">🚀 MarketingFlow</CardTitle>
+          <CardDescription className="text-base mt-2">Business Marketing Platform</CardDescription>
         </CardHeader>
 
         <CardContent className="px-6 pb-8 sm:px-8 sm:pb-10">

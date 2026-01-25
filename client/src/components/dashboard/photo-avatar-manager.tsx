@@ -52,6 +52,7 @@ import {
   Mic,
   MicOff,
   Play,
+  Plus,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -72,10 +73,12 @@ function LargeAvatarCard({
   groupId,
   groupName,
   onOpenGallery,
+  onAddLooks,
 }: {
   groupId: string;
   groupName: string;
   onOpenGallery: () => void;
+  onAddLooks: (groupId: string, groupName: string) => void;
 }) {
   const { data: photoData } = useQuery<any>({
     queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
@@ -88,48 +91,63 @@ function LargeAvatarCard({
   if (!firstPhoto) return null;
 
   return (
-    <button
-      onClick={onOpenGallery}
-      className="relative group rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 bg-white w-full"
-      data-testid={`large-avatar-${groupId}`}
-    >
-      <div className="aspect-[3/4] w-full">
-        <img
-          src={firstPhoto.url}
-          alt={firstPhoto.name || groupName}
-          className="w-full h-full object-cover"
-        />
-      </div>
+    <div className="relative group rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 bg-white w-full">
+      <button
+        onClick={onOpenGallery}
+        className="w-full"
+        data-testid={`large-avatar-${groupId}`}
+      >
+        <div className="aspect-[3/4] w-full">
+          <img
+            src={firstPhoto.url}
+            alt={firstPhoto.name || groupName}
+            className="w-full h-full object-cover"
+          />
+        </div>
 
-      {/* Name Overlay at Bottom - Always Visible */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-        <p className="text-white text-sm font-medium truncate">
-          {firstPhoto.name || groupName}
-        </p>
-      </div>
+        {/* Name Overlay at Bottom - Always Visible */}
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+          <p className="text-white text-sm font-medium truncate">
+            {firstPhoto.name || groupName}
+          </p>
+        </div>
 
-      {/* Hover Actions Overlay */}
-      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-        <div className="flex gap-2 text-white">
-          <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
-            <ZoomIn className="w-5 h-5" />
-          </div>
-          {firstPhoto.motion_preview_url && (
+        {/* Hover Actions Overlay */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <div className="flex gap-2 text-white">
             <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
-              <Play className="w-5 h-5" />
+              <ZoomIn className="w-5 h-5" />
             </div>
-          )}
+            {firstPhoto.motion_preview_url && (
+              <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+                <Play className="w-5 h-5" />
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Video Badge */}
-      {firstPhoto.motion_preview_url && (
-        <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1">
-          <Play className="w-3 h-3" />
-          Video
-        </div>
-      )}
-    </button>
+        {/* Video Badge */}
+        {firstPhoto.motion_preview_url && (
+          <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1">
+            <Play className="w-3 h-3" />
+            Video
+          </div>
+        )}
+      </button>
+
+      {/* Generate Looks Button - Always visible at top */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onAddLooks(groupId, groupName);
+        }}
+        className="absolute top-3 left-3 bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white text-xs px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 shadow-lg transition-all"
+        data-testid={`generate-looks-${groupId}`}
+      >
+        <Sparkles className="w-3.5 h-3.5" />
+        Generate Looks
+      </button>
+    </div>
   );
 }
 
@@ -224,6 +242,18 @@ export function PhotoAvatarManager() {
   const [motionType, setMotionType] = useState<string>("consistent");
   const [showGroupNameDialog, setShowGroupNameDialog] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState("");
+  
+  // Generate Looks Dialog
+  const [showGenerateLooksDialog, setShowGenerateLooksDialog] = useState(false);
+  const [selectedGroupForGenerateLooks, setSelectedGroupForGenerateLooks] = useState<{
+    groupId: string;
+    groupName: string;
+  } | null>(null);
+  const [generateLooksPrompt, setGenerateLooksPrompt] = useState("");
+  const [generateLooksOrientation, setGenerateLooksOrientation] = useState<"square" | "horizontal" | "vertical">("square");
+  const [generateLooksPose, setGenerateLooksPose] = useState<"half_body" | "close_up" | "full_body">("half_body");
+  const [generateLooksStyle, setGenerateLooksStyle] = useState("Realistic");
+  const [generateLooksStatus, setGenerateLooksStatus] = useState<"idle" | "generating" | "success" | "error">("idle");
   
   // Get business-aware default persona
   const getDefaultPersona = () => {
@@ -1795,6 +1825,10 @@ export function PhotoAvatarManager() {
                       onOpenGallery={() =>
                         setOpenGalleryGroupId(group.group_id)
                       }
+                      onAddLooks={(groupId, groupName) => {
+                        setSelectedGroupForGenerateLooks({ groupId, groupName });
+                        setShowGenerateLooksDialog(true);
+                      }}
                     />
                   ))}
                 </div>
@@ -1815,7 +1849,7 @@ export function PhotoAvatarManager() {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Upload 5-20 high-quality photos of the same person from
+                <strong>Select multiple photos at once (5-20 photos)</strong> of the same person from
                 different angles for best results. Photos should be clear,
                 well-lit, and show the face clearly.
               </AlertDescription>
@@ -1836,10 +1870,13 @@ export function PhotoAvatarManager() {
                 data-testid="label-upload"
               >
                 <Image className="w-12 h-12 text-gray-400 mb-2" />
-                <span className="text-sm text-gray-600">
-                  Click to upload photos
+                <span className="text-sm font-semibold text-gray-700">
+                  Click to select multiple photos (5-20)
                 </span>
                 <span className="text-xs text-gray-500 mt-1">
+                  Hold Cmd/Ctrl to select multiple files at once
+                </span>
+                <span className="text-xs text-gray-500 mt-0.5">
                   PNG, JPG up to 10MB each
                 </span>
               </label>
@@ -2797,7 +2834,6 @@ export function PhotoAvatarManager() {
                   <SelectItem value="hailuo_2">Hailuo 2</SelectItem>
                   <SelectItem value="veo2">Veo 2</SelectItem>
                   <SelectItem value="seedance_lite">Seedance Lite</SelectItem>
-                  <SelectItem value="kling">Kling</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
@@ -3041,6 +3077,182 @@ export function PhotoAvatarManager() {
           </CardContent>
         </Card>
       )}
+
+      {/* Generate Looks Dialog */}
+      <Dialog open={showGenerateLooksDialog} onOpenChange={setShowGenerateLooksDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Looks for {selectedGroupForGenerateLooks?.groupName}</DialogTitle>
+            <DialogDescription>
+              Use AI to generate new looks for this avatar with custom appearance
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {generateLooksStatus === "success" ? (
+              <Alert className="bg-green-50 border-green-200">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">
+                  Successfully started generating a new look! Check back in a few moments.
+                </AlertDescription>
+              </Alert>
+            ) : generateLooksStatus === "error" ? (
+              <Alert className="bg-red-50 border-red-200">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-800">
+                  Failed to generate look. Please try again.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="look-prompt">Appearance Description *</Label>
+                  <Textarea
+                    id="look-prompt"
+                    placeholder="e.g., Professional business suit, office setting, confident smile"
+                    value={generateLooksPrompt}
+                    onChange={(e) => setGenerateLooksPrompt(e.target.value)}
+                    className="min-h-[80px]"
+                    maxLength={1000}
+                  />
+                  <p className="text-xs text-gray-500">
+                    Describe the look's clothing, mood, lighting, and setting ({generateLooksPrompt.length}/1000)
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="look-orientation">Orientation</Label>
+                    <Select
+                      value={generateLooksOrientation}
+                      onValueChange={(v: any) => setGenerateLooksOrientation(v)}
+                    >
+                      <SelectTrigger id="look-orientation">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="square">Square</SelectItem>
+                        <SelectItem value="horizontal">Horizontal</SelectItem>
+                        <SelectItem value="vertical">Vertical</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="look-pose">Pose</Label>
+                    <Select
+                      value={generateLooksPose}
+                      onValueChange={(v: any) => setGenerateLooksPose(v)}
+                    >
+                      <SelectTrigger id="look-pose">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="half_body">Half Body</SelectItem>
+                        <SelectItem value="close_up">Close Up</SelectItem>
+                        <SelectItem value="full_body">Full Body</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="look-style">Style</Label>
+                  <Select
+                    value={generateLooksStyle}
+                    onValueChange={setGenerateLooksStyle}
+                  >
+                    <SelectTrigger id="look-style">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Realistic">Realistic</SelectItem>
+                      <SelectItem value="Pixar">Pixar</SelectItem>
+                      <SelectItem value="Cinematic">Cinematic</SelectItem>
+                      <SelectItem value="Vintage">Vintage</SelectItem>
+                      <SelectItem value="Noir">Noir</SelectItem>
+                      <SelectItem value="Cyberpunk">Cyberpunk</SelectItem>
+                      <SelectItem value="Unspecified">Unspecified</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowGenerateLooksDialog(false);
+                  setGenerateLooksPrompt("");
+                  setGenerateLooksStatus("idle");
+                }}
+                disabled={generateLooksStatus === "generating"}
+              >
+                {generateLooksStatus === "success" ? "Close" : "Cancel"}
+              </Button>
+              {generateLooksStatus !== "success" && (
+                <Button
+                  onClick={async () => {
+                    if (!selectedGroupForGenerateLooks || !generateLooksPrompt.trim()) return;
+                    
+                    setGenerateLooksStatus("generating");
+                    
+                    try {
+                      const response = await fetch(
+                        `/api/photo-avatars/groups/${selectedGroupForGenerateLooks.groupId}/generate-looks`,
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            configs: [{
+                              prompt: generateLooksPrompt,
+                              orientation: generateLooksOrientation,
+                              pose: generateLooksPose,
+                              style: generateLooksStyle,
+                              label: "Custom Look",
+                              name: "Custom Look"
+                            }]
+                          }),
+                          credentials: "include",
+                        }
+                      );
+                      
+                      if (response.ok) {
+                        setGenerateLooksStatus("success");
+                        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+                        toast({
+                          title: "Look generation started!",
+                          description: `Generating new look for ${selectedGroupForGenerateLooks.groupName}. This may take a few moments.`,
+                        });
+                      } else {
+                        setGenerateLooksStatus("error");
+                      }
+                    } catch (error) {
+                      console.error("Generation error:", error);
+                      setGenerateLooksStatus("error");
+                    }
+                  }}
+                  disabled={!generateLooksPrompt.trim() || generateLooksStatus === "generating"}
+                  className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                >
+                  {generateLooksStatus === "generating" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Generate Look
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
