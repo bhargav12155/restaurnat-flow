@@ -91,14 +91,14 @@ export default function IntegrationPage() {
           <div className="flex items-center justify-center mb-4">
             <Sparkles className="w-10 h-10 text-blue-600 mr-3" />
             <h1 className="text-3xl font-bold text-gray-900">
-              RestaurantFlow AI-SEO
+              MarketingFlow AI-SEO
             </h1>
           </div>
           <p className="text-xl text-gray-600 mb-2">
             Social Media & Content Management
           </p>
           <p className="text-sm text-gray-500">
-            Restaurant Marketing Tools
+            Business Marketing Tools
           </p>
 
           {user && (
@@ -107,7 +107,7 @@ export default function IntegrationPage() {
                 <CheckCircle className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
                   Welcome back, {user.email}! You're successfully connected to
-                  RestaurantFlow.
+                  MarketingFlow.
                 </AlertDescription>
               </Alert>
             </div>
@@ -177,7 +177,7 @@ export default function IntegrationPage() {
             </CardHeader>
             <CardContent className="p-6">
               <p className="text-gray-600 mb-4">
-                Access the complete RestaurantFlow dashboard with AI content
+                Access the complete MarketingFlow dashboard with AI content
                 generation, SEO tools, and more.
               </p>
               <Button
@@ -196,7 +196,7 @@ export default function IntegrationPage() {
         <div className="mt-8 text-center">
           <div className="bg-white rounded-lg p-6 border border-gray-200">
             <h3 className="text-lg font-semibold mb-2">
-              What you get with RestaurantFlow:
+              What you get with MarketingFlow:
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
               <div className="flex items-center justify-center gap-2">
@@ -213,7 +213,7 @@ export default function IntegrationPage() {
               </div>
             </div>
             <p className="text-xs text-gray-500 mt-3">
-              RestaurantFlow • Secure Integration • Restaurant Marketing
+              MarketingFlow • Secure Integration • Business Marketing
               AI Tools
             </p>
           </div>

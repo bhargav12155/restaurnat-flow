@@ -284,6 +284,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
   const [neighborhood, setNeighborhood] = useState("All Omaha Areas");
   const [seoOptimized, setSeoOptimized] = useState(true);
   const [longTailKeywords, setLongTailKeywords] = useState(true);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("all");
+  const [selectedMenuItems, setSelectedMenuItems] = useState<any[]>([]);
 
   // Style selection for each content type
   const [contentStyles, setContentStyles] = useState<Record<string, string>>({
@@ -398,6 +400,29 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
   const { data: marketData } = useQuery({
     queryKey: ['/api/market/data'],
     staleTime: 15 * 60 * 1000,
+  });
+
+  // Fetch menu categories
+  const { data: categories } = useQuery({
+    queryKey: ["/api/menu/categories"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/menu/categories");
+      return response.json();
+    },
+  });
+
+  // Fetch menu items for selected category
+  const { data: menuItems } = useQuery({
+    queryKey: ["/api/menu/items", selectedCategoryId],
+    queryFn: async () => {
+      let url = "/api/menu/items";
+      if (selectedCategoryId && selectedCategoryId !== "all") {
+        url += `?categoryId=${selectedCategoryId}`;
+      }
+      const response = await apiRequest("GET", url);
+      return response.json();
+    },
+    enabled: !!selectedCategoryId,
   });
 
   // Style options for all content types
@@ -1157,10 +1182,25 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
         ? aiPrompt.trim()
         : `${aiPrompt.trim()} Use a ${selectedStyle.toLowerCase()} style and tone for this content.`;
 
+    // Add category and menu item context to the prompt
+    let contextualPrompt = `${enhancedPrompt}\n\nBusiness Context: ${businessTypeLabel} (${businessSubtypeLabel}). Tailor all examples, CTAs, and language to this industry.`;
+    
+    if (selectedCategoryId && selectedCategoryId !== "all") {
+      const category = categories?.find((c: any) => c.id === selectedCategoryId);
+      if (category) {
+        contextualPrompt += `\n\nFocus on products/services in the "${category.name}" category.`;
+      }
+    }
+    
+    if (selectedMenuItems.length > 0) {
+      const itemNames = selectedMenuItems.map((item: any) => item.name).join(", ");
+      contextualPrompt += `\n\nSpecifically feature these items: ${itemNames}.`;
+    }
+
     generateContentMutation.mutate({
       type: contentType,
       topic: topic.trim(),
-      aiPrompt: `${enhancedPrompt}\n\nBusiness Context: ${businessTypeLabel} (${businessSubtypeLabel}). Tailor all examples, CTAs, and language to this industry.`,
+      aiPrompt: contextualPrompt,
       neighborhood:
         neighborhood === "All Omaha Areas" ? undefined : neighborhood,
       seoOptimized,
@@ -1170,6 +1210,8 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
         contentType === "property_feature" ? selectedProperty : undefined,
       businessType,
       businessSubtype,
+      selectedCategoryId: selectedCategoryId !== "all" ? selectedCategoryId : undefined,
+      selectedMenuItems: selectedMenuItems.length > 0 ? selectedMenuItems : undefined,
     });
   };
 
@@ -1672,6 +1714,68 @@ export function AIContentGenerator({ isGenerating }: AIContentGeneratorProps) {
                     data-testid="input-topic"
                   />
                 </div>
+
+                {/* Category Selection */}
+                {categories && categories.length > 0 && (
+                  <div>
+                    <Label htmlFor="category-select" className="text-sm font-medium text-foreground mb-2 block">
+                      {terms.categoryCapitalized} (Optional)
+                    </Label>
+                    <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                      <SelectTrigger id="category-select" data-testid="select-content-category">
+                        <SelectValue placeholder="All categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Categories</SelectItem>
+                        {categories.map((cat: any) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Generate content focused on a specific {terms.category}
+                    </p>
+                  </div>
+                )}
+
+                {/* Menu Item Selection */}
+                {menuItems && menuItems.length > 0 && selectedCategoryId !== "all" && (
+                  <div>
+                    <Label className="text-sm font-medium text-foreground mb-2 block">
+                      Specific {terms.itemsCapitalized} (Optional)
+                    </Label>
+                    <div className="border rounded-lg p-3 max-h-48 overflow-y-auto space-y-2">
+                      {menuItems.map((item: any) => (
+                        <label
+                          key={item.id}
+                          className="flex items-center space-x-2 cursor-pointer hover:bg-muted/50 p-2 rounded"
+                        >
+                          <Checkbox
+                            checked={selectedMenuItems.some((i: any) => i.id === item.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedMenuItems([...selectedMenuItems, item]);
+                              } else {
+                                setSelectedMenuItems(selectedMenuItems.filter((i: any) => i.id !== item.id));
+                              }
+                            }}
+                          />
+                          <span className="text-sm">{item.name}</span>
+                          {item.price && (
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              ${item.price}
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Select specific {terms.items} to feature in your content
+                    </p>
+                  </div>
+                )}
 
                 {/* Neighborhood Selection */}
                 <div className="grid grid-cols-2 gap-4">

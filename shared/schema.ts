@@ -303,8 +303,8 @@ export const videoAvatars = pgTable("video_avatars", {
   userId: varchar("user_id").notNull(),
   avatarName: text("avatar_name").notNull(),
   heygenAvatarId: text("heygen_avatar_id").notNull().unique(),
-  trainingVideoUrl: text("training_video_url").notNull(), // S3 URL to training footage
-  consentVideoUrl: text("consent_video_url").notNull(), // S3 URL to consent video
+  trainingVideoUrl: text("training_video_url"), // S3 URL to training footage (optional for synced avatars)
+  consentVideoUrl: text("consent_video_url"), // S3 URL to consent video (optional for synced avatars)
   voiceId: text("voice_id"), // Optional voice ID for the avatar
   audioAssetId: text("audio_asset_id"), // HeyGen audio asset ID for voice (extracted from training video)
   status: text("status").notNull().default("in_progress"), // in_progress, complete, failed

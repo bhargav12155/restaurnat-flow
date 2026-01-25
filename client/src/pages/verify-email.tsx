@@ -120,7 +120,7 @@ export default function VerifyEmailPage() {
             </CardHeader>
             <CardContent className="text-center space-y-4 px-6 pb-8 sm:px-8 sm:pb-10">
               <p className="text-gray-600">
-                Your account is now active. You can sign in and start using RestaurantFlow.
+                Your account is now active. You can sign in and start using MarketingFlow.
               </p>
               <Link href="/login">
                 <Button className="w-full h-12 text-base font-semibold bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 active:scale-[0.98] transition-transform">

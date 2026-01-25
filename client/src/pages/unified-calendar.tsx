@@ -1088,7 +1088,17 @@ export default function UnifiedCalendarPage() {
                           </div>
                         ))}
                         {dayItems.length > 3 && (
-                          <div className="text-[10px] text-muted-foreground">
+                          <div 
+                            className="text-[10px] text-muted-foreground cursor-pointer hover:text-primary hover:underline"
+                            onClick={() => {
+                              // Show all items for this day - preview the first hidden one
+                              const firstHiddenItem = dayItems[3];
+                              if (firstHiddenItem) {
+                                handlePreview(firstHiddenItem);
+                              }
+                            }}
+                            title="Click to view more posts"
+                          >
                             +{dayItems.length - 3} more
                           </div>
                         )}

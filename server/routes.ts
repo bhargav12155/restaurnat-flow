@@ -11184,24 +11184,29 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         console.log("🎥 Backend: Check video avatar status:", avatarId);
 
         const videoAvatarService = new HeyGenVideoAvatarService();
-        const status = await videoAvatarService.checkVideoAvatarStatus(
+        const response = await videoAvatarService.checkVideoAvatarStatus(
           avatarId
         );
 
-        console.log("✅ Video avatar status:", status);
+        console.log("✅ Video avatar status response:", JSON.stringify(response, null, 2));
+
+        // Extract status data
+        const statusData = response.data || response;
+        const status = statusData.status;
+        const errorMessage = statusData.error_message;
 
         // Update database if status changed
         const userId = req.user?.id;
         if (
           userId &&
-          (status.status === "complete" || status.status === "failed")
+          (status === "complete" || status === "failed")
         ) {
           try {
             await storage.updateVideoAvatarStatus(
               userId,
               avatarId,
-              status.status,
-              status.error_message
+              status,
+              errorMessage
             );
             console.log("💾 Video avatar status updated in database");
           } catch (dbError) {
@@ -11209,10 +11214,23 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           }
         }
 
-        res.json(status);
+        // Return formatted status response
+        res.json({
+          success: true,
+          avatarId,
+          status: status || 'unknown',
+          progress: statusData.progress,
+          errorMessage: errorMessage,
+          thumbnailUrl: statusData.thumbnail_url,
+          previewVideoUrl: statusData.preview_video_url,
+          createdAt: statusData.created_at,
+          updatedAt: statusData.updated_at,
+          rawResponse: response, // Include raw response for debugging
+        });
       } catch (error: any) {
         console.error("❌ Failed to check video avatar status:", error);
         res.status(500).json({
+          success: false,
           error: "Failed to check video avatar status",
           details: error?.message || String(error),
         });
@@ -11257,15 +11275,15 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         id: avatar.avatar_id,
         heygenAvatarId: avatar.avatar_id,
         avatarName: avatar.avatar_name,
-        status: 'complete' as const,
+        status: avatar.status || 'complete',
         thumbnailUrl: avatar.preview_image_url,
         previewVideoUrl: avatar.preview_video_url,
-        createdAt: new Date(),
+        createdAt: avatar.created_at ? new Date(avatar.created_at * 1000) : new Date(),
         completedAt: new Date(),
         errorMessage: null,
         trainingVideoUrl: '',
         consentVideoUrl: '',
-        voiceId: null,
+        voiceId: avatar.default_voice_id || null, // Use HeyGen's default voice
         source: 'heygen' as const,
       }));
 
@@ -11312,6 +11330,83 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.error("❌ Debug endpoint failed:", error);
       res.status(500).json({
         error: "Failed to fetch HeyGen data",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // Sync HeyGen avatars - Import only VIDEO (instant) avatars to current user's account
+  app.post("/api/video-avatars/sync", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log("🔄 Syncing HeyGen video avatars for user:", userId);
+
+      const videoAvatarService = new HeyGenVideoAvatarService();
+      const response = await videoAvatarService.listVideoAvatars();
+      const heygenAvatars = response.data?.avatars || [];
+
+      // Debug: Log all avatar types being returned
+      console.log(`🔄 All avatars returned:`, heygenAvatars.map((a: any) => ({
+        name: a.avatar_name,
+        type: a.avatar_type,
+        id: a.avatar_id
+      })));
+
+      // Only import instant_avatar type (video-based avatars), not photo_avatar
+      const videoAvatarsOnly = heygenAvatars.filter((a: any) => a.avatar_type === 'instant_avatar');
+      console.log(`🔄 Found ${heygenAvatars.length} total avatars, ${videoAvatarsOnly.length} are video avatars (instant_avatar type)`);
+
+      // Get existing avatars for this user
+      const existingAvatars = await storage.listVideoAvatars(String(userId));
+      const existingIds = new Set(existingAvatars.map(a => a.heygenAvatarId));
+
+      let imported = 0;
+      let skipped = 0;
+
+      for (const avatar of videoAvatarsOnly) {
+        if (existingIds.has(avatar.avatar_id)) {
+          skipped++;
+          console.log(`⏭️ Skipping existing avatar: ${avatar.avatar_name} (${avatar.avatar_id})`);
+          continue;
+        }
+
+        try {
+          await storage.createVideoAvatar({
+            userId,
+            heygenAvatarId: avatar.avatar_id,
+            avatarName: avatar.avatar_name,
+            trainingVideoUrl: '',
+            consentVideoUrl: '',
+            voiceId: avatar.default_voice_id || null,
+            audioAssetId: null,
+            status: 'complete',
+            thumbnailUrl: avatar.preview_image_url || null,
+            previewVideoUrl: avatar.preview_video_url || null,
+          });
+          imported++;
+          console.log(`✅ Imported video avatar: ${avatar.avatar_name} (${avatar.avatar_id})`);
+        } catch (dbError) {
+          console.error(`⚠️ Failed to import avatar ${avatar.avatar_id}:`, dbError);
+        }
+      }
+
+      console.log(`🔄 Sync complete: ${imported} imported, ${skipped} already existed`);
+
+      res.json({
+        success: true,
+        imported,
+        skipped,
+        total: videoAvatarsOnly.length,
+        message: `Synced ${imported} new video avatars. ${skipped} already existed.`,
+      });
+    } catch (error: any) {
+      console.error("❌ Sync failed:", error);
+      res.status(500).json({
+        error: "Failed to sync HeyGen avatars",
         details: error?.message || String(error),
       });
     }
@@ -11494,6 +11589,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         title,
         test,
         isTalkingPhoto,
+        isVideoAvatar,
         voiceSpeed,
         voiceId,
         customVoiceAvatarId,
@@ -11506,6 +11602,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.log("🎬 Backend: Title:", title);
       console.log("🎬 Backend: Test mode:", test);
       console.log("🎬 Backend: isTalkingPhoto:", isTalkingPhoto);
+      console.log("🎬 Backend: isVideoAvatar:", isVideoAvatar);
       console.log("🎬 Backend: Voice speed:", voiceSpeed);
       console.log("🎬 Backend: Voice ID:", voiceId);
       console.log("🎬 Backend: Custom voice avatar ID:", customVoiceAvatarId);
@@ -11521,6 +11618,34 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         });
       }
 
+      // For video avatars (instant avatars), we may need to resolve the actual avatar_id
+      // The frontend might be sending a group_id instead of the actual avatar_id
+      // This is a backwards compatibility fix for existing data
+      let resolvedAvatarId = avatarId;
+      
+      if (isVideoAvatar) {
+        console.log("🎬 Backend: Video avatar detected, checking if avatar_id needs resolution...");
+        
+        const videoAvatarService = new HeyGenVideoAvatarService();
+        try {
+          // Try to get avatars in this group (treating avatarId as a potential group_id)
+          const avatarsInGroup = await videoAvatarService.listAvatarsInGroup(avatarId);
+          const avatarList = avatarsInGroup.data?.avatar_list || avatarsInGroup.data?.avatars || [];
+          
+          if (avatarList.length > 0) {
+            // Found avatars in this group - use the first avatar's actual ID
+            resolvedAvatarId = avatarList[0].avatar_id;
+            console.log(`✅ Backend: Resolved avatar_id from group: ${avatarId} → ${resolvedAvatarId}`);
+          } else {
+            // No avatars found - avatarId might already be the correct avatar_id
+            console.log("📋 Backend: No avatars found in group, using avatarId as-is:", avatarId);
+          }
+        } catch (error) {
+          // Group lookup failed - avatarId might already be the correct avatar_id
+          console.log("📋 Backend: Group lookup failed (likely already an avatar_id):", avatarId);
+        }
+      }
+
       // Handle custom voice if provided
       let finalVoiceId = voiceId;
       let audioAssetId: string | undefined;
@@ -11531,14 +11656,22 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       // Check if this is a video avatar and use its extracted voice
       const user = (req as any).user;
       const userVideoAvatars = await storage.listVideoAvatars(user.id);
-      const videoAvatar = userVideoAvatars.find((va) => va.heygenAvatarId === avatarId);
+      const videoAvatar = userVideoAvatars.find((va) => va.heygenAvatarId === avatarId || va.heygenAvatarId === resolvedAvatarId);
       
-      if (videoAvatar?.audioAssetId && (!voiceId || voiceId === "avatar_voice")) {
-        // Use the video avatar's own extracted voice
-        console.log("🎤 Backend: Video Avatar detected with extracted voice!");
-        console.log("🎤 Backend: Using Video Avatar Audio Asset ID:", videoAvatar.audioAssetId);
-        audioAssetId = videoAvatar.audioAssetId;
-        finalVoiceId = undefined; // Don't use text voice when using audio
+      // For video avatars, use their built-in voice by default
+      if (isVideoAvatar && videoAvatar) {
+        console.log("🎤 Backend: Video Avatar detected!");
+        
+        if (videoAvatar.audioAssetId && (!voiceId || voiceId === "avatar_voice")) {
+          // Use the video avatar's own extracted voice (audio asset)
+          console.log("🎤 Backend: Using Video Avatar Audio Asset ID:", videoAvatar.audioAssetId);
+          audioAssetId = videoAvatar.audioAssetId;
+          finalVoiceId = undefined; // Don't use text voice when using audio
+        } else if (videoAvatar.voiceId && (!voiceId || voiceId === videoAvatar.voiceId)) {
+          // Use the video avatar's default voice ID (HeyGen voice)
+          console.log("🎤 Backend: Using Video Avatar Voice ID:", videoAvatar.voiceId);
+          finalVoiceId = videoAvatar.voiceId;
+        }
       }
 
       // Handle Voice Library voices
@@ -11619,9 +11752,10 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const heyGenService = new HeyGenService();
       console.log("🎬 Backend: Calling HeyGenService.generateVideo");
+      console.log("🎬 Backend: Using avatar ID:", resolvedAvatarId, isVideoAvatar ? "(resolved from video avatar)" : "");
 
       const result = await heyGenService.generateVideo({
-        avatarId,
+        avatarId: resolvedAvatarId,
         script,
         title: title || "Generated Video",
         test: test || false,
@@ -11824,7 +11958,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const videoContentList = await storage.getVideoContent(String(userId), status);
       
       // Get videos from video_generation_jobs table (Avatar IV videos)
-      const videoJobs = await storage.getVideoGenerationJobs(String(userId));
+      const videoJobs = await storage.getVideoGenerationJobsByUser(String(userId));
 
       // Format video_content videos
       const formattedVideoContent = videoContentList.map((video) => ({
@@ -13196,19 +13330,11 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const brandSettings = await storage.getBrandSettings(user.id);
 
-      const hasKlingEnvKeys = !!(process.env.KLING_ACCESS_KEY && process.env.KLING_SECRET_KEY);
-      const hasKlingUserKeys = !!(brandSettings?.klingApiKeyEncrypted);
-
       res.json({
         aiProvider: brandSettings?.aiProvider || "openai",
         hasCustomApiKey: !!brandSettings?.aiApiKeyEncrypted,
         aiApiKeyMasked: brandSettings?.aiApiKeyLastFour 
           ? `****...${brandSettings.aiApiKeyLastFour}` 
-          : null,
-        hasKlingApiKey: hasKlingEnvKeys || hasKlingUserKeys,
-        klingConfiguredViaEnv: hasKlingEnvKeys,
-        klingApiKeyMasked: brandSettings?.klingApiKeyLastFour 
-          ? `****...${brandSettings.klingApiKeyLastFour}` 
           : null,
         availableProviders: [
           { id: "platform", name: "Platform Default (OpenAI)", description: "Use the platform's AI service" },
@@ -13246,414 +13372,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error) {
       console.error("Error removing API key:", error);
       res.status(500).json({ error: "Failed to remove API key" });
-    }
-  });
-
-  // ==================== KLING API KEY MANAGEMENT ====================
-
-  // Update Kling API key
-  app.put("/api/kling-preferences", requireAuth, async (req, res) => {
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const { apiKey } = req.body;
-
-      // Import encryption utilities
-      const { encryptApiKey, getLastFourChars } = await import("./services/encryption");
-
-      // Prepare update data
-      const updateData: any = {
-        userId: user.id,
-      };
-
-      // Handle Kling API key update
-      if (apiKey && apiKey !== "" && !apiKey.startsWith("****")) {
-        // Validate Kling API key format (should be alphanumeric)
-        if (apiKey.length < 20) {
-          return res.status(400).json({ 
-            error: "Invalid Kling API key format. Please check your key." 
-          });
-        }
-
-        // Encrypt and store the key
-        updateData.klingApiKeyEncrypted = encryptApiKey(apiKey);
-        updateData.klingApiKeyLastFour = getLastFourChars(apiKey);
-      } else if (apiKey === "") {
-        // Clear the API key if empty string sent
-        updateData.klingApiKeyEncrypted = null;
-        updateData.klingApiKeyLastFour = null;
-      }
-
-      // Update brand settings with Kling API key
-      const updatedSettings = await storage.upsertBrandSettings(updateData);
-
-      console.log(`✅ Kling API key updated for user ${user.id}: hasKey=${!!updateData.klingApiKeyEncrypted}`);
-
-      res.json({
-        success: true,
-        message: "Kling API key saved successfully",
-        hasKlingApiKey: !!updatedSettings.klingApiKeyEncrypted,
-        klingApiKeyMasked: updatedSettings.klingApiKeyLastFour 
-          ? `****...${updatedSettings.klingApiKeyLastFour}` 
-          : null,
-      });
-    } catch (error) {
-      console.error("Error saving Kling API key:", error);
-      res.status(500).json({ error: "Failed to save Kling API key" });
-    }
-  });
-
-  // Delete Kling API key
-  app.delete("/api/kling-preferences/api-key", requireAuth, async (req, res) => {
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      await storage.upsertBrandSettings({
-        userId: user.id,
-        klingApiKeyEncrypted: null,
-        klingApiKeyLastFour: null,
-      });
-
-      console.log(`✅ Kling API key removed for user ${user.id}`);
-
-      res.json({
-        success: true,
-        message: "Kling API key removed successfully",
-      });
-    } catch (error) {
-      console.error("Error removing Kling API key:", error);
-      res.status(500).json({ error: "Failed to remove Kling API key" });
-    }
-  });
-
-  // ==================== KLING MOTION VIDEO GENERATION ====================
-
-  // Generate motion video from static image
-  app.post("/api/kling/generate-motion", requireAuth, async (req, res) => {
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const { imageUrl, prompt, duration, waitForCompletion } = req.body;
-
-      if (!imageUrl || !prompt) {
-        return res.status(400).json({ error: "Image URL and prompt are required" });
-      }
-
-      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
-        return res.status(400).json({ 
-          error: "Kling API credentials not configured. Please set KLING_ACCESS_KEY and KLING_SECRET_KEY." 
-        });
-      }
-
-      console.log(`🎬 Generating motion video for user ${user.id}`);
-      console.log(`📸 Image: ${imageUrl}`);
-      console.log(`📝 Prompt: ${prompt}`);
-
-      const { generateMotionVideo } = await import("./services/kling");
-      
-      const result = await generateMotionVideo(
-        imageUrl,
-        prompt,
-        {
-          duration: duration || "5",
-          mode: "pro",
-          waitForCompletion: waitForCompletion || false,
-        }
-      );
-
-      if (!result.success) {
-        return res.status(500).json({ error: result.error || "Video generation failed" });
-      }
-
-      res.json({
-        success: true,
-        taskId: result.taskId,
-        status: result.status,
-        videoUrl: result.videoUrl,
-      });
-    } catch (error) {
-      console.error("Error generating motion video:", error);
-      res.status(500).json({ error: "Failed to generate motion video" });
-    }
-  });
-
-  // Check motion video generation status
-  app.get("/api/kling/status/:taskId", requireAuth, async (req, res) => {
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const { taskId } = req.params;
-
-      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
-        return res.status(400).json({ error: "Kling API credentials not configured" });
-      }
-
-      const { checkMotionVideoStatus } = await import("./services/kling");
-      const status = await checkMotionVideoStatus(taskId);
-
-      res.json({
-        taskId,
-        status: status.status,
-        progress: status.progress,
-        videoUrl: status.videoUrl,
-        error: status.error,
-      });
-    } catch (error) {
-      console.error("Error checking motion video status:", error);
-      res.status(500).json({ error: "Failed to check video status" });
-    }
-  });
-
-  // Kling Lip-Sync - Generate lip-synced video from motion video + text
-  app.post("/api/kling/lip-sync", requireAuth, async (req, res) => {
-    console.log("🎤 Received Kling lip-sync request");
-    try {
-      const user = await resolveMemStorageUser(req);
-      console.log("🎤 User resolved:", user?.id);
-      if (!user) {
-        console.log("🎤 User not authenticated");
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const { videoUrl, text, voiceId, mode, audioUrl } = req.body;
-      console.log("🎤 Request body - videoUrl:", videoUrl?.substring(0, 50), "text length:", text?.length, "voiceId:", voiceId, "mode:", mode || "text2video");
-
-      if (!videoUrl) {
-        console.log("🎤 Missing video URL");
-        return res.status(400).json({ error: "Video URL is required" });
-      }
-
-      if (mode !== "audio2video" && (!text || typeof text !== "string" || text.trim().length === 0)) {
-        console.log("🎤 Missing or invalid text");
-        return res.status(400).json({ error: "Text script is required" });
-      }
-      
-      if (mode === "audio2video" && !audioUrl) {
-        console.log("🎤 Missing audio URL for audio2video mode");
-        return res.status(400).json({ error: "Audio URL is required for audio2video mode" });
-      }
-
-      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
-        console.log("🎤 Kling API credentials not configured");
-        return res.status(400).json({ error: "Kling API credentials not configured" });
-      }
-
-      console.log(`🎤 Starting Kling lip-sync for user ${user.id} in ${mode || "text2video"} mode`);
-
-      const { generateLipSyncVideo } = await import("./services/kling");
-      const result = await generateLipSyncVideo({
-        videoUrl,
-        text: text?.trim() || "",
-        voiceId: voiceId || "female_calm",
-        mode: mode || "text2video",
-        audioUrl: audioUrl,
-      });
-
-      if (!result.success) {
-        return res.status(500).json({ error: result.error || "Failed to start lip-sync generation" });
-      }
-
-      res.json({
-        taskId: result.taskId,
-        status: result.status,
-        videoUrl: result.videoUrl,
-      });
-    } catch (error) {
-      console.error("Error starting Kling lip-sync:", error);
-      res.status(500).json({ error: "Failed to start lip-sync generation" });
-    }
-  });
-
-  // Kling Lip-Sync - Check status
-  app.get("/api/kling/lip-sync/:taskId", requireAuth, async (req, res) => {
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      const { taskId } = req.params;
-
-      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
-        return res.status(400).json({ error: "Kling API credentials not configured" });
-      }
-
-      const { checkLipSyncStatus } = await import("./services/kling");
-      const status = await checkLipSyncStatus(taskId);
-
-      res.json({
-        taskId,
-        status: status.status,
-        progress: status.progress,
-        videoUrl: status.videoUrl,
-        error: status.error,
-      });
-    } catch (error) {
-      console.error("Error checking lip-sync status:", error);
-      res.status(500).json({ error: "Failed to check lip-sync status" });
-    }
-  });
-
-  // Kling Lip-Sync - Upload audio for lip-sync (uses memory storage for S3 upload)
-  // Converts WebM/WebA to MP3 for Kling API compatibility
-  app.post("/api/kling/upload-audio", requireAuth, memoryUpload.single("audio"), async (req, res) => {
-    console.log("🎤 Received audio upload for lip-sync");
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({ error: "No audio file provided" });
-      }
-
-      const originalName = req.file.originalname;
-      const mimeType = req.file.mimetype;
-      console.log(`🎤 Audio file received: ${originalName}, size: ${req.file.size} bytes, type: ${mimeType}`);
-
-      // Check if we need to convert the audio format
-      const needsConversion = mimeType.includes("webm") || 
-                              mimeType.includes("weba") || 
-                              originalName.endsWith(".webm") || 
-                              originalName.endsWith(".weba");
-
-      let audioBuffer = req.file.buffer;
-      let finalMimeType = mimeType;
-      let finalFileName = originalName;
-
-      if (needsConversion) {
-        console.log("🔄 Converting WebM/WebA audio to MP3 for Kling API compatibility...");
-        
-        const { spawn } = await import("child_process");
-        const path = await import("path");
-        const fs = await import("fs/promises");
-        const os = await import("os");
-        
-        // Create temp files for conversion
-        const tempDir = os.tmpdir();
-        const tempInputPath = path.join(tempDir, `input-${Date.now()}.webm`);
-        const tempOutputPath = path.join(tempDir, `output-${Date.now()}.mp3`);
-        
-        try {
-          // Write input file
-          await fs.writeFile(tempInputPath, req.file.buffer);
-          
-          // Run ffmpeg conversion
-          await new Promise<void>((resolve, reject) => {
-            const ffmpeg = spawn("ffmpeg", [
-              "-i", tempInputPath,
-              "-vn",                    // No video
-              "-acodec", "libmp3lame", // MP3 codec
-              "-ab", "128k",           // 128kbps bitrate
-              "-ar", "44100",          // 44.1kHz sample rate
-              "-y",                     // Overwrite output
-              tempOutputPath
-            ]);
-            
-            let errorOutput = "";
-            ffmpeg.stderr.on("data", (data) => {
-              errorOutput += data.toString();
-            });
-            
-            ffmpeg.on("close", (code) => {
-              if (code === 0) {
-                resolve();
-              } else {
-                reject(new Error(`FFmpeg exited with code ${code}: ${errorOutput}`));
-              }
-            });
-            
-            ffmpeg.on("error", (err) => {
-              reject(err);
-            });
-          });
-          
-          // Read converted file
-          audioBuffer = await fs.readFile(tempOutputPath);
-          finalMimeType = "audio/mpeg";
-          finalFileName = originalName.replace(/\.(webm|weba)$/i, ".mp3");
-          
-          console.log(`✅ Audio converted to MP3: ${audioBuffer.length} bytes`);
-          
-          // Cleanup temp files
-          await fs.unlink(tempInputPath).catch(() => {});
-          await fs.unlink(tempOutputPath).catch(() => {});
-          
-        } catch (conversionError) {
-          console.error("❌ Audio conversion failed:", conversionError);
-          // Cleanup on error
-          const fs2 = await import("fs/promises");
-          await fs2.unlink(tempInputPath).catch(() => {});
-          await fs2.unlink(tempOutputPath).catch(() => {});
-          return res.status(500).json({ error: "Failed to convert audio format" });
-        }
-      }
-
-      // Upload to S3 and get presigned URL for Kling API access
-      const { S3UploadService } = await import("./services/s3Upload");
-      const s3Service = new S3UploadService();
-      
-      const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${finalFileName}`;
-      // Use presigned URL (valid for 1 hour) since bucket doesn't allow public ACLs
-      const audioUrl = await s3Service.uploadBuffer(audioBuffer, fileName, finalMimeType, true, 3600);
-      
-      console.log(`✅ Audio uploaded to S3 with presigned URL: ${audioUrl.substring(0, 100)}...`);
-
-      res.json({
-        success: true,
-        audioUrl,
-      });
-    } catch (error) {
-      console.error("Error uploading audio for lip-sync:", error);
-      res.status(500).json({ error: "Failed to upload audio file" });
-    }
-  });
-
-  // Kling Lip-Sync - Upload video for lip-sync (when user uploads their own motion video)
-  app.post("/api/kling/upload-video", requireAuth, memoryVideoUpload.single("video"), async (req, res) => {
-    console.log("🎬 Received video upload for lip-sync");
-    try {
-      const user = await resolveMemStorageUser(req);
-      if (!user) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({ error: "No video file provided" });
-      }
-
-      console.log(`🎬 Video file received: ${req.file.originalname}, size: ${req.file.size} bytes, type: ${req.file.mimetype}`);
-
-      // Upload to S3 and get presigned URL for Kling API access
-      const { S3UploadService } = await import("./services/s3Upload");
-      const s3Service = new S3UploadService();
-      
-      const fileName = `lip-sync-video/${user.id}/${Date.now()}-${req.file.originalname}`;
-      // Use presigned URL (valid for 1 hour) since bucket doesn't allow public ACLs
-      const videoUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype, true, 3600);
-      
-      console.log(`✅ Video uploaded to S3 with presigned URL: ${videoUrl.substring(0, 100)}...`);
-
-      res.json({
-        success: true,
-        videoUrl,
-      });
-    } catch (error) {
-      console.error("Error uploading video for lip-sync:", error);
-      res.status(500).json({ error: "Failed to upload video file" });
     }
   });
 
@@ -13756,7 +13474,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Generate speech and return as audio buffer (for direct use with Kling)
+  // Generate speech and return as audio buffer
   app.post("/api/elevenlabs/tts/buffer", requireAuth, async (req, res) => {
     try {
       const user = await resolveMemStorageUser(req);
@@ -15664,7 +15382,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     backgroundType: string;
     includeBranding: boolean;
     property: any;
-    klingTaskIds: string[];
     motionVideos: string[];
     avatarVideoId?: string;
     avatarVideoUrl?: string;
@@ -15954,7 +15671,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         backgroundType: backgroundType || "office",
         includeBranding: includeBranding !== false,
         property,
-        klingTaskIds: [],
         motionVideos: [],
         createdAt: new Date(),
       };

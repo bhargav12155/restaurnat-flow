@@ -159,7 +159,7 @@ export default function Dashboard() {
       case "video-avatars":
         return <VideoAvatarManager />;
       case "video-generation":
-        return <VideoStudio />;
+        return <VideoGenerationManager />;
       case "templates":
         return <TemplateManager />;
       case "video-templates":

@@ -209,15 +209,15 @@ function SidebarContent({
             isCollapsed ? "justify-center" : "space-x-3"
           )}
         >
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-orange-500 to-red-600 text-white font-bold text-lg">
-            🍽️
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-lg">
+            🚀
           </div>
           {!isCollapsed && (
             <div>
               <h1
-                className="font-bold text-xl bg-gradient-to-r from-orange-500 via-red-500 to-orange-600 bg-clip-text text-transparent"
+                className="font-bold text-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600 bg-clip-text text-transparent"
               >
-                RestaurantFlow
+                MarketingFlow
               </h1>
             </div>
           )}
