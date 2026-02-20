@@ -19,6 +19,7 @@ import MobileUploadPage from "@/pages/mobile-upload";
 import EventsCalendarPage from "@/pages/events-calendar";
 import UnifiedCalendarPage from "@/pages/unified-calendar";
 import TemplateStudioPage from "@/pages/template-studio";
+import AdminPage from "@/pages/admin";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 import { DemoModeBanner } from "@/components/shared/demo-mode-banner";
@@ -79,6 +80,11 @@ function Router() {
       <Route path="/templates">
         <ProtectedRoute>
           <TemplateStudioPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin">
+        <ProtectedRoute>
+          <AdminPage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />

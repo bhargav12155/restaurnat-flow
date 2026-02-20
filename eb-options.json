@@ -19,5 +19,9 @@
   {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_PORT", "Value": "587"},
   {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_USER", "Value": "mygoldenbrick1@gmail.com"},
   {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_PASS", "Value": "wfzqybtyrotlexjo"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_FROM", "Value": "mygoldenbrick1@gmail.com"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "SMTP_SECURE", "Value": "false"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "APP_URL", "Value": "http://restaurantflow-prod.eba-x9fd7usc.us-east-2.elasticbeanstalk.com"},
+  {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "ADMIN_PASSWORD", "Value": "test123"},
   {"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "HEYGEN_API_KEY", "Value": "sk_V2_hgu_kk35yjQg8as_smspcHMCB3dnwDbe03FhWC8EeltjIdSR"}
 ]

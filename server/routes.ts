@@ -30,6 +30,7 @@ import { ObjectNotFoundError, ObjectStorageService, objectStorageClient } from "
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
 import demoRoutes from "./routes/demo";
+import adminRoutes from "./routes/admin";
 import { setupBusinessTypeRoutes } from "./routes/business-type";
 import { HeyGenService } from "./services/heygen";
 import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
@@ -772,6 +773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/auth", authRoutes);
   app.use("/api/user", userRoutes);
   app.use("/api/demo", demoRoutes);
+  app.use("/api/admin", adminRoutes);
   
   // Business Type Settings
   setupBusinessTypeRoutes(app);
