@@ -23,6 +23,7 @@ import {
   Play,
   Loader2,
   Check,
+  CheckCircle,
   Download,
   RefreshCw,
   Image,
@@ -1491,22 +1492,43 @@ export function AvatarIVStudio() {
                 </div>
               </div>
 
-              {/* Background Generation Toggle */}
-              <div className="flex items-center justify-center gap-3 py-4 px-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                <Switch
-                  id="background-mode"
-                  checked={runInBackground}
-                  onCheckedChange={setRunInBackground}
-                  data-testid="switch-background-mode"
-                />
-                <Label htmlFor="background-mode" className="flex items-center gap-2 cursor-pointer">
-                  <Clock className="h-4 w-4 text-gray-500" />
-                  <span className="font-medium">Generate in Background</span>
-                </Label>
+              {/* Background Generation Toggle - Modern Card Style */}
+              <div 
+                onClick={() => setRunInBackground(!runInBackground)}
+                className={`relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200 ${
+                  runInBackground 
+                    ? 'border-[#D4AF37] bg-[#D4AF37]/5' 
+                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                }`}
+                data-testid="toggle-background-mode"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${runInBackground ? 'bg-[#D4AF37]/20' : 'bg-gray-200'}`}>
+                      <Clock className={`h-5 w-5 ${runInBackground ? 'text-[#D4AF37]' : 'text-gray-500'}`} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">Generate in Background</p>
+                      <p className="text-sm text-gray-500">
+                        {runInBackground 
+                          ? "You can navigate away while video generates" 
+                          : "Enable to continue working while video generates"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`w-12 h-7 rounded-full p-1 transition-colors duration-200 ${
+                    runInBackground ? 'bg-[#D4AF37]' : 'bg-gray-300'
+                  }`}>
+                    <div className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+                      runInBackground ? 'translate-x-5' : 'translate-x-0'
+                    }`} />
+                  </div>
+                </div>
                 {runInBackground && (
-                  <Badge variant="secondary" className="text-xs">
-                    You can navigate away
-                  </Badge>
+                  <div className="mt-3 flex items-center gap-2 text-sm text-[#D4AF37]">
+                    <CheckCircle className="h-4 w-4" />
+                    <span>You'll get a notification when your video is ready</span>
+                  </div>
                 )}
               </div>
 
