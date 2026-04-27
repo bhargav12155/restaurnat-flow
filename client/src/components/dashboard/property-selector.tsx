@@ -35,8 +35,7 @@ interface PropertySelectorProps {
   selectedProperty?: Property | null;
 }
 
-// Google Maps API Key
-const GOOGLE_MAPS_API_KEY = "***REMOVED***";
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? "";
 
 export function PropertySelector({ onSelectProperty, selectedProperty }: PropertySelectorProps) {
   const { toast } = useToast();
@@ -76,6 +75,13 @@ export function PropertySelector({ onSelectProperty, selectedProperty }: Propert
       setGoogleMapsLoaded(true);
       setGoogleMapsStatus('ready');
       setSearchMessage('');
+      return;
+    }
+
+    if (!GOOGLE_MAPS_API_KEY) {
+      setGoogleMapsStatus('unavailable');
+      setGoogleMapsLoaded(false);
+      setSearchMessage('Google Maps auto-fill unavailable. Configure VITE_GOOGLE_MAPS_API_KEY or use manual entry mode.');
       return;
     }
 
