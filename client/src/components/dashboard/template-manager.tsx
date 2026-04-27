@@ -13,8 +13,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileVideo, Plus, Copy, Trash2, Edit, Play, Loader2, Home, TrendingUp, Users, Package, MapPin, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { useBusinessType } from '@/hooks/useBusinessType';
-import { getBusinessLabels } from '@/lib/businessType';
 
 interface Template {
   template_id: string;
@@ -32,7 +30,7 @@ interface TemplateVariable {
   properties: any;
 }
 
-interface RestaurantTemplate {
+interface RealEstateTemplate {
   name: string;
   description: string;
   recommended_variables: Record<string, string>;
@@ -42,17 +40,12 @@ interface TemplatesResponse {
   templates: Template[];
 }
 
-interface RestaurantTemplatesResponse {
-  suggestions: RestaurantTemplate[];
+interface RealEstateTemplatesResponse {
+  suggestions: RealEstateTemplate[];
 }
 
 export function TemplateManager() {
   const { toast } = useToast();
-  const { data: businessData } = useBusinessType();
-  const { typeLabel: businessTypeLabel } = getBusinessLabels(
-    businessData?.businessType,
-    businessData?.businessSubtype
-  );
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [variables, setVariables] = useState<Record<string, any>>({});
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -64,9 +57,9 @@ export function TemplateManager() {
     queryKey: ['/api/templates'],
   });
 
-  // Query restaurant templates
-  const { data: restaurantTemplates, isLoading: isLoadingRestaurant } = useQuery<RestaurantTemplatesResponse>({
-    queryKey: ['/api/templates/restaurant'],
+  // Query real estate templates
+  const { data: realEstateTemplates, isLoading: isLoadingRealEstate } = useQuery<RealEstateTemplatesResponse>({
+    queryKey: ['/api/templates/real-estate'],
   });
 
   // Generate from template
@@ -151,10 +144,10 @@ export function TemplateManager() {
 
   const getTemplateIcon = (templateName: string) => {
     const name = templateName.toLowerCase();
-    if (name.includes('dish') || name.includes('menu')) return <Home className="w-4 h-4" />;
-    if (name.includes('special') || name.includes('promo')) return <TrendingUp className="w-4 h-4" />;
-    if (name.includes('chef') || name.includes('introduction')) return <Users className="w-4 h-4" />;
-    if (name.includes('review') || name.includes('testimonial')) return <Package className="w-4 h-4" />;
+    if (name.includes('property') || name.includes('tour')) return <Home className="w-4 h-4" />;
+    if (name.includes('market')) return <TrendingUp className="w-4 h-4" />;
+    if (name.includes('agent') || name.includes('introduction')) return <Users className="w-4 h-4" />;
+    if (name.includes('listing')) return <Package className="w-4 h-4" />;
     if (name.includes('neighborhood')) return <MapPin className="w-4 h-4" />;
     return <FileVideo className="w-4 h-4" />;
   };
@@ -226,12 +219,9 @@ export function TemplateManager() {
   return (
     <Card data-testid="card-template-manager">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <span>Video Templates</span>
-          <Badge variant="outline" className="text-xs font-normal">{businessTypeLabel}</Badge>
-        </CardTitle>
+        <CardTitle>Video Templates</CardTitle>
         <CardDescription>
-          Create videos from pre-designed templates optimized for {(businessTypeLabel || 'restaurant').toLowerCase()} marketing
+          Create videos from pre-designed templates optimized for real estate marketing
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -241,9 +231,9 @@ export function TemplateManager() {
               <FileVideo className="w-4 h-4 mr-2" />
               Browse
             </TabsTrigger>
-            <TabsTrigger value="restaurant" data-testid="tab-restaurant">
+            <TabsTrigger value="real-estate" data-testid="tab-real-estate">
               <Home className="w-4 h-4 mr-2" />
-              {businessTypeLabel}
+              Real Estate
             </TabsTrigger>
             <TabsTrigger value="create" data-testid="tab-create">
               <Plus className="w-4 h-4 mr-2" />
@@ -260,7 +250,7 @@ export function TemplateManager() {
             ) : templates?.templates?.length === 0 ? (
               <Alert>
                 <AlertDescription>
-                  No templates available. Create your first template or check the {businessTypeLabel} tab for suggestions.
+                  No templates available. Create your first template or check the Real Estate tab for suggestions.
                 </AlertDescription>
               </Alert>
             ) : (
@@ -377,24 +367,24 @@ export function TemplateManager() {
             )}
           </TabsContent>
 
-          <TabsContent value="restaurant" className="space-y-4">
-            {isLoadingRestaurant ? (
+          <TabsContent value="real-estate" className="space-y-4">
+            {isLoadingRealEstate ? (
               <div className="text-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto" />
-                <p className="text-sm text-gray-500 mt-2">Loading {(businessTypeLabel || 'restaurant').toLowerCase()} templates...</p>
+                <p className="text-sm text-gray-500 mt-2">Loading real estate templates...</p>
               </div>
-            ) : restaurantTemplates?.suggestions ? (
+            ) : realEstateTemplates?.suggestions ? (
               <>
                 <Alert>
                   <FileText className="h-4 w-4" />
                   <AlertDescription>
-                    These are recommended template structures for {(businessTypeLabel || 'restaurant').toLowerCase()} videos. 
+                    These are recommended template structures for real estate videos. 
                     Use these as inspiration to create your own custom templates.
                   </AlertDescription>
                 </Alert>
                 
                 <div className="space-y-4">
-                  {restaurantTemplates.suggestions.map((template: RestaurantTemplate, index: number) => (
+                  {realEstateTemplates.suggestions.map((template: RealEstateTemplate, index: number) => (
                     <div
                       key={index}
                       className="border rounded-lg p-4 space-y-3"
@@ -433,9 +423,9 @@ export function TemplateManager() {
                   ))}
                 </div>
               </>
-            ) : restaurantTemplates?.suggestions && restaurantTemplates.suggestions.length > 0 ? (
+            ) : realEstateTemplates?.suggestions && realEstateTemplates.suggestions.length > 0 ? (
               <div className="grid grid-cols-2 gap-4">
-                {restaurantTemplates.suggestions.map((template: RestaurantTemplate, index: number) => (
+                {realEstateTemplates.suggestions.map((template: RealEstateTemplate, index: number) => (
                   <div
                     key={index}
                     className="border rounded-lg p-4 space-y-3"
@@ -470,7 +460,7 @@ export function TemplateManager() {
             ) : (
               <Alert>
                 <AlertDescription>
-                  No restaurant templates available.
+                  No real estate templates available.
                 </AlertDescription>
               </Alert>
             )}

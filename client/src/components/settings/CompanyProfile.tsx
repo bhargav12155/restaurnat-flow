@@ -14,7 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Loader2, Phone, Bot, Clock, MessageCircle, CheckCircle, XCircle } from "lucide-react";
+import { Building2, Loader2, Phone, Bot, Clock, MessageCircle, CheckCircle, XCircle, MessageSquare } from "lucide-react";
+import { WhatsAppSettings } from "./WhatsAppSettings";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
@@ -48,6 +49,8 @@ const companyProfileFormSchema = z.object({
   licenseNumber: z.string().optional(),
   brokerageName: z.string().optional(),
   tagline: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
 });
 
 type CompanyProfileFormData = z.infer<typeof companyProfileFormSchema>;
@@ -91,6 +94,8 @@ export function CompanyProfile() {
       licenseNumber: "",
       brokerageName: "",
       tagline: "",
+      city: "",
+      state: "",
     },
   });
 
@@ -111,6 +116,8 @@ export function CompanyProfile() {
         licenseNumber: profile.licenseNumber || "",
         brokerageName: profile.brokerageName || "",
         tagline: profile.tagline || "",
+        city: (profile as any).city || "",
+        state: (profile as any).state || "",
       });
     }
   }, [profile, form]);
@@ -289,7 +296,7 @@ export function CompanyProfile() {
                         <Input
                           {...field}
                           data-testid="input-agentTitle"
-                          placeholder="e.g., Head Chef"
+                          placeholder="e.g., Senior Real Estate Specialist"
                         />
                       </FormControl>
                       <FormMessage />
@@ -380,7 +387,46 @@ export function CompanyProfile() {
                         <Input
                           {...field}
                           data-testid="input-officeAddress"
-                          placeholder="e.g., 123 Main Street, Suite 100, City, State 12345"
+                          placeholder="e.g., 123 Main Street, Suite 100"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="city"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>City</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          data-testid="input-city"
+                          placeholder="e.g., Omaha"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Used for location hashtags in AI-generated posts
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="state"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>State</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          data-testid="input-state"
+                          placeholder="e.g., NE"
                         />
                       </FormControl>
                       <FormMessage />
@@ -398,7 +444,7 @@ export function CompanyProfile() {
                         <Textarea
                           {...field}
                           data-testid="input-tagline"
-                          placeholder="e.g., Your Destination for Exceptional Dining"
+                          placeholder="e.g., Your Trusted Partner in Real Estate Excellence"
                           rows={2}
                         />
                       </FormControl>
@@ -668,7 +714,7 @@ export function CompanyProfile() {
                             <Input
                               data-testid="input-twilio-specialties"
                               {...field}
-                              placeholder="e.g., Brunch, Fine Dining, Catering (comma-separated)"
+                              placeholder="e.g., First-time buyers, Luxury homes (comma-separated)"
                             />
                           </FormControl>
                           <FormDescription>
@@ -705,6 +751,8 @@ export function CompanyProfile() {
         </Accordion>
       </CardContent>
     </Card>
+
+    <WhatsAppSettings />
     </>
   );
 }

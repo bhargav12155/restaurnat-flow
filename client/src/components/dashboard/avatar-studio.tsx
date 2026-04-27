@@ -25,8 +25,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useDemo } from "@/contexts/DemoContext";
-import { useBusinessType } from "@/hooks/useBusinessType";
 import demoMotionVideo from "@assets/preview_video_target_(1)_1765290240595.mp4";
 import demoFinalVideo from "@assets/preview_video_target_(1)_1765291235450.mp4";
 import demoEditLookResult from "@assets/demo-edit-look-result.jpg";
@@ -55,6 +55,8 @@ import {
   Download,
   Terminal,
   MoreHorizontal,
+  MoreVertical,
+  Shirt,
   Edit2,
   Copy,
   Heart,
@@ -152,11 +154,20 @@ const PLATFORM_OPTIONS = [
   { id: "custom", name: "Custom Length", duration: 60, description: "Set your own duration" },
 ];
 
+const OUTFIT_PRESETS = [
+  { label: "Business Suit", prompt: "wearing a tailored navy blue business suit with white dress shirt and silk tie, professional office setting", icon: "👔" },
+  { label: "Casual Polo", prompt: "wearing a fitted casual polo shirt in solid color, relaxed professional look", icon: "👕" },
+  { label: "Real Estate Blazer", prompt: "wearing a stylish modern blazer over crisp button-down shirt, professional real estate agent look", icon: "🧥" },
+  { label: "Smart Casual", prompt: "wearing smart casual outfit with quarter-zip sweater over collared shirt, approachable professional look", icon: "👔" },
+  { label: "Formal Dress", prompt: "wearing elegant formal business dress or blouse with professional styling, confident real estate professional", icon: "👗" },
+  { label: "Outdoor/Active", prompt: "wearing clean outdoor casual attire, quarter-zip jacket, ready for property showings and open houses", icon: "🧤" },
+];
+
 export function AvatarStudio() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { isDemo } = useDemo();
-  const { businessType, businessSubtype } = useBusinessType();
   
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedAvatarGroup, setSelectedAvatarGroup] = useState<string>("");
@@ -318,6 +329,12 @@ export function AvatarStudio() {
     message?: string;
     error?: string;
   } | null>(null);
+  
+  const [changeStyleDialogOpen, setChangeStyleDialogOpen] = useState(false);
+  const [changeStylePrompt, setChangeStylePrompt] = useState("");
+  const [changeStyleOrientation, setChangeStyleOrientation] = useState("square");
+  const [changeStylePose, setChangeStylePose] = useState("half_body");
+  const [changeStyleStyle, setChangeStyleStyle] = useState("Realistic");
   
   // Ref to track previous group train statuses for detecting changes
   const previousGroupStatusRef = useRef<Record<string, string>>({});
@@ -493,11 +510,23 @@ export function AvatarStudio() {
       
       try {
         console.log(`🎨 Auto-triggering look generation for group ${groupId}`);
-        await apiRequest(
-          "POST",
-          `/api/photo-avatars/groups/${groupId}/generate-looks`,
-          {}
-        );
+        const lookPrompts = [
+          "Professional executive in a navy business suit, confident and approachable",
+          "Friendly real estate agent in smart casual blazer, warm and welcoming smile",
+          "Outdoor property tour guide in clean casual attire, natural setting",
+          "Modern professional in contemporary business wear, sleek and polished",
+        ];
+        for (const prompt of lookPrompts) {
+          try {
+            await apiRequest(
+              "POST",
+              `/api/photo-avatars/groups/${groupId}/proxy-generate-look`,
+              { prompt, orientation: "square", pose: "half_body", style: "Realistic" }
+            );
+          } catch (e: any) {
+            console.warn(`Look generation failed for prompt "${prompt}":`, e?.message);
+          }
+        }
         
         toast({
           title: "Generating Looks",
@@ -506,9 +535,14 @@ export function AvatarStudio() {
         
         queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
         queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", groupId, "looks"] });
+
+        const pollInterval = setInterval(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", groupId, "looks"] });
+        }, 5000);
+        setTimeout(() => clearInterval(pollInterval), 180000);
       } catch (error: any) {
         console.error("Look generation failed:", error);
-        // Remove from triggered set so it can be retried
         looksTriggeredRef.current.delete(groupId);
         
         addActivityLog({
@@ -755,14 +789,26 @@ export function AvatarStudio() {
         previewImage: previewImage
       });
       
-      const response = await apiRequest(
-        "POST",
-        `/api/photo-avatars/groups/${groupId}/generate-looks`,
-        {}
-      );
-      return { response: await response.json(), groupName, previewImage };
+      const lookPrompts = [
+        "Professional executive in a navy business suit, confident and approachable",
+        "Friendly real estate agent in smart casual blazer, warm and welcoming smile",
+        "Outdoor property tour guide in clean casual attire, natural setting",
+        "Modern professional in contemporary business wear, sleek and polished",
+      ];
+      for (const prompt of lookPrompts) {
+        try {
+          await apiRequest(
+            "POST",
+            `/api/photo-avatars/groups/${groupId}/proxy-generate-look`,
+            { prompt, orientation: "square", pose: "half_body", style: "Realistic" }
+          );
+        } catch (e: any) {
+          console.warn(`Look generation failed for prompt "${prompt}":`, e?.message);
+        }
+      }
+      return { groupName, previewImage, groupId };
     },
-    onSuccess: ({ groupName, previewImage }) => {
+    onSuccess: ({ groupName, previewImage, groupId }) => {
       addActivityLog({
         step: 'looks_complete',
         message: 'New looks generation started!',
@@ -781,6 +827,12 @@ export function AvatarStudio() {
       if (selectedAvatarGroup) {
         queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "looks"] });
       }
+
+      const pollInterval = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", groupId, "looks"] });
+      }, 5000);
+      setTimeout(() => clearInterval(pollInterval), 180000);
     },
     onError: (error: any, variables) => {
       addActivityLog({
@@ -794,6 +846,37 @@ export function AvatarStudio() {
       toast({
         title: "Generation Failed",
         description: error?.message || "Failed to generate looks",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const changeStyleMutation = useMutation({
+    mutationFn: async ({ groupId, prompt, orientation, pose, style }: { groupId: string; prompt: string; orientation?: string; pose?: string; style?: string }) => {
+      const response = await apiRequest(
+        "POST",
+        `/api/photo-avatars/groups/${groupId}/proxy-generate-look`,
+        { prompt, orientation, pose, style, numLooks: 1 }
+      );
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Style Change Started!",
+        description: "Your new look is being generated. It will appear in 30-60 seconds.",
+        duration: 6000,
+      });
+      setChangeStyleDialogOpen(false);
+      setChangeStylePrompt("");
+      if (selectedAvatarGroup) {
+        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups", selectedAvatarGroup, "looks"] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Style Change Failed",
+        description: error?.message || "Failed to change style. Make sure the avatar is trained first.",
         variant: "destructive",
       });
     },
@@ -1083,7 +1166,7 @@ export function AvatarStudio() {
     mutationFn: async () => {
       const platform = PLATFORM_OPTIONS.find(p => p.id === selectedPlatform);
       const response = await apiRequest("POST", "/api/generate-script", {
-        topic: videoTitle || "professional restaurant introduction",
+        topic: videoTitle || "professional real estate introduction",
         videoType: "introduction",
         platform: platform?.name || "Instagram Reel",
         duration: platform?.duration || 30,
@@ -1959,9 +2042,15 @@ export function AvatarStudio() {
                               Generate New Looks
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                if (confirm(`Delete "${group.name}"? This cannot be undone.`)) {
+                                const confirmed = await confirm({
+                                  title: "Delete Group",
+                                  description: `Delete "${group.name}"? This cannot be undone.`,
+                                  confirmText: "Delete",
+                                  variant: "destructive",
+                                });
+                                if (confirmed) {
                                   deleteGroupMutation.mutate({
                                     groupId: group.group_id,
                                     groupName: group.name
@@ -2106,7 +2195,7 @@ export function AvatarStudio() {
                           }}
                           onMouseEnter={() => setHoveredLookId(lookId)}
                           onMouseLeave={() => setHoveredLookId(null)}
-                          className={`relative rounded-lg overflow-hidden border-2 transition-all duration-200 cursor-pointer ${
+                          className={`relative group rounded-lg overflow-hidden border-2 transition-all duration-200 cursor-pointer ${
                             selectedAvatarLook === lookId
                               ? "border-[#D4AF37] ring-2 ring-[#D4AF37]/30"
                               : "border-gray-200 dark:border-gray-700 hover:border-[#D4AF37]/50"
@@ -2115,7 +2204,7 @@ export function AvatarStudio() {
                         >
                           {/* Selected indicator */}
                           {selectedAvatarLook === lookId && (
-                            <div className="absolute top-1 right-1 w-5 h-5 bg-[#D4AF37] rounded-full flex items-center justify-center z-10">
+                            <div className="absolute bottom-1 left-1 w-5 h-5 bg-[#D4AF37] rounded-full flex items-center justify-center z-10">
                               <Check className="h-3 w-3 text-white" />
                             </div>
                           )}
@@ -2128,22 +2217,49 @@ export function AvatarStudio() {
                             </div>
                           )}
                           
-                          {/* Delete button */}
-                          {isHovered && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm("Delete this avatar look? This cannot be undone.")) {
-                                  deleteAvatarLookMutation.mutate(lookId);
-                                }
-                              }}
-                              disabled={deleteAvatarLookMutation.isPending}
-                              className="absolute bottom-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center z-10 transition-colors"
-                              data-testid={`button-delete-look-${lookId}`}
-                            >
-                              <Trash2 className="h-3 w-3 text-white" />
-                            </button>
-                          )}
+                          {/* Three-dot menu */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute top-1 right-1 w-6 h-6 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center z-20 transition-colors"
+                                data-testid={`button-menu-look-${lookId}`}
+                              >
+                                <MoreVertical className="h-3.5 w-3.5 text-white" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setChangeStyleDialogOpen(true);
+                                }}
+                                data-testid={`button-change-style-${lookId}`}
+                              >
+                                <Shirt className="h-4 w-4 mr-2" />
+                                Change Style
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const confirmed = await confirm({
+                                    title: "Delete Avatar Look",
+                                    description: "Delete this avatar look? This cannot be undone.",
+                                    confirmText: "Delete",
+                                    variant: "destructive",
+                                  });
+                                  if (confirmed) {
+                                    deleteAvatarLookMutation.mutate(lookId);
+                                  }
+                                }}
+                                className="text-red-600 focus:text-red-600"
+                                data-testid={`button-delete-look-${lookId}`}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                           
                           {/* Image or Video on hover */}
                           {hasMotion && isHovered ? (
@@ -2322,9 +2438,15 @@ export function AvatarStudio() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  if (confirm(`Delete "${voice.name}"? This cannot be undone.`)) {
+                                  const confirmed = await confirm({
+                                    title: "Delete Voice",
+                                    description: `Delete "${voice.name}"? This cannot be undone.`,
+                                    confirmText: "Delete",
+                                    variant: "destructive",
+                                  });
+                                  if (confirmed) {
                                     deleteVoiceMutation.mutate(voice.id);
                                   }
                                 }}
@@ -2585,7 +2707,7 @@ export function AvatarStudio() {
                     id="custom-prompt"
                     value={customPrompt}
                     onChange={(e) => setCustomPrompt(e.target.value)}
-                    placeholder={businessType === 'restaurant' ? 'e.g., Focus on our signature dishes, mention our 20 years of culinary experience...' : businessType === 'home_services' ? `e.g., Highlight our certified technicians, mention our ${businessSubtype === 'plumbing' ? '24/7 emergency services' : businessSubtype === 'hvac' ? 'energy-efficient solutions' : 'quality workmanship'}...` : businessType === 'real_estate' ? 'e.g., Focus on prime locations, mention our market expertise...' : 'e.g., Focus on our key features, mention our experience...'}
+                    placeholder="e.g., Focus on luxury homes in West Omaha, mention our 20 years of experience..."
                     rows={2}
                     className="resize-none"
                     data-testid="input-custom-prompt"
@@ -4085,6 +4207,144 @@ export function AvatarStudio() {
             >
               <Check className="h-4 w-4 mr-2" />
               Use This Look
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={changeStyleDialogOpen} onOpenChange={setChangeStyleDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shirt className="h-5 w-5 text-[#D4AF37]" />
+              Change Style
+            </DialogTitle>
+            <DialogDescription>
+              Choose a preset outfit or describe what you'd like your avatar to wear.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Quick Outfit Presets</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {OUTFIT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setChangeStylePrompt(preset.prompt)}
+                    className={`p-2 rounded-lg border text-left transition-all hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 ${
+                      changeStylePrompt === preset.prompt ? 'border-[#D4AF37] bg-[#D4AF37]/10' : 'border-gray-200 dark:border-gray-700'
+                    }`}
+                    data-testid={`button-preset-${preset.label.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <span className="text-lg">{preset.icon}</span>
+                    <p className="text-xs font-medium mt-1">{preset.label}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 my-2">
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+              <span className="text-xs text-gray-400">or describe your own</span>
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="change-style-prompt">Describe the outfit</Label>
+              <Textarea
+                id="change-style-prompt"
+                placeholder="Describe the outfit: e.g., navy blazer with white shirt, or casual polo with khakis..."
+                value={changeStylePrompt}
+                onChange={(e) => setChangeStylePrompt(e.target.value)}
+                rows={3}
+                className="resize-none"
+                data-testid="textarea-change-style-prompt"
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Orientation</Label>
+                <Select value={changeStyleOrientation} onValueChange={setChangeStyleOrientation}>
+                  <SelectTrigger data-testid="select-change-style-orientation">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="square">Square</SelectItem>
+                    <SelectItem value="landscape">Landscape</SelectItem>
+                    <SelectItem value="portrait">Portrait</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Pose</Label>
+                <Select value={changeStylePose} onValueChange={setChangeStylePose}>
+                  <SelectTrigger data-testid="select-change-style-pose">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="half_body">Half Body</SelectItem>
+                    <SelectItem value="full_body">Full Body</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Style</Label>
+                <Select value={changeStyleStyle} onValueChange={setChangeStyleStyle}>
+                  <SelectTrigger data-testid="select-change-style-style">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Realistic">Realistic</SelectItem>
+                    <SelectItem value="Cinematic">Cinematic</SelectItem>
+                    <SelectItem value="Pixar">Pixar</SelectItem>
+                    <SelectItem value="Vintage">Vintage</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setChangeStyleDialogOpen(false);
+                setChangeStylePrompt("");
+              }}
+              data-testid="button-cancel-change-style"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedAvatarGroup && changeStylePrompt.trim()) {
+                  changeStyleMutation.mutate({
+                    groupId: selectedAvatarGroup,
+                    prompt: changeStylePrompt.trim(),
+                    orientation: changeStyleOrientation,
+                    pose: changeStylePose,
+                    style: changeStyleStyle,
+                  });
+                }
+              }}
+              disabled={!changeStylePrompt.trim() || changeStyleMutation.isPending}
+              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+              data-testid="button-generate-style"
+            >
+              {changeStyleMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4 mr-2" />
+                  Generate Outfit
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

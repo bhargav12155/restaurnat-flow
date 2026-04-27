@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -203,6 +204,7 @@ const postTypeLabels: Record<string, string> = {
 
 export default function UnifiedCalendarPage() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("calendar");
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -221,12 +223,22 @@ export default function UnifiedCalendarPage() {
   const [editContent, setEditContent] = useState<string>("");
   const [editImageUrl, setEditImageUrl] = useState<string>("");
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [mediaUploading, setMediaUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewFileInputRef = useRef<HTMLInputElement>(null);
+  const [showAutoFillPanel, setShowAutoFillPanel] = useState(false);
+  const [autoFillPlatforms, setAutoFillPlatforms] = useState<string[]>(["facebook", "instagram", "linkedin", "x", "tiktok"]);
+  const [autoFillFrequency, setAutoFillFrequency] = useState(3);
+  const [autoFillCategories, setAutoFillCategories] = useState<string[]>([
+    "market_update", "buyer_tips", "seller_tips", "neighborhood_spotlight",
+    "home_improvement", "investment_tips", "community_events", "success_stories"
+  ]);
+  const [autoFillProgress, setAutoFillProgress] = useState(0);
 
   const rawName = user?.name || user?.email?.split('@')[0];
   const userName = rawName 
     ? rawName.charAt(0).toUpperCase() + rawName.slice(1)
-    : "Owner";
+    : "Agent";
 
   const eventForm = useForm<EventFormData>({
     resolver: zodResolver(eventFormSchema),
@@ -429,7 +441,7 @@ export default function UnifiedCalendarPage() {
   const generateContentPlanMutation = useMutation({
     mutationFn: async (weeks: number = 4) => {
       const response = await apiRequest('POST', '/api/content/generate-plan', {
-        targetAudience: 'food lovers and diners',
+        targetAudience: 'home buyers and sellers',
         specialties: [],
         weeks,
       });
@@ -437,16 +449,53 @@ export default function UnifiedCalendarPage() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
-      const weeks = data.weeks || (data.posts?.length ? Math.ceil(data.posts.length / 7) : 4);
+      const weeks = data.weeks || (data.posts?.length ? Math.ceil(data.posts.length / 35) : 4);
       toast({
         title: "Content Plan Generated!",
-        description: `Successfully created ${weeks}-week content calendar with ${data.posts?.length || 0} posts`,
+        description: `Created ${data.posts?.length || 0} posts across all platforms for the next ${weeks} week(s).`,
       });
     },
     onError: () => {
       toast({
         title: "Generation Failed",
         description: "Could not generate content plan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const generateMonthlyMutation = useMutation({
+    mutationFn: async () => {
+      setAutoFillProgress(10);
+      const month = selectedDate.getMonth();
+      const year = selectedDate.getFullYear();
+      const res = await apiRequest("POST", "/api/scheduled-posts/generate-monthly", {
+        platforms: autoFillPlatforms,
+        postsPerWeek: autoFillFrequency,
+        month,
+        year,
+        categories: autoFillCategories,
+      });
+      setAutoFillProgress(90);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setAutoFillProgress(100);
+      setTimeout(() => {
+        setAutoFillProgress(0);
+        setShowAutoFillPanel(false);
+      }, 1000);
+      queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+      toast({
+        title: "Month Auto-Filled!",
+        description: `Created ${data.count} AI-generated posts across ${autoFillPlatforms.length} platforms for ${format(selectedDate, "MMMM yyyy")}`,
+      });
+    },
+    onError: (error: Error) => {
+      setAutoFillProgress(0);
+      toast({
+        title: "Auto-Fill Failed",
+        description: error.message,
         variant: "destructive",
       });
     },
@@ -639,7 +688,7 @@ export default function UnifiedCalendarPage() {
 
   function getCategoryColor(category: string | null) {
     switch (category) {
-      case "restaurant": return "bg-blue-500";
+      case "real_estate": return "bg-blue-500";
       case "market": return "bg-green-500";
       case "festival": return "bg-purple-500";
       case "networking": return "bg-orange-500";
@@ -781,7 +830,7 @@ export default function UnifiedCalendarPage() {
                     Add Event
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[85vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Add Manual Event</DialogTitle>
                     <DialogDescription>
@@ -914,7 +963,7 @@ export default function UnifiedCalendarPage() {
                               </FormControl>
                               <SelectContent>
                                 <SelectItem value="community">Community</SelectItem>
-                                <SelectItem value="food_events">Food Events</SelectItem>
+                                <SelectItem value="real_estate">Real Estate</SelectItem>
                                 <SelectItem value="market">Market</SelectItem>
                                 <SelectItem value="festival">Festival</SelectItem>
                                 <SelectItem value="networking">Networking</SelectItem>
@@ -1018,29 +1067,193 @@ export default function UnifiedCalendarPage() {
                       )}
                     </SelectContent>
                   </Select>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" data-testid="btn-ai-generate">
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        AI Generate
-                        <ChevronDown className="w-4 h-4 ml-2" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => generateContentPlanMutation.mutate(1)}>
-                        Generate 1 Week
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => generateContentPlanMutation.mutate(2)}>
-                        Generate 2 Weeks
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => generateContentPlanMutation.mutate(4)}>
-                        Generate 4 Weeks
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button 
+                    onClick={() => setShowAutoFillPanel(!showAutoFillPanel)}
+                    className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+                    data-testid="btn-auto-fill-month"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Auto-Fill Month
+                  </Button>
+                  {apiScheduledPosts.filter(p => p.status === "pending").length > 0 && (
+                    <Button 
+                      variant="outline"
+                      className="border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400"
+                      onClick={async () => {
+                        const pendingPosts = apiScheduledPosts.filter(p => p.status === "pending");
+                        let approved = 0;
+                        let failed = 0;
+                        for (const post of pendingPosts) {
+                          try {
+                            await apiRequest("PUT", `/api/scheduled-posts/${post.id}`, { status: "approved" });
+                            approved++;
+                          } catch {
+                            failed++;
+                          }
+                        }
+                        queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+                        if (failed > 0) {
+                          toast({ title: "Partially Approved", description: `${approved} approved, ${failed} failed.`, variant: "destructive" });
+                        } else {
+                          toast({ title: "All Posts Approved", description: `${approved} posts approved and will be published at their scheduled times.` });
+                        }
+                      }}
+                      data-testid="btn-approve-all"
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      Approve All ({apiScheduledPosts.filter(p => p.status === "pending").length})
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
+            {showAutoFillPanel && (
+              <div className="mx-6 mb-4 p-4 border-2 border-amber-200 dark:border-amber-800 rounded-lg bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    Auto-Fill {format(selectedDate, "MMMM yyyy")}
+                  </h3>
+                  <Button variant="ghost" size="sm" onClick={() => setShowAutoFillPanel(false)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs font-medium mb-2 block">Platforms</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: "facebook", label: "Facebook", icon: FaFacebook, color: "text-blue-600" },
+                        { id: "instagram", label: "Instagram", icon: FaInstagram, color: "text-pink-500" },
+                        { id: "linkedin", label: "LinkedIn", icon: FaLinkedin, color: "text-blue-700" },
+                        { id: "x", label: "X", icon: FaXTwitter, color: "text-black dark:text-white" },
+                        { id: "tiktok", label: "TikTok", icon: FaTiktok, color: "text-black dark:text-white" },
+                        { id: "youtube", label: "YouTube", icon: FaYoutube, color: "text-red-600" },
+                      ].map((p) => {
+                        const isSelected = autoFillPlatforms.includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => {
+                              setAutoFillPlatforms(prev => 
+                                isSelected 
+                                  ? prev.filter(x => x !== p.id)
+                                  : [...prev, p.id]
+                              );
+                            }}
+                            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border transition-all ${
+                              isSelected 
+                                ? "border-amber-400 bg-white dark:bg-gray-800 shadow-sm" 
+                                : "border-gray-200 dark:border-gray-700 opacity-50"
+                            }`}
+                            data-testid={`toggle-platform-${p.id}`}
+                          >
+                            <p.icon className={`w-3 h-3 ${p.color}`} />
+                            {p.label}
+                            {p.id === "x" && <span className="text-[10px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded-full">Down</span>}
+                            {isSelected && <Check className="w-3 h-3 text-green-500" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-medium mb-2 block">Posts per Week</Label>
+                    <div className="flex gap-1">
+                      {[2, 3, 4, 5, 7].map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setAutoFillFrequency(n)}
+                          className={`px-3 py-1.5 rounded text-xs font-medium border transition-all ${
+                            autoFillFrequency === n
+                              ? "border-amber-400 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+                              : "border-gray-200 dark:border-gray-700 hover:border-amber-300"
+                          }`}
+                          data-testid={`freq-${n}`}
+                        >
+                          {n === 7 ? "Daily" : `${n}x`}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      ~{Math.round(autoFillFrequency * 4.3)} posts this month
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs font-medium mb-2 block">Content Mix</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { id: "market_update", label: "Market" },
+                        { id: "buyer_tips", label: "Buyers" },
+                        { id: "seller_tips", label: "Sellers" },
+                        { id: "neighborhood_spotlight", label: "Neighborhoods" },
+                        { id: "home_improvement", label: "Home Tips" },
+                        { id: "investment_tips", label: "Investing" },
+                        { id: "community_events", label: "Community" },
+                        { id: "success_stories", label: "Stories" },
+                      ].map((cat) => {
+                        const isSelected = autoFillCategories.includes(cat.id);
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => {
+                              setAutoFillCategories(prev =>
+                                isSelected
+                                  ? prev.filter(x => x !== cat.id)
+                                  : [...prev, cat.id]
+                              );
+                            }}
+                            className={`px-2 py-0.5 rounded text-[10px] font-medium border transition-all ${
+                              isSelected
+                                ? "border-amber-400 bg-white dark:bg-gray-800"
+                                : "border-gray-200 dark:border-gray-700 opacity-50"
+                            }`}
+                            data-testid={`toggle-cat-${cat.id}`}
+                          >
+                            {cat.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-3">
+                  <Button
+                    onClick={() => generateMonthlyMutation.mutate()}
+                    disabled={generateMonthlyMutation.isPending || autoFillPlatforms.length === 0 || autoFillCategories.length === 0}
+                    className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+                    data-testid="btn-generate-month"
+                  >
+                    {generateMonthlyMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Generating {format(selectedDate, "MMMM")} Posts...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="w-4 h-4 mr-2" />
+                        Generate {format(selectedDate, "MMMM")} Posts
+                      </>
+                    )}
+                  </Button>
+                  {generateMonthlyMutation.isPending && (
+                    <div className="flex-1">
+                      <Progress value={autoFillProgress} className="h-2" />
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        AI is creating unique content for each post... This may take a minute.
+                      </p>
+                    </div>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {autoFillPlatforms.length} platforms, {autoFillFrequency}x/week, {autoFillCategories.length} categories
+                  </span>
+                </div>
+              </div>
+            )}
             <CardContent>
               <div className="grid grid-cols-7 gap-1 text-center mb-2">
                 {calendarDays.map((day) => (
@@ -1078,6 +1291,7 @@ export default function UnifiedCalendarPage() {
                             className={`text-xs p-1 rounded ${item.color} text-white cursor-pointer hover:opacity-80 mb-1 overflow-hidden`}
                             onClick={() => handlePreview(item)}
                             title={item.title}
+                            data-testid={`calendar-item-${item.id}`}
                           >
                             <div className="flex items-center gap-1">
                               {item.type === "event" ? (
@@ -1085,20 +1299,20 @@ export default function UnifiedCalendarPage() {
                               ) : null}
                               <span className="truncate text-[10px]">{item.title}</span>
                             </div>
+                            {item.type === "post" && item.platform?.toLowerCase() === "tiktok" && !item.photoUrl && !(apiScheduledPosts.find(p => p.id === item.originalId)?.metadata as any)?.imageUrl && (
+                              <div className="mt-0.5 bg-red-600 text-white text-[9px] px-1 rounded font-medium" data-testid={`badge-needs-video-${item.id}`}>
+                                📹 Needs video
+                              </div>
+                            )}
+                            {item.type === "post" && item.platform?.toLowerCase() === "instagram" && !item.photoUrl && !(apiScheduledPosts.find(p => p.id === item.originalId)?.metadata as any)?.imageUrl && (
+                              <div className="mt-0.5 bg-red-600 text-white text-[9px] px-1 rounded font-medium" data-testid={`badge-needs-image-${item.id}`}>
+                                📷 Needs image
+                              </div>
+                            )}
                           </div>
                         ))}
                         {dayItems.length > 3 && (
-                          <div 
-                            className="text-[10px] text-muted-foreground cursor-pointer hover:text-primary hover:underline"
-                            onClick={() => {
-                              // Show all items for this day - preview the first hidden one
-                              const firstHiddenItem = dayItems[3];
-                              if (firstHiddenItem) {
-                                handlePreview(firstHiddenItem);
-                              }
-                            }}
-                            title="Click to view more posts"
-                          >
+                          <div className="text-[10px] text-muted-foreground">
                             +{dayItems.length - 3} more
                           </div>
                         )}
@@ -1198,8 +1412,14 @@ export default function UnifiedCalendarPage() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
-                        if (confirm(`Delete ${selectedPostIds.size} selected post${selectedPostIds.size !== 1 ? 's' : ''}? This cannot be undone.`)) {
+                      onClick={async () => {
+                        const confirmed = await confirm({
+                          title: "Delete Selected Posts",
+                          description: `Delete ${selectedPostIds.size} selected post${selectedPostIds.size !== 1 ? 's' : ''}? This cannot be undone.`,
+                          confirmText: "Delete",
+                          variant: "destructive",
+                        });
+                        if (confirmed) {
                           bulkDeleteSelectedMutation.mutate(Array.from(selectedPostIds));
                         }
                       }}
@@ -1219,8 +1439,14 @@ export default function UnifiedCalendarPage() {
                       variant="outline"
                       size="sm"
                       className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={() => {
-                        if (confirm('Delete all scheduled posts? This cannot be undone.')) {
+                      onClick={async () => {
+                        const confirmed = await confirm({
+                          title: "Delete All Posts",
+                          description: "Delete all scheduled posts? This cannot be undone.",
+                          confirmText: "Delete All",
+                          variant: "destructive",
+                        });
+                        if (confirmed) {
                           deleteAllPostsMutation.mutate();
                         }
                       }}
@@ -1271,26 +1497,26 @@ export default function UnifiedCalendarPage() {
                         const lowerContent = content.toLowerCase();
                         
                         const advertisingIndicators = [
-                          'daily special', 'new menu', 'grand opening', 'happy hour', 'price special',
-                          'new dish', 'coming soon', 'limited time', 'sold out', 'now serving',
-                          'featured item', 'chef special', 'call us', 'contact us', 'dm us',
-                          'reach out', 'make a reservation', 'food lover', 'dine with us',
-                          'restaurant', 'kitchen tour', 'menu update', 'catering',
-                          'private dining', 'takeout special'
+                          'just listed', 'just sold', 'open house', 'for sale', 'price reduced',
+                          'new listing', 'coming soon', 'pending', 'under contract', 'sold!',
+                          'featured property', 'dream home', 'call me', 'contact me', 'dm me',
+                          'reach out', 'schedule a showing', 'home buyer', 'home seller',
+                          'real estate', 'property tour', 'market update', 'mortgage',
+                          'investment property', 'first time buyer'
                         ];
                         const isAdvertising = advertisingIndicators.some(indicator => lowerContent.includes(indicator));
                         
                         if (isAdvertising) {
-                          const hasBranding = lowerContent.includes('our restaurant') || 
-                            lowerContent.includes('chef') || 
-                            lowerContent.includes('kitchen') ||
-                            lowerContent.includes('menu');
+                          const hasBranding = lowerContent.includes('bhhs') || 
+                            lowerContent.includes('berkshire') || 
+                            lowerContent.includes('bhhs ambassador') ||
+                            lowerContent.includes('ambassador real estate');
                           if (!hasBranding) {
-                            issues.push({ message: 'Missing restaurant branding (recommended for ads)', severity: 'warning' });
+                            issues.push({ message: 'Missing BHHS branding (required for ads)', severity: 'error' });
                           }
                         }
                         
-                        const prohibitedTerms = ['competitor name'];
+                        const prohibitedTerms = ['brokerage owner', 'principal broker'];
                         prohibitedTerms.forEach(term => {
                           if (lowerContent.includes(term)) {
                             issues.push({ message: `Term "${term}" requires broker license`, severity: 'error' });
@@ -1355,29 +1581,28 @@ export default function UnifiedCalendarPage() {
                                     <input
                                       type="file"
                                       ref={fileInputRef}
-                                      accept="image/*"
+                                      accept="image/*,video/*"
                                       className="hidden"
                                       onChange={async (e) => {
                                         const file = e.target.files?.[0];
                                         if (file) {
                                           try {
                                             const formData = new FormData();
-                                            formData.append('image', file);
-                                            formData.append('postId', post.id);
-                                            const response = await fetch('/api/scheduled-posts/upload-image', {
+                                            formData.append('media', file);
+                                            const response = await fetch('/api/scheduled-posts/upload-media', {
                                               method: 'POST',
                                               credentials: 'include',
                                               body: formData,
                                             });
-                                            if (response.ok) {
-                                              const data = await response.json();
-                                              setEditImageUrl(data.imageUrl);
-                                              toast({ title: "Image Uploaded", description: "Image attached successfully" });
+                                            const data = await response.json();
+                                            if (response.ok && data.url) {
+                                              setEditImageUrl(data.url);
+                                              toast({ title: "Media Uploaded", description: "File attached successfully" });
                                             } else {
-                                              throw new Error('Upload failed');
+                                              toast({ title: "Upload Failed", description: data.error || "Could not upload media", variant: "destructive" });
                                             }
                                           } catch (err) {
-                                            toast({ title: "Upload Failed", description: "Could not upload image", variant: "destructive" });
+                                            toast({ title: "Upload Failed", description: "Could not upload media", variant: "destructive" });
                                           }
                                         }
                                       }}
@@ -1389,7 +1614,7 @@ export default function UnifiedCalendarPage() {
                                       data-testid="btn-upload-media"
                                     >
                                       <Upload className="w-4 h-4 mr-2" />
-                                      Add Image
+                                      Add Media
                                     </Button>
                                     {editImageUrl && (
                                       <div className="relative">
@@ -1486,7 +1711,7 @@ export default function UnifiedCalendarPage() {
                                     onClick={() => {
                                       setEditingPost(post);
                                       setEditContent(post.content);
-                                      setEditImageUrl(post.metadata?.imageUrl || "");
+                                      setEditImageUrl((post.metadata as any)?.imageUrl || "");
                                     }}
                                     data-testid={`btn-edit-post-${post.id}`}
                                   >
@@ -1900,7 +2125,7 @@ export default function UnifiedCalendarPage() {
                       Add Calendar Source
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Add Calendar Source</DialogTitle>
                       <DialogDescription>
@@ -2041,7 +2266,7 @@ export default function UnifiedCalendarPage() {
       </Tabs>
 
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {previewContent?.type === "event" ? "Event Details" : "Post Preview"}
@@ -2093,29 +2318,224 @@ export default function UnifiedCalendarPage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${previewContent.color}`} />
+                      {getPlatformIcon(previewContent.platform?.toLowerCase() || "")}
                       <span className="font-medium">{previewContent.platform}</span>
                     </div>
-                    {previewContent.isAiGenerated && <AiGeneratedBadge size="sm" />}
+                    <div className="flex items-center gap-2">
+                      {previewContent.isAiGenerated && <AiGeneratedBadge size="sm" />}
+                      <Badge variant={previewContent.status === "approved" ? "default" : previewContent.status === "posted" ? "secondary" : "outline"} className="text-[10px]">
+                        {previewContent.status || "pending"}
+                      </Badge>
+                    </div>
                   </div>
                   <p className="text-sm text-muted-foreground">
                     Scheduled for {format(previewContent.date, "MMMM d, yyyy")} at {previewContent.time}
                   </p>
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-sm whitespace-pre-wrap">{previewContent.content}</p>
-                  </div>
+                  {editingPost?.id === previewContent.originalId ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="min-h-[120px] text-sm"
+                        data-testid="textarea-edit-preview"
+                      />
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Media</Label>
+                        <input
+                          type="file"
+                          accept="image/*,video/*"
+                          ref={previewFileInputRef}
+                          className="hidden"
+                          data-testid="input-media-file-preview"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setMediaUploading(true);
+                            try {
+                              const formData = new FormData();
+                              formData.append("media", file);
+                              const res = await fetch("/api/scheduled-posts/upload-media", {
+                                method: "POST",
+                                credentials: "include",
+                                body: formData,
+                              });
+                              const data = await res.json();
+                              if (data.url) {
+                                setEditImageUrl(data.url);
+                                toast({ title: "Media Uploaded", description: "File uploaded successfully." });
+                              } else {
+                                toast({ title: "Upload Failed", description: data.error || "Could not upload media", variant: "destructive" });
+                              }
+                            } catch {
+                              toast({ title: "Upload Failed", description: "Could not upload media", variant: "destructive" });
+                            } finally {
+                              setMediaUploading(false);
+                              if (previewFileInputRef.current) previewFileInputRef.current.value = "";
+                            }
+                          }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => previewFileInputRef.current?.click()}
+                            disabled={mediaUploading}
+                            data-testid="btn-upload-media-preview"
+                          >
+                            {mediaUploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
+                            Upload from device
+                          </Button>
+                          <span className="text-xs text-muted-foreground">or paste URL below</span>
+                        </div>
+                        <Input
+                          id="media-url-input"
+                          value={editImageUrl}
+                          onChange={(e) => setEditImageUrl(e.target.value)}
+                          placeholder="https://example.com/media.jpg"
+                          data-testid="input-media-url"
+                        />
+                        {editImageUrl && (
+                          <div className="flex items-center gap-2">
+                            {/\.(mp4|mov|webm)$/i.test(editImageUrl) ? (
+                              <div className="h-16 w-16 rounded bg-muted flex items-center justify-center" data-testid="preview-media-video">
+                                <Upload className="w-6 h-6 text-muted-foreground" />
+                              </div>
+                            ) : (
+                              <img src={editImageUrl} alt="Media preview" className="h-16 w-16 object-cover rounded" data-testid="preview-media-image" />
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditImageUrl("")}
+                              data-testid="btn-remove-media-preview"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground" data-testid="text-media-hint">
+                          {previewContent.platform?.toLowerCase() === "tiktok"
+                            ? "TikTok requires a video URL to publish"
+                            : previewContent.platform?.toLowerCase() === "instagram"
+                            ? "Instagram requires an image or video to publish"
+                            : "Optional: attach an image to your post"}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            const updatedMetadata = {
+                              ...previewContent.metadata,
+                              imageUrl: editImageUrl || undefined
+                            };
+                            updatePostMutation.mutate({
+                              id: previewContent.originalId,
+                              content: editContent,
+                              metadata: updatedMetadata,
+                            });
+                            setEditingPost(null);
+                            if (previewContent) {
+                              setPreviewContent({
+                                ...previewContent,
+                                content: editContent,
+                                photoUrl: editImageUrl || previewContent.photoUrl,
+                              });
+                            }
+                          }}
+                          disabled={updatePostMutation.isPending}
+                          className="flex-1"
+                          data-testid="btn-save-edit-preview"
+                        >
+                          {updatePostMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Check className="w-3 h-3 mr-1" />}
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditingPost(null)}
+                          data-testid="btn-cancel-edit-preview"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-sm whitespace-pre-wrap">{previewContent.content}</p>
+                    </div>
+                  )}
+                  {previewContent.photoUrl && (
+                    <img src={previewContent.photoUrl} alt="Post media" className="w-full rounded-lg" data-testid="img-post-media" />
+                  )}
+                  {previewContent.platform?.toLowerCase() === "tiktok" && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="info-tiktok-note">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-amber-800 dark:text-amber-200">
+                          TikTok only supports video posts. Add a video URL above to enable auto-publishing. Without a video, this post will need to be published manually.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {previewContent.platform?.toLowerCase() === "instagram" && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="info-instagram-note">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-amber-800 dark:text-amber-200">
+                          Instagram requires a Business/Creator Account and an image or video. Add media above to enable auto-publishing.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex gap-2">
+                    {previewContent.status !== "approved" && previewContent.status !== "posted" && (
+                      <Button
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => {
+                          updatePostMutation.mutate({ id: previewContent.originalId, content: previewContent.content, metadata: { approved: true } });
+                          apiRequest("PUT", `/api/scheduled-posts/${previewContent.originalId}`, { status: "approved" }).then(() => {
+                            queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+                            setPreviewContent({ ...previewContent, status: "approved" });
+                            toast({ title: "Post Approved", description: "This post will be published at its scheduled time." });
+                          });
+                        }}
+                        data-testid="btn-approve-post"
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        Approve
+                      </Button>
+                    )}
+                    {editingPost?.id !== previewContent.originalId && (
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => {
+                          const post = apiScheduledPosts.find(p => p.id === previewContent.originalId);
+                          if (post) {
+                            setEditingPost(post);
+                            setEditContent(post.content);
+                            setEditImageUrl((post.metadata as any)?.imageUrl || "");
+                          }
+                        }}
+                        data-testid="btn-edit-post-preview"
+                      >
+                        <Edit2 className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
-                      className="flex-1"
+                      className="text-red-500 hover:text-red-600"
                       onClick={() => {
                         deletePostMutation.mutate(previewContent.originalId);
                       }}
                       disabled={deletePostMutation.isPending}
                       data-testid="btn-delete-post-preview"
                     >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>

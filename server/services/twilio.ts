@@ -1,10 +1,10 @@
 import twilio from 'twilio';
 import type { TwilioSettings, TwilioMessage, TwilioConversation } from '@shared/schema';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 
 const { MessagingResponse, VoiceResponse } = twilio.twiml;
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export class TwilioService {
   generateSmsResponse(message: string): string {
@@ -67,14 +67,15 @@ export class TwilioService {
       const systemPrompt = this.buildSystemPrompt(settings);
       const messages = this.buildConversationMessages(conversationHistory, message, systemPrompt);
       
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages,
-        max_tokens: 300,
-        temperature: 0.7,
+      const systemMsg = messages.find((m: any) => m.role === 'system')?.content;
+      const otherMsgs = messages.filter((m: any) => m.role !== 'system');
+      const response = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: otherMsgs.map((m: any) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+        config: { systemInstruction: systemMsg, maxOutputTokens: 300 },
       });
       
-      return response.choices[0]?.message?.content || this.getFallbackResponse(settings);
+      return response.text || this.getFallbackResponse(settings);
     } catch (error) {
       console.error('Error generating chatbot response:', error);
       return this.getFallbackResponse(settings);
@@ -82,10 +83,10 @@ export class TwilioService {
   }
 
   private buildSystemPrompt(settings: TwilioSettings): string {
-    const agentName = settings.agentName || 'a local restaurant';
-    const brokerageName = settings.brokerageName || 'our restaurant group';
+    const agentName = settings.agentName || 'a local real estate agent';
+    const brokerageName = settings.brokerageName || 'our brokerage';
     const serviceAreas = settings.serviceAreas?.join(', ') || 'the local area';
-    const specialties = settings.specialties?.join(', ') || 'local dining';
+    const specialties = settings.specialties?.join(', ') || 'residential real estate';
     const personality = settings.aiPersonality || 'friendly';
 
     const personalityDescriptions: Record<string, string> = {
@@ -96,26 +97,26 @@ export class TwilioService {
 
     const personalityDescription = personalityDescriptions[personality] || personalityDescriptions.friendly;
 
-    return `You are an AI assistant for ${agentName} at ${brokerageName}. You help guests and diners via SMS.
+    return `You are an AI assistant for ${agentName} at ${brokerageName}. You help potential home buyers and sellers via SMS.
 
 Your communication style should be ${personalityDescription}.
 
 Key information:
-- Restaurant: ${agentName}
-- Restaurant Group: ${brokerageName}
+- Agent: ${agentName}
+- Brokerage: ${brokerageName}
 - Service Areas: ${serviceAreas}
 - Specialties: ${specialties}
 
 Your goals:
-1. Answer questions about the restaurant, menu, and dining options
-2. Understand guest preferences and dietary requirements
+1. Answer questions about real estate and the local market
+2. Qualify leads by understanding their buying/selling needs
 3. Collect contact information (name, email) when appropriate
-4. Help with reservations and table bookings
-5. Provide helpful information while encouraging them to dine at ${agentName}
+4. Schedule appointments or callbacks with the agent
+5. Provide helpful information while encouraging them to work with ${agentName}
 
 Keep responses concise (under 160 characters when possible for SMS) but informative.
-If you don't know specific details, offer to have the restaurant follow up.
-Always be helpful and never dismiss potential guests.`;
+If you don't know specific details, offer to have the agent follow up.
+Always be helpful and never dismiss potential clients.`;
   }
 
   private buildConversationMessages(
@@ -140,7 +141,7 @@ Always be helpful and never dismiss potential guests.`;
 
   private getFallbackResponse(settings: TwilioSettings): string {
     const agentName = settings.agentName || 'our agent';
-    return `Thanks for your message! ${agentName} will get back to you shortly. How can we help with your dining needs?`;
+    return `Thanks for your message! ${agentName} will get back to you shortly. How can we help with your real estate needs?`;
   }
 
   isWithinBusinessHours(settings: TwilioSettings): boolean {

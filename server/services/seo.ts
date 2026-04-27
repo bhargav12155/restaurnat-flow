@@ -67,20 +67,20 @@ export class SEOService {
 
   async suggestContentTopics(neighborhood?: string): Promise<string[]> {
     const baseTopics = [
-      'First-time diner guide',
-      'Luxury dining experiences that matter',
-      'Understanding the reservation process',
-      'Menu presentation tips for quick sales',
+      'First-time home buyer guide',
+      'Luxury home features that matter',
+      'Understanding the mortgage process',
+      'Home staging tips for quick sales',
       'Market trends and predictions',
-      'Investment opportunities in dining',
+      'Investment property opportunities',
     ];
 
     const neighborhoodTopics = neighborhood ? [
       `${neighborhood} neighborhood guide`,
       `Best restaurants in ${neighborhood}`,
-      `${neighborhood} food scene overview`,
+      `${neighborhood} school district overview`,
       `Parks and recreation in ${neighborhood}`,
-      `${neighborhood} restaurant guide`,
+      `${neighborhood} real estate market analysis`,
     ] : [];
 
     return [...baseTopics, ...neighborhoodTopics];
@@ -88,19 +88,17 @@ export class SEOService {
 
   async generateTopKeywordsWithAI(
     location: string = 'Omaha, Nebraska',
-    businessType: string = 'restaurant',
+    businessType: string = 'real estate agent',
     marketData?: any[]
   ): Promise<AIGeneratedKeyword[]> {
     try {
-      if (!process.env.OPENAI_API_KEY) {
-        console.warn('⚠️  OpenAI API key not found - using fallback keywords (not recommended)');
+      if (!process.env.GEMINI_API_KEY) {
+        console.warn('⚠️  GEMINI_API_KEY not found - using fallback keywords');
         return this.getFallbackKeywords();
       }
 
-      const { OpenAI } = await import('openai');
-      const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
+      const { GoogleGenAI } = await import('@google/genai');
+      const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
       // Build market intelligence context from real data
       let marketContext = '';
@@ -117,7 +115,7 @@ ${marketSummary}
 Based on this live market data, generate keywords that reflect current market conditions.`;
       }
 
-      const prompt = `You are an expert SEO specialist for restaurants. Generate the top 12 most valuable SEO keywords for a ${businessType} in ${location}.${marketContext}
+      const prompt = `You are an expert SEO specialist for real estate. Generate the top 12 most valuable SEO keywords for a ${businessType} in ${location}.${marketContext}
 
 For each keyword, provide:
 1. The exact keyword phrase (optimized for local SEO)
@@ -144,16 +142,15 @@ Return ONLY a valid JSON array with this exact structure:
   }
 ]`;
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 2000,
+      const completion = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: { maxOutputTokens: 2000 },
       });
 
-      let responseText = completion.choices[0]?.message?.content?.trim();
+      let responseText = (completion.text || '').trim();
       if (!responseText) {
-        throw new Error('Empty response from OpenAI');
+        throw new Error('Empty response from Gemini');
       }
 
       // Remove markdown code blocks if present
@@ -192,18 +189,18 @@ Return ONLY a valid JSON array with this exact structure:
 
   private getFallbackKeywords(): AIGeneratedKeyword[] {
     return [
-      { keyword: 'omaha restaurants', currentRank: 3, searchVolume: 1200, difficulty: 75, neighborhood: undefined },
-      { keyword: 'dundee dining', currentRank: 1, searchVolume: 450, difficulty: 45, neighborhood: 'Dundee' },
-      { keyword: 'aksarben restaurants', currentRank: 2, searchVolume: 380, difficulty: 52, neighborhood: 'Aksarben' },
-      { keyword: 'blackstone district restaurants', currentRank: 5, searchVolume: 290, difficulty: 48, neighborhood: 'Blackstone' },
-      { keyword: 'best restaurants omaha nebraska', currentRank: 4, searchVolume: 950, difficulty: 82, neighborhood: undefined },
-      { keyword: 'omaha fine dining', currentRank: 7, searchVolume: 720, difficulty: 68, neighborhood: undefined },
-      { keyword: 'west omaha restaurants', currentRank: 6, searchVolume: 540, difficulty: 58, neighborhood: 'West Omaha' },
-      { keyword: 'best brunch omaha', currentRank: 8, searchVolume: 680, difficulty: 71, neighborhood: undefined },
-      { keyword: 'downtown omaha restaurants', currentRank: 3, searchVolume: 410, difficulty: 55, neighborhood: 'Downtown' },
-      { keyword: 'omaha food guide', currentRank: 9, searchVolume: 580, difficulty: 64, neighborhood: undefined },
-      { keyword: 'omaha restaurant trends', currentRank: 12, searchVolume: 320, difficulty: 59, neighborhood: undefined },
-      { keyword: 'where to eat omaha', currentRank: 15, searchVolume: 890, difficulty: 47, neighborhood: undefined },
+      { keyword: 'omaha real estate agent', currentRank: 3, searchVolume: 1200, difficulty: 75, neighborhood: undefined },
+      { keyword: 'dundee homes for sale', currentRank: 1, searchVolume: 450, difficulty: 45, neighborhood: 'Dundee' },
+      { keyword: 'aksarben real estate', currentRank: 2, searchVolume: 380, difficulty: 52, neighborhood: 'Aksarben' },
+      { keyword: 'blackstone district homes', currentRank: 5, searchVolume: 290, difficulty: 48, neighborhood: 'Blackstone' },
+      { keyword: 'best realtor omaha nebraska', currentRank: 4, searchVolume: 950, difficulty: 82, neighborhood: undefined },
+      { keyword: 'omaha luxury homes', currentRank: 7, searchVolume: 720, difficulty: 68, neighborhood: undefined },
+      { keyword: 'west omaha houses', currentRank: 6, searchVolume: 540, difficulty: 58, neighborhood: 'West Omaha' },
+      { keyword: 'sell my house fast omaha', currentRank: 8, searchVolume: 680, difficulty: 71, neighborhood: undefined },
+      { keyword: 'downtown omaha condos', currentRank: 3, searchVolume: 410, difficulty: 55, neighborhood: 'Downtown' },
+      { keyword: 'omaha first time home buyer', currentRank: 9, searchVolume: 580, difficulty: 64, neighborhood: undefined },
+      { keyword: 'omaha real estate market trends', currentRank: 12, searchVolume: 320, difficulty: 59, neighborhood: undefined },
+      { keyword: 'relocating to omaha', currentRank: 15, searchVolume: 890, difficulty: 47, neighborhood: undefined },
     ];
   }
 

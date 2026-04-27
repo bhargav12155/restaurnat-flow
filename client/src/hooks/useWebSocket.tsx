@@ -14,7 +14,11 @@ interface WebSocketMessage {
     | "sound_effect_added"
     | "avatar_ready"
     | "video_generation_complete"
-    | "video_generation_failed";
+    | "video_generation_failed"
+    | "look_generation_complete"
+    | "look_generation_failed"
+    | "motion_complete"
+    | "sjinn_video_ready";
   data: any;
   timestamp: string;
   userId?: number;

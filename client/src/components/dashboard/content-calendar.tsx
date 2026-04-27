@@ -26,6 +26,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { AiGeneratedBadge } from "@/components/shared/ai-generated-badge";
 import { useAuth } from "@/hooks/useAuth";
+import { useBusinessType } from "@/lib/businessContext";
 import { ComplianceChecker } from "@/components/shared/compliance-checker";
 import { CharacterCounter } from "@/components/ui/character-counter";
 
@@ -64,7 +65,7 @@ const generateCalendarDays = (selectedDate: Date) => {
   return days;
 };
 
-// Holiday recommendations for restaurants
+// Holiday recommendations for real estate
 const holidayRecommendations = {
   // January
   "2025-01-01": {
@@ -72,8 +73,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Social",
-        title: "New Year Menu Highlights",
-        description: "Share healthy eating resolutions and new menu items",
+        title: "New Year Real Estate Goals",
+        description: "Share tips for home buying/selling resolutions",
         color: "bg-yellow-500"
       }
     ]
@@ -84,7 +85,7 @@ const holidayRecommendations = {
       {
         type: "Blog",
         title: "Community Spotlight",
-        description: "Highlight local sourcing and community partnerships",
+        description: "Highlight diverse local neighborhoods",
         color: "bg-purple-500"
       }
     ]
@@ -96,8 +97,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Social",
-        title: "Spring Menu Preview",
-        description: "Tease upcoming seasonal dishes",
+        title: "Spring Market Preview",
+        description: "Will we see an early spring market?",
         color: "bg-green-500"
       }
     ]
@@ -119,7 +120,7 @@ const holidayRecommendations = {
       {
         type: "Blog",
         title: "Presidential Homes Tour",
-        description: "Historic homes in Omaha area",
+        description: "Historic homes in your area",
         color: "bg-blue-500"
       }
     ]
@@ -132,7 +133,7 @@ const holidayRecommendations = {
       {
         type: "Social",
         title: "Lucky Home Finds",
-        description: "Share your favorite dishes from the week",
+        description: "Share your best property finds",
         color: "bg-emerald-500"
       }
     ]
@@ -142,8 +143,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Blog",
-        title: "Spring Menu Launch",
-        description: "New seasonal menu highlights",
+        title: "Spring Market Kickoff",
+        description: "Spring real estate market trends",
         color: "bg-green-400"
       }
     ]
@@ -155,8 +156,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Social",
-        title: "Food Myths Busted",
-        description: "Debunk common cooking myths",
+        title: "Real Estate Myths Busted",
+        description: "Debunk common home buying myths",
         color: "bg-orange-500"
       }
     ]
@@ -166,8 +167,8 @@ const holidayRecommendations = {
     recommendations: [
       {
         type: "Blog",
-        title: "Sustainable Dining",
-        description: "Our eco-friendly practices and local sourcing",
+        title: "Eco-Friendly Homes",
+        description: "Green features in local homes",
         color: "bg-emerald-600"
       }
     ]
@@ -337,53 +338,53 @@ const holidayRecommendations = {
 const initialScheduledContent = [
   {
     id: 1,
-    title: "Weekly Specials Feature",
+    title: "Dundee Market Report",
     type: "Blog",
     date: new Date(2025, 0, 7), // January 7, 2025 (Tuesday)
     time: "10:00 AM",
     color: "bg-primary",
     platform: "Facebook",
-    content: "🍽️ This Week's Specials - January 2025\n\nOur kitchen is buzzing with excitement! Here's what we're featuring:\n\n📈 Fan Favorite: Our signature pasta\n🏠 New Addition: Chef's seasonal soup\n📊 Back by demand: Weekend brunch special\n\nOur commitment to fresh, local ingredients means every dish is made with care. Perfect for date night or family dinner!\n\nReady to taste the difference? Make your reservation today!\n\n#RestaurantSpecials #FoodLovers #DineLocal",
+    content: "🏘️ Neighborhood Market Update\n\nThe local market continues to show strong activity! Here's what we're seeing:\n\n📈 Average home price trending upward\n🏠 Days on market: competitive\n📊 Active listings available\n\nHistoric charm and walkability make this one of the most desirable neighborhoods. Perfect for buyers seeking character homes with modern updates.\n\nLooking to buy or sell? Let's chat about current opportunities!\n\n#RealEstate #MarketUpdate",
   },
   {
     id: 2,
-    title: "Dish Spotlight: Signature Entrée",
+    title: "Property Showcase: Aksarben",
     type: "Social",
     date: new Date(2025, 0, 10), // January 10, 2025 (Friday)
     time: "2:00 PM",
     color: "bg-accent",
     platform: "Instagram",
-    content: "✨ DISH OF THE WEEK ✨\n\n🍖 Chef's Special Entrée\n💰 $24.95\n📍 Available all week!\n\n▫️ Locally sourced ingredients\n▫️ House-made sauce\n▫️ Seasonal vegetables\n▫️ Artisan bread\n▫️ Perfect wine pairing available\n\nCome taste what everyone's talking about! Tables are filling up fast.\n\nDM us for reservations! 📲\n\n#FoodPhotography #ChefSpecial #Foodie #RestaurantLife",
+    content: "✨ JUST LISTED! ✨\n\n🏡 4BR/3BA Contemporary Home\n💰 Competitively Priced\n📍 Prime Location\n\n▫️ Open concept living\n▫️ Gourmet kitchen with granite counters\n▫️ Master suite with walk-in closet\n▫️ Private backyard oasis\n▫️ 2-car garage\n\nWalkable to shops, restaurants, and local amenities! This won't last long in today's market.\n\nDM me for a private showing! 📲\n\n#JustListed #RealEstateExpert #HomesForSale",
   },
   {
     id: 3,
-    title: "Cooking Tips Video",
+    title: "Home Buying Tips Video",
     type: "Video",
     date: new Date(2025, 0, 13), // January 13, 2025 (Monday)
     time: "9:00 AM",
     color: "bg-chart-3",
     platform: "YouTube",
-    content: "🎥 Chef's Kitchen Tips for Home Cooks\n\nIn this video, our head chef shares essential techniques for elevating your home cooking.\n\n📋 What's covered:\n• Proper knife skills basics\n• Seasoning and flavor building\n• Temperature control tips\n• Presentation techniques\n• Secret sauce recipes\n\nAs passionate food lovers, we believe everyone can cook amazing meals at home!\n\n💬 Questions? Drop them in the comments below!\n\n#CookingTips #ChefSecrets #FoodEducation #HomeChef",
+    content: "🎥 First-Time Home Buyer Tips\n\nIn this video, I share the essential steps every first-time buyer should know when purchasing a home.\n\n📋 What's covered:\n• Pre-approval process and local lenders\n• Neighborhood selection guide\n• Home inspection priorities\n• Closing cost expectations\n• Market timing strategies\n\nAs your local expert, I've helped hundreds of first-time buyers navigate this exciting journey. Let me help you find your dream home!\n\n💬 Questions? Drop them in the comments below!\n\n#FirstTimeBuyer #RealEstate #HomeBuyingTips #RealEstateEducation",
   },
   {
     id: 4,
-    title: "Weekend Brunch Feature",
+    title: "Weekend Open House",
     type: "Social",
     date: new Date(2025, 0, 18), // January 18, 2025 (Saturday)
     time: "11:00 AM",
     color: "bg-green-500",
     platform: "Facebook",
-    content: "🥞 BRUNCH IS SERVED THIS WEEKEND! 🥞\n\n📍 [Restaurant Name]\n⏰ Saturday & Sunday 10 AM - 2 PM\n💰 Full Menu Starting at $12.95\n\n✨ Highlights:\n• Fluffy pancakes with fresh berries\n• Eggs Benedict three ways\n• Fresh-squeezed mimosas\n• Bottomless coffee\n• House-made pastries\n\nPerfect for catching up with friends or treating the family!\n\n#WeekendBrunch #BrunchLife #Foodie",
+    content: "🏠 OPEN HOUSE THIS WEEKEND! 🏠\n\n📍 Beautiful Craftsman Home\n⏰ Saturday & Sunday 1-4 PM\n💰 Competitively Priced\n\n✨ Features:\n• 3BR/2BA Craftsman style\n• Updated kitchen & baths\n• Hardwood floors throughout\n• Large fenced backyard\n• Walking distance to shops\n\nPerfect starter home or investment property! See you there!\n\n#OpenHouse #RealEstate #HomesForSale",
   },
   {
     id: 5,
-    title: "Restaurant News Update",
+    title: "Market Trends Analysis",
     type: "Blog",
     date: new Date(2025, 0, 24), // January 24, 2025 (Friday)
     time: "3:00 PM",
     color: "bg-indigo-500",
     platform: "LinkedIn",
-    content: "📊 Restaurant Updates - January 2025\n\nAs we move through the new year, here's what's happening at our restaurant:\n\n🍽️ NEW MENU: Launching spring menu next month\n💰 SPECIAL EVENTS: Private dining now available\n📈 CATERING: Expanded service offerings\n⏱️ HOURS: Extended weekend hours\n\nKey updates for our guests:\n• New seasonal dishes coming soon\n• Private event space now bookable\n• Catering menu expanded\n\nThinking of hosting an event? Let's discuss how we can help.\n\n#RestaurantLife #DineLocal #FoodBusiness",
+    content: "📊 Real Estate Market Trends\n\nAs we move through the first quarter, here's what we're seeing in the local market:\n\n🏠 INVENTORY: Up 12% from last month\n💰 MEDIAN PRICE: Trending upward YoY\n📈 SALES VOLUME: Strong activity despite winter\n⏱️ DAYS ON MARKET: Competitive\n\nKey insights for buyers and sellers:\n• Inventory increasing gives buyers more options\n• Interest rates stabilizing\n• Spring market prep should start now\n\nThinking of making a move? Let's discuss your strategy.\n\n#RealEstate #MarketTrends #RealEstateExpert",
   }
 ];
 
@@ -409,6 +410,8 @@ interface ScheduledPost {
 
 export function ContentCalendar() {
   const { user, isLoading: authLoading } = useAuth();
+  const { businessType, terms } = useBusinessType();
+  const isRealEstate = terms.features.complianceCheck;
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [localGeneratedPosts, setLocalGeneratedPosts] = useState<typeof initialScheduledContent>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -526,7 +529,7 @@ export function ContentCalendar() {
   const generateContentPlanMutation = useMutation({
     mutationFn: async (weeks: number = 4) => {
       const response = await apiRequest('POST', '/api/content/generate-plan', {
-        targetAudience: 'food lovers and diners',
+        targetAudience: 'home buyers and sellers',
         specialties: [],
         weeks,
       });
@@ -636,16 +639,17 @@ export function ContentCalendar() {
   };
 
   const postTypeLabels: Record<string, string> = {
-    menu_feature: "Menu Feature",
-    chef_spotlight: "Chef Spotlight",
-    special_event: "Special Event",
-    restaurant_tour: "Restaurant Tour",
-    seasonal_promo: "Seasonal Promo",
+    market_update: "Market Update",
+    buyer_tips: "Buyer Tips",
+    seller_tips: "Seller Tips",
+    neighborhood: "Neighborhood",
+    neighborhood_tour: "Neighborhood Tour",
     local_market: "Local Market",
-    new_dish: "New Dish",
-    happy_hour: "Happy Hour",
-    weekend_special: "Weekend Special",
-    customer_review: "Customer Review",
+    moving_guide: "Moving Guide",
+    open_houses: "Open House",
+    just_listed: "Just Listed",
+    just_sold: "Just Sold",
+    price_improvement: "Price Drop",
   };
 
   const scheduledContent = useMemo(() => {
@@ -761,13 +765,13 @@ export function ContentCalendar() {
       if (savedToLibrary === false) {
         toast({
           title: "Photo Uploaded",
-          description: "Your food photo has been uploaded but could not be saved to your library",
+          description: "Your property photo has been uploaded but could not be saved to your library",
           variant: "destructive",
         });
       } else {
         toast({
           title: "Photo Uploaded",
-          description: "Your food photo has been uploaded and saved to your library",
+          description: "Your property photo has been uploaded and saved to your library",
         });
       }
     }
@@ -850,7 +854,7 @@ export function ContentCalendar() {
           marketData: validMarketData.slice(0, 3), // Top 3 market trends
           timeframe: '15-days',
           focus: 'high-impact',
-          prompt: 'You are a popular restaurant owner. Create 2 weeks worth of social media posts. Optimize what days are best for each platform.'
+          prompt: `You are a ${terms.role} creating a content calendar. Create 2 weeks worth of social media posts relevant to ${terms.dashboardSubtitle}. Optimize what days are best for each platform.`
         }),
         signal: controller.signal,
       });
@@ -1342,12 +1346,12 @@ export function ContentCalendar() {
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
                           >
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Food Image
+                            Upload Property Image
                           </ObjectUploader>
                         ) : (
                           <>
                             <Home className="h-12 w-12 mx-auto mb-2" />
-                            <div className="text-sm">Food Image</div>
+                            <div className="text-sm">Property Image</div>
                           </>
                         )}
                       </div>
@@ -1391,8 +1395,8 @@ export function ContentCalendar() {
                         </div>
                       </div>
                       <div>
-                        <div className="font-semibold text-sm">our_restaurant</div>
-                        <div className="text-xs text-gray-500">Omaha, Nebraska</div>
+                        <div className="font-semibold text-sm">mikebjork_realtor</div>
+                        <div className="text-xs text-gray-500">Real Estate</div>
                       </div>
                     </div>
                     <MoreHorizontal className="h-4 w-4" />
@@ -1430,12 +1434,12 @@ export function ContentCalendar() {
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
                           >
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Food Image
+                            Upload Property Image
                           </ObjectUploader>
                         ) : (
                           <>
                             <Home className="h-12 w-12 mx-auto mb-2" />
-                            <div className="text-sm">Food Image</div>
+                            <div className="text-sm">Property Image</div>
                           </>
                         )}
                       </div>
@@ -1453,7 +1457,7 @@ export function ContentCalendar() {
                     </div>
                     <div className="text-sm font-semibold mb-1">183 likes</div>
                     <div className="text-sm">
-                      <span className="font-semibold">our_restaurant</span>
+                      <span className="font-semibold">mikebjork_realtor</span>
                       <span className="ml-1">
                         {isEditing ? (
                           <>
@@ -1490,8 +1494,8 @@ export function ContentCalendar() {
                       <span className="text-sm font-bold text-golden-foreground">MB</span>
                     </div>
                     <div>
-                      <div className="font-semibold text-sm">{userName} Restaurant</div>
-                      <div className="text-xs text-gray-500">Omaha's Favorite Dining Spot</div>
+                      <div className="font-semibold text-sm">{userName} Real Estate</div>
+                      <div className="text-xs text-gray-500">Real Estate Expert</div>
                     </div>
                   </div>
                   
@@ -1582,7 +1586,7 @@ export function ContentCalendar() {
                     </div>
                     <div>
                       <div className="font-semibold text-sm">{userName}</div>
-                      <div className="text-xs text-gray-500">Restaurant Owner & Chef</div>
+                      <div className="text-xs text-gray-500">{terms.role}</div>
                       <div className="text-xs text-gray-400">
                         {format(new Date(), "MMM d, h:mm a")}
                       </div>
@@ -1611,7 +1615,7 @@ export function ContentCalendar() {
                     <div className="border rounded bg-gray-50 p-1 mb-3 relative">
                       <img 
                         src={photoPreview || savedPhotoUrl || ""} 
-                        alt="Food" 
+                        alt="Property" 
                         className="w-full aspect-video object-cover rounded"
                       />
                       {isEditing && (
@@ -1644,12 +1648,12 @@ export function ContentCalendar() {
                             buttonClassName="bg-primary text-primary-foreground hover:bg-primary/90"
                           >
                             <Upload className="mr-2 h-4 w-4" />
-                            Upload Food Image
+                            Upload Property Image
                           </ObjectUploader>
                         ) : (
                           <>
                             <Home className="h-8 w-8 mx-auto mb-2" />
-                            <div className="text-sm font-medium">Menu Spotlight</div>
+                            <div className="text-sm font-medium">Property Listing</div>
                             <div className="text-xs">Click to view details</div>
                           </>
                         )}
@@ -1719,6 +1723,26 @@ export function ContentCalendar() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+          
+          {/* BHHS Compliance Checker */}
+          {isRealEstate && previewContent && (
+            <div className="px-4 pt-3">
+              <ComplianceChecker
+                content={isEditing ? editedContent : (previewContent.content || "")}
+                platform={previewContent.platform || "general"}
+                hasMedia={!!(photoPreview || savedPhotoUrl)}
+                hasVideo={false}
+                onContentFix={(fixedContent) => {
+                  setEditedContent(fixedContent);
+                  if (!isEditing) {
+                    setIsEditing(true);
+                  }
+                }}
+                showGuidelines={false}
+                className="mb-2"
+              />
             </div>
           )}
           

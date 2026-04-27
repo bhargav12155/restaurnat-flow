@@ -99,19 +99,22 @@ export const loginAgent = async (
   username: string,
   password: string
 ): Promise<{ user: User; token: string }> => {
-  // Find user by username
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.username, username))
-    .limit(1);
+  // Use storage layer which checks in-memory first, then DB
+  const { storage } = await import("../storage");
+  const user = await storage.getUserByUsername(username);
 
   if (!user) {
     throw new Error("Invalid username or password");
   }
 
-  // Verify password
-  const isValidPassword = await verifyPassword(password, user.password);
+  // Verify password - support both hashed and plaintext (for seeded users)
+  let isValidPassword = false;
+  if (user.password.startsWith("$2a$") || user.password.startsWith("$2b$")) {
+    isValidPassword = await verifyPassword(password, user.password);
+  } else {
+    // Plaintext password comparison for in-memory seeded users
+    isValidPassword = password === user.password;
+  }
 
   if (!isValidPassword) {
     throw new Error("Invalid username or password");

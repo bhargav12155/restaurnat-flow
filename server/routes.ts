@@ -1,4 +1,6 @@
 import {
+  aiAssistantMessages,
+  aiChatSessions,
   contentOpportunities,
   insertAvatarSchema,
   insertBrandSettingsSchema,
@@ -8,21 +10,22 @@ import {
   pkceStore,
   tutorialVideos,
   updateScheduledPostSchema,
-  // Menu/Restaurant tables
-  foodCategories,
-  menuItems,
-  insertFoodCategorySchema,
-  insertMenuItemSchema,
+  userPreferences,
+  lookGenerationJobs,
+  videoContent,
+  whatsappSettings as whatsappSettingsTable,
 } from "@shared/schema";
 import crypto from "crypto";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, or, sql } from "drizzle-orm";
 import type { Express, NextFunction, Request, Response } from "express";
 import express from "express";
 import fs from "fs";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import { nanoid } from "nanoid";
+import os from "os";
 import path from "path";
+import { execSync } from "child_process";
 import { db } from "./db";
 import { requireAuth, createRequireAdmin, optionalAuth } from "./middleware/auth";
 // S3 is now the primary storage - ObjectStorageService kept only for legacy PDF analysis
@@ -30,8 +33,6 @@ import { ObjectNotFoundError, ObjectStorageService, objectStorageClient } from "
 import authRoutes from "./routes/auth";
 import userRoutes from "./routes/user";
 import demoRoutes from "./routes/demo";
-import adminRoutes from "./routes/admin";
-import { setupBusinessTypeRoutes } from "./routes/business-type";
 import { HeyGenService } from "./services/heygen";
 import { HeyGenPhotoAvatarService } from "./services/heygen-photo-avatar";
 import { HeyGenStreamingService } from "./services/heygen-streaming";
@@ -47,12 +48,68 @@ import { seoService } from "./services/seo";
 // S3 upload service instance for presigned URL uploads
 const s3UploadService = new S3UploadService();
 import { SocialMediaError, socialMediaService } from "./services/socialMedia";
+import { whatsappService } from "./services/whatsapp";
 import { seedVideoTemplates } from "./services/template-seeder";
 import { twilioService } from "./services/twilio";
 import { storage } from "./storage";
-import { publicUsers } from "@shared/schema";
 import twilio from "twilio";
 import { realtimeService } from "./websocket";
+import { sjinnService } from "./services/sjinn";
+
+async function getWhatsappSettingsWithFallback(userId: string) {
+  let settings = await storage.getWhatsappSettingsByUserId(userId);
+  if (!settings?.phoneNumberId) {
+    const allSettings = await db.select().from(whatsappSettingsTable).limit(1);
+    if (allSettings.length > 0) {
+      settings = allSettings[0] as any;
+    }
+  }
+  return settings;
+}
+
+async function getAllUserIds(userId: number | string): Promise<string[]> {
+  const ids = new Set<string>([String(userId)]);
+  try {
+    let isAdmin = false;
+    
+    const pubRows = await db.execute(
+      sql`SELECT id, email, role FROM public_users WHERE id = ${Number(userId) || 0} OR id::text = ${String(userId)} LIMIT 1`
+    );
+    for (const r of pubRows.rows) {
+      ids.add(String((r as any).id));
+      if ((r as any).role === "admin") isAdmin = true;
+    }
+
+    const userRows = await db.execute(
+      sql`SELECT id, email, role FROM users WHERE id = ${String(userId)} LIMIT 1`
+    );
+    for (const r of userRows.rows) {
+      ids.add(String((r as any).id));
+      if ((r as any).role === "admin") isAdmin = true;
+    }
+
+    if (isAdmin) {
+      const allUsers = await db.execute(sql`SELECT id FROM users`);
+      for (const r of allUsers.rows) ids.add(String((r as any).id));
+      const allPub = await db.execute(sql`SELECT id FROM public_users`);
+      for (const r of allPub.rows) ids.add(String((r as any).id));
+    } else {
+      const emails = new Set<string>();
+      for (const r of [...pubRows.rows, ...userRows.rows]) {
+        if ((r as any).email) emails.add((r as any).email);
+      }
+      for (const email of emails) {
+        const moreUsers = await db.execute(sql`SELECT id FROM users WHERE email = ${email}`);
+        for (const r of moreUsers.rows) ids.add(String((r as any).id));
+        const morePub = await db.execute(sql`SELECT id FROM public_users WHERE email = ${email}`);
+        for (const r of morePub.rows) ids.add(String((r as any).id));
+      }
+    }
+  } catch (e) {
+    console.error("getAllUserIds error:", e);
+  }
+  return Array.from(ids);
+}
 
 // Shared streaming service instance (singleton) to maintain session state across requests
 let streamingServiceInstance: HeyGenStreamingService | null = null;
@@ -212,6 +269,28 @@ const memoryImageUpload = multer({
   },
 });
 
+const documentUpload = multer({
+  dest: "uploads/",
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      "text/csv",
+      "text/plain",
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/msword",
+      "application/octet-stream",
+    ];
+    if (allowedTypes.includes(file.mimetype) || file.originalname.match(/\.(csv|txt|pdf|docx?|doc|xlsx?|xls|numbers)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only CSV, TXT, PDF, Word, Excel, and Apple Numbers files are allowed"));
+    }
+  },
+});
+
 function generateFallbackScript(
   topic: string,
   neighborhood: string,
@@ -220,61 +299,61 @@ function generateFallbackScript(
   platform: string = "youtube"
 ): string {
   const videoTypeTemplates = {
-    industry_update: `Hi there! Let's talk about the current restaurant industry trends in ${neighborhood}.
+    market_update: `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices. Let's talk about the current real estate market in ${neighborhood}.
 
-The ${neighborhood} dining scene has been showing some interesting trends lately. Guest preferences have been evolving, and we're seeing exciting new culinary experiences in this area.
+The ${neighborhood} market has been showing some interesting trends lately. Home values have remained stable, and we're seeing consistent buyer interest in this area.
 
-For diners, this means there are amazing new restaurants to discover in ${neighborhood}. For restaurant owners, it's a great time to showcase your unique offerings.
+For buyers, this means there are still good opportunities to find your perfect home in ${neighborhood}. For sellers, it's a great time to position your property competitively.
 
-If you're looking for the best dining experiences in ${neighborhood}, I'd love to share my recommendations. Your local Omaha food expert is here to help.
+If you're thinking about buying or selling in ${neighborhood}, I'd love to help you navigate this market. Give me a call at Mike Bjork, your local Omaha real estate expert.
 
 Thanks for watching, and I'll see you in the next video!`,
 
-    location_tour: `Welcome to ${neighborhood}! I'm excited to show you why this neighborhood is such a special place for food lovers.
+    neighborhood_tour: `Welcome to ${neighborhood}! I'm Mike Bjork with Berkshire Hathaway HomeServices, and I'm excited to show you why this neighborhood is such a special place to call home.
 
-${neighborhood} offers a perfect blend of culinary diversity and local charm. You'll find amazing eateries, cozy cafes, and innovative restaurants that really care about quality and flavor.
+${neighborhood} offers a perfect blend of community charm and modern convenience. You'll find excellent schools, beautiful parks, and friendly neighbors who really care about maintaining the character of this area.
 
-The dining options here range from casual neighborhood spots to upscale dining experiences, all with that distinctive ${neighborhood} character that foodies love.
+The housing options here range from charming starter homes to spacious family properties, all with that distinctive ${neighborhood} character that residents love.
 
-If you're looking to explore ${neighborhood}'s food scene, I'd be happy to share my top picks and hidden gems. Your Omaha dining specialist is here to guide you.
+If you're considering making ${neighborhood} your new home, I'd be happy to show you around and help you find the perfect property. Contact Mike Bjork, your Omaha real estate specialist.
 
-Thanks for joining me on this culinary tour of ${neighborhood}!`,
+Thanks for joining me on this tour of ${neighborhood}!`,
 
-    diner_tips: `Hi there! Today I want to share some essential tips for dining out, especially if you're exploring the ${neighborhood} area.
+    buyer_tips: `Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices, and today I want to share some essential tips for home buyers, especially if you're looking in the ${neighborhood} area.
 
-First, make reservations when possible. Popular spots in ${neighborhood} can fill up quickly, especially on weekends.
+First, get pre-approved for your mortgage before you start shopping. This shows sellers you're serious and gives you a clear budget.
 
-Second, explore local favorites that know ${neighborhood} inside and out. Supporting neighborhood restaurants makes all the difference to the community.
+Second, work with a local agent who knows ${neighborhood} inside and out. I've been helping buyers find homes in this area for years, and local knowledge makes all the difference.
 
-Third, don't be afraid to try something new. The best dining experiences often come from stepping outside your comfort zone.
+Third, don't skip the home inspection. It's your best protection against costly surprises down the road.
 
-If you're ready to discover amazing food in ${neighborhood} or anywhere in Omaha, check out my recommendations. Here to help you find your next favorite meal.
-
-Thanks for watching!`,
-
-    owner_guide: `Running a restaurant in ${neighborhood}? I want to help you get the best possible results for your business.
-
-First, quality is crucial. Maintaining consistent food and service will keep your ${neighborhood} customers coming back.
-
-Second, presentation matters. Creating an inviting atmosphere can make a big difference in customer satisfaction and reviews.
-
-Third, marketing is key. Make sure your ${neighborhood} restaurant gets maximum exposure to hungry customers.
-
-The ${neighborhood} dining scene has unique characteristics, and understanding your local market is key to positioning your restaurant for success.
-
-Ready to grow your business? Your trusted Omaha restaurant industry expert is here to help.
+If you're ready to start your home buying journey in ${neighborhood} or anywhere in Omaha, give me a call. Mike Bjork, here to help you every step of the way.
 
 Thanks for watching!`,
 
-    food_scene_guide: `Exploring the ${neighborhood} food scene? I want to help make your culinary journey as delicious as possible.
+    seller_guide: `Thinking about selling your home in ${neighborhood}? I'm Mike Bjork with Berkshire Hathaway HomeServices, and I want to help you get the best possible result.
 
-${neighborhood} is a wonderful area with so much to offer food lovers. From diverse cuisines to local favorites, you'll find everything you need to satisfy any craving.
+First, pricing is crucial. I'll provide you with a detailed market analysis to ensure your home is priced competitively for the ${neighborhood} market.
 
-Whether you're looking for a quick bite or a memorable dining experience, I know the ${neighborhood} food scene inside and out.
+Second, presentation matters. Small improvements can make a big difference in how quickly your home sells and for how much.
 
-I can also share insider tips about the best times to visit, must-try dishes, and hidden gems that locals love.
+Third, marketing is key. I'll make sure your ${neighborhood} home gets maximum exposure to qualified buyers.
 
-Exploring ${neighborhood}'s food scene is an exciting adventure, and I'm here to guide you every step of the way. Your Omaha food guide is at your service.
+The ${neighborhood} market has unique characteristics, and as your local expert, I know exactly how to position your property for success.
+
+Ready to sell? Contact Mike Bjork, your trusted Omaha real estate professional.
+
+Thanks for watching!`,
+
+    moving_guide: `Planning a move to ${neighborhood}? I'm Mike Bjork with Berkshire Hathaway HomeServices, and I want to help make your transition as smooth as possible.
+
+${neighborhood} is a wonderful community with so much to offer. From great schools to local amenities, you'll find everything you need to feel right at home.
+
+When you're ready to make the move, I'll help you find the perfect property that fits your lifestyle and budget. I know the ${neighborhood} market inside and out.
+
+I can also connect you with trusted local services to help with your move - from movers to utility companies to the best local restaurants.
+
+Moving to ${neighborhood} is an exciting step, and I'm here to help you every step of the way. Contact Mike Bjork, your Omaha real estate guide.
 
 Welcome to ${neighborhood}!`,
   };
@@ -288,12 +367,12 @@ Welcome to ${neighborhood}!`,
     // Make it more concise and punchy for Reels
     baseScript = baseScript
       .replace(
-        /Hi there!/g,
-        "Hey foodie!"
+        /Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices\./g,
+        "Hey! Mike Bjork here -"
       )
       .replace(
         /Thanks for watching!|Thanks for watching, and I'll see you in the next video!/g,
-        "Like & follow for more Omaha dining tips! 🍽️"
+        "Like & follow for more Omaha real estate tips! 🏠"
       )
       .split("\n")
       .slice(0, 4)
@@ -302,12 +381,12 @@ Welcome to ${neighborhood}!`,
     // Make it more casual and personal for Stories
     baseScript = baseScript
       .replace(
-        /Hi there!/g,
-        "Quick food tip!"
+        /Hi, I'm Mike Bjork with Berkshire Hathaway HomeServices\./g,
+        "Quick update from Mike!"
       )
       .replace(
         /Thanks for watching!|Thanks for watching, and I'll see you in the next video!/g,
-        "DM me for recommendations! 📱"
+        "DM me for details! 📱"
       )
       .split("\n")
       .slice(0, 3)
@@ -317,117 +396,57 @@ Welcome to ${neighborhood}!`,
   return baseScript;
 }
 
-// Curated restaurant stock images fallback (when no Pexels API key)
-function getRestaurantStockImages(query: string): Array<{
+// Curated real estate stock images fallback (when no Pexels API key)
+function getRealEstateStockImages(query: string): Array<{
   id: string;
   url: string;
   thumbnail: string;
   alt: string;
   photographer: string;
 }> {
-  // Large collection of curated restaurant/food images from Unsplash
-  const allImages: Record<string, Array<{ id: string; url: string; alt: string }>> = {
-    "restaurant": [
-      { id: "rest-1", url: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80", alt: "Restaurant interior" },
-      { id: "rest-2", url: "https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80", alt: "Restaurant ambiance" },
-      { id: "rest-3", url: "https://images.unsplash.com/photo-1466978913421-dad2ebd01d17?w=800&q=80", alt: "Cozy restaurant" },
-      { id: "rest-4", url: "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=800&q=80", alt: "Fine dining" },
-      { id: "rest-5", url: "https://images.unsplash.com/photo-1537047902294-62a40c20a6ae?w=800&q=80", alt: "Restaurant bar" },
-      { id: "rest-6", url: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80", alt: "Modern restaurant" },
-      { id: "rest-7", url: "https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800&q=80", alt: "Restaurant tables" },
-      { id: "rest-8", url: "https://images.unsplash.com/photo-1578474846511-04ba529f0b88?w=800&q=80", alt: "Restaurant patio" },
-      { id: "rest-9", url: "https://images.unsplash.com/photo-1544148103-0773bf10d330?w=800&q=80", alt: "Restaurant interior" },
-      { id: "rest-10", url: "https://images.unsplash.com/photo-1590846406792-0adc7f938f1d?w=800&q=80", alt: "Restaurant seating" },
-      { id: "rest-11", url: "https://images.unsplash.com/photo-1485182708500-e8f1f318ba72?w=800&q=80", alt: "Outdoor dining" },
-      { id: "rest-12", url: "https://images.unsplash.com/photo-1424847651672-bf20a4b0982b?w=800&q=80", alt: "Table setting" },
+  const stockImages: Record<string, Array<{ id: string; url: string; alt: string }>> = {
+    "home": [
+      { id: "home-1", url: "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=80", alt: "Modern home exterior" },
+      { id: "home-2", url: "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800&q=80", alt: "Luxury home" },
+      { id: "home-3", url: "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80", alt: "Beautiful home" },
+      { id: "home-4", url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80", alt: "Contemporary home" },
+      { id: "home-5", url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80", alt: "Modern architecture" },
+      { id: "home-6", url: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=80", alt: "Suburban home" },
     ],
-    "food": [
-      { id: "food-1", url: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80", alt: "Food platter" },
-      { id: "food-2", url: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80", alt: "Healthy bowl" },
-      { id: "food-3", url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&q=80", alt: "Pizza" },
-      { id: "food-4", url: "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=800&q=80", alt: "Pancakes" },
-      { id: "food-5", url: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&q=80", alt: "Fresh salad" },
-      { id: "food-6", url: "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=800&q=80", alt: "Gourmet dish" },
-      { id: "food-7", url: "https://images.unsplash.com/photo-1482049016gy-2d1ec7ab7445?w=800&q=80", alt: "Breakfast" },
-      { id: "food-8", url: "https://images.unsplash.com/photo-1432139555190-58524dae6a55?w=800&q=80", alt: "Steak dinner" },
-      { id: "food-9", url: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=800&q=80", alt: "Pasta dish" },
-      { id: "food-10", url: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=800&q=80", alt: "Asian cuisine" },
-      { id: "food-11", url: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800&q=80", alt: "Healthy plate" },
-      { id: "food-12", url: "https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=800&q=80", alt: "Fresh ingredients" },
+    "interior": [
+      { id: "int-1", url: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80", alt: "Living room" },
+      { id: "int-2", url: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=800&q=80", alt: "Modern kitchen" },
+      { id: "int-3", url: "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=800&q=80", alt: "Bedroom" },
     ],
-    "pizza": [
-      { id: "pizza-1", url: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&q=80", alt: "Pizza" },
-      { id: "pizza-2", url: "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=800&q=80", alt: "Pepperoni pizza" },
-      { id: "pizza-3", url: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&q=80", alt: "Cheese pizza" },
-      { id: "pizza-4", url: "https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?w=800&q=80", alt: "Pizza slice" },
-      { id: "pizza-5", url: "https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?w=800&q=80", alt: "Wood fired pizza" },
-      { id: "pizza-6", url: "https://images.unsplash.com/photo-1588315029754-2dd089d39a1a?w=800&q=80", alt: "Fresh pizza" },
+    "neighborhood": [
+      { id: "nb-1", url: "https://images.unsplash.com/photo-1448630360428-65456885c650?w=800&q=80", alt: "Neighborhood street" },
+      { id: "nb-2", url: "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?w=800&q=80", alt: "Suburban neighborhood" },
     ],
-    "burger": [
-      { id: "burger-1", url: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80", alt: "Burger" },
-      { id: "burger-2", url: "https://images.unsplash.com/photo-1550547660-d9450f859349?w=800&q=80", alt: "Gourmet burger" },
-      { id: "burger-3", url: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=800&q=80", alt: "Cheeseburger" },
-      { id: "burger-4", url: "https://images.unsplash.com/photo-1586816001966-79b736744398?w=800&q=80", alt: "Double burger" },
-      { id: "burger-5", url: "https://images.unsplash.com/photo-1572802419224-296b0aeee0d9?w=800&q=80", alt: "Burger and fries" },
-      { id: "burger-6", url: "https://images.unsplash.com/photo-1594212699903-ec8a3eca50f5?w=800&q=80", alt: "Classic burger" },
+    "sold": [
+      { id: "sold-1", url: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&q=80", alt: "Sold sign" },
+      { id: "sold-2", url: "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800&q=80", alt: "Real estate success" },
     ],
-    "sushi": [
-      { id: "sushi-1", url: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&q=80", alt: "Sushi platter" },
-      { id: "sushi-2", url: "https://images.unsplash.com/photo-1553621042-f6e147245754?w=800&q=80", alt: "Sushi rolls" },
-      { id: "sushi-3", url: "https://images.unsplash.com/photo-1617196034796-73dfa7b1fd56?w=800&q=80", alt: "Nigiri sushi" },
-      { id: "sushi-4", url: "https://images.unsplash.com/photo-1611143669185-af224c5e3252?w=800&q=80", alt: "Sushi selection" },
-      { id: "sushi-5", url: "https://images.unsplash.com/photo-1583623025817-d180a2221d0a?w=800&q=80", alt: "Fresh sushi" },
-      { id: "sushi-6", url: "https://images.unsplash.com/photo-1563612116625-3012372fccce?w=800&q=80", alt: "Sashimi" },
+    "keys": [
+      { id: "key-1", url: "https://images.unsplash.com/photo-1558036117-15d82a90b9b1?w=800&q=80", alt: "House keys" },
+      { id: "key-2", url: "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=800&q=80", alt: "New home keys" },
     ],
-    "dessert": [
-      { id: "des-1", url: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=800&q=80", alt: "Donuts" },
-      { id: "des-2", url: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&q=80", alt: "Chocolate cake" },
-      { id: "des-3", url: "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=800&q=80", alt: "Ice cream" },
-      { id: "des-4", url: "https://images.unsplash.com/photo-1587314168485-3236d6710814?w=800&q=80", alt: "Cupcakes" },
-      { id: "des-5", url: "https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=800&q=80", alt: "Fruit tart" },
-      { id: "des-6", url: "https://images.unsplash.com/photo-1571115177098-24ec42ed204d?w=800&q=80", alt: "Cheesecake" },
-    ],
-    "coffee": [
-      { id: "cof-1", url: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80", alt: "Latte art" },
-      { id: "cof-2", url: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=800&q=80", alt: "Coffee cup" },
-      { id: "cof-3", url: "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=800&q=80", alt: "Coffee beans" },
-      { id: "cof-4", url: "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=800&q=80", alt: "Cappuccino" },
-      { id: "cof-5", url: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=800&q=80", alt: "Espresso" },
-      { id: "cof-6", url: "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=800&q=80", alt: "Coffee shop" },
-    ],
-    "drinks": [
-      { id: "drink-1", url: "https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800&q=80", alt: "Cocktails" },
-      { id: "drink-2", url: "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=800&q=80", alt: "Wine" },
-      { id: "drink-3", url: "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=800&q=80", alt: "Beer" },
-      { id: "drink-4", url: "https://images.unsplash.com/photo-1536935338788-846bb9981813?w=800&q=80", alt: "Cocktail" },
-      { id: "drink-5", url: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800&q=80", alt: "Mixed drinks" },
-      { id: "drink-6", url: "https://images.unsplash.com/photo-1582106245687-cbb466a9f07f?w=800&q=80", alt: "Refreshing drink" },
-    ],
-    "chef": [
-      { id: "chef-1", url: "https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=800&q=80", alt: "Chef cooking" },
-      { id: "chef-2", url: "https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=800&q=80", alt: "Chef preparing" },
-      { id: "chef-3", url: "https://images.unsplash.com/photo-1581299894007-aaa50297cf16?w=800&q=80", alt: "Professional chef" },
-      { id: "chef-4", url: "https://images.unsplash.com/photo-1600565193348-f74bd3c7ccdf?w=800&q=80", alt: "Kitchen chef" },
-      { id: "chef-5", url: "https://images.unsplash.com/photo-1507048331197-7d4ac70811cf?w=800&q=80", alt: "Chef at work" },
-      { id: "chef-6", url: "https://images.unsplash.com/photo-1583394293214-28ez30bd5d8c?w=800&q=80", alt: "Cooking" },
+    "family": [
+      { id: "fam-1", url: "https://images.unsplash.com/photo-1581579438747-1dc8d17bbce4?w=800&q=80", alt: "Happy family" },
     ],
   };
 
-  // Find matching category
+  // Find matching category or return all home images
   const lowerQuery = query.toLowerCase();
-  let images = allImages["restaurant"]; // default
+  let images = stockImages["home"];
   
-  for (const [key, categoryImages] of Object.entries(allImages)) {
+  for (const [key, categoryImages] of Object.entries(stockImages)) {
     if (lowerQuery.includes(key)) {
       images = categoryImages;
       break;
     }
   }
 
-  // Shuffle images for variety on refresh
-  const shuffled = [...images].sort(() => Math.random() - 0.5);
-
-  return shuffled.map(img => ({
+  return images.map(img => ({
     ...img,
     thumbnail: img.url.replace("w=800", "w=400"),
     photographer: "Unsplash",
@@ -459,30 +478,30 @@ ${neighborhood} offers unique advantages that make it ideal for ${goal.toLowerCa
 ### What Makes ${neighborhood} Special
 - **Community:** Active neighborhood associations and local events
 - **Convenience:** Close to major employers, schools, and Omaha amenities
-- **Customer Loyalty:** Our guests return again and again for quality dining experiences
+- **Investment Value:** Properties hold value well and attract quality buyers
 
-## Professional Culinary Expertise You Can Trust
+## Professional Guidance You Can Trust
 
-As your local ${neighborhood} restaurant, we've served thousands of guests looking for memorable dining experiences in this area.
+As your local ${neighborhood} expert, I'm Mike Bjork with Berkshire Hathaway HomeServices. I've helped hundreds of families find their perfect home in this area.
 
-**Why dine with us?**
-- Years of culinary expertise specializing in ${neighborhood} and surrounding areas
-- Deep understanding of local food preferences and seasonal ingredients
-- Exclusive menu items and chef's specials you won't find elsewhere
+**Why work with me?**
+- 15+ years specializing in ${neighborhood} and surrounding areas
+- Licensed Nebraska realtor with deep local market knowledge
+- Access to off-market properties and exclusive listings
 
-## Ready to Experience ${neighborhood} Dining?
+## Ready to Explore ${neighborhood}?
 
-Whether you're planning a casual meal, family gathering, or special celebration, we'll help you create the perfect dining experience.
+Whether you're a first-time buyer, growing family, or savvy investor, I'll help you understand if ${neighborhood} aligns with your goals.
 
-**Contact Us:**
+**Contact Mike Bjork:**
 - Phone: (402) 555-0123
-- Email: info@restaurantflow.com
-- Location: ${neighborhood}, Omaha
+- Email: mike@bjorkgroup.com
+- Office: Berkshire Hathaway HomeServices
 
-*Serving ${neighborhood}, Omaha, and surrounding communities with exceptional culinary experiences.*
+*Serving ${neighborhood}, Omaha, and surrounding communities with personalized real estate expertise since 2008.*
 
 ---
-*This content was optimized for AI search engines to provide direct, helpful answers about ${neighborhood} dining.*`;
+*This content was optimized for AI search engines to provide direct, helpful answers about ${neighborhood} real estate.*`;
 }
 
 const validateTwilioRequest = (req: Request, res: Response, next: NextFunction) => {
@@ -539,7 +558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : "agent";
 
       const fallbackEmail =
-        req.user.email || `${sessionId}@placeholder.restaurantflow`;
+        req.user.email || `${sessionId}@placeholder.realtyflow`;
 
       user = await storage.createUser({
         username:
@@ -577,176 +596,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const s3Service = new S3UploadService();
     return s3Service.getS3Url(urlOrKey);
   };
-
-  const getBusinessContext = async (req: any) => {
-    const defaultContext = {
-      businessType: "restaurant",
-      businessSubtype: "fast_casual",
-    };
-
-    const userId = req?.user?.id;
-    if (!userId) return defaultContext;
-
-    try {
-      const numericId = Number(userId);
-      const [record] = await db
-        .select({
-          businessType: publicUsers.businessType,
-          businessSubtype: publicUsers.businessSubtype,
-        })
-        .from(publicUsers)
-        .where(eq(publicUsers.id, isNaN(numericId) ? userId : numericId))
-        .limit(1);
-
-      return {
-        businessType: record?.businessType || defaultContext.businessType,
-        businessSubtype: record?.businessSubtype || defaultContext.businessSubtype,
-      };
-    } catch (error) {
-      console.error("Failed to resolve business context", error);
-      return defaultContext;
-    }
-  };
-
-  const describeBusinessType = (type?: string) => {
-    const labels: Record<string, string> = {
-      restaurant: "Restaurant & Food Service",
-      home_services: "Home Services",
-      real_estate: "Real Estate",
-      retail: "Retail & E-commerce",
-      professional_services: "Professional Services",
-      general: "General Business",
-    };
-    return labels[type || ""] || labels.restaurant;
-  };
-
-  const describeBusinessSubtype = (subtype?: string) => {
-    const labels: Record<string, string> = {
-      fine_dining: "Fine Dining",
-      fast_casual: "Fast Casual",
-      cafe: "Cafe & Coffee Shop",
-      bar_pub: "Bar & Pub",
-      food_truck: "Food Truck",
-      catering: "Catering Service",
-      bakery: "Bakery",
-      quick_service: "Quick Service",
-      plumbing: "Plumbing",
-      hvac: "HVAC",
-      electrical: "Electrical",
-      cleaning: "Cleaning Service",
-      landscaping: "Landscaping",
-      roofing: "Roofing",
-      painting: "Painting",
-      handyman: "Handyman",
-      residential: "Residential Sales",
-      commercial: "Commercial Real Estate",
-      property_management: "Property Management",
-      rental: "Rental Services",
-      investment: "Investment Properties",
-      fashion: "Fashion & Apparel",
-      electronics: "Electronics",
-      beauty: "Beauty & Cosmetics",
-      sports: "Sports & Fitness",
-      home_goods: "Home Goods",
-      specialty: "Specialty Store",
-      legal: "Legal Services",
-      accounting: "Accounting & Tax",
-      consulting: "Consulting",
-      marketing: "Marketing Agency",
-      insurance: "Insurance",
-      financial: "Financial Services",
-      other: "Other",
-    };
-    return labels[subtype || ""] || labels.fast_casual;
-  };
   // =====================================================
   // NEBRASKA HOME HUB INTEGRATION ENDPOINT
   // =====================================================
-  app.get("/integration", (req: Request, res: Response, next: NextFunction) => {
+  app.get("/integration", async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { source, domain, userEmail, agentSlug, timestamp } = req.query;
+      const { source, domain, userEmail, agentSlug, timestamp, autoLogin } = req.query;
       const acceptHeader = String(req.headers.accept || "").toLowerCase();
 
-      // Validate trusted domains
       const trustedDomains = [
         "localhost",
         "nebraskahomehub.com",
         "bjorkhomes.com",
         "mandy.bjorkhomes.com",
-        "elasticbeanstalk.com", // AWS Elastic Beanstalk deployments
-        "imakepage.com", // iMakePage platform
+        "elasticbeanstalk.com",
+        "imakepage.com",
+        "multi-users-realtyflow.replit.app",
       ];
 
+      const refererHost = (() => {
+        try {
+          const ref = req.headers.referer || req.headers.origin || "";
+          if (!ref) return "";
+          return new URL(ref).hostname;
+        } catch { return ""; }
+      })();
       const requestDomain = typeof domain === "string" ? domain : "";
+      const originToCheck = refererHost || requestDomain;
+
       const isTrusted =
-        !requestDomain ||
-        trustedDomains.some((trusted) => requestDomain.includes(trusted));
+        !originToCheck ||
+        trustedDomains.some((trusted) => originToCheck.includes(trusted));
 
       if (!isTrusted) {
-        console.warn(`⚠️ Untrusted integration request from: ${domain}`);
-        if (acceptHeader.includes("text/html")) {
-          return res
-            .status(403)
-            .send("Integration not allowed from this domain");
-        }
-        return res.status(403).json({
-          error: "Integration not allowed from this domain",
-        });
+        console.warn(`⚠️ Untrusted integration request from origin: ${originToCheck}`);
+        return res.status(403).send("Integration not allowed from this domain");
       }
 
-      // Validate source
       const normalizedSource = typeof source === "string" ? source : undefined;
-      if (normalizedSource && normalizedSource !== "nebraska-home-hub") {
+      const validSources = ["nebraska-home-hub"];
+      if (normalizedSource && !validSources.includes(normalizedSource)) {
         console.warn(`⚠️ Unknown integration source: ${source}`);
-        if (acceptHeader.includes("text/html")) {
-          return res.status(403).send("Unknown integration source");
-        }
-        return res.status(403).json({
-          error: "Unknown integration source",
-        });
+        return res.status(403).json({ error: "Unknown integration source" });
       }
 
-      // Log the integration request
       console.log(
-        `🔗 Integration request from ${
-          normalizedSource || "unknown"
-        } - domain: ${domain}, agent: ${agentSlug}`
+        `🔗 Integration request - source: ${source}, origin: ${originToCheck}, email: ${userEmail}, autoLogin: ${autoLogin}`
       );
+
+      if (autoLogin === "true" && userEmail && typeof userEmail === "string") {
+        try {
+          const { createOrLoginPublicUser } = await import("./utils/auth");
+          const loginResult = await createOrLoginPublicUser(
+            userEmail.trim(),
+            typeof agentSlug === "string" ? agentSlug : "default",
+            userEmail.split("@")[0],
+          );
+
+          if (loginResult.user && loginResult.token) {
+            console.log(`🔗 Integration auto-login success for ${userEmail} → user ${loginResult.user.id}`);
+            
+            res.cookie("authToken", loginResult.token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+              maxAge: 7 * 24 * 60 * 60 * 1000,
+            });
+
+            return res.send(`<!DOCTYPE html>
+<html><head><title>Loading...</title></head>
+<body>
+<script>
+  try { localStorage.setItem("authToken", ${JSON.stringify(loginResult.token)}); } catch(e) {}
+  window.location.replace("/#social");
+</script>
+<noscript><a href="/#social">Click here to continue</a></noscript>
+</body></html>`);
+          }
+        } catch (loginErr) {
+          console.error("Integration auto-login error:", loginErr);
+        }
+      }
 
       if (acceptHeader.includes("text/html")) {
         return next();
       }
 
-      // Use the published deployment URL for consistent iframe embedding
-      const appUrl = "https://multi-users-restaurantflow.replit.app";
-
-      const params = new URLSearchParams();
-      if (userEmail) {
-        params.set("bypassAuth", "true");
-        params.set("userId", userEmail as string);
-        params.set("userType", "public");
-        params.set("autoLogin", "true");
-      }
-      if (agentSlug) {
-        params.set("agentSlug", agentSlug as string);
-      }
-
-      const query = params.toString();
-      const iframeUrl = `${appUrl}/integration${query ? `?${query}` : ""}`;
-
-      // Return integration configuration with tenant-scoped data
+      const appUrl = "https://multi-users-realtyflow.replit.app";
       res.json({
         success: true,
         source: normalizedSource || "unknown",
         timestamp: timestamp || new Date().toISOString(),
         config: {
           appUrl: appUrl,
-          iframeUrl: iframeUrl,
           authBypass: true,
           agentSlug: agentSlug,
           userEmail: userEmail || null,
         },
-        message: "RestaurantFlow integration ready",
+        message: "RealtyFlow integration ready",
       });
     } catch (error) {
       console.error("Integration endpoint error:", error);
@@ -773,10 +720,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/auth", authRoutes);
   app.use("/api/user", userRoutes);
   app.use("/api/demo", demoRoutes);
-  app.use("/api/admin", adminRoutes);
-  
-  // Business Type Settings
-  setupBusinessTypeRoutes(app);
 
   // API Key Management
   app.get("/api/openai/status", async (req, res) => {
@@ -790,19 +733,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get dashboard overview data
-  app.get("/api/dashboard/overview", async (req, res) => {
+  app.get("/api/dashboard/overview", requireAuth, async (req: any, res) => {
     try {
-      // For demo purposes, use first user. In production, use authenticated user
-      const users = await storage.getUserByUsername("mikebjork");
-      if (!users) {
-        return res.status(404).json({ error: "User not found" });
+      const stableUserId = String(req.user?.id);
+      if (!stableUserId) {
+        return res.status(401).json({ error: "Authentication required" });
       }
 
-      const analytics = await storage.getAnalytics(users.id);
-      const overview = analytics.reduce((acc, analytic) => {
-        acc[analytic.metric] = analytic.value;
-        return acc;
-      }, {} as Record<string, number>);
+      const overview: Record<string, any> = {};
 
       // Add real engagement leads from tracking system
       try {
@@ -887,7 +825,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(scheduledPosts)
           .where(
             and(
-              eq(scheduledPosts.userId, users.id),
+              eq(scheduledPosts.userId, stableUserId),
               eq(scheduledPosts.status, "posted"),
               gte(scheduledPosts.updatedAt, firstDayOfMonth)
             )
@@ -899,7 +837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(scheduledPosts)
           .where(
             and(
-              eq(scheduledPosts.userId, users.id),
+              eq(scheduledPosts.userId, stableUserId),
               eq(scheduledPosts.status, "posted"),
               gte(scheduledPosts.updatedAt, firstDayOfLastMonth),
               lt(scheduledPosts.updatedAt, firstDayOfMonth)
@@ -929,7 +867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(scheduledPosts)
           .where(
             and(
-              eq(scheduledPosts.userId, users.id),
+              eq(scheduledPosts.userId, stableUserId),
               eq(scheduledPosts.status, "posted")
             )
           )
@@ -945,6 +883,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("Failed to fetch content published stats:", error);
       }
 
+      // Calculate Social Engagement from connected social accounts activity
+      try {
+        const { socialMediaAccounts } = await import("@shared/schema");
+        const { count, eq } = await import("drizzle-orm");
+        
+        const connectedAccounts = await db
+          .select({ count: count() })
+          .from(socialMediaAccounts)
+          .where(
+            and(
+              eq(socialMediaAccounts.userId, stableUserId),
+              eq(socialMediaAccounts.isConnected, true)
+            )
+          );
+        
+        const totalConnected = connectedAccounts[0]?.count || 0;
+        
+        // Social engagement = connected platforms * posted content as a base metric
+        const contentCount = overview.content_published || 0;
+        overview.social_engagement = totalConnected * Math.max(contentCount, 1) + contentCount;
+        
+        console.log(`💜 Dashboard: Social engagement score: ${overview.social_engagement} (${totalConnected} connected accounts)`);
+      } catch (error) {
+        console.warn("Failed to fetch social engagement:", error);
+        overview.social_engagement = 0;
+      }
+
       res.json(overview);
     } catch (error) {
       console.error("Dashboard overview error:", error);
@@ -952,36 +917,265 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // AI Assistant Chat endpoint
+  app.get("/api/dashboard/recent-posts", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user.id);
+      const { scheduledPosts } = await import("@shared/schema");
+      const { eq, and, desc, or } = await import("drizzle-orm");
+
+      const recentPosts = await db
+        .select({
+          id: scheduledPosts.id,
+          platform: scheduledPosts.platform,
+          content: scheduledPosts.content,
+          status: scheduledPosts.status,
+          scheduledFor: scheduledPosts.scheduledFor,
+          metadata: scheduledPosts.metadata,
+          updatedAt: scheduledPosts.updatedAt,
+        })
+        .from(scheduledPosts)
+        .where(
+          and(
+            eq(scheduledPosts.userId, userId),
+            or(
+              eq(scheduledPosts.status, "posted"),
+              eq(scheduledPosts.status, "failed")
+            )
+          )
+        )
+        .orderBy(desc(scheduledPosts.updatedAt))
+        .limit(10);
+
+      res.json(recentPosts);
+    } catch (error) {
+      console.error("Recent posts error:", error);
+      res.status(500).json({ error: "Failed to fetch recent posts" });
+    }
+  });
+
+  // AI Chat Sessions - List all chat sessions for user
+  app.get("/api/ai/chat-sessions", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      const sessions = await db
+        .select({
+          id: aiChatSessions.id,
+          title: aiChatSessions.title,
+          createdAt: aiChatSessions.createdAt,
+          updatedAt: aiChatSessions.updatedAt,
+        })
+        .from(aiChatSessions)
+        .where(eq(aiChatSessions.userId, userId))
+        .orderBy(desc(aiChatSessions.updatedAt));
+      
+      res.json(sessions);
+    } catch (error) {
+      console.error("Error fetching chat sessions:", error);
+      res.status(500).json({ error: "Failed to fetch chat sessions" });
+    }
+  });
+
+  // AI Chat Sessions - Get single session with messages
+  app.get("/api/ai/chat-sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      const { id } = req.params;
+      
+      const sessions = await db
+        .select()
+        .from(aiChatSessions)
+        .where(and(eq(aiChatSessions.id, id), eq(aiChatSessions.userId, userId)))
+        .limit(1);
+      
+      if (sessions.length === 0) {
+        return res.status(404).json({ error: "Chat session not found" });
+      }
+      
+      res.json(sessions[0]);
+    } catch (error) {
+      console.error("Error fetching chat session:", error);
+      res.status(500).json({ error: "Failed to fetch chat session" });
+    }
+  });
+
+  // AI Chat Sessions - Create new session
+  app.post("/api/ai/chat-sessions", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      const { title = "New Chat" } = req.body;
+      
+      const [session] = await db
+        .insert(aiChatSessions)
+        .values({
+          userId,
+          title,
+          messages: [],
+        })
+        .returning();
+      
+      res.json(session);
+    } catch (error) {
+      console.error("Error creating chat session:", error);
+      res.status(500).json({ error: "Failed to create chat session" });
+    }
+  });
+
+  // AI Chat Sessions - Update session (save messages)
+  app.patch("/api/ai/chat-sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      const { id } = req.params;
+      const { messages, title } = req.body;
+      
+      const updateData: any = { updatedAt: new Date() };
+      if (messages !== undefined) updateData.messages = messages;
+      if (title !== undefined) updateData.title = title;
+      
+      const [updated] = await db
+        .update(aiChatSessions)
+        .set(updateData)
+        .where(and(eq(aiChatSessions.id, id), eq(aiChatSessions.userId, userId)))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Chat session not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating chat session:", error);
+      res.status(500).json({ error: "Failed to update chat session" });
+    }
+  });
+
+  // AI Chat Sessions - Delete session
+  app.delete("/api/ai/chat-sessions/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      const { id } = req.params;
+      
+      await db
+        .delete(aiChatSessions)
+        .where(and(eq(aiChatSessions.id, id), eq(aiChatSessions.userId, userId)));
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting chat session:", error);
+      res.status(500).json({ error: "Failed to delete chat session" });
+    }
+  });
+
+  // AI Assistant Chat endpoint - supports multiple providers
   app.post("/api/ai/chat", requireAuth, async (req, res) => {
     try {
-      const { message, conversationHistory = [] } = req.body;
+      const { message, conversationHistory = [], provider = "auto" } = req.body;
       
       if (!message || typeof message !== "string") {
         return res.status(400).json({ error: "Message is required" });
       }
 
-      const userId = req.user?.id;
-      let companyProfile = null;
-      if (userId) {
-        companyProfile = await storage.getCompanyProfile(userId);
+      const validProviders = ["openai", "gemini", "auto"];
+      if (!validProviders.includes(provider)) {
+        return res.status(400).json({ error: "Invalid provider. Must be 'openai', 'gemini', or 'auto'" });
       }
 
-      // Build context from conversation history
-      const messages = [
-        {
-          role: "system" as const,
-          content: `You are a helpful AI assistant for restaurant professionals in the Omaha, Nebraska area. 
+      const userId = req.user?.id;
+      let companyProfile = null;
+      let userPreferencesData = null;
+      if (userId) {
+        companyProfile = await storage.getCompanyProfile(userId);
+        // Fetch user preferences for localized content
+        const prefResults = await db
+          .select()
+          .from(userPreferences)
+          .where(eq(userPreferences.userId, userId))
+          .limit(1);
+        userPreferencesData = prefResults.length > 0 ? prefResults[0] : null;
+      }
+
+      // Build location context string
+      let locationContext = "";
+      if (userPreferencesData) {
+        if (userPreferencesData.serviceArea) {
+          locationContext += `The user is a real estate agent serving the ${userPreferencesData.serviceArea} area.`;
+        } else if ((companyProfile as any)?.city || (companyProfile as any)?.state) {
+          const cpCity = (companyProfile as any)?.city || "";
+          const cpState = (companyProfile as any)?.state || "";
+          const cpArea = cpCity && cpState ? `${cpCity}, ${cpState}` : cpCity || cpState;
+          locationContext += `The user operates in ${cpArea}.`;
+        }
+        if (userPreferencesData.communities && userPreferencesData.communities.length > 0) {
+          locationContext += ` They focus on these neighborhoods/communities: ${userPreferencesData.communities.join(", ")}.`;
+        }
+        locationContext = locationContext.trim();
+      } else if ((companyProfile as any)?.city || (companyProfile as any)?.state) {
+        const cpCity = (companyProfile as any)?.city || "";
+        const cpState = (companyProfile as any)?.state || "";
+        const cpArea = cpCity && cpState ? `${cpCity}, ${cpState}` : cpCity || cpState;
+        locationContext = `The user operates in ${cpArea}.`;
+      }
+
+      // Use Gemini when explicitly requested
+      if (provider === "gemini") {
+        const { geminiService } = await import("./services/gemini");
+        
+        // Build Gemini system prompt with location context
+        const geminiSystemPrompt = `You are a helpful AI assistant for real estate professionals. 
 You help with:
 - Creating social media posts and marketing content
-- Writing blog articles and menu descriptions
-- Answering restaurant marketing questions
+- Writing blog articles and property descriptions
+- Answering real estate marketing questions
 - Providing market insights and advice
 - Generating image and video ideas
 
-${companyProfile ? `The user works for ${companyProfile.companyName || "a restaurant"} with tagline: "${companyProfile.tagline || ""}"` : ""}
+${locationContext ? locationContext : ""}
 
-Be professional, helpful, and focused on restaurant marketing. Keep responses concise but informative.`
+Be professional, helpful, and focused on real estate marketing. Keep responses concise but informative.`.trim();
+        
+        const result = await geminiService.chat(message, conversationHistory, geminiSystemPrompt);
+        
+        if (!result.success) {
+          return res.status(500).json({ error: result.error || "Gemini chat failed" });
+        }
+
+        const geminiImagePatterns = /\b(generate|create|make|draw|design|produce|show me|give me)\b.*\b(image|photo|picture|illustration|graphic|visual|artwork|poster|flyer|banner)\b|\b(image|photo|picture|illustration|graphic|visual|artwork|poster|flyer|banner)\b.*\b(of|for|showing|featuring|with)\b/i;
+        let geminiImageUrl: string | null = null;
+
+        if (geminiImagePatterns.test(message)) {
+          console.log("🎨 [AI Chat/Gemini] Image generation request detected");
+          try {
+            const imagePrompt = `Professional high-quality marketing image: ${message}. Photorealistic, well-lit, suitable for social media and marketing.`;
+            geminiImageUrl = await openaiService.generateImage({ prompt: imagePrompt });
+          } catch (imgError: any) {
+            console.error("❌ [AI Chat/Gemini] Image generation failed:", imgError?.message);
+          }
+        }
+
+        return res.json({ 
+          message: result.message,
+          role: "assistant",
+          provider: "gemini",
+          imageUrl: geminiImageUrl || undefined
+        });
+      }
+
+      // Use OpenAI for "openai" and "auto" providers
+      const messages = [
+        {
+          role: "system" as const,
+          content: `You are a helpful AI assistant for real estate professionals. 
+You help with:
+- Creating social media posts and marketing content
+- Writing blog articles and property descriptions
+- Answering real estate marketing questions
+- Providing market insights and advice
+- Generating image and video ideas
+
+${locationContext ? locationContext : ""}
+
+${companyProfile ? `The user works for ${companyProfile.companyName || "a real estate company"} with tagline: "${companyProfile.tagline || ""}"` : ""}
+
+Be professional, helpful, and focused on real estate marketing. Keep responses concise but informative.`
         },
         ...conversationHistory.map((msg: { role: string; content: string }) => ({
           role: msg.role as "user" | "assistant",
@@ -990,7 +1184,6 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         { role: "user" as const, content: message }
       ];
 
-      // Use OpenAI for chat
       const response = await multiOpenAI.makeRequest("content", async (client) => {
         return await client.chat.completions.create({
           model: "gpt-4o",
@@ -999,11 +1192,65 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         });
       });
 
-      const assistantMessage = response.choices[0]?.message?.content || "I apologize, but I couldn't generate a response. Please try again.";
+      // Debug logging for response structure
+      console.log("🤖 [AI Chat] OpenAI response received:");
+      console.log("  - choices count:", response.choices?.length || 0);
+      console.log("  - finish_reason:", response.choices?.[0]?.finish_reason);
+      console.log("  - content length:", response.choices?.[0]?.message?.content?.length || 0);
+      
+      // Check for content filter or other issues
+      if (response.choices?.[0]?.finish_reason === "content_filter") {
+        console.warn("⚠️ [AI Chat] Content was filtered by OpenAI safety systems");
+      }
+
+      let assistantMessage = response.choices?.[0]?.message?.content;
+      
+      // Handle empty or null content
+      if (!assistantMessage || assistantMessage.trim() === "") {
+        console.warn("⚠️ [AI Chat] Empty response from OpenAI, attempting retry with simplified prompt");
+        
+        // Retry with a simpler prompt
+        const retryResponse = await multiOpenAI.makeRequest("content", async (client) => {
+          return await client.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              { role: "system" as const, content: "You are a helpful assistant for real estate professionals. Be concise and helpful." },
+              { role: "user" as const, content: message }
+            ],
+            max_completion_tokens: 500,
+          });
+        });
+        
+        assistantMessage = retryResponse.choices?.[0]?.message?.content;
+        console.log("🔄 [AI Chat] Retry response length:", assistantMessage?.length || 0);
+      }
+      
+      // Final fallback if still empty
+      if (!assistantMessage || assistantMessage.trim() === "") {
+        assistantMessage = "I'm having trouble processing your request right now. Could you try rephrasing your question or try again in a moment?";
+      }
+
+      const imagePatterns = /\b(generate|create|make|draw|design|produce|show me|give me)\b.*\b(image|photo|picture|illustration|graphic|visual|artwork|poster|flyer|banner)\b|\b(image|photo|picture|illustration|graphic|visual|artwork|poster|flyer|banner)\b.*\b(of|for|showing|featuring|with)\b/i;
+      let imageUrl: string | null = null;
+
+      if (imagePatterns.test(message)) {
+        console.log("🎨 [AI Chat] Image generation request detected, generating with Imagen 3...");
+        try {
+          const imagePrompt = `Professional high-quality marketing image: ${message}. Photorealistic, well-lit, suitable for social media and marketing.`;
+          imageUrl = await openaiService.generateImage({ prompt: imagePrompt });
+          if (imageUrl) {
+            console.log(`✅ [AI Chat] Image generated successfully: ${imageUrl.substring(0, 80)}...`);
+          }
+        } catch (imgError: any) {
+          console.error("❌ [AI Chat] Image generation failed:", imgError?.message);
+        }
+      }
 
       res.json({ 
         message: assistantMessage,
-        role: "assistant"
+        role: "assistant",
+        provider: "openai",
+        imageUrl: imageUrl || undefined
       });
     } catch (error) {
       console.error("AI chat error:", error);
@@ -1011,8 +1258,748 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
     }
   });
 
+  // VEO 3.1 Video Generation Routes
+  const VEO_PRESETS: Record<string, { aspectRatio: "16:9" | "9:16"; duration: number }> = {
+    "tiktok": { aspectRatio: "9:16", duration: 8 },
+    "youtube-shorts": { aspectRatio: "9:16", duration: 8 },
+    "instagram-stories": { aspectRatio: "9:16", duration: 8 },
+    "facebook-feed": { aspectRatio: "16:9", duration: 8 },
+    "linkedin-feed": { aspectRatio: "16:9", duration: 8 },
+    "commercial-15": { aspectRatio: "16:9", duration: 4 },
+    "commercial-30": { aspectRatio: "16:9", duration: 8 },
+    "commercial-60": { aspectRatio: "16:9", duration: 8 },
+    "tour-16s": { aspectRatio: "16:9", duration: 16 },
+    "tour-24s": { aspectRatio: "16:9", duration: 24 },
+    "tour-30s": { aspectRatio: "16:9", duration: 30 },
+    "reel-16s": { aspectRatio: "9:16", duration: 16 },
+    "reel-30s": { aspectRatio: "9:16", duration: 30 },
+  };
+
+  // Track VEO videos generated via AI Assistant (operationId -> userId)
+  const aiVeoVideos = new Map<string, number>();
+
+  // Track multi-segment jobs: compositeId -> { segments, userId, status, combinedVideoUrl }
+  interface MultiSegmentJob {
+    compositeId: string;
+    segmentOperationIds: string[];
+    segmentVideoUrls: (string | null)[];
+    userId: number | string;
+    preset: string;
+    aspectRatio: string;
+    totalDuration: number;
+    status: "processing" | "combining" | "done" | "error";
+    combinedVideoUrl?: string;
+    error?: string;
+  }
+  const multiSegmentJobs = new Map<string, MultiSegmentJob>();
+
+  app.post("/api/ai/veo/start", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      const { prompt, imageUrl, imageUrls, roomTypes, preset, spaceType, customDescription, noSound, agentPhotoUrl } = req.body;
+
+      if (!imageUrl || typeof imageUrl !== "string") {
+        return res.status(400).json({ error: "Image URL is required" });
+      }
+
+      if (!preset || !VEO_PRESETS[preset]) {
+        return res.status(400).json({ 
+          error: "Invalid preset. Valid presets: " + Object.keys(VEO_PRESETS).join(", ")
+        });
+      }
+
+      const presetConfig = VEO_PRESETS[preset];
+      const { veoVideoService } = await import("./services/veo-video");
+
+      if (!veoVideoService.isConfigured()) {
+        return res.status(500).json({ error: "VEO service not configured. GEMINI_API_KEY is required." });
+      }
+
+      // Room type to descriptive prompt mapping
+      const roomPromptMap: Record<string, string> = {
+        // Interior rooms
+        "living-room": "spacious living room with elegant furnishings",
+        "kitchen": "modern kitchen with premium appliances and countertops",
+        "master-bedroom": "luxurious master bedroom with ample natural light",
+        "bedroom": "comfortable bedroom with quality finishes",
+        "bathroom": "updated bathroom with contemporary fixtures",
+        "master-bath": "spa-like master bathroom with upscale finishes",
+        "dining-room": "elegant dining room perfect for entertaining",
+        "office": "functional home office with natural lighting",
+        "basement": "finished basement with versatile living space",
+        "laundry": "convenient laundry room with modern appliances",
+        "garage": "spacious garage with ample storage",
+        "other": "beautifully finished interior space",
+        // Exterior spaces
+        "front-yard": "stunning curb appeal with manicured landscaping",
+        "backyard": "private backyard oasis perfect for outdoor living",
+        "patio": "inviting outdoor patio ideal for entertaining",
+        "pool": "sparkling pool with resort-style amenities",
+        "garden": "professionally designed landscaping and garden",
+        "driveway": "welcoming entrance with elegant driveway",
+        "aerial": "expansive property showcasing the full lot",
+        "other-exterior": "impressive outdoor feature",
+      };
+
+      // Generate compliant prompt based on room types array
+      let videoPrompt = prompt;
+      if (!videoPrompt || typeof videoPrompt !== "string") {
+        const imageCount = Array.isArray(imageUrls) ? imageUrls.length : 1;
+        const isExterior = spaceType === "exterior";
+        const roomTypesArray = Array.isArray(roomTypes) ? roomTypes : [];
+        
+        // Build room descriptions from provided room types
+        let roomDescriptions = "";
+        if (roomTypesArray.length > 0) {
+          const descriptions = roomTypesArray.map((rt: string, idx: number) => {
+            const desc = roomPromptMap[rt] || (isExterior ? "outdoor space" : "interior space");
+            return `Image ${idx + 1}: ${desc}`;
+          });
+          roomDescriptions = descriptions.join(". ") + ".";
+        }
+        
+        const sceneType = isExterior ? "exterior property" : "interior space";
+        
+        const promptDuration = Math.min(presetConfig.duration, 8);
+        // Compliant prompt that preserves property images without alterations
+        videoPrompt = `Create a realistic ${promptDuration}-second video tour of the ${sceneType} depicted in the attached ${imageCount === 1 ? "image" : `${imageCount} images`}.${
+          imageCount > 1 ? " Each image is in triangle position starting from left to right with the last being the view from the other side." : ""
+        }${roomDescriptions ? `\n\nRoom Details: ${roomDescriptions}` : ""}
+
+Compliance Constraint: Ensure strict adherence to the existing layout. Do not add any objects, decor, or architectural features that are not present in the source images. The video must be a factual representation of the space.
+
+Visual Style & Movement: Start the video with a wide view (matching the widest input image). The camera should perform a slow 'dolly in' movement, moving steadily forward into the center of the ${isExterior ? "scene" : "room"} at eye level. As the camera moves forward, subtly pan left and right to reveal the space exactly as arranged in the photos. Maintain crisp focus throughout.`;
+        
+        // Add custom description if provided
+        if (customDescription && typeof customDescription === "string" && customDescription.trim()) {
+          videoPrompt += `\n\nProperty Details: ${customDescription.trim()}`;
+        }
+        
+        // Handle no sound preference
+        if (noSound) {
+          videoPrompt += "\n\nAudio: This video should be silent with no background music or sound effects.";
+        }
+        
+        if (agentPhotoUrl) {
+          videoPrompt += "\n\nInclude a brief, professional real estate agent presence at the end as a subtle overlay or corner introduction.";
+        }
+        
+        console.log(`📝 [VEO] Generated compliant prompt for ${spaceType || "interior"} with ${imageCount} image(s), room types: ${roomTypesArray.join(", ") || "none specified"}`);
+        if (customDescription) {
+          console.log(`📝 [VEO] Custom description added: ${customDescription.substring(0, 50)}...`);
+        }
+        if (noSound) {
+          console.log(`🔇 [VEO] Silent video requested`);
+        }
+      }
+
+      const VEO_MAX_DURATION = 8;
+      const totalDuration = presetConfig.duration;
+      const segmentDuration = Math.min(totalDuration, VEO_MAX_DURATION);
+      const availableImages = Array.isArray(imageUrls) && imageUrls.length > 0 ? imageUrls : [imageUrl];
+      const roomTypesArray = Array.isArray(roomTypes) ? roomTypes : [];
+      const segmentCount = totalDuration > VEO_MAX_DURATION
+        ? availableImages.length > 1
+          ? availableImages.length
+          : Math.ceil(totalDuration / VEO_MAX_DURATION)
+        : 1;
+
+      console.log(`🎬 [VEO] Starting video generation with preset: ${preset}`);
+      console.log(`📐 [VEO] Config: ${presetConfig.aspectRatio}, ${totalDuration}s total (${segmentCount} segment(s) of ${segmentDuration}s)`);
+      console.log(`🖼️ [VEO] Available images: ${availableImages.length}, distributing across ${segmentCount} segments`);
+      if (agentPhotoUrl) {
+        console.log(`👤 [VEO] Including agent photo: ${agentPhotoUrl}`);
+      }
+
+      if (segmentCount === 1) {
+        const result = await veoVideoService.generateVideo({
+          prompt: videoPrompt,
+          imageUrl,
+          aspectRatio: presetConfig.aspectRatio,
+          duration: segmentDuration,
+          agentPhotoUrl,
+        });
+
+        if (!result.success) {
+          return res.status(500).json({ error: result.error || "Failed to start video generation" });
+        }
+
+        if (result.operationId && userId) {
+          aiVeoVideos.set(result.operationId, Number(userId));
+        }
+
+        return res.json({
+          success: true,
+          operationId: result.operationId,
+          preset,
+          aspectRatio: presetConfig.aspectRatio,
+          duration: totalDuration,
+        });
+      }
+
+      const roomPromptMapLocal: Record<string, string> = {
+        "living-room": "spacious living room with elegant furnishings",
+        "kitchen": "modern kitchen with premium appliances and countertops",
+        "master-bedroom": "luxurious master bedroom with ample natural light",
+        "bedroom": "comfortable bedroom with quality finishes",
+        "bathroom": "updated bathroom with contemporary fixtures",
+        "master-bath": "spa-like master bathroom with upscale finishes",
+        "dining-room": "elegant dining room perfect for entertaining",
+        "office": "functional home office with natural lighting",
+        "basement": "finished basement with versatile living space",
+        "laundry": "convenient laundry room with modern appliances",
+        "garage": "spacious garage with ample storage",
+        "other": "beautifully finished interior space",
+        "front-yard": "stunning curb appeal with manicured landscaping",
+        "backyard": "private backyard oasis perfect for outdoor living",
+        "patio": "inviting outdoor patio ideal for entertaining",
+        "pool": "sparkling pool with resort-style amenities",
+        "garden": "professionally designed landscaping and garden",
+        "driveway": "welcoming entrance with elegant driveway",
+        "aerial": "expansive property showcasing the full lot",
+        "other-exterior": "impressive outdoor feature",
+      };
+
+      const segmentResults: string[] = [];
+      const compositeId = `composite-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+
+      for (let i = 0; i < segmentCount; i++) {
+        const segmentImageIdx = i < availableImages.length ? i : i % availableImages.length;
+        const segmentImage = availableImages[segmentImageIdx];
+        const segmentRoomType = roomTypesArray[segmentImageIdx] || "";
+        const roomDesc = roomPromptMapLocal[segmentRoomType] || "interior space";
+        const isExterior = spaceType === "exterior";
+        const sceneType = isExterior ? "exterior" : "interior";
+
+        let segmentPrompt = `Create a realistic ${segmentDuration}-second cinematic video tour of this ${roomDesc}. `;
+        segmentPrompt += `This is segment ${i + 1} of ${segmentCount} for a complete ${totalDuration}-second property tour. `;
+
+        if (i === 0) {
+          segmentPrompt += "Begin with a wide establishing shot, then slowly dolly forward into the space. ";
+        } else if (i === segmentCount - 1) {
+          segmentPrompt += "Provide a final sweeping view of this space, ending with a smooth pull-back or wide conclusion shot. ";
+        } else {
+          segmentPrompt += "Start with a medium shot and smoothly pan to reveal the full space, maintaining steady camera movement. ";
+        }
+
+        segmentPrompt += "Compliance: Do not add objects, decor, or features not present in the image. The video must factually represent the space as shown.";
+
+        if (customDescription && typeof customDescription === "string" && customDescription.trim()) {
+          segmentPrompt += `\n\nProperty Details: ${customDescription.trim()}`;
+        }
+
+        if (noSound) {
+          segmentPrompt += "\n\nAudio: This video should be silent with no background music or sound effects.";
+        }
+
+        console.log(`🎬 [VEO] Segment ${i + 1}/${segmentCount}: image=${segmentImageIdx + 1} (${segmentRoomType || "room"})`);
+
+        const result = await veoVideoService.generateVideo({
+          prompt: segmentPrompt,
+          imageUrl: segmentImage,
+          aspectRatio: presetConfig.aspectRatio,
+          duration: segmentDuration,
+          agentPhotoUrl: i === segmentCount - 1 ? agentPhotoUrl : undefined,
+        });
+
+        if (!result.success) {
+          if (segmentResults.length === 0) {
+            return res.status(500).json({ error: result.error || "Failed to start video generation" });
+          }
+          console.warn(`⚠️ [VEO] Segment ${i + 1} failed, continuing with ${segmentResults.length} successful segment(s)`);
+          break;
+        }
+
+        if (result.operationId && userId) {
+          aiVeoVideos.set(result.operationId, Number(userId));
+        }
+        segmentResults.push(result.operationId!);
+      }
+
+      const job: MultiSegmentJob = {
+        compositeId,
+        segmentOperationIds: segmentResults,
+        segmentVideoUrls: segmentResults.map(() => null),
+        userId: userId || "unknown",
+        preset,
+        aspectRatio: presetConfig.aspectRatio,
+        totalDuration,
+        status: "processing",
+      };
+      multiSegmentJobs.set(compositeId, job);
+      aiVeoVideos.set(compositeId, Number(userId));
+
+      console.log(`📦 [VEO] Multi-segment job created: ${compositeId} with ${segmentResults.length} segments`);
+
+      res.json({
+        success: true,
+        operationId: compositeId,
+        isMultiSegment: true,
+        segmentCount: segmentResults.length,
+        preset,
+        aspectRatio: presetConfig.aspectRatio,
+        duration: totalDuration,
+        segmentDuration,
+      });
+    } catch (error) {
+      console.error("VEO start error:", error);
+      res.status(500).json({ error: "Failed to start video generation" });
+    }
+  });
+
+  async function normalizeVideoAudio(inputPath: string, outputPath: string): Promise<boolean> {
+    try {
+      const { exec } = await import("child_process");
+      const { promisify } = await import("util");
+      const execAsync = promisify(exec);
+
+      const { stdout, stderr } = await execAsync(
+        `ffmpeg -i "${inputPath}" -af volumedetect -f null - 2>&1`,
+        { timeout: 30000 }
+      );
+      const detectOutput = stdout + stderr;
+
+      const meanMatch = detectOutput.match(/mean_volume:\s*([-\d.]+)\s*dB/);
+      const meanVolume = meanMatch ? parseFloat(meanMatch[1]) : -30;
+      console.log(`🔊 [VEO] Detected mean volume: ${meanVolume} dB`);
+
+      const targetLoudness = -16;
+      const boostDb = Math.min(Math.abs(meanVolume) - Math.abs(targetLoudness), 30);
+
+      if (boostDb > 2) {
+        console.log(`🔊 [VEO] Boosting audio by ${boostDb.toFixed(1)} dB`);
+        await execAsync(
+          `ffmpeg -i "${inputPath}" -c:v copy -af "volume=${boostDb}dB,alimiter=limit=0.95" -c:a aac -b:a 192k -y "${outputPath}"`,
+          { timeout: 60000 }
+        );
+        return true;
+      } else {
+        console.log(`🔊 [VEO] Audio level is acceptable (${meanVolume} dB), no boost needed`);
+        const fsModule = await import("fs");
+        fsModule.copyFileSync(inputPath, outputPath);
+        return true;
+      }
+    } catch (err: any) {
+      console.warn(`⚠️ [VEO] Audio normalization failed, using original: ${err.message}`);
+      const fsModule = await import("fs");
+      fsModule.copyFileSync(inputPath, outputPath);
+      return false;
+    }
+  }
+
+  async function uploadVeoVideoToS3(localPath: string, operationId: string, userId: string | number): Promise<string | null> {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const os = await import("os");
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+
+      const boostedPath = path.join(os.tmpdir(), `veo-boosted-${operationId}.mp4`);
+      await normalizeVideoAudio(localPath, boostedPath);
+
+      const videoBuffer = fs.readFileSync(boostedPath);
+      const s3Key = `ai-videos/${userId}/veo-${operationId}-${Date.now()}.mp4`;
+      const publicUrl = await s3Service.uploadBuffer(videoBuffer, s3Key, "video/mp4", true);
+      console.log(`✅ [VEO] Uploaded video to S3: ${publicUrl.substring(0, 80)}...`);
+      try { fs.unlinkSync(localPath); } catch {}
+      try { fs.unlinkSync(boostedPath); } catch {}
+      return publicUrl;
+    } catch (err: any) {
+      console.error("❌ [VEO] Failed to upload video to S3:", err.message);
+      return null;
+    }
+  }
+
+  async function combineSegmentVideos(videoUrls: string[], compositeId: string, userId: string | number): Promise<string> {
+    const { exec } = await import("child_process");
+    const { promisify } = await import("util");
+    const execAsync = promisify(exec);
+    const fs = await import("fs/promises");
+    const fsSync = await import("fs");
+    const path = await import("path");
+    const os = await import("os");
+
+    const tempDir = path.join(os.tmpdir(), `veo-combine-${compositeId}`);
+    await fs.mkdir(tempDir, { recursive: true });
+
+    try {
+      const downloadedFiles: string[] = [];
+      for (let i = 0; i < videoUrls.length; i++) {
+        const filePath = path.join(tempDir, `segment_${i}.mp4`);
+        const response = await fetch(videoUrls[i]);
+        if (!response.ok) throw new Error(`Failed to download segment ${i}`);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        await fs.writeFile(filePath, buffer);
+        downloadedFiles.push(filePath);
+      }
+
+      const normalizedFiles: string[] = [];
+      for (let i = 0; i < downloadedFiles.length; i++) {
+        const detectedPath = path.join(tempDir, `detected_${i}.mp4`);
+        await normalizeVideoAudio(downloadedFiles[i], detectedPath);
+
+        const normalizedPath = path.join(tempDir, `normalized_${i}.mp4`);
+        await execAsync(
+          `ffmpeg -i "${detectedPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -ar 44100 -ac 2 -b:a 192k -r 24 -y "${normalizedPath}"`,
+          { timeout: 60000 }
+        );
+        normalizedFiles.push(normalizedPath);
+      }
+
+      const concatList = normalizedFiles.map(f => `file '${f}'`).join("\n");
+      const concatFilePath = path.join(tempDir, "concat.txt");
+      await fs.writeFile(concatFilePath, concatList);
+
+      const outputPath = path.join(tempDir, `combined-${compositeId}.mp4`);
+      try {
+        await execAsync(`ffmpeg -f concat -safe 0 -i "${concatFilePath}" -c copy "${outputPath}"`, { timeout: 60000 });
+      } catch {
+        console.log(`⚠️ [VEO] Stream copy concat failed after normalization, re-encoding...`);
+        const inputArgs = normalizedFiles.map(f => `-i "${f}"`).join(" ");
+        const filterParts = normalizedFiles.map((_, i) => `[${i}:v:0][${i}:a:0]`).join("");
+        await execAsync(
+          `ffmpeg ${inputArgs} -filter_complex "${filterParts}concat=n=${normalizedFiles.length}:v=1:a=1[outv][outa]" -map "[outv]" -map "[outa]" -c:v libx264 -preset fast -c:a aac "${outputPath}"`,
+          { timeout: 120000 }
+        );
+      }
+
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+      const videoBuffer = fsSync.readFileSync(outputPath);
+      const s3Key = `ai-videos/${userId}/veo-combined-${compositeId}-${Date.now()}.mp4`;
+      const publicUrl = await s3Service.uploadBuffer(videoBuffer, s3Key, "video/mp4", true);
+      console.log(`✅ [VEO] Combined video uploaded to S3: ${publicUrl.substring(0, 80)}...`);
+
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      return publicUrl;
+    } catch (err) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      throw err;
+    }
+  }
+
+  app.get("/api/ai/veo/status/:operationId", requireAuth, async (req, res) => {
+    try {
+      const { operationId } = req.params;
+
+      if (!operationId) {
+        return res.status(400).json({ error: "Operation ID is required" });
+      }
+
+      const multiJob = multiSegmentJobs.get(operationId);
+      if (multiJob) {
+        const userId = req.user?.id;
+        if (userId && String(multiJob.userId) !== String(userId)) {
+          return res.status(403).json({ error: "Not authorized to access this video" });
+        }
+
+        if (multiJob.status === "done") {
+          return res.json({
+            operationId,
+            done: true,
+            videoUrl: multiJob.combinedVideoUrl,
+            isMultiSegment: true,
+            segmentCount: multiJob.segmentOperationIds.length,
+          });
+        }
+        if (multiJob.status === "error") {
+          return res.json({
+            operationId,
+            done: true,
+            error: multiJob.error || "Multi-segment video generation failed",
+            isMultiSegment: true,
+          });
+        }
+        if (multiJob.status === "combining") {
+          return res.json({
+            operationId,
+            done: false,
+            isMultiSegment: true,
+            segmentCount: multiJob.segmentOperationIds.length,
+            segmentsCompleted: multiJob.segmentVideoUrls.filter(u => u !== null).length,
+            statusMessage: "Combining video segments...",
+          });
+        }
+
+        const { veoVideoService } = await import("./services/veo-video");
+        const reqUserId = req.user?.id || "unknown";
+        let allDone = true;
+        let anyError = false;
+
+        for (let i = 0; i < multiJob.segmentOperationIds.length; i++) {
+          if (multiJob.segmentVideoUrls[i] !== null) continue;
+
+          const segStatus = await veoVideoService.checkOperationStatus(multiJob.segmentOperationIds[i]);
+          if (segStatus.done && segStatus.videoUrl) {
+            let publicUrl = segStatus.videoUrl;
+            if (publicUrl.startsWith("/tmp/")) {
+              const uploaded = await uploadVeoVideoToS3(publicUrl, multiJob.segmentOperationIds[i], reqUserId);
+              publicUrl = uploaded || publicUrl;
+            }
+            multiJob.segmentVideoUrls[i] = publicUrl;
+            console.log(`✅ [VEO] Segment ${i + 1}/${multiJob.segmentOperationIds.length} complete: ${publicUrl.substring(0, 60)}...`);
+          } else if (segStatus.done && segStatus.error) {
+            anyError = true;
+            console.error(`❌ [VEO] Segment ${i + 1} failed: ${segStatus.error}`);
+          } else {
+            allDone = false;
+          }
+        }
+
+        const completedCount = multiJob.segmentVideoUrls.filter(u => u !== null).length;
+
+        if (anyError && completedCount === 0) {
+          multiJob.status = "error";
+          multiJob.error = "All video segments failed to generate";
+          return res.json({ operationId, done: true, error: multiJob.error, isMultiSegment: true });
+        }
+
+        if (allDone || (anyError && completedCount > 0)) {
+          const completedUrls = multiJob.segmentVideoUrls.filter((u): u is string => u !== null);
+
+          if (completedUrls.length === 1) {
+            multiJob.status = "done";
+            multiJob.combinedVideoUrl = completedUrls[0];
+            return res.json({
+              operationId,
+              done: true,
+              videoUrl: completedUrls[0],
+              isMultiSegment: true,
+              segmentCount: multiJob.segmentOperationIds.length,
+            });
+          }
+
+          multiJob.status = "combining";
+          console.log(`🔗 [VEO] All ${completedUrls.length} segments ready, combining...`);
+
+          combineSegmentVideos(completedUrls, operationId, reqUserId)
+            .then(async (combinedUrl) => {
+              multiJob.status = "done";
+              multiJob.combinedVideoUrl = combinedUrl;
+              console.log(`✅ [VEO] Multi-segment video combined successfully: ${combinedUrl.substring(0, 80)}...`);
+              const saveUserId = multiJob.userId && multiJob.userId !== "unknown" ? String(multiJob.userId) : null;
+              if (saveUserId) {
+                try {
+                  await storage.createVideoContent({
+                    userId: saveUserId,
+                    title: `Property Tour (${multiJob.preset}) - ${multiJob.segmentOperationIds.length} rooms`,
+                    script: `VEO 3.1 property tour with ${multiJob.segmentOperationIds.length} rooms`,
+                    videoUrl: combinedUrl,
+                    thumbnailUrl: null,
+                    duration: multiJob.totalDuration,
+                    status: "ready",
+                    videoType: "property_tour",
+                    metadata: { preset: multiJob.preset, aspectRatio: multiJob.aspectRatio, segmentCount: multiJob.segmentOperationIds.length, compositeId: operationId },
+                  });
+                  console.log(`💾 [VEO] Combined video saved to database for user ${saveUserId}`);
+                } catch (dbErr: any) {
+                  console.error(`⚠️ [VEO] Failed to save combined video to DB:`, dbErr.message);
+                }
+              }
+            })
+            .catch((err) => {
+              console.error(`❌ [VEO] Failed to combine segments:`, err);
+              multiJob.status = "done";
+              multiJob.combinedVideoUrl = completedUrls[0];
+              console.log(`⚠️ [VEO] Falling back to first segment video`);
+            });
+
+          return res.json({
+            operationId,
+            done: false,
+            isMultiSegment: true,
+            segmentCount: multiJob.segmentOperationIds.length,
+            segmentsCompleted: completedUrls.length,
+            statusMessage: "Combining video segments...",
+          });
+        }
+
+        return res.json({
+          operationId,
+          done: false,
+          isMultiSegment: true,
+          segmentCount: multiJob.segmentOperationIds.length,
+          segmentsCompleted: completedCount,
+          statusMessage: `Generating segment ${completedCount + 1} of ${multiJob.segmentOperationIds.length}...`,
+        });
+      }
+
+      const { veoVideoService } = await import("./services/veo-video");
+      const status = await veoVideoService.checkOperationStatus(operationId);
+
+      let publicVideoUrl = status.videoUrl;
+      if (status.done && status.videoUrl && status.videoUrl.startsWith("/tmp/")) {
+        const userId = req.user?.id || "unknown";
+        const uploaded = await uploadVeoVideoToS3(status.videoUrl, operationId, userId);
+        publicVideoUrl = uploaded || status.videoUrl;
+
+        if (uploaded && req.user?.id) {
+          try {
+            await storage.createVideoContent({
+              userId: String(req.user.id),
+              title: `VEO Video - ${new Date().toLocaleDateString()}`,
+              script: "VEO 3.1 generated video",
+              videoUrl: uploaded,
+              thumbnailUrl: null,
+              duration: 8,
+              status: "ready",
+              videoType: "veo_single",
+              metadata: { operationId, source: "veo" },
+            });
+            console.log(`💾 [VEO] Single-segment video saved to database for user ${req.user.id}`);
+          } catch (dbErr: any) {
+            console.error(`⚠️ [VEO] Failed to save single video to DB:`, dbErr.message);
+          }
+        }
+      }
+
+      res.json({
+        operationId,
+        done: status.done,
+        videoUrl: publicVideoUrl,
+        error: status.error,
+      });
+    } catch (error) {
+      console.error("VEO status check error:", error);
+      res.status(500).json({ error: "Failed to check video generation status" });
+    }
+  });
+
+  // Combine multiple videos into a full house tour using ffmpeg
+  app.post("/api/ai/veo/combine", requireAuth, async (req, res) => {
+    try {
+      const { videoUrls, title } = req.body;
+      const userId = req.user?.id;
+
+      if (!Array.isArray(videoUrls) || videoUrls.length < 2) {
+        return res.status(400).json({ error: "At least 2 video URLs are required to combine" });
+      }
+
+      if (videoUrls.length > 10) {
+        return res.status(400).json({ error: "Maximum 10 videos can be combined at once" });
+      }
+
+      // Security: Strict URL validation for video sources
+      const S3_BUCKET_NAME = process.env.AWS_S3_BUCKET || "nebraskahomehub";
+      
+      for (const url of videoUrls) {
+        try {
+          const parsedUrl = new URL(url);
+          
+          // Only allow HTTPS
+          if (parsedUrl.protocol !== "https:") {
+            return res.status(400).json({ error: "Only HTTPS URLs are allowed" });
+          }
+          
+          // Validate against our specific S3 bucket or Google's Gemini API
+          const isOurS3Bucket = 
+            parsedUrl.hostname === `${S3_BUCKET_NAME}.s3.amazonaws.com` ||
+            parsedUrl.hostname === `${S3_BUCKET_NAME}.s3.us-east-1.amazonaws.com` ||
+            parsedUrl.hostname === `${S3_BUCKET_NAME}.s3.us-east-2.amazonaws.com` ||
+            (parsedUrl.hostname === "s3.amazonaws.com" && parsedUrl.pathname.startsWith(`/${S3_BUCKET_NAME}/`)) ||
+            (parsedUrl.hostname === "s3.us-east-1.amazonaws.com" && parsedUrl.pathname.startsWith(`/${S3_BUCKET_NAME}/`));
+          
+          const isGeminiApi = 
+            parsedUrl.hostname === "generativelanguage.googleapis.com" ||
+            parsedUrl.hostname === "storage.googleapis.com";
+          
+          if (!isOurS3Bucket && !isGeminiApi) {
+            console.warn(`🔒 [VEO Combine] Blocked URL from non-allowed source: ${parsedUrl.hostname}`);
+            return res.status(400).json({ error: "Video URLs must be from your property tour videos" });
+          }
+          
+          // Block any URL containing private IP ranges or localhost patterns in path
+          const suspiciousPatterns = /127\.|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|0\.0\.0\.0/i;
+          if (suspiciousPatterns.test(url)) {
+            return res.status(400).json({ error: "Invalid URL detected" });
+          }
+        } catch (e) {
+          return res.status(400).json({ error: "Invalid video URL format" });
+        }
+      }
+
+      console.log(`🎬 [VEO Combine] Combining ${videoUrls.length} videos for user ${userId}`);
+
+      const { exec } = await import("child_process");
+      const { promisify } = await import("util");
+      const execAsync = promisify(exec);
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+
+      // Create temp directory for video processing
+      const tempDir = path.join(os.tmpdir(), `veo-combine-${Date.now()}`);
+      await fs.mkdir(tempDir, { recursive: true });
+
+      try {
+        // Download all videos to temp directory
+        const downloadedFiles: string[] = [];
+        for (let i = 0; i < videoUrls.length; i++) {
+          const videoUrl = videoUrls[i];
+          const tempFile = path.join(tempDir, `video_${i}.mp4`);
+          
+          console.log(`📥 [VEO Combine] Downloading video ${i + 1}/${videoUrls.length}`);
+          
+          const response = await fetch(videoUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to download video ${i + 1}: ${response.statusText}`);
+          }
+          
+          const buffer = Buffer.from(await response.arrayBuffer());
+          await fs.writeFile(tempFile, buffer);
+          downloadedFiles.push(tempFile);
+        }
+
+        // Create concat file for ffmpeg
+        const concatListPath = path.join(tempDir, "concat_list.txt");
+        const concatContent = downloadedFiles.map(f => `file '${f}'`).join("\n");
+        await fs.writeFile(concatListPath, concatContent);
+
+        // Output file
+        const outputFile = path.join(tempDir, "combined_tour.mp4");
+
+        // Run ffmpeg to combine videos with re-encoding for compatibility
+        console.log(`🔧 [VEO Combine] Running ffmpeg to combine videos...`);
+        
+        // Re-encode to ensure compatible codec/resolution across all videos
+        // Using H.264 with AAC audio for maximum compatibility
+        const ffmpegCmd = `ffmpeg -f concat -safe 0 -i "${concatListPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart -y "${outputFile}"`;
+        
+        await execAsync(ffmpegCmd, { timeout: 300000 }); // 5 minute timeout for re-encoding
+
+        // Read the combined video
+        const combinedVideoBuffer = await fs.readFile(outputFile);
+        
+        // Upload to S3
+        const { uploadToS3 } = await import("./services/s3");
+        const s3Key = `videos/property-tours/combined-${Date.now()}-${userId}.mp4`;
+        const s3Url = await uploadToS3(combinedVideoBuffer, s3Key, "video/mp4");
+
+        console.log(`✅ [VEO Combine] Combined video uploaded to S3: ${s3Url}`);
+
+        // Cleanup temp files
+        await fs.rm(tempDir, { recursive: true, force: true });
+
+        res.json({
+          success: true,
+          videoUrl: s3Url,
+          title: title || "Full Property Tour",
+          videoCount: videoUrls.length,
+        });
+      } catch (ffmpegError: any) {
+        // Cleanup on error
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        throw ffmpegError;
+      }
+    } catch (error: any) {
+      console.error("VEO combine error:", error);
+      res.status(500).json({ error: error.message || "Failed to combine videos" });
+    }
+  });
+
   // Content generation endpoints
-  app.post("/api/content/generate", requireAuth, async (req, res) => {
+  app.post("/api/content/generate", optionalAuth, async (req: any, res) => {
     try {
       const {
         type,
@@ -1025,17 +2012,15 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         localSeoFocus,
         propertyData,
         businessType,
-        businessSubtype,
       } = req.body;
 
-      // Fetch company profile and business context for personalization
+      // Fetch company profile for dynamic personalization
       const userId = req.user?.id;
-      let companyProfile = null;
+      let companyProfile: any = null;
       if (userId) {
         companyProfile = await storage.getCompanyProfile(userId);
       }
-
-      const businessContext = await getBusinessContext(req);
+      const effectiveProfile = { ...companyProfile, businessType: businessType || companyProfile?.businessType || "real_estate" };
 
       // Use unified AI service (GitHub Copilot primary, OpenAI fallback)
       const { unifiedAI } = await import("./services/unified-ai");
@@ -1049,16 +2034,16 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         longTailKeywords,
         localSeoFocus,
         propertyData,
-        companyProfile: companyProfile || undefined,
-        businessType: businessType || businessContext.businessType,
-        businessSubtype: businessSubtype || businessContext.businessSubtype,
+        companyProfile: effectiveProfile,
       });
 
       // Save to storage
-      const user = await storage.getUserByUsername("mikebjork");
-      if (user) {
+      const contentUserId = userId ? String(userId) : null;
+      const fallbackUser = !contentUserId ? await storage.getUserByUsername("mikebjork") : null;
+      const saveUserId = contentUserId || fallbackUser?.id;
+      if (saveUserId) {
         const contentPiece = await storage.createContentPiece({
-          userId: user.id,
+          userId: saveUserId,
           type,
           title: generatedContent.title,
           content: generatedContent.content,
@@ -1078,7 +2063,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
 
         // Send real-time notification
         realtimeService.notifyContentPublished(
-          user.id,
+          Number(saveUserId),
           contentPiece.id,
           generatedContent.title
         );
@@ -1095,11 +2080,11 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
 
   app.post("/api/content/social-post", async (req, res) => {
     try {
-      const { topic, platform, neighborhood } = req.body;
+      const { topic, platform, neighborhood, businessType, menuItem } = req.body;
 
       // Fetch company profile for dynamic personalization
       const userId = req.user?.id;
-      let companyProfile = null;
+      let companyProfile: any = null;
       if (userId) {
         companyProfile = await storage.getCompanyProfile(userId);
       }
@@ -1108,7 +2093,9 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         topic,
         platform,
         neighborhood,
-        companyProfile || undefined
+        companyProfile || undefined,
+        businessType || companyProfile?.businessType,
+        menuItem
       );
       res.json(socialPost);
     } catch (error) {
@@ -1117,13 +2104,183 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
     }
   });
 
-  app.get("/api/content", async (req, res) => {
+  app.post("/api/content/promote-app", async (req: Request, res: Response) => {
     try {
+      const { appId, appName, appUrl, appDescription, appFeatures, platform, businessType, aiPrompt } = req.body;
+      
+      if (!appName || !appUrl) {
+        return res.status(400).json({ error: "App name and URL are required" });
+      }
+
+      const businessAudienceMap: Record<string, string> = {
+        real_estate: "real estate agents, brokers, and real estate professionals",
+        restaurant: "restaurant owners, food service operators, and hospitality professionals",
+        home_services: "home service business owners, contractors, and tradespeople",
+        retail: "retail business owners, shop managers, and merchants",
+        professional_services: "professional service providers, consultants, and business owners",
+        general: "business owners and entrepreneurs",
+      };
+      const businessIndustryMap: Record<string, string> = {
+        real_estate: "real estate technology",
+        restaurant: "restaurant and hospitality technology",
+        home_services: "home services business technology",
+        retail: "retail business technology",
+        professional_services: "professional services technology",
+        general: "business technology",
+      };
+      const bType = businessType || "real_estate";
+      const targetAudience = businessAudienceMap[bType] || businessAudienceMap.real_estate;
+      const industryLabel = businessIndustryMap[bType] || businessIndustryMap.real_estate;
+
+      const angles = [
+        "Write a compelling social media post highlighting the key features and benefits. Focus on what makes it unique and why someone should try it today.",
+        "Write a testimonial-style social media post as if a happy user is sharing their experience. Make it feel authentic and relatable.",
+        "Write an educational/tips-style social media post that teaches something valuable related to what the app does, then naturally mentions the app as the solution.",
+        "Write an exciting announcement-style post about the app, creating urgency and excitement. Include a strong call-to-action.",
+        "Write a problem-solution style post that identifies a common pain point the target audience faces, then presents the app as the perfect solution.",
+        "Write a behind-the-scenes or founder's story style post that shares the mission and passion behind building the app.",
+        "Write a comparison-style post showing how things were before vs after using the app. Paint a vivid before/after picture.",
+        "Write a quick-tips style post sharing 3-5 actionable tips related to the app's domain, weaving in the app as the tool to accomplish them.",
+      ];
+      
+      const randomAngle = angles[Math.floor(Math.random() * angles.length)];
+      const contentAngle = aiPrompt
+        ? `OVERRIDE INSTRUCTION — the user has given a specific direction that MUST be followed exactly: "${aiPrompt}". Build the entire post around this instruction. Ignore the default angle below and use this as the primary creative direction.`
+        : `Content Angle: ${randomAngle}`;
+      const featuresText = Array.isArray(appFeatures) && appFeatures.length ? `\nKey Features: ${appFeatures.join(", ")}` : "";
+      
+      const platformGuidelines: Record<string, string> = {
+        facebook: "Optimize for Facebook: can be longer, use emojis, include a clear CTA. 200-400 words.",
+        instagram: "Optimize for Instagram: visual language, use relevant emojis, include line breaks for readability. 150-300 words. Heavy on hashtags.",
+        x: "Optimize for X/Twitter: concise, punchy, under 280 characters. Use 1-2 hashtags max.",
+        linkedin: "Optimize for LinkedIn: professional tone, thought-leadership angle, include insights. 200-400 words.",
+        tiktok: "Optimize for TikTok: trendy, casual, Gen-Z friendly language. Short and catchy.",
+        youtube: "Optimize for YouTube: detailed description, include timestamps if relevant. 300-500 words.",
+        whatsapp: "Optimize for WhatsApp: conversational, personal, brief. 50-150 words.",
+      };
+
+      const platformGuide = platformGuidelines[platform] || platformGuidelines.facebook;
+
+      const promoUserPrompt = `Create a promotional social media post for:
+
+App Name: ${appName}
+Website: ${appUrl}
+Description: ${appDescription}${featuresText}
+
+${contentAngle}
+
+Platform Guidelines: ${platformGuide}
+
+Important:
+- Make it feel natural and engaging, not salesy
+- ALWAYS include the full website URL https://www.${appUrl} prominently in the post (with https://www. prefix)
+- MUST end every post with a call-to-action that includes the contact link. Example endings: "Get started at https://www.${appUrl} or contact us at https://www.imakepage.com/#contact" or "Visit https://www.${appUrl} | Questions? https://www.imakepage.com/#contact"
+- Generate 5-8 relevant hashtags separately in the hashtags field — do NOT put them inside the post content
+- Do NOT use markdown formatting (no asterisks, no bold, no headers)
+- Do NOT start the content with "promote app" or "promote_app".
+
+The LAST LINE of the content MUST be a call-to-action with both links, like:
+"Visit https://www.${appUrl} | Contact us: https://www.imakepage.com/#contact"
+
+CRITICAL RESPONSE FORMAT — respond with ONLY this raw JSON, nothing else, no explanation, no markdown, no code block:
+{"content": "the post text here — no hashtags inside this string", "hashtags": ["tag1", "tag2", "tag3"]}
+
+Do NOT nest JSON inside the content field. The content value must be a plain text string, not a JSON object.`;
+
+      const promoSystemPrompt = `You are an expert social media marketer creating promotional content for ${industryLabel} products. You understand the ${industryLabel} space and create content that resonates with ${targetAudience}. Create engaging, authentic content that drives engagement and conversions. Never use generic filler - be specific about the product's value. The company behind these products is My Golden Brick (mygoldenbrick.com), based in Omaha, Nebraska. CRITICAL: Respond with raw JSON only — no markdown, no code blocks, no explanation. Never put hashtags inside the content string and never nest JSON inside content.`;
+
+      let result: any;
+
+      const { GoogleGenAI } = await import("@google/genai");
+      const geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const geminiResponse = await geminiClient.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: `${promoSystemPrompt}\n\n${promoUserPrompt}` }] }],
+        config: { maxOutputTokens: 1500 },
+      });
+      const rawText = (geminiResponse.text ?? "")
+        .replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```\s*$/i, "").trim();
+
+      // 1. Clean the AI's response properly
+      function parsePromoJSON(text: string): { content: string; hashtags: string[] } {
+        const fallback = { content: `Check out ${appName} at https://www.${appUrl}!`, hashtags: [] };
+        try {
+          // Remove any "promote app" prefix the AI might have hallucinated into the JSON
+          const cleanedText = text.replace(/^promote\s+app\s+/i, "").trim();
+          const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+          const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleanedText);
+          
+          if (parsed && typeof parsed.content === "string") {
+            let contentStr = parsed.content.trim();
+            // Remove "promote app" from inside the content string if it exists
+            contentStr = contentStr.replace(/^promote\s+app\s+/i, "").trim();
+            
+            // Unwrap if AI double-wrapped the JSON
+            if (contentStr.startsWith("{") && contentStr.includes('"content"')) {
+              try {
+                const nested = JSON.parse(contentStr);
+                if (nested && typeof nested.content === "string") {
+                  let innerContent = nested.content.trim().replace(/^promote\s+app\s+/i, "").trim();
+                  return { content: innerContent, hashtags: nested.hashtags || parsed.hashtags || [] };
+                }
+              } catch {
+                const rgx = /"content"\s*:\s*"([\s\S]*?)",\s*"hashtags"/;
+                const m = contentStr.match(rgx);
+                if (m) {
+                  try { contentStr = JSON.parse('"' + m[1] + '"'); } catch { contentStr = m[1]; }
+                  contentStr = contentStr.replace(/^promote\s+app\s+/i, "").trim();
+                  return { content: contentStr, hashtags: parsed.hashtags || [] };
+                }
+              }
+            }
+            return { content: contentStr, hashtags: parsed.hashtags || [] };
+          }
+          return fallback;
+        } catch {
+          return fallback;
+        }
+      }
+      result = parsePromoJSON(rawText);
+      let content = result.content || `Check out ${appName} at https://www.${appUrl}!`;
+      
+      // 2. Remove markdown and "promote app" prefix
+      content = content.replace(/^promote\s+app\s+/i, "").trim();
+      content = content.replace(/^promote_app\s+/i, "").trim();
+      content = content.replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1").replace(/#{1,6}\s/g, "").replace(/`([^`]*)`/g, "$1");
+      
+      // 3. Smart URL handling - only add if missing
+      const hasWebsiteUrl = content.toLowerCase().includes(appUrl.toLowerCase());
+      const hasContactLink = content.toLowerCase().includes("imakepage.com/#contact");
+      
+      if (!hasWebsiteUrl) {
+        content += `\n\nVisit https://www.${appUrl}`;
+      }
+      if (!hasContactLink) {
+        const separator = !hasWebsiteUrl ? " | " : "\n\n";
+        content += `${separator}Contact us: https://www.imakepage.com/#contact`;
+      }
+      
+      res.json({
+        content,
+        hashtags: result.hashtags || [appName.replace(/\s+/g, ""), "TechStartup"],
+      });
+    } catch (error: any) {
+      console.error("Promote app content generation error:", error);
+      res.status(500).json({ error: "Failed to generate promotional content" });
+    }
+  });
+
+  app.get("/api/content", optionalAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (userId) {
+        const content = await storage.getContentPieces(String(userId));
+        return res.json(content);
+      }
       const user = await storage.getUserByUsername("mikebjork");
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-
       const content = await storage.getContentPieces(user.id);
       res.json(content);
     } catch (error) {
@@ -1145,7 +2302,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         originalContent: content,
         customPrompt:
           prompt ||
-          "Optimize this post for SEO and engagement while maintaining professional tone for food and dining audience in Omaha, Nebraska.",
+          "Optimize this post for SEO and engagement while maintaining professional tone for real estate audience in Omaha, Nebraska.",
         platform: platform || "general",
         postType: postType || "general",
       });
@@ -1172,59 +2329,15 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       const s3Service = new S3UploadService();
       
       const timestamp = Date.now();
-      const originalExt = (req.file.originalname?.split('.').pop() || 'jpg').toLowerCase();
-      
-      // Convert HEIC/HEIF to JPEG for browser compatibility
-      let imageBuffer = req.file.buffer;
-      let ext = originalExt;
-      let mimetype = req.file.mimetype || "image/jpeg";
-      
-      // Check if HEIC/HEIF format (iPhone photos)
-      if (['heic', 'heif'].includes(originalExt)) {
-        try {
-          console.log(`🔄 Converting ${originalExt.toUpperCase()} to JPEG using heic-convert...`);
-          const heicConvert = (await import("heic-convert")).default;
-          const outputBuffer = await heicConvert({
-            buffer: req.file.buffer,
-            format: 'JPEG',
-            quality: 0.9
-          });
-          imageBuffer = Buffer.from(outputBuffer);
-          ext = 'jpg';
-          mimetype = 'image/jpeg';
-          console.log(`✅ Converted HEIC to JPEG (${(imageBuffer.length / 1024).toFixed(1)}KB)`);
-        } catch (conversionError: any) {
-          console.error(`⚠️ HEIC conversion failed:`, conversionError.message);
-          // Return error since browser can't display HEIC
-          return res.status(400).json({ 
-            error: "HEIC format not supported. Please convert to JPG/PNG before uploading." 
-          });
-        }
-      }
-      // Convert other non-standard formats with sharp
-      else if (['webp', 'tiff', 'avif'].includes(originalExt)) {
-        try {
-          const sharp = (await import("sharp")).default;
-          console.log(`🔄 Converting ${originalExt.toUpperCase()} to JPEG...`);
-          imageBuffer = await sharp(req.file.buffer)
-            .jpeg({ quality: 90 })
-            .toBuffer();
-          ext = 'jpg';
-          mimetype = 'image/jpeg';
-          console.log(`✅ Converted to JPEG (${(imageBuffer.length / 1024).toFixed(1)}KB)`);
-        } catch (conversionError) {
-          console.error(`⚠️ Image conversion failed, using original:`, conversionError);
-        }
-      }
-      
+      const ext = req.file.originalname?.split('.').pop() || 'jpg';
       const filename = `reference-${userId}-${timestamp}.${ext}`;
       const s3Key = `reference-images/${userId}/${filename}`;
       
       // Upload with presigned URL (valid for 1 hour) so OpenAI can access it
       const url = await s3Service.uploadBuffer(
-        imageBuffer, 
+        req.file.buffer, 
         s3Key, 
-        mimetype,
+        req.file.mimetype || "image/jpeg",
         true, // return presigned URL
         3600 // 1 hour expiration
       );
@@ -1241,6 +2354,45 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
     }
   });
 
+  // Video source image upload endpoint
+  app.post("/api/upload/video-source", requireAuth, memoryImageUpload.single("file"), async (req, res) => {
+    try {
+      const userId = String(req.user!.id);
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+
+      console.log(`📤 Video source image upload for user ${userId}: ${req.file.originalname}`);
+
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+      
+      const timestamp = Date.now();
+      const ext = req.file.originalname?.split('.').pop() || 'jpg';
+      const filename = `video-source-${userId}-${timestamp}.${ext}`;
+      const s3Key = `video-sources/${userId}/${filename}`;
+      
+      // Upload with presigned URL so VEO API can access it
+      const url = await s3Service.uploadBuffer(
+        req.file.buffer, 
+        s3Key, 
+        req.file.mimetype || "image/jpeg",
+        true, // return presigned URL
+        3600 // 1 hour expiration
+      );
+
+      if (!url) {
+        return res.status(500).json({ error: "Failed to save video source image" });
+      }
+
+      console.log(`✅ Video source image saved to S3: ${url.substring(0, 80)}...`);
+      res.json({ url });
+    } catch (error) {
+      console.error("Video source image upload error:", error);
+      res.status(500).json({ error: "Failed to upload video source image" });
+    }
+  });
+
   // AI Image Generation endpoint
   app.post("/api/images/generate", requireAuth, async (req, res) => {
     try {
@@ -1250,13 +2402,6 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
       }
-
-      const businessContext = await getBusinessContext(req);
-      const businessTypeLabel = describeBusinessType(businessContext.businessType);
-      const businessSubtypeLabel = describeBusinessSubtype(businessContext.businessSubtype);
-      const businessDescriptor = businessSubtypeLabel
-        ? `${businessTypeLabel} (${businessSubtypeLabel})`
-        : businessTypeLabel;
 
       // Map aspect ratio to DALL-E size
       const sizeMap: Record<string, string> = {
@@ -1268,8 +2413,8 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       };
       const size = sizeMap[aspectRatio] || "1024x1024";
 
-      // Build enhanced business-aware prompt
-      let enhancedPrompt = `Professional ${businessDescriptor.toLowerCase()} visuals: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing for a ${businessDescriptor.toLowerCase()}.`;
+      // Build enhanced real estate prompt
+      let enhancedPrompt = `Professional real estate photography style: ${prompt}. High quality, well-lit, ${style} style, suitable for social media marketing.`;
       
       // If a reference image is provided, analyze it with GPT-4 Vision and incorporate the description
       if (referenceImageUrl) {
@@ -1279,7 +2424,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
             "Describe this image's visual style, composition, colors, and key elements. Be concise but detailed about the aesthetic qualities."
           );
           if (referenceDescription) {
-            enhancedPrompt = `Create an image inspired by this reference style: ${referenceDescription}. Applied to: ${prompt} for a ${businessDescriptor.toLowerCase()}. High quality, ${style} style, suitable for social media marketing.`;
+            enhancedPrompt = `Create an image inspired by this reference style: ${referenceDescription}. Applied to: ${prompt}. High quality, ${style} style, suitable for social media marketing.`;
             console.log(`✅ Reference analyzed, enhanced prompt created`);
           }
         } catch (refError) {
@@ -1327,9 +2472,15 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         try {
           const sharp = (await import("sharp")).default;
           
-          // Fetch the generated image
-          const imageResponse = await fetch(imageUrl);
-          const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+          // Get the generated image as a buffer (handle both URLs and base64 data URIs)
+          let imageBuffer: Buffer;
+          if (imageUrl.startsWith("data:")) {
+            const base64Data = imageUrl.split(",")[1];
+            imageBuffer = Buffer.from(base64Data, "base64");
+          } else {
+            const imageResponse = await fetch(imageUrl);
+            imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+          }
           
           // Get image dimensions
           const metadata = await sharp(imageBuffer).metadata();
@@ -1438,9 +2589,9 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       // Use Pexels API (free)
       const pexelsApiKey = process.env.PEXELS_API_KEY;
       
-      // If no Pexels key, use curated restaurant stock images
+      // If no Pexels key, use curated real estate stock images
       if (!pexelsApiKey) {
-        const fallbackImages = getRestaurantStockImages(query as string);
+        const fallbackImages = getRealEstateStockImages(query as string);
         return res.json({ images: fallbackImages, source: "curated" });
       }
 
@@ -1473,83 +2624,83 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
     } catch (error) {
       console.error("Stock image search error:", error);
       // Fallback to curated images
-      const fallbackImages = getRestaurantStockImages((req.query.query as string) || "restaurant");
+      const fallbackImages = getRealEstateStockImages((req.query.query as string) || "real estate");
       res.json({ images: fallbackImages, source: "curated" });
     }
   });
 
-  // Restaurant Image Templates endpoint
+  // Real Estate Image Templates endpoint
   app.get("/api/images/templates", async (req, res) => {
     const templates = [
       {
-        id: "grand-opening",
-        name: "Grand Opening Banner",
-        description: "Perfect for announcing grand opening events with warm, inviting imagery",
+        id: "open-house",
+        name: "Open House Banner",
+        description: "Perfect for announcing open house events with warm, inviting imagery",
         category: "Events",
-        prompt: "Professional grand opening restaurant banner with elegant restaurant exterior, warm welcoming atmosphere, festive lighting, beautiful entrance",
+        prompt: "Professional open house real estate banner with modern home exterior, warm welcoming atmosphere, sunshine, manicured lawn",
         suggestedAspectRatio: "16:9",
         icon: "Home",
       },
       {
-        id: "new-menu",
-        name: "New Menu Launch",
-        description: "Showcase new menu items with professional food photography",
-        category: "Menu",
-        prompt: "Elegant 'New Menu' restaurant promotional image with beautifully plated dishes, professional food photography, appetizing presentation",
+        id: "just-listed",
+        name: "Just Listed",
+        description: "Showcase new listings with professional curb appeal photography",
+        category: "Listings",
+        prompt: "Elegant 'Just Listed' real estate promotional image with beautiful luxury home, professional photography, curb appeal",
         suggestedAspectRatio: "1:1",
         icon: "Tag",
       },
       {
-        id: "signature-dish",
-        name: "Signature Dish",
-        description: "Highlight your signature dishes with stunning food photography",
-        category: "Menu",
-        prompt: "Stunning signature dish food photography, beautifully plated gourmet meal, professional lighting, appetizing colors, restaurant quality",
+        id: "just-sold",
+        name: "Just Sold",
+        description: "Celebrate successful sales with celebratory imagery",
+        category: "Listings",
+        prompt: "Celebratory 'Sold' real estate image with beautiful home, SOLD sign, happy atmosphere, success theme",
         suggestedAspectRatio: "1:1",
         icon: "Check",
       },
       {
-        id: "seasonal-special",
-        name: "Seasonal Special",
-        description: "Professional graphics for seasonal menu updates and specials",
+        id: "market-update",
+        name: "Market Update",
+        description: "Professional graphics for market insights and data",
         category: "Content",
-        prompt: "Professional seasonal restaurant special graphic, fresh ingredients, seasonal colors, clean modern design, appetizing food display",
+        prompt: "Professional real estate market analysis graphic, clean modern design, charts and data visualization, business style",
         suggestedAspectRatio: "16:9",
         icon: "TrendingUp",
       },
       {
-        id: "local-spotlight",
-        name: "Local Ingredients Spotlight",
-        description: "Highlight locally sourced ingredients and farm partnerships",
+        id: "neighborhood",
+        name: "Neighborhood Spotlight",
+        description: "Highlight local neighborhoods with scenic community imagery",
         category: "Content",
-        prompt: "Beautiful local farm-to-table scene with fresh produce, artisan ingredients, community farmers market atmosphere, organic charm",
+        prompt: "Beautiful neighborhood scene with tree-lined streets, well-maintained homes, community atmosphere, suburban charm",
         suggestedAspectRatio: "16:9",
         icon: "MapPin",
       },
       {
-        id: "restaurant-exterior",
-        name: "Restaurant Exterior",
+        id: "home-exterior",
+        name: "Home Exterior",
         description: "Stunning exterior shots with perfect lighting and curb appeal",
-        category: "Ambiance",
-        prompt: "Stunning modern restaurant exterior, professional photography, perfect lighting, inviting entrance, beautiful landscaping",
+        category: "Property",
+        prompt: "Stunning modern home exterior, professional real estate photography, perfect lighting, curb appeal, landscaping",
         suggestedAspectRatio: "16:9",
         icon: "Building",
       },
       {
-        id: "restaurant-interior",
-        name: "Restaurant Interior",
-        description: "Beautiful interior photography with ambiance and natural light",
-        category: "Ambiance",
-        prompt: "Beautiful modern restaurant interior, elegant dining room, natural lighting, stylish decor, luxury finishes, food photography setting",
+        id: "home-interior",
+        name: "Home Interior",
+        description: "Beautiful interior photography with staging and natural light",
+        category: "Property",
+        prompt: "Beautiful modern home interior, open floor plan, natural lighting, staging, luxury finishes, real estate photography",
         suggestedAspectRatio: "4:3",
         icon: "Sofa",
       },
       {
-        id: "chef-branding",
-        name: "Chef Branding",
-        description: "Professional branding backgrounds for chef and restaurant profiles",
+        id: "agent-branding",
+        name: "Agent Branding",
+        description: "Professional branding backgrounds for agent profiles",
         category: "Personal",
-        prompt: "Professional restaurant chef branding background, modern kitchen setting, culinary atmosphere, business professional food industry",
+        prompt: "Professional real estate agent branding background, modern office setting, cityscape, business professional atmosphere",
         suggestedAspectRatio: "1:1",
         icon: "User",
       },
@@ -1577,7 +2728,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         targetQueries: [
           question || `${goal} ${neighborhood}`,
           `best ${goal.toLowerCase()} ${neighborhood}`,
-          `${neighborhood} restaurant ${goal.toLowerCase()}`,
+          `${neighborhood} real estate ${goal.toLowerCase()}`,
         ],
       };
 
@@ -1591,7 +2742,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
   });
 
   // Platform-specific content regeneration endpoint
-  app.post("/api/content/regenerate-for-platform", requireAuth, async (req, res) => {
+  app.post("/api/content/regenerate-for-platform", async (req, res) => {
     try {
       const {
         platform,
@@ -1602,7 +2753,6 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         seoOptimized,
         longTailKeywords,
         businessType,
-        businessSubtype,
       } = req.body;
 
       if (!platform || !originalContent) {
@@ -1611,20 +2761,22 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           .json({ error: "Platform and original content are required" });
       }
 
-      // Generate platform-optimized content using OpenAI
-      const businessContext = await getBusinessContext(req);
+      const userId2 = req.user?.id;
+      let cp2: any = null;
+      if (userId2) cp2 = await storage.getCompanyProfile(userId2);
 
+      // Generate platform-optimized content using OpenAI
       const platformOptimizedContent =
         await openaiService.generatePlatformSpecificContent({
           platform: platform.toLowerCase(),
           originalContent,
           contentType: contentType || "blog",
-          topic: topic || "content",
-          neighborhood: neighborhood || "Local",
+          topic: topic || "real estate",
+          neighborhood: neighborhood || "Omaha",
           seoOptimized: seoOptimized !== false,
           longTailKeywords: longTailKeywords !== false,
-          businessType: businessType || businessContext.businessType,
-          businessSubtype: businessSubtype || businessContext.businessSubtype,
+          businessType: businessType || cp2?.businessType,
+          companyProfile: cp2 || undefined,
         });
 
       res.json(platformOptimizedContent);
@@ -1823,22 +2975,34 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       }
 
       const facebookClientId =
-        process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+        process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_CLIENT_ID;
+
+      const facebookConfigId = process.env.FACEBOOK_CONFIG_ID;
+      const instagramConfigId = process.env.INSTAGRAM_CONFIG_ID;
+
+      const buildFacebookOAuthUrl = (redirectPath: string, configId: string | undefined, fallbackScope: string) => {
+        if (!facebookClientId) return null;
+        const redirectUri = encodeURIComponent(baseUrl + redirectPath);
+        const stateParam = encodeURIComponent(state);
+        if (configId) {
+          console.log(`🔧 Facebook OAuth: Using config_id=${configId} for login configuration`);
+          return `https://www.facebook.com/v22.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${redirectUri}&response_type=code&config_id=${configId}&state=${stateParam}&auth_type=rerequest`;
+        }
+        return `https://www.facebook.com/v22.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${redirectUri}&response_type=code&scope=${fallbackScope}&state=${stateParam}&auth_type=rerequest`;
+      };
+
+      const instagramClientId = process.env.INSTAGRAM_CLIENT_ID;
+      const instagramRedirectUri = encodeURIComponent(baseUrl + "/api/social/callback/instagram");
+      const instagramStateParam = encodeURIComponent(state);
 
       const oauthUrls: Record<string, string | null> = {
-        facebook: facebookClientId
-          ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${encodeURIComponent(
-              baseUrl + "/api/social/callback/facebook"
-            )}&scope=pages_manage_posts,pages_read_engagement&state=${encodeURIComponent(
-              state
-            )}`
-          : null,
-        instagram: facebookClientId
-          ? `https://www.facebook.com/v18.0/dialog/oauth?client_id=${facebookClientId}&redirect_uri=${encodeURIComponent(
-              baseUrl + "/api/social/callback/instagram"
-            )}&scope=pages_show_list,pages_read_engagement,pages_manage_posts,instagram_content_publish&state=${encodeURIComponent(
-              state
-            )}`
+        facebook: buildFacebookOAuthUrl(
+          "/api/social/callback/facebook",
+          facebookConfigId,
+          "pages_show_list,pages_manage_posts,pages_read_engagement,pages_manage_metadata"
+        ),
+        instagram: instagramClientId
+          ? `https://www.instagram.com/oauth/authorize?enable_fb_login=0&force_authentication=1&client_id=${instagramClientId}&redirect_uri=${instagramRedirectUri}&response_type=code&scope=instagram_business_basic,instagram_business_content_publish&state=${instagramStateParam}`
           : null,
         linkedin: process.env.LINKEDIN_CLIENT_ID
           ? `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${
@@ -2100,9 +3264,9 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         }
       } else if (platform.toLowerCase() === "facebook") {
         const clientId =
-          process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+          process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_CLIENT_ID;
         const clientSecret =
-          process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET;
+          process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_CLIENT_SECRET;
         const redirectUri = `${baseUrl}/api/social/callback/facebook`;
 
         if (!clientId || !clientSecret) {
@@ -2130,7 +3294,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           });
 
           const tokenResponse = await fetch(
-            `https://graph.facebook.com/v18.0/oauth/access_token?${tokenParams.toString()}`
+            `https://graph.facebook.com/v22.0/oauth/access_token?${tokenParams.toString()}`
           );
 
           if (!tokenResponse.ok) {
@@ -2158,8 +3322,24 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
             throw new Error("Facebook token response missing access_token");
           }
 
-          // CRITICAL FIX: Use stable database user ID directly from state
-          // Do NOT lookup MemStorage - the userId from state IS the stable database ID
+          let longLivedToken = accessToken;
+          try {
+            const llResp = await fetch(
+              `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${clientId}&client_secret=${clientSecret}&fb_exchange_token=${accessToken}`
+            );
+            if (llResp.ok) {
+              const llData = await llResp.json();
+              if (llData.access_token) {
+                longLivedToken = llData.access_token;
+                console.log(`✅ Facebook: Exchanged for long-lived token (expires in ${llData.expires_in || 'unknown'}s)`);
+              }
+            } else {
+              console.warn("⚠️ Facebook: Long-lived token exchange failed, using short-lived token");
+            }
+          } catch (llError) {
+            console.warn("⚠️ Facebook: Long-lived token exchange error:", llError);
+          }
+
           const stableUserId = String(userId);
           console.log(
             `✅ Facebook token exchange successful for stable DB user ${stableUserId}`
@@ -2168,13 +3348,112 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           let profile: any = null;
           try {
             const profileResp = await fetch(
-              `https://graph.facebook.com/v18.0/me?fields=id,name,email&access_token=${accessToken}`
+              `https://graph.facebook.com/v22.0/me?fields=id,name,email&access_token=${longLivedToken}`
             );
             if (profileResp.ok) {
               profile = await profileResp.json();
             }
           } catch (profileError) {
             console.warn("Facebook profile lookup failed:", profileError);
+          }
+
+          let fetchedPages: any[] = [];
+          try {
+            const pagesResp = await fetch(
+              `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,category,access_token&access_token=${longLivedToken}`
+            );
+            if (pagesResp.ok) {
+              const pagesData = await pagesResp.json();
+              fetchedPages = pagesData.data || [];
+              console.log(`📄 Facebook OAuth - Found ${fetchedPages.length} pages via me/accounts:`, fetchedPages.map((p: any) => p.name));
+            } else {
+              const pagesError = await pagesResp.text();
+              console.warn(`⚠️ Facebook OAuth - Pages fetch failed:`, pagesError);
+            }
+          } catch (pagesError) {
+            console.warn("⚠️ Facebook OAuth - Pages fetch error:", pagesError);
+          }
+
+          if (fetchedPages.length === 0 && clientId && clientSecret) {
+            console.log(`🔍 Facebook OAuth - me/accounts returned 0 pages, trying Debug Token fallback...`);
+            try {
+              const appAccessToken = `${clientId}|${clientSecret}`;
+              const debugResp = await fetch(
+                `https://graph.facebook.com/v22.0/debug_token?input_token=${longLivedToken}&access_token=${encodeURIComponent(appAccessToken)}`
+              );
+              if (debugResp.ok) {
+                const debugData = await debugResp.json();
+                const granularScopes = debugData.data?.granular_scopes || [];
+                console.log(`🔍 Facebook Debug Token - granular_scopes:`, JSON.stringify(granularScopes));
+                
+                const pageRelatedScopes = ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement', 'pages_manage_metadata'];
+                const pageIds = new Set<string>();
+                for (const scope of granularScopes) {
+                  if (pageRelatedScopes.includes(scope.scope) && scope.target_ids && Array.isArray(scope.target_ids)) {
+                    for (const id of scope.target_ids) {
+                      pageIds.add(String(id));
+                    }
+                  }
+                }
+                
+                if (pageIds.size > 0) {
+                  console.log(`✅ Facebook Debug Token - Found ${pageIds.size} authorized page IDs:`, [...pageIds]);
+                  
+                  for (const pageId of pageIds) {
+                    try {
+                      const pageResp = await fetch(
+                        `https://graph.facebook.com/v22.0/${pageId}?fields=id,name,category,access_token&access_token=${longLivedToken}`
+                      );
+                      if (pageResp.ok) {
+                        const pageData = await pageResp.json();
+                        if (pageData.id) {
+                          const hasPageToken = !!pageData.access_token;
+                          fetchedPages.push({
+                            id: pageData.id,
+                            name: pageData.name || `Page ${pageData.id}`,
+                            category: pageData.category || 'Unknown',
+                            access_token: pageData.access_token || longLivedToken,
+                            isDebugTokenResolved: true,
+                            hasPageToken,
+                          });
+                          console.log(`✅ Facebook Debug Token - Resolved page: ${pageData.name} (${pageData.id}), hasPageToken: ${hasPageToken}`);
+                        }
+                      } else {
+                        const errText = await pageResp.text();
+                        console.warn(`⚠️ Facebook Debug Token - Could not fetch page ${pageId}:`, errText);
+                      }
+                    } catch (pageErr) {
+                      console.warn(`⚠️ Facebook Debug Token - Error fetching page ${pageId}:`, pageErr);
+                    }
+                  }
+                  
+                  console.log(`📄 Facebook OAuth - After Debug Token fallback, found ${fetchedPages.length} pages`);
+                } else {
+                  console.warn(`⚠️ Facebook Debug Token - No page IDs found in granular_scopes`);
+                }
+              } else {
+                const debugErr = await debugResp.text();
+                console.warn(`⚠️ Facebook Debug Token - API call failed:`, debugErr);
+              }
+            } catch (debugError) {
+              console.warn(`⚠️ Facebook Debug Token fallback error:`, debugError);
+            }
+          }
+
+          let grantedPermissions: string[] = [];
+          try {
+            const permsResp = await fetch(
+              `https://graph.facebook.com/v22.0/me/permissions?access_token=${longLivedToken}`
+            );
+            if (permsResp.ok) {
+              const permsData = await permsResp.json();
+              grantedPermissions = (permsData.data || [])
+                .filter((p: any) => p.status === 'granted')
+                .map((p: any) => p.permission);
+              console.log(`🔐 Facebook OAuth - Granted permissions:`, grantedPermissions);
+            }
+          } catch (permsError) {
+            console.warn("⚠️ Facebook OAuth - Permissions check error:", permsError);
           }
 
           const existingAccounts = await storage.getSocialMediaAccounts(
@@ -2200,6 +3479,15 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
             profileEmail: profile?.email || null,
             tokenType: tokenData.token_type || "bearer",
             expiresIn: expiresIn || null,
+            pages: fetchedPages.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              category: p.category,
+              access_token: p.access_token,
+            })),
+            grantedPermissions,
+            tokenExchangedAt: new Date().toISOString(),
+            isLongLived: longLivedToken !== accessToken,
           };
 
           if (facebookAccount) {
@@ -2207,7 +3495,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
               `🔄 Updating existing Facebook account ${facebookAccount.id} (was: ${facebookAccount.isConnected})`
             );
             await storage.updateSocialMediaAccount(facebookAccount.id, {
-              accessToken,
+              accessToken: longLivedToken,
               metadata,
               isConnected: true,
               lastSync: new Date(),
@@ -2219,7 +3507,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
               userId: stableUserId,
               platform: "facebook",
               accountId: profile?.id || "facebook_account",
-              accessToken,
+              accessToken: longLivedToken,
               metadata,
               isConnected: true,
             });
@@ -2254,12 +3542,9 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           `);
         }
       } else if (platform.toLowerCase() === "instagram") {
-        // Instagram uses Facebook OAuth (Meta owns Instagram)
-        // Use Facebook credentials since Instagram is part of Meta
-        const clientId =
-          process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
-        const clientSecret =
-          process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET;
+        // Instagram API with Instagram Business Login (direct Instagram OAuth)
+        const clientId = process.env.INSTAGRAM_CLIENT_ID;
+        const clientSecret = process.env.INSTAGRAM_CLIENT_SECRET;
         const redirectUri = `${baseUrl}/api/social/callback/instagram`;
 
         if (!clientId || !clientSecret) {
@@ -2267,8 +3552,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
             <html>
               <body>
                 <h1>Instagram OAuth Not Configured</h1>
-                <p>You must set <code>FACEBOOK_APP_ID</code> and <code>FACEBOOK_APP_SECRET</code> in your environment.</p>
-                <p>Instagram uses Facebook's OAuth system since Meta owns both platforms.</p>
+                <p>You must set <code>INSTAGRAM_CLIENT_ID</code> and <code>INSTAGRAM_CLIENT_SECRET</code> in your environment.</p>
                 <script>
                   window.opener?.postMessage({ success: false, platform: 'instagram', error: 'missing_credentials' }, '*');
                   setTimeout(() => window.close(), 4000);
@@ -2279,16 +3563,20 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         }
 
         try {
-          // Exchange code for access token using Facebook Graph API
-          const tokenParams = new URLSearchParams({
-            client_id: clientId,
-            redirect_uri: redirectUri,
-            client_secret: clientSecret,
-            code: code as string,
-          });
-
+          // Step 1: Exchange code for short-lived access token via Instagram API
           const tokenResponse = await fetch(
-            `https://graph.facebook.com/v18.0/oauth/access_token?${tokenParams.toString()}`
+            "https://api.instagram.com/oauth/access_token",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                client_id: clientId,
+                client_secret: clientSecret,
+                grant_type: "authorization_code",
+                redirect_uri: redirectUri,
+                code: code as string,
+              }).toString(),
+            }
           );
 
           if (!tokenResponse.ok) {
@@ -2297,8 +3585,8 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
             return res.send(`
               <html>
                 <body>
-                  <h1>❌ Instagram Connection Failed</h1>
-                  <p>Token exchange failed. Make sure you have pages_show_list, pages_read_engagement, pages_manage_posts, instagram_business_basic, and instagram_content_publish permissions enabled in your Facebook App.</p>
+                  <h1>Instagram Connection Failed</h1>
+                  <p>Token exchange failed. Please check your Instagram app configuration and try again.</p>
                   <script>
                     window.opener?.postMessage({ success: false, platform: 'instagram', error: 'token_exchange_failed' }, '*');
                     setTimeout(() => window.close(), 4000);
@@ -2309,107 +3597,77 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           }
 
           const tokenData = await tokenResponse.json();
-          const accessToken = tokenData.access_token as string;
+          const shortLivedToken = tokenData.access_token as string;
+          const igUserId = String(tokenData.user_id);
 
-          if (!accessToken) {
-            throw new Error("Instagram token response missing access_token");
+          if (!shortLivedToken || !igUserId) {
+            throw new Error("Instagram token response missing access_token or user_id");
           }
 
-          // Get user's Facebook pages to find Instagram Business Account
-          const pagesResponse = await fetch(
-            `https://graph.facebook.com/v18.0/me/accounts?access_token=${accessToken}`
-          );
-          const pagesData = await pagesResponse.json();
-          
-          let igUserId: string | null = null;
-          let igUsername: string | null = null;
-          let pageAccessToken: string | null = null;
-          
-          // Check each page for connected Instagram Business Account
-          if (pagesData.data && pagesData.data.length > 0) {
-            for (const page of pagesData.data) {
-              try {
-                const igResponse = await fetch(
-                  `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{username,id}&access_token=${page.access_token}`
-                );
-                const igData = await igResponse.json();
-                
-                if (igData.instagram_business_account) {
-                  igUserId = igData.instagram_business_account.id;
-                  igUsername = igData.instagram_business_account.username;
-                  pageAccessToken = page.access_token;
-                  console.log(`✅ Found Instagram Business Account: @${igUsername} (ID: ${igUserId})`);
-                  break;
-                }
-              } catch (igError) {
-                console.warn(`Could not check Instagram for page ${page.id}:`, igError);
+          console.log(`Instagram short-lived token obtained for user ${igUserId}`);
+
+          // Step 2: Exchange short-lived token for long-lived token (60 days)
+          let longLivedToken = shortLivedToken;
+          try {
+            const longLivedResponse = await fetch(
+              `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${clientSecret}&access_token=${shortLivedToken}`
+            );
+            if (longLivedResponse.ok) {
+              const longLivedData = await longLivedResponse.json();
+              if (longLivedData.access_token) {
+                longLivedToken = longLivedData.access_token;
+                console.log(`Instagram long-lived token obtained (expires in ${longLivedData.expires_in}s)`);
               }
             }
+          } catch (llError) {
+            console.warn("Could not exchange for long-lived token, using short-lived:", llError);
           }
 
-          if (!igUserId) {
-            return res.send(`
-              <html>
-                <body>
-                  <h1>⚠️ No Instagram Business Account Found</h1>
-                  <p>Your Facebook account doesn't have an Instagram Business or Creator account connected.</p>
-                  <p><strong>To fix this:</strong></p>
-                  <ol>
-                    <li>Convert your Instagram to a Business or Creator account</li>
-                    <li>Connect it to a Facebook Business Page</li>
-                    <li>Try connecting again</li>
-                  </ol>
-                  <script>
-                    window.opener?.postMessage({ success: false, platform: 'instagram', error: 'no_instagram_account' }, '*');
-                    setTimeout(() => window.close(), 8000);
-                  </script>
-                </body>
-              </html>
-            `);
+          // Step 3: Get user profile info
+          const profileResponse = await fetch(
+            `https://graph.instagram.com/me?fields=user_id,username,name&access_token=${longLivedToken}`
+          );
+          
+          let igUsername = igUserId;
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json();
+            igUsername = profileData.username || igUserId;
+            console.log(`Instagram profile: @${igUsername} (ID: ${igUserId})`);
           }
 
           const stableUserId = String(userId);
-          console.log(`✅ Instagram token exchange successful for stable DB user ${stableUserId}`);
+          console.log(`Instagram token exchange successful for stable DB user ${stableUserId}`);
 
           const existingAccounts = await storage.getSocialMediaAccounts(stableUserId);
           const instagramAccount = existingAccounts.find(
             (acc) => acc.platform.toLowerCase() === "instagram"
           );
 
-          const metadata = {
-            igUserId,
-            igUsername,
-            tokenType: "bearer",
-          };
-
-          // Store Instagram Business Account ID in account_username field as: "igBusinessId:username"
           const accountUsernameWithId = `${igUserId}:@${igUsername}`;
           
           if (instagramAccount) {
-            console.log(`🔄 Updating existing Instagram account ${instagramAccount.id}`);
+            console.log(`Updating existing Instagram account ${instagramAccount.id}`);
             await storage.updateSocialMediaAccount(instagramAccount.id, {
-              accessToken: pageAccessToken || accessToken,
+              accessToken: longLivedToken,
               accountUsername: accountUsernameWithId,
               isConnected: true,
               lastSync: new Date(),
             });
-            console.log(`✅ Instagram account updated successfully (ID: ${igUserId}, @${igUsername})`);
           } else {
-            console.log(`➕ Creating new Instagram account for stable DB user ${stableUserId}`);
+            console.log(`Creating new Instagram account for stable DB user ${stableUserId}`);
             await storage.createSocialMediaAccount({
               userId: stableUserId,
               platform: "instagram",
-              accessToken: pageAccessToken || accessToken,
+              accessToken: longLivedToken,
               accountUsername: accountUsernameWithId,
               isConnected: true,
             });
-            console.log(`✅ Instagram account created successfully (ID: ${igUserId}, @${igUsername})`);
           }
 
           return res.send(`
             <html>
               <body>
-                <h1>✅ Instagram Connected Successfully!</h1>
+                <h1>Instagram Connected Successfully!</h1>
                 <p>Connected to @${igUsername}. You can now post content to Instagram.</p>
                 <script>
                   window.opener?.postMessage({ success: true, platform: 'instagram' }, '*');
@@ -2745,14 +4003,21 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           }
 
           const tokenData = await tokenResponse.json();
-          
+          console.log("🎵 TikTok OAuth token exchange response:", JSON.stringify(tokenData, null, 2));
+
           // TikTok API returns tokens nested inside a 'data' object
           const data = tokenData.data || tokenData;
           const accessToken = data.access_token;
           const refreshToken = data.refresh_token;
           const openId = data.open_id;
 
-          console.log("🎵 TikTok OAuth token exchange response:", JSON.stringify(tokenData, null, 2));
+          // Catch TikTok returning a 200 with an error body (no actual token)
+          if (!accessToken) {
+            const errMsg = tokenData.error || tokenData.error_description || data.error || "No access token returned";
+            console.error("🎵 TikTok OAuth: token exchange returned no access_token:", errMsg, tokenData);
+            return res.redirect(`${baseUrl}/?oauth_error=tiktok_no_token&reason=${encodeURIComponent(errMsg)}`);
+          }
+
           console.log("🎵 TikTok OAuth token exchange successful", {
             hasAccessToken: !!accessToken,
             hasRefreshToken: !!refreshToken,
@@ -2906,6 +4171,27 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           lastSync: accountMap.get("tiktok")?.lastSync || null,
         },
       ];
+
+      try {
+        let whatsappSettings = await getWhatsappSettingsWithFallback(userId);
+        const hasWhatsappCreds = !!(
+          (whatsappSettings?.phoneNumberId && whatsappSettings?.accessToken) ||
+          (process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN)
+        );
+        platforms.push({
+          id: accountMap.get("whatsapp")?.id || nanoid(),
+          platform: "whatsapp",
+          isConnected: hasWhatsappCreds,
+          lastSync: null,
+        });
+      } catch {
+        platforms.push({
+          id: nanoid(),
+          platform: "whatsapp",
+          isConnected: !!(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN),
+          lastSync: null,
+        });
+      }
 
       res.json(platforms);
     } catch (error) {
@@ -3068,6 +4354,19 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         // Auto-detect media type and fetch URLs
         if (mediaIds && Array.isArray(mediaIds) && mediaIds.length > 0) {
           for (const id of mediaIds) {
+            // If the "id" is actually a URL or local path, handle it directly without DB lookup
+            const isDirectUrl = typeof id === "string" && (id.startsWith("http://") || id.startsWith("https://") || id.startsWith("/uploads/"));
+            if (isDirectUrl) {
+              const isVideo = /\.(mp4|mov|avi|webm|mkv)(\?|$)/i.test(id);
+              if (isVideo) {
+                mediaUrls.videoUrls.push(id);
+                console.log(`📹 Direct URL treated as video: ${id}`);
+              } else {
+                mediaUrls.photoUrls.push(id);
+                console.log(`🖼️ Direct URL treated as photo: ${id}`);
+              }
+              continue;
+            }
             // Try to find as video first
             const video = await storage.getVideoById(id);
             if (video && video.videoUrl) {
@@ -3266,12 +4565,16 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
               );
             } else if (platform.toLowerCase() === "tiktok") {
               // For TikTok, we need a video URL from a verified domain
-              const videoUrl = mediaUrls.videoUrls[0];
-              if (!videoUrl) {
+              const rawVideoUrl = mediaUrls.videoUrls[0];
+              if (!rawVideoUrl) {
                 return res.status(400).json({
-                  error: "TikTok requires a video URL from a verified domain to post",
+                  error: "TikTok requires a video. Please upload a video using the Upload Video button.",
                 });
               }
+              // Resolve relative paths to absolute URLs so the server can download them
+              const baseUrl = `${req.protocol}://${req.get("host")}`;
+              const videoUrl = rawVideoUrl.startsWith("/") ? `${baseUrl}${rawVideoUrl}` : rawVideoUrl;
+              console.log(`🎵 TikTok resolved video URL: ${videoUrl}`);
               const title = req.body.title || postContent.substring(0, 2200);
               const tiktokResult = await socialMediaService.postToTikTok(
                 userId,
@@ -3368,10 +4671,17 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
 
               // Check if account is connected (except YouTube which uses mock)
               if (targetPlatform.toLowerCase() !== "youtube") {
-                if (!connectedAccount || !connectedAccount.accessToken) {
+                if (!connectedAccount) {
                   errors.push({
                     platform: targetPlatform,
-                    error: `${targetPlatform} account not connected`,
+                    error: `${targetPlatform} account not connected. Please connect it in Quick Posts settings.`,
+                  });
+                  continue;
+                }
+                if (!connectedAccount.accessToken) {
+                  errors.push({
+                    platform: targetPlatform,
+                    error: `${targetPlatform} needs to be reconnected — your session token is missing. Please disconnect and reconnect ${targetPlatform} in the platform list above.`,
                   });
                   continue;
                 }
@@ -3424,8 +4734,8 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
                   youtubeToken
                 );
               } else if (targetPlatform.toLowerCase() === "tiktok") {
-                const videoUrl = mediaUrls.videoUrls[0];
-                if (!videoUrl) {
+                const rawVideoUrl = mediaUrls.videoUrls[0];
+                if (!rawVideoUrl) {
                   console.log(`❌ TikTok post skipped - no video URL found in mediaUrls:`, mediaUrls);
                   errors.push({
                     platform: targetPlatform,
@@ -3433,7 +4743,10 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
                   });
                   continue;
                 }
-                console.log(`🎵 TikTok posting with video URL: ${videoUrl}`);
+                // Resolve relative paths to absolute URLs so the server can download them
+                const baseUrl2 = `${req.protocol}://${req.get("host")}`;
+                const videoUrl = rawVideoUrl.startsWith("/") ? `${baseUrl2}${rawVideoUrl}` : rawVideoUrl;
+                console.log(`🎵 TikTok posting with resolved video URL: ${videoUrl}`);
                 const title = req.body.title || postContent.substring(0, 2200);
                 const tiktokResult = await socialMediaService.postToTikTok(
                   userId,
@@ -3633,7 +4946,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
     }
 
     if (!isConnected) {
-      reasons.push("Connect this account to publish directly from RestaurantFlow.");
+      reasons.push("Connect this account to publish directly from RealtyFlow.");
     }
 
     if (PLATFORM_NOTES[platform]) {
@@ -3784,7 +5097,6 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
   // Facebook-specific endpoints
   app.get("/api/facebook/pages", requireAuth, async (req: any, res) => {
     try {
-      // Use authenticated user ID directly (same as OAuth callback stores)
       const userId = String(req.user?.id);
       if (!userId) {
         return res.status(401).json({ error: "Authentication required" });
@@ -3795,31 +5107,175 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         (acc) => acc.platform.toLowerCase() === "facebook" && acc.isConnected
       );
 
-      const metadata = (facebookAccount?.metadata as any) || {};
-      const delegatedToken =
-        metadata?.pageAccessToken ||
-        facebookAccount?.accessToken ||
-        process.env.FACEBOOK_USER_TOKEN;
-
-      if (!delegatedToken) {
+      if (!facebookAccount) {
         return res.status(400).json({
-          error:
-            "Facebook token missing. Connect your Facebook Page or set FACEBOOK_USER_TOKEN.",
+          error: "Facebook account not connected. Please connect your Facebook account first.",
         });
       }
 
-      const pages = await socialMediaService.getFacebookPageInfo(
-        delegatedToken
-      );
-      res.json(pages);
+      const metadata = (facebookAccount?.metadata as any) || {};
+      const token = facebookAccount?.accessToken || metadata?.pageAccessToken || process.env.FACEBOOK_USER_TOKEN;
+
+      if (!token) {
+        return res.status(400).json({
+          error: "Facebook token missing. Please reconnect your Facebook account.",
+        });
+      }
+
+      try {
+        const pages = await socialMediaService.getFacebookPageInfo(token);
+        if (pages && pages.length > 0) {
+          console.log(`✅ Facebook Pages API returned ${pages.length} pages for user ${userId}`);
+          return res.json(pages);
+        }
+      } catch (apiError: any) {
+        console.warn(`⚠️ Facebook Pages API call failed for user ${userId}:`, apiError?.message);
+      }
+
+      if (metadata.pages && Array.isArray(metadata.pages) && metadata.pages.length > 0) {
+        console.log(`📋 Using ${metadata.pages.length} cached pages from metadata for user ${userId}`);
+        const manualPages = metadata.manualPages || [];
+        const allPages = [...metadata.pages, ...manualPages.filter((mp: any) => !metadata.pages.some((p: any) => p.id === mp.id))];
+        return res.json(allPages);
+      }
+
+      if (metadata.manualPages && Array.isArray(metadata.manualPages) && metadata.manualPages.length > 0) {
+        console.log(`📝 Using ${metadata.manualPages.length} manually added pages for user ${userId}`);
+        return res.json(metadata.manualPages);
+      }
+
+      console.warn(`❌ No Facebook pages found for user ${userId} (API failed, no cached or manual pages)`);
+      return res.json([]);
     } catch (error: any) {
       console.error("Error fetching Facebook pages:", error?.message || error);
       res.status(500).json({
         error: "Failed to fetch Facebook pages",
-        details:
-          error?.message ||
-          "Please check if your Facebook token is valid and has not expired.",
+        details: error?.message || "Please check if your Facebook token is valid.",
       });
+    }
+  });
+
+  app.post("/api/facebook/pages/manual", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const { pageId, pageName } = req.body;
+      if (!pageId) {
+        return res.status(400).json({ error: "Page ID is required" });
+      }
+
+      const socialAccounts = await storage.getSocialMediaAccounts(userId);
+      const facebookAccount = socialAccounts.find(
+        (acc) => acc.platform.toLowerCase() === "facebook" && acc.isConnected
+      );
+
+      if (!facebookAccount) {
+        return res.status(400).json({
+          error: "Facebook account not connected. Please connect your Facebook account first.",
+        });
+      }
+
+      const token = facebookAccount?.accessToken;
+
+      let verifiedName = pageName || `Page ${pageId}`;
+      let pageAccessToken = token;
+
+      if (token) {
+        try {
+          const verifyResp = await fetch(
+            `https://graph.facebook.com/v22.0/${pageId}?fields=id,name,category,access_token&access_token=${token}`
+          );
+          if (verifyResp.ok) {
+            const pageData = await verifyResp.json();
+            verifiedName = pageData.name || verifiedName;
+            if (pageData.access_token) {
+              pageAccessToken = pageData.access_token;
+            }
+            console.log(`✅ Manual Page ID verified: ${pageId} = "${verifiedName}"`);
+          } else {
+            console.warn(`⚠️ Could not verify Page ID ${pageId}, saving anyway`);
+          }
+        } catch (e) {
+          console.warn(`⚠️ Page verification failed, saving anyway`);
+        }
+      }
+
+      const existingMetadata = (facebookAccount.metadata as any) || {};
+      const manualPage = {
+        id: pageId,
+        name: verifiedName,
+        category: "Manual Entry",
+        access_token: pageAccessToken,
+        isManual: true,
+      };
+
+      const updatedMetadata = {
+        ...existingMetadata,
+        manualPages: [
+          ...(existingMetadata.manualPages || []).filter((p: any) => p.id !== pageId),
+          manualPage,
+        ],
+      };
+
+      await storage.updateSocialMediaAccount(facebookAccount.id, {
+        metadata: updatedMetadata,
+      });
+
+      console.log(`📝 Manual Facebook Page saved for user ${userId}: ${pageId} ("${verifiedName}")`);
+      res.json({ success: true, page: manualPage });
+    } catch (error: any) {
+      console.error("Error saving manual Facebook page:", error?.message || error);
+      res.status(500).json({ error: "Failed to save manual page" });
+    }
+  });
+
+  app.get("/api/facebook/debug", requireAuth, async (req: any, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const socialAccounts = await storage.getSocialMediaAccounts(userId);
+      const facebookAccount = socialAccounts.find(
+        (acc) => acc.platform.toLowerCase() === "facebook" && acc.isConnected
+      );
+
+      if (!facebookAccount?.accessToken) {
+        return res.json({ error: "No connected Facebook account with token" });
+      }
+
+      const token = facebookAccount.accessToken;
+      const appId = process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID || process.env.INSTAGRAM_CLIENT_ID;
+      const appSecret = process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET || process.env.INSTAGRAM_CLIENT_SECRET;
+
+      const results: any = { userId, metadata: (facebookAccount as any).metadata };
+
+      try {
+        const meResp = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,email&access_token=${token}`);
+        results.me = await meResp.json();
+      } catch (e: any) { results.meError = e.message; }
+
+      try {
+        const permsResp = await fetch(`https://graph.facebook.com/v22.0/me/permissions?access_token=${token}`);
+        results.permissions = await permsResp.json();
+      } catch (e: any) { results.permissionsError = e.message; }
+
+      try {
+        const pagesResp = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,category,access_token,tasks&access_token=${token}`);
+        results.pages = await pagesResp.json();
+      } catch (e: any) { results.pagesError = e.message; }
+
+      if (appId && appSecret) {
+        try {
+          const debugResp = await fetch(`https://graph.facebook.com/v22.0/debug_token?input_token=${token}&access_token=${appId}|${appSecret}`);
+          results.tokenDebug = await debugResp.json();
+        } catch (e: any) { results.tokenDebugError = e.message; }
+      }
+
+      console.log("🔍 Facebook Debug Info:", JSON.stringify(results, null, 2));
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -3857,7 +5313,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       for (const page of pages) {
         try {
           const response = await fetch(
-            `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account{username,id}&access_token=${delegatedToken}`
+            `https://graph.facebook.com/v22.0/${page.id}?fields=instagram_business_account{username,id}&access_token=${delegatedToken}`
           );
 
           if (response.ok) {
@@ -3921,7 +5377,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
 
         // Fetch Instagram Business Account linked to this Page
         const response = await fetch(
-          `https://graph.facebook.com/v18.0/${pageId}?fields=instagram_business_account&access_token=${delegatedToken}`
+          `https://graph.facebook.com/v22.0/${pageId}?fields=instagram_business_account&access_token=${delegatedToken}`
         );
 
         if (!response.ok) {
@@ -3970,6 +5426,14 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           return res.status(400).json({ error: "Content is required" });
         }
 
+        // Resolve mediaIds to photo/video URLs (sent from social-media-manager.tsx)
+        const incomingMediaIds: string[] = (() => {
+          const raw = req.body.mediaIds;
+          if (!raw) return [];
+          if (Array.isArray(raw)) return raw;
+          try { return JSON.parse(raw); } catch { return [raw]; }
+        })();
+
         // Use authenticated user ID directly - CRITICAL: don't use resolveMemStorageUser
         const userId = String(req.user.id);
         console.log(`[FB POST] Using authenticated user ID: ${userId}`);
@@ -4011,17 +5475,53 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         const mediaUrl = req.body.mediaUrl; // Image URL from S3 or external source
         let photoUrl: string | null = null;
         let usedSampleImage = false;
+        const resolvedPhotoUrls: string[] = [];
 
         if (photo) {
           photoUrl = `/uploads/${path.basename(photo.path)}`;
+          resolvedPhotoUrls.push(photoUrl);
         } else if (mediaUrl && (mediaUrl.startsWith('https://') || mediaUrl.startsWith('http://'))) {
-          // Use the provided media URL (e.g., from S3 upload) - only if it's a valid HTTP(S) URL
           photoUrl = mediaUrl;
+          resolvedPhotoUrls.push(photoUrl);
           console.log(`📸 Facebook Post Debug - Using mediaUrl: ${mediaUrl.substring(0, 50)}...`);
         } else if (useSampleImage) {
           photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
+          resolvedPhotoUrls.push(photoUrl);
           usedSampleImage = true;
         }
+
+        // Resolve mediaIds to photo/video URLs
+        if (incomingMediaIds.length > 0) {
+          for (const id of incomingMediaIds) {
+            if (typeof id === 'string' && (id.startsWith('http://') || id.startsWith('https://') || id.startsWith('/uploads/'))) {
+              resolvedPhotoUrls.push(id);
+              continue;
+            }
+            try {
+              const asset = await storage.getMediaAssetById(id);
+              if (asset?.url) { resolvedPhotoUrls.push(asset.url); continue; }
+              const avatar = await storage.getAvatarById(id);
+              if (avatar?.photoUrl) { resolvedPhotoUrls.push(avatar.photoUrl); continue; }
+            } catch (e) { console.warn('FB: Could not resolve mediaId', id, e); }
+          }
+        }
+
+        // Apply encoding to all resolved URLs
+        const finalPhotoUrls = resolvedPhotoUrls.map(url => {
+          if (!url.startsWith('http')) return url;
+          try {
+            const urlObj = new URL(url);
+            urlObj.pathname = urlObj.pathname.split('/').map(s => encodeURIComponent(decodeURIComponent(s))).join('/');
+            return urlObj.toString();
+          } catch (e) { return encodeURI(url); }
+        });
+
+        // Use the first resolved URL as the primary single image (for backwards compat)
+        if (!photoUrl && finalPhotoUrls.length > 0) {
+          photoUrl = finalPhotoUrls[0];
+        }
+
+        console.log(`📸 Facebook post: ${finalPhotoUrls.length} images to post`);
 
         const baseUrl = `${req.protocol}://${req.get("host")}`;
         const postResult = await socialMediaService.postToFacebookPage(
@@ -4029,7 +5529,8 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           content,
           photoUrl || undefined,
           resolvedToken,
-          baseUrl
+          baseUrl,
+          { photoUrls: finalPhotoUrls }
         );
 
         const scheduledPost = await storage.createScheduledPost({
@@ -4090,7 +5591,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         {
           id: "61581294927027_122094900393043164",
           content:
-            "�️ Winter 2025 Omaha Restaurant Scene Update! ❄️\n\nThe Omaha dining scene is showing remarkable creativity this winter season!",
+            "🏠 Winter 2025 Omaha Real Estate Market Update! ❄️\n\nThe Omaha market is showing remarkable resilience this winter season!",
           pageId: "61581294927027",
           timestamp: new Date().toISOString(),
           platform: "facebook",
@@ -4262,62 +5763,148 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
         }
         console.log("📸 Instagram post using stable user ID:", userId);
 
-        // Get connected Instagram account
+        // Get all connected social accounts
         const socialAccounts = await storage.getSocialMediaAccounts(userId);
         const instagramAccount = socialAccounts.find(
           (acc) => acc.platform.toLowerCase() === "instagram" && acc.isConnected
         );
-        
-        // Auto-resolve Instagram Business Account ID from connected account
-        // Format is stored as "igBusinessId:@username" in account_username field
-        if (!instagramBusinessAccountId && instagramAccount?.accountUsername) {
-          const parts = instagramAccount.accountUsername.split(':');
-          if (parts.length >= 1 && parts[0]) {
-            instagramBusinessAccountId = parts[0];
-            console.log("📸 Auto-resolved Instagram Business Account ID from account_username:", instagramBusinessAccountId);
+        const facebookAccount = socialAccounts.find(
+          (acc) => acc.platform.toLowerCase() === "facebook" && acc.isConnected
+        );
+
+        // Strategy: Use Facebook Page's Instagram Business Account for Content Publishing
+        // Instagram Business Login tokens don't support POST /media (content publishing)
+        // We must use the Facebook Graph API with a Page token to publish to Instagram
+        let resolvedToken: string | null = null;
+        let resolvedIgBusinessId: string | null = instagramBusinessAccountId || null;
+
+        if (facebookAccount?.accessToken) {
+          console.log("📸 Attempting Instagram posting via Facebook Page connection...");
+          try {
+            // Get Facebook pages
+            const fbToken = facebookAccount.accessToken;
+            const pagesResponse = await fetch(
+              `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${fbToken}`
+            );
+
+            let pages: any[] = [];
+            if (pagesResponse.ok) {
+              const pagesData = await pagesResponse.json();
+              pages = pagesData.data || [];
+            }
+
+            // If no pages from me/accounts, try Debug Token fallback (New Pages Experience)
+            if (pages.length === 0) {
+              console.log("📸 No pages from me/accounts, trying Debug Token fallback...");
+              const appId = process.env.INSTAGRAM_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+              const appSecret = process.env.FACEBOOK_APP_SECRET;
+              if (appId && appSecret) {
+                const debugResponse = await fetch(
+                  `https://graph.facebook.com/v22.0/debug_token?input_token=${fbToken}&access_token=${appId}|${appSecret}`
+                );
+                if (debugResponse.ok) {
+                  const debugData = await debugResponse.json();
+                  const scopes = debugData.data?.granular_scopes || [];
+                  const pageIds = new Set<string>();
+                  for (const scope of scopes) {
+                    if (scope.target_ids) {
+                      scope.target_ids.forEach((id: string) => pageIds.add(id));
+                    }
+                  }
+                  for (const pageId of pageIds) {
+                    try {
+                      const pageResponse = await fetch(
+                        `https://graph.facebook.com/v22.0/${pageId}?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${fbToken}`
+                      );
+                      if (pageResponse.ok) {
+                        const pageData = await pageResponse.json();
+                        pages.push(pageData);
+                      }
+                    } catch (e) {
+                      console.warn(`📸 Failed to fetch page ${pageId}:`, e);
+                    }
+                  }
+                }
+              }
+            }
+
+            // Find a page with an Instagram Business Account
+            for (const page of pages) {
+              if (page.instagram_business_account?.id) {
+                resolvedIgBusinessId = page.instagram_business_account.id;
+                resolvedToken = page.access_token;
+                console.log(`📸 Found Instagram Business Account ${resolvedIgBusinessId} via Facebook Page "${page.name}" (${page.id})`);
+                break;
+              }
+            }
+
+            if (!resolvedToken && pages.length > 0 && !resolvedIgBusinessId) {
+              // Pages exist but no Instagram Business Account linked
+              console.warn("📸 Facebook Pages found but none have a linked Instagram Business Account");
+            }
+          } catch (fbError) {
+            console.error("📸 Error resolving Instagram via Facebook:", fbError);
           }
         }
 
-        if (!instagramBusinessAccountId) {
+        // Fallback: try Instagram token directly (may work if permissions are approved)
+        if (!resolvedToken) {
+          if (instagramAccount?.accessToken) {
+            resolvedToken = instagramAccount.accessToken;
+            console.log("📸 Falling back to Instagram direct token");
+          }
+          // Auto-resolve Instagram user ID from account_username
+          if (!resolvedIgBusinessId && instagramAccount?.accountUsername) {
+            const parts = instagramAccount.accountUsername.split(':');
+            if (parts.length >= 1 && parts[0]) {
+              resolvedIgBusinessId = parts[0];
+            }
+          }
+        }
+
+        if (!resolvedIgBusinessId) {
           return res.status(400).json({
             error:
-              "Instagram Business Account ID not found. Please disconnect and reconnect your Instagram account.",
+              "Instagram Business Account not found. Please make sure your Facebook Page is linked to an Instagram Business/Creator account.",
           });
         }
 
-        // Get Instagram access token (stored from OAuth)
-        const resolvedToken = instagramAccount?.accessToken || process.env.FACEBOOK_USER_TOKEN;
-        console.log("📸 Using Instagram token:", resolvedToken ? "Token available" : "No token");
+        instagramBusinessAccountId = resolvedIgBusinessId;
+        console.log("📸 Using Instagram Business Account ID:", instagramBusinessAccountId);
+        console.log("📸 Using token:", resolvedToken ? "Token available" : "No token");
 
         if (!resolvedToken) {
           return res.status(400).json({
             error:
-              "Facebook token missing. Instagram posting requires Facebook connection.",
+              "No valid token found for Instagram posting. Please connect your Facebook account with a Page linked to Instagram.",
           });
         }
 
         const baseUrl = `${req.protocol}://${req.get("host")}`;
-        const mediaUrl = req.body.mediaUrl; // Image URL from S3 or external source
-        const useSampleImage = toBoolean(
-          req.body.useSampleImage ?? (!photo && !mediaUrl ? "true" : "false")
-        );
+        let mediaUrl = req.body.mediaUrl;
+        const mediaIds = req.body.mediaIds || [];
+
+        // Resolve mediaIds to URLs if no direct mediaUrl provided
+        if (!mediaUrl && !photo && Array.isArray(mediaIds) && mediaIds.length > 0) {
+          const mediaLibrary = await storage.getMediaAssets(userId);
+          const matched = mediaLibrary.find((m: any) => m.id === mediaIds[0]);
+          if (matched?.url) {
+            mediaUrl = matched.url;
+            console.log(`📸 Instagram Post Debug - Resolved mediaId ${mediaIds[0]} to URL: ${mediaUrl.substring(0, 50)}...`);
+          }
+        }
 
         let photoUrl: string | null = null;
-        let usedSampleImage = false;
 
         if (photo) {
           photoUrl = `${baseUrl}/uploads/${path.basename(photo.path)}`;
         } else if (mediaUrl && (mediaUrl.startsWith('https://') || mediaUrl.startsWith('http://'))) {
-          // Use the provided media URL (e.g., from S3 upload) - only if it's a valid HTTP(S) URL
           photoUrl = mediaUrl;
           console.log(`📸 Instagram Post Debug - Using mediaUrl: ${mediaUrl.substring(0, 50)}...`);
-        } else if (useSampleImage) {
-          photoUrl = DEFAULT_SOCIAL_SAMPLE_IMAGE;
-          usedSampleImage = true;
         } else {
           return res.status(400).json({
             error:
-              "Instagram requires an image. Upload a photo or enable the sample image option.",
+              "Instagram requires an image. Please attach a photo from your media library.",
           });
         }
 
@@ -4353,7 +5940,6 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
           message: "Content posted successfully to Instagram",
           postId: postResult.postId,
           instagramBusinessAccountId,
-          usedSampleImage,
           scheduledPostId: scheduledPost.id,
           permalinkHint: "https://www.instagram.com",
           timestamp: new Date().toISOString(),
@@ -5141,12 +6727,12 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
 
         // Return instant fallback keywords for fast page load
         const fallbackKeywords = [
-          { id: "fb-1", userId, keyword: "best restaurants Omaha", searchVolume: 2400, currentRank: 5, difficulty: 50, neighborhood: null },
-          { id: "fb-2", userId, keyword: "restaurant Omaha", searchVolume: 1800, currentRank: 8, difficulty: 45, neighborhood: null },
-          { id: "fb-3", userId, keyword: "places to eat Omaha NE", searchVolume: 1500, currentRank: 12, difficulty: 40, neighborhood: null },
-          { id: "fb-4", userId, keyword: "Dundee restaurants", searchVolume: 880, currentRank: 3, difficulty: 35, neighborhood: "Dundee" },
-          { id: "fb-5", userId, keyword: "West Omaha dining", searchVolume: 720, currentRank: 6, difficulty: 42, neighborhood: "West Omaha" },
-          { id: "fb-6", userId, keyword: "Aksarben food scene", searchVolume: 480, currentRank: 4, difficulty: 38, neighborhood: "Aksarben" },
+          { id: "fb-1", userId, keyword: "Omaha homes for sale", searchVolume: 2400, currentRank: 5, difficulty: 50, neighborhood: null },
+          { id: "fb-2", userId, keyword: "real estate agent Omaha", searchVolume: 1800, currentRank: 8, difficulty: 45, neighborhood: null },
+          { id: "fb-3", userId, keyword: "houses for sale Omaha NE", searchVolume: 1500, currentRank: 12, difficulty: 40, neighborhood: null },
+          { id: "fb-4", userId, keyword: "Dundee homes for sale", searchVolume: 880, currentRank: 3, difficulty: 35, neighborhood: "Dundee" },
+          { id: "fb-5", userId, keyword: "West Omaha real estate", searchVolume: 720, currentRank: 6, difficulty: 42, neighborhood: "West Omaha" },
+          { id: "fb-6", userId, keyword: "Aksarben condos for sale", searchVolume: 480, currentRank: 4, difficulty: 38, neighborhood: "Aksarben" },
         ];
 
         // Trigger background AI generation (non-blocking)
@@ -5240,7 +6826,7 @@ Be professional, helpful, and focused on restaurant marketing. Keep responses co
       const { keywords, marketData, timeframe, focus } = req.body;
 
       // Create AI prompt for intelligent content scheduling
-      const prompt = `You are an expert restaurant marketing strategist and SEO specialist. Based on the following data, create an optimal 15-day content calendar for a restaurant business in Omaha, Nebraska.
+      const prompt = `You are an expert real estate marketing strategist and SEO specialist. Based on the following data, create an optimal 15-day content calendar for Mike Bjork's real estate business in Omaha, Nebraska.
 
 SEO Keywords to target: ${keywords
         .map(
@@ -5252,22 +6838,16 @@ SEO Keywords to target: ${keywords
 Market Data: ${marketData
         .map(
           (m: any) =>
-            `${m.neighborhood}: popular dining area`
+            `${m.neighborhood}: $${m.averagePrice} avg price, ${m.daysOnMarket} days on market`
         )
         .join("; ")}
 
-🚨 CRITICAL REQUIREMENT: GENERATE SHORT, PUNCHY POSTS!
-- Target length: 40-80 characters per post
-- Lead with emoji + strong hook
-- Users scroll fast (1.7 seconds) - be concise!
-- NO long paragraphs or multiple sentences
-
 Requirements:
-1. Schedule content for maximum social media engagement
-2. Prioritize high-engagement keywords
-3. Include food trends and seasonal highlights
-4. Optimize posting times for dining audience (lunch 11am-1pm, dinner 5-7pm, brunch Sat-Sun)
-5. Mix content types: menu highlights, specials, behind-the-scenes, community events
+1. Schedule content for maximum SEO impact and social media engagement
+2. Prioritize high-volume, low-competition keywords
+3. Include market trends and neighborhood highlights
+4. Optimize posting times for real estate audience (early morning, lunch, evening)
+5. Mix content types: market updates, property highlights, buyer/seller tips, neighborhood spotlights
 6. Include specific posting dates and times
 7. Each piece should target primary keyword + local SEO
 
@@ -5278,9 +6858,9 @@ Return ONLY a JSON object with this structure:
     {
       "id": "unique-id",
       "title": "Content Title",
-      "content": "SHORT social media post (40-80 chars) with 1-2 hashtags",
-      "platform": "Facebook|Instagram|LinkedIn|X",
-      "type": "Social",
+      "content": "Full social media post content with hashtags",
+      "platform": "Facebook|Instagram|LinkedIn|YouTube",
+      "type": "Blog|Social|Video",
       "date": "2025-01-XX",
       "time": "XX:XX AM/PM",
       "targetKeyword": "primary keyword",
@@ -5291,7 +6871,7 @@ Return ONLY a JSON object with this structure:
   ]
 }
 
-Focus on: ${focus} content that drives foot traffic and showcases local dining expertise.`;
+Focus on: ${focus} content that drives leads and showcases local market expertise.`;
 
       // Use Unified AI Service (GitHub Copilot with OpenAI fallback)
       const { unifiedAI } = await import("./services/unified-ai");
@@ -5325,105 +6905,113 @@ Focus on: ${focus} content that drives foot traffic and showcases local dining e
           contentCount: 8,
           schedule: [
             {
-              id: "fb-omaha-dining-1",
-              title: "Weekend Specials",
-              content: "🍽️ Weekend special: Chef's tasting menu is back! Reserve now. #OmahaDining",
+              id: "fb-omaha-market-1",
+              title: "Omaha Market Update - January 2025",
+              content:
+                "🏠 OMAHA MARKET SPOTLIGHT 🏠\n\nThe Omaha real estate market is showing strong momentum this January! Here's what homeowners and buyers need to know:\n\n📈 Market Highlights:\n• Average home price: $285,000 (+3.2% from last year)\n• Days on market: 28 days (excellent for sellers!)\n• Inventory levels: Balanced market conditions\n\n🎯 Prime Neighborhoods to Watch:\n• Benson: Trendy area with great walkability\n• Dundee: Historic charm meets modern amenities\n• West Omaha: Family-friendly with top schools\n\nThinking of buying or selling? Let's discuss your goals! 💬\n\n#OmahaRealEstate #NebraskaHomes #BjorkGroup #RealEstateExpert #OmahaLife",
               platform: "Facebook",
               type: "Social",
               date: "2025-01-02",
-              time: "11:00 AM",
-              targetKeyword: "Omaha restaurants",
+              time: "8:00 AM",
+              targetKeyword: "Omaha real estate market",
               seoScore: 85,
               expectedImpact: "high",
               color: "bg-blue-100",
             },
             {
-              id: "ig-food-1",
-              title: "Fresh Menu Item",
-              content: "🔥 New on the menu! Our signature steak is here. #OmahaFood",
+              id: "ig-buyer-tips-1",
+              title: "First-Time Buyer Tips",
+              content:
+                "🔑 FIRST-TIME BUYER SUCCESS TIPS! 🔑\n\nMaking homeownership dreams come true in Omaha! Here's my insider advice:\n\n✅ Get Pre-Approved First\n• Know your budget before house hunting\n• Shows sellers you're serious\n• Speeds up the buying process\n\n✅ Research Neighborhoods\n• Visit at different times of day\n• Check school ratings and commute times\n• Consider future resale value\n\n✅ Don't Skip the Inspection\n• Protect your investment\n• Negotiate repairs or price adjustments\n• Peace of mind is priceless\n\n🏡 Ready to start your journey? DM me for a free buyer consultation!\n\n#FirstTimeBuyer #OmahaHomes #RealEstateTips #BjorkGroup #NebraskaRealEstate",
               platform: "Instagram",
               type: "Social",
               date: "2025-01-05",
               time: "12:30 PM",
-              targetKeyword: "Omaha food",
+              targetKeyword: "first time home buyer Omaha",
               seoScore: 78,
               expectedImpact: "medium",
               color: "bg-green-100",
             },
             {
-              id: "li-business-1",
-              title: "Business Lunch Feature",
-              content: "💼 Business lunch special: $15 for entree + drink. Book your table!",
+              id: "li-investment-1",
+              title: "Investment Property Opportunities",
+              content:
+                "💰 INVESTMENT OPPORTUNITY ALERT 💰\n\nOmaha's rental market is thriving! Here's why smart investors are choosing Nebraska:\n\n📊 Key Investment Metrics:\n• Average rental yield: 8-12%\n• Strong job market driving demand\n• Affordable entry points compared to coastal markets\n• Growing tech and healthcare sectors\n\n🎯 Hot Investment Areas:\n• Near downtown redevelopment zones\n• University of Nebraska proximity\n• Emerging neighborhoods with infrastructure improvements\n\n🔍 What to Look For:\n• Properties under $200K with good bones\n• Multi-family opportunities\n• Areas with planned developments\n\nLet's discuss your investment strategy over coffee! ☕\n\n#RealEstateInvestment #OmahaInvestment #PropertyInvesting #BjorkGroup #WealthBuilding",
               platform: "LinkedIn",
-              type: "Social",
+              type: "Blog",
               date: "2025-01-08",
               time: "9:00 AM",
-              targetKeyword: "Omaha business lunch",
+              targetKeyword: "Omaha investment properties",
               seoScore: 82,
               expectedImpact: "high",
               color: "bg-purple-100",
             },
             {
-              id: "fb-neighborhood-1",
-              title: "Benson Spot",
-              content: "🏘️ Benson's best-kept secret: Happy hour 4-6pm daily! #BensonOmaha",
+              id: "fb-neighborhood-spotlight-1",
+              title: "Neighborhood Spotlight: Benson",
+              content:
+                "🏘️ NEIGHBORHOOD SPOTLIGHT: BENSON 🏘️\n\nDiscover why Benson is becoming Omaha's hottest neighborhood!\n\n✨ What Makes Benson Special:\n• Walkable community with local character\n• Thriving arts scene and unique boutiques\n• Historic homes with modern renovations\n• Easy access to downtown (10 minutes!)\n\n🏠 Market Snapshot:\n• Average home price: $165,000\n• Typical days on market: 25 days\n• Mix of starter homes and investment properties\n\n🎨 Local Favorites:\n• Benson First Friday art walks\n• Local coffee shops and restaurants\n• Beautiful Benson Park\n\nCurious about Benson properties? Let's schedule a neighborhood tour!\n\n#BensonNebraska #OmahaNeighborhoods #BjorkGroup #CommunitySpotlight #OmahaLife",
               platform: "Facebook",
               type: "Social",
               date: "2025-01-12",
               time: "6:00 PM",
-              targetKeyword: "Benson restaurants Omaha",
+              targetKeyword: "Benson Omaha real estate",
               seoScore: 80,
               expectedImpact: "medium",
               color: "bg-yellow-100",
             },
             {
-              id: "ig-brunch-1",
-              title: "Sunday Brunch",
-              content: "☀️ Sunday brunch is calling! Mimosas + eggs benny. #OmahaBrunch",
+              id: "ig-selling-tips-1",
+              title: "Home Selling Preparation",
+              content:
+                "✨ PREPPING YOUR HOME TO SELL? ✨\n\nMaximize your home's value with these proven strategies!\n\n🎯 Top 5 Staging Tips:\n1️⃣ Declutter & Depersonalize\n• Let buyers envision their life here\n• Remove family photos and personal items\n\n2️⃣ Deep Clean Everything  \n• First impressions matter!\n• Consider professional cleaning\n\n3️⃣ Fresh Paint = Fresh Appeal\n• Neutral colors attract more buyers\n• Focus on high-traffic areas\n\n4️⃣ Enhance Curb Appeal\n• Trim landscaping, add flowers\n• Clean windows and front door\n\n5️⃣ Price Strategically\n• Market analysis is crucial\n• Price to sell, not to sit\n\n💡 Ready to list? I'll create a custom marketing plan for your home!\n\n#HomeSelling #RealEstateTips #OmahaRealEstate #BjorkGroup #HomeStaging",
               platform: "Instagram",
               type: "Social",
               date: "2025-01-15",
               time: "11:00 AM",
-              targetKeyword: "Omaha brunch",
+              targetKeyword: "sell house Omaha",
               seoScore: 76,
               expectedImpact: "medium",
               color: "bg-red-100",
             },
             {
-              id: "x-special-1",
-              title: "Daily Special",
-              content: "🍕 Pizza night = family night. Half-price kids meals tonight!",
-              platform: "X",
-              type: "Social",
+              id: "yt-market-analysis-1",
+              title: "Q1 2025 Market Forecast",
+              content:
+                "🔮 Q1 2025 OMAHA REAL ESTATE FORECAST 🔮\n\nWhat to expect in the coming months:\n\n📈 Predictions for Q1:\n• Continued buyer demand with spring market approaching\n• Interest rates stabilizing around current levels\n• New construction picking up pace\n• Competitive market for well-priced homes\n\n🏡 Best Opportunities:\n• First-time buyers: Take advantage of programs\n• Sellers: List early to beat spring rush\n• Investors: Focus on emerging neighborhoods\n\n💼 Economic Factors:\n• Strong local job market\n• Population growth from relocations\n• Infrastructure investments boosting values\n\nWatch my full market analysis video (link in bio) for detailed insights!\n\n#MarketForecast #OmahaRealEstate #RealEstateExpert #Q12025 #BjorkGroup #MarketAnalysis",
+              platform: "YouTube",
+              type: "Video",
               date: "2025-01-18",
-              time: "5:00 PM",
-              targetKeyword: "Omaha family dining",
+              time: "10:00 AM",
+              targetKeyword: "Omaha real estate forecast 2025",
               seoScore: 88,
               expectedImpact: "high",
               color: "bg-indigo-100",
             },
             {
-              id: "fb-event-1",
-              title: "Wine Night Event",
-              content: "🍷 Wine Wednesday: Half-price bottles + live jazz. Reserve now!",
+              id: "fb-client-success-1",
+              title: "Client Success Story",
+              content:
+                "🎉 ANOTHER SUCCESSFUL CLOSING! 🎉\n\nCongratulations to the Johnson family on their beautiful new home in West Omaha!\n\n📖 Their Story:\n• First-time buyers from out of state\n• Needed guidance on neighborhoods and schools\n• Wanted move-in ready with modern updates\n• Closed in just 21 days!\n\n💬 What they said: \"Mike made relocating to Omaha stress-free. His local knowledge and attention to detail were exactly what we needed!\"\n\n🏠 The Property:\n• 4BR/3BA contemporary home\n• Top-rated Millard schools\n• Open floor plan with upgraded kitchen\n• Private backyard perfect for their kids\n\nEvery family's needs are unique. Let's find your perfect fit!\n\n#ClientSuccess #WestOmaha #NewHomeowners #BjorkGroup #RealEstateSuccess #MillardSchools",
               platform: "Facebook",
               type: "Social",
               date: "2025-01-22",
               time: "2:00 PM",
-              targetKeyword: "Omaha wine dining",
+              targetKeyword: "West Omaha real estate agent",
               seoScore: 84,
               expectedImpact: "high",
               color: "bg-emerald-100",
             },
             {
-              id: "li-catering-1",
-              title: "Catering Services",
-              content: "🎉 Catering your next corporate event? We've got you covered!",
+              id: "li-market-trends-1",
+              title: "Technology Impact on Real Estate",
+              content:
+                "🚀 HOW TECHNOLOGY IS RESHAPING OMAHA REAL ESTATE 🚀\n\nThe digital transformation is changing how we buy and sell homes:\n\n💻 Virtual Tours & 3D Walkthroughs\n• 87% of buyers start their search online\n• Virtual staging reduces time on market\n• Remote buyers can tour from anywhere\n\n📱 AI-Powered Market Analysis\n• Predictive pricing models\n• Automated valuation tools\n• Real-time market insights\n\n🔍 Enhanced Property Research\n• Neighborhood analytics\n• School ratings and crime data\n• Walkability and amenity scores\n\n📈 The Result: Faster, smarter transactions for buyers and sellers.\n\nStaying ahead of technology trends helps my clients make informed decisions. What tech features matter most to you?\n\n#PropTech #RealEstateInnovation #DigitalMarketing #OmahaRealEstate #BjorkGroup #FutureOfRealEstate",
               platform: "LinkedIn",
-              type: "Social",
+              type: "Blog",
               date: "2025-01-25",
               time: "8:30 AM",
-              targetKeyword: "Omaha catering services",
+              targetKeyword: "real estate technology Omaha",
               seoScore: 79,
               expectedImpact: "medium",
               color: "bg-cyan-100",
@@ -5869,7 +7457,9 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         .filter(Boolean);
 
       if (serviceAreas.length === 0) {
-        serviceAreas.push("Omaha"); // Default to Omaha
+        const companyProfile = await storage.getCompanyProfile(userId);
+        const city = (companyProfile as any)?.city || "";
+        serviceAreas.push(city || "the local area");
       }
 
       // Import and initialize AI content calendar generator
@@ -5925,26 +7515,158 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
+  app.post("/api/scheduled-posts/schedule-smart", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { content, platforms, scheduledAt, recurring, endDate, propertyId, imageUrl, generateUniqueContent } = req.body;
+
+      if (!content || !platforms || !Array.isArray(platforms) || platforms.length === 0) {
+        return res.status(400).json({ error: "content and platforms are required" });
+      }
+
+      if (!scheduledAt) {
+        return res.status(400).json({ error: "scheduledAt is required" });
+      }
+
+      if (!recurring || !["one-time", "daily", "weekly", "bi-weekly", "monthly"].includes(recurring)) {
+        return res.status(400).json({ error: "recurring must be one-time, daily, weekly, bi-weekly, or monthly" });
+      }
+
+      const normalizedPlatforms = [...new Set(platforms.map((p: string) => p === "twitter" ? "x" : p))];
+
+      const startDate = new Date(scheduledAt);
+      const end = endDate ? new Date(endDate) : (recurring !== "one-time" ? new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null);
+
+      const dates: Date[] = [];
+      let current = new Date(startDate);
+      let safety = 0;
+
+      const addDate = (date: Date) => {
+        if (!end || date <= end) {
+          dates.push(new Date(date));
+        }
+      };
+
+      switch (recurring) {
+        case "one-time":
+          dates.push(new Date(startDate));
+          break;
+        case "daily":
+          while (!end || current <= end) {
+            addDate(current);
+            current.setDate(current.getDate() + 1);
+            safety++;
+            if (dates.length >= 60 || safety >= 100) break;
+          }
+          break;
+        case "weekly":
+          while (!end || current <= end) {
+            addDate(current);
+            current.setDate(current.getDate() + 7);
+            safety++;
+            if (dates.length >= 60 || safety >= 100) break;
+          }
+          break;
+        case "bi-weekly":
+          while (!end || current <= end) {
+            addDate(current);
+            current.setDate(current.getDate() + 14);
+            safety++;
+            if (dates.length >= 60 || safety >= 100) break;
+          }
+          break;
+        case "monthly":
+          while (!end || current <= end) {
+            addDate(current);
+            current.setDate(current.getDate() + 30);
+            safety++;
+            if (dates.length >= 60 || safety >= 100) break;
+          }
+          break;
+      }
+
+      if (dates.length > 60) {
+        return res.status(400).json({ error: "Schedule would create more than 60 posts. Please adjust the date range or recurring frequency." });
+      }
+
+      const createdPosts = [];
+
+      for (const date of dates) {
+        for (const platform of normalizedPlatforms) {
+          let postContent = content;
+
+          if (generateUniqueContent) {
+            try {
+              const schedProfile: any = await storage.getCompanyProfile(req.user?.id);
+              const optimized = await openaiService.generatePlatformSpecificContent({
+                platform: platform.toLowerCase(),
+                originalContent: content,
+                contentType: "social",
+                topic: "social media post",
+                neighborhood: schedProfile?.city || "local area",
+                seoOptimized: true,
+                longTailKeywords: true,
+                businessType: schedProfile?.businessType,
+                companyProfile: schedProfile || undefined,
+              });
+              postContent = optimized.content || content;
+            } catch (error) {
+              console.error(`Failed to generate content for ${platform}, using original:`, error);
+              postContent = content;
+            }
+          }
+
+          const postData: InsertScheduledPost = {
+            userId,
+            platform: platform.toLowerCase(),
+            content: postContent,
+            scheduledFor: date,
+            status: "pending",
+            metadata: {
+              propertyId,
+              imageUrl,
+              recurring,
+              originalContent: content,
+              generatedAt: new Date().toISOString(),
+            },
+          };
+
+          const createdPost = await storage.createScheduledPost(postData);
+          createdPosts.push(createdPost);
+        }
+      }
+
+      res.json({
+        success: true,
+        posts: createdPosts,
+        totalPosts: createdPosts.length,
+        dateSlots: dates.length,
+        platforms: normalizedPlatforms.length,
+      });
+    } catch (error) {
+      console.error("Smart schedule error:", error);
+      res.status(500).json({
+        error: "Failed to create smart scheduled posts",
+        message: (error as Error).message,
+      });
+    }
+  });
+
   app.put("/api/scheduled-posts/:id", async (req, res) => {
     try {
       const { id } = req.params;
       const { content, scheduledFor, status, metadata } = req.body;
-
-      // Get existing post to merge metadata properly
-      const existingPost = await storage.getScheduledPostById(id);
-      if (!existingPost) {
-        return res.status(404).json({ error: "Scheduled post not found" });
-      }
 
       // Build update object, only including fields that were provided
       const updateData: Record<string, any> = {};
       if (content !== undefined) updateData.content = content;
       if (scheduledFor !== undefined) updateData.scheduledFor = new Date(scheduledFor);
       if (status !== undefined) updateData.status = status;
-      // Merge metadata instead of replacing it
-      if (metadata !== undefined) {
-        updateData.metadata = { ...(existingPost.metadata || {}), ...metadata };
-      }
+      if (metadata !== undefined) updateData.metadata = metadata;
 
       const updatedPost = await storage.updateScheduledPost(id, updateData);
 
@@ -5977,7 +7699,12 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         return res.status(400).json({ error: "No valid fields to update" });
       }
 
-      const updatedPost = await storage.updateScheduledPost(id, result.data);
+      const updateData = result.data;
+      if (req.body.metadata?.imageUrl) {
+        updateData.imageUrl = req.body.metadata.imageUrl;
+      }
+
+      const updatedPost = await storage.updateScheduledPost(id, updateData);
 
       if (!updatedPost) {
         return res.status(404).json({ error: "Scheduled post not found" });
@@ -5987,6 +7714,31 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     } catch (error) {
       console.error("Update scheduled post error:", error);
       res.status(500).json({ error: "Failed to update scheduled post" });
+    }
+  });
+
+  app.post("/api/scheduled-posts/upload-media", requireAuth, videoUpload.single("media"), async (req: any, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const ext = path.extname(req.file.originalname) || ".jpg";
+      const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
+
+      const uploadsDir = path.join(process.cwd(), "uploads", "social-media");
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const localPath = path.join(uploadsDir, uniqueName);
+      fs.copyFileSync(req.file.path, localPath);
+      fs.unlinkSync(req.file.path);
+      const url = `/uploads/social-media/${uniqueName}`;
+      console.log(`✅ Media uploaded: ${url}`);
+      res.json({ success: true, url });
+    } catch (error) {
+      console.error("Media upload error:", error);
+      res.status(500).json({ error: "Failed to upload media" });
     }
   });
 
@@ -6181,7 +7933,15 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
         "Blackstone",
         "Benson",
       ];
-      const platforms = ["facebook", "instagram", "linkedin", "x", "tiktok"];
+
+      // Research-backed posting frequency: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+      const platformPostingDays: Record<string, number[]> = {
+        facebook:  [0, 1, 2, 3, 4, 5, 6],
+        instagram: [1, 3, 5, 6],
+        linkedin:  [1, 3, 5],
+        x:         [1, 2, 3, 4, 5],
+        tiktok:    [1, 2, 4, 6],
+      };
 
       const movingGuideTopics = [
         "Best Omaha neighborhoods for families",
@@ -6194,14 +7954,22 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
       const today = new Date();
       const generatedPosts = [];
 
-      // Generate 2 weeks of AI-powered content
+      // Generate 2 weeks of content, one post per scheduled platform per day
       for (let day = 0; day < 14; day++) {
         const scheduleDate = new Date(today);
         scheduleDate.setDate(today.getDate() + day + 1);
-        scheduleDate.setHours(9 + (day % 8), 0, 0, 0); // Vary posting times
+        const dayOfWeek = scheduleDate.getDay();
 
-        const platformIndex = day % platforms.length;
-        const platform = platforms[platformIndex];
+        // Only post to platforms scheduled for this day of week
+        const scheduledPlatforms = Object.entries(platformPostingDays)
+          .filter(([, days]) => days.includes(dayOfWeek))
+          .map(([p]) => p);
+
+        if (scheduledPlatforms.length === 0) continue;
+
+        // Pick one platform per day (cycle through scheduled ones)
+        const platform = scheduledPlatforms[day % scheduledPlatforms.length];
+        scheduleDate.setHours(9 + (day % 8), 0, 0, 0);
 
         let aiContent, postType, neighborhood;
 
@@ -6290,6 +8058,185 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     } catch (error) {
       console.error("Generate weekly content error:", error);
       res.status(500).json({ error: "Failed to generate weekly content" });
+    }
+  });
+
+  app.post("/api/scheduled-posts/generate-monthly", requireAuth, async (req: any, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.id) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+      const userId = String(user.id);
+
+      const {
+        platforms = ["facebook", "instagram", "linkedin", "x"],
+        postsPerWeek = 3,
+        month,
+        year,
+        categories: userCategories,
+        agentName,
+      } = req.body;
+
+      if (month === undefined || year === undefined) {
+        return res.status(400).json({ error: "month and year are required" });
+      }
+
+      const clampedPostsPerWeek = Math.min(Math.max(1, postsPerWeek), 7);
+
+      const allCategories = [
+        "market_update",
+        "buyer_tips",
+        "seller_tips",
+        "neighborhood_spotlight",
+        "home_improvement",
+        "investment_tips",
+        "community_events",
+        "success_stories",
+        "open_houses",
+        "just_listed",
+      ];
+
+      const categories =
+        userCategories && userCategories.length > 0
+          ? userCategories
+          : allCategories;
+
+      const neighborhoods = [
+        "Dundee",
+        "Aksarben",
+        "Old Market",
+        "Blackstone",
+        "Benson",
+        "Midtown",
+        "West Omaha",
+        "Elkhorn",
+        "Papillion",
+        "Bellevue",
+      ];
+
+      const postingHours = [9, 11, 13, 15, 17];
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+      const totalWeeks = Math.ceil(daysInMonth / 7);
+
+      const categoryKeywordsMap: Record<string, string[]> = {
+        market_update: ["market trends", "home prices", "real estate market"],
+        buyer_tips: ["home buying tips", "first time buyer", "mortgage advice"],
+        seller_tips: ["home selling", "listing tips", "staging advice"],
+        neighborhood_spotlight: ["neighborhood guide", "community living", "local amenities"],
+        home_improvement: ["home renovation", "property value", "home upgrades"],
+        investment_tips: ["real estate investment", "rental property", "ROI"],
+        community_events: ["local events", "community activities", "neighborhood fun"],
+        success_stories: ["client testimonial", "home sold", "happy homeowners"],
+        open_houses: ["open house", "home tour", "property viewing"],
+        just_listed: ["new listing", "homes for sale", "just listed"],
+      };
+
+      const scheduleDates: Date[] = [];
+      for (let week = 0; week < totalWeeks; week++) {
+        const weekStart = week * 7;
+        const availableDays: number[] = [];
+        for (let d = weekStart; d < Math.min(weekStart + 7, daysInMonth); d++) {
+          availableDays.push(d + 1);
+        }
+        const step = Math.max(1, Math.floor(availableDays.length / clampedPostsPerWeek));
+        for (let p = 0; p < clampedPostsPerWeek && p < availableDays.length; p++) {
+          const dayIndex = Math.min(p * step, availableDays.length - 1);
+          const day = availableDays[dayIndex];
+          const hour = postingHours[(week * clampedPostsPerWeek + p) % postingHours.length];
+          const date = new Date(year, month, day, hour, 0, 0, 0);
+          scheduleDates.push(date);
+        }
+      }
+
+      const generatedPosts: any[] = [];
+      const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      let postCounter = 0;
+      for (let i = 0; i < scheduleDates.length; i++) {
+        const scheduleDate = scheduleDates[i];
+        const category = categories[i % categories.length];
+        const neighborhood = neighborhoods[i % neighborhoods.length];
+        const keywords = categoryKeywordsMap[category] || ["Omaha real estate", "homes for sale"];
+
+        for (let pi = 0; pi < platforms.length; pi++) {
+          const platform = platforms[pi];
+          const staggeredDate = new Date(scheduleDate.getTime());
+          staggeredDate.setMinutes(staggeredDate.getMinutes() + pi * 3);
+
+          let content = "";
+          let hashtags: string[] = [];
+          let seoScore = 80;
+          let isAiGenerated = true;
+
+          try {
+            if (postCounter > 0) {
+              await delay(500);
+            }
+
+            const aiContent = await openaiService.generateContent({
+              type: "social",
+              neighborhood,
+              keywords: [...keywords, `${neighborhood} real estate`, "Omaha homes"],
+              ...(agentName ? { companyProfile: { agentName } } : {}),
+            });
+
+            content = aiContent.content;
+            hashtags = (aiContent as any).hashtags || aiContent.keywords || [];
+            seoScore = aiContent.seoScore || 80;
+          } catch (aiError) {
+            console.error(`Failed to generate AI content for post ${postCounter + 1}:`, aiError);
+            isAiGenerated = false;
+            const fallbackTemplates: Record<string, string> = {
+              market_update: `📊 ${neighborhood} Market Update: The real estate market is showing exciting trends! Contact ${agentName || "your agent"} for the latest insights on homes in ${neighborhood}. #OmahaRealEstate`,
+              buyer_tips: `🏡 Buyer Tip: Looking to buy in ${neighborhood}? Here are key things to consider when house hunting in this amazing Omaha neighborhood! #HomeBuyingTips`,
+              seller_tips: `💡 Seller Tip: Thinking of selling your ${neighborhood} home? Proper staging and pricing can make all the difference. Let's chat! #HomeSelling`,
+              neighborhood_spotlight: `✨ Neighborhood Spotlight: ${neighborhood} offers incredible community charm, great schools, and beautiful homes. Discover why residents love it! #${neighborhood.replace(/\s/g, "")}`,
+              home_improvement: `🔨 Home Improvement: Simple upgrades that boost your ${neighborhood} home's value. Small changes, big returns! #HomeImprovement`,
+              investment_tips: `📈 Investment Insight: ${neighborhood} continues to be a smart real estate investment in the Omaha market. Let me show you the numbers! #RealEstateInvesting`,
+              community_events: `🎉 Community Events: Exciting things happening in ${neighborhood}! Stay connected with your neighbors and local activities. #CommunityLife`,
+              success_stories: `🎊 Another happy homeowner in ${neighborhood}! It's always rewarding to help families find their perfect home. #ClientSuccess`,
+              open_houses: `🏠 Open House Alert: Don't miss this beautiful home in ${neighborhood}! Schedule your visit today. #OpenHouse #${neighborhood.replace(/\s/g, "")}`,
+              just_listed: `🆕 Just Listed in ${neighborhood}! A stunning property has hit the market. Contact ${agentName || "us"} for details before it's gone! #JustListed`,
+            };
+            content = fallbackTemplates[category] || `Discover what makes ${neighborhood} special! Contact ${agentName || "your local agent"} for insights.`;
+            hashtags = ["OmahaRealEstate", neighborhood.replace(/\s/g, ""), "NebraskaHomes", category.replace(/_/g, "")];
+            seoScore = 70;
+          }
+
+          const scheduledPost = await storage.createScheduledPost({
+            userId,
+            platform,
+            postType: category,
+            content,
+            hashtags,
+            scheduledFor: staggeredDate,
+            status: "pending",
+            isEdited: false,
+            isAiGenerated,
+            originalContent: content,
+            neighborhood,
+            seoScore,
+            metadata: { generated: true, monthlyPlan: true, category, aiGenerated: isAiGenerated },
+          });
+
+          generatedPosts.push(scheduledPost);
+          postCounter++;
+        }
+      }
+
+      const totalPosts = scheduleDates.length * platforms.length;
+      res.json({
+        success: true,
+        posts: generatedPosts,
+        count: totalPosts,
+      });
+    } catch (error) {
+      console.error("Generate monthly content error:", error);
+      res.status(500).json({ error: "Failed to generate monthly content" });
     }
   });
 
@@ -6803,6 +8750,50 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     } catch (error) {
       console.error("❌ Failed to serve custom voice audio:", error);
       res.status(500).json({ error: "Failed to load audio file" });
+    }
+  });
+
+  // Proxy endpoint for HTTP images - serves them via HTTPS for Instagram compatibility
+  app.get("/api/image-proxy", async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+
+      if (!imageUrl || !imageUrl.startsWith("http")) {
+        return res.status(400).json({ error: "Invalid image URL" });
+      }
+
+      console.log(`📸 Image proxy: fetching ${imageUrl.substring(0, 80)}...`);
+      const response = await fetch(imageUrl);
+
+      if (!response.ok) {
+        console.error(`📸 Image proxy: failed to fetch - ${response.status}`);
+        return res.status(404).json({ error: "Image not found" });
+      }
+
+      const contentType = response.headers.get("content-type") || "image/jpeg";
+      const contentLength = response.headers.get("content-length");
+      res.set("Content-Type", contentType);
+      if (contentLength) res.set("Content-Length", contentLength);
+      res.set("Cache-Control", "public, max-age=3600");
+
+      if (response.body) {
+        const reader = (response.body as any).getReader();
+        const pump = async () => {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(value);
+          }
+          res.end();
+        };
+        await pump();
+      } else {
+        const buffer = await response.arrayBuffer();
+        res.send(Buffer.from(buffer));
+      }
+    } catch (error) {
+      console.error("Image proxy error:", error);
+      res.status(500).json({ error: "Failed to proxy image" });
     }
   });
 
@@ -7647,13 +9638,54 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  // Check video status
-  app.get("/api/studio/status/:videoId", requireAuth, async (req, res) => {
+  // Check video status - with audio normalization and S3 persistence
+  const normalizedVideoCache = new Map<string, string>();
+  
+  app.get("/api/studio/status/:videoId", requireAuth, async (req: any, res) => {
     try {
       const { videoId } = req.params;
+      const userId = String(req.user?.id);
       const studio = getVideoStudio();
       
       const status = await studio.getVideoStatus(videoId);
+      
+      if (status.status === "completed" && status.videoUrl) {
+        const cachedUrl = normalizedVideoCache.get(videoId);
+        if (cachedUrl) {
+          status.videoUrl = cachedUrl;
+        } else {
+          const { persistVideoFromUrlAndRecord } = await import("./services/mediaAssetUploader");
+          const filename = `user-${userId}-${videoId}.mp4`;
+          const result = await persistVideoFromUrlAndRecord(
+            status.videoUrl,
+            filename,
+            'videos',
+            {
+              userId,
+              type: 'video',
+              source: 'heygen',
+              title: 'Studio Video',
+              durationSeconds: undefined,
+            }
+          );
+          if (result?.url) {
+            status.videoUrl = result.url;
+            normalizedVideoCache.set(videoId, result.url);
+            console.log(`💾 Studio video normalized and saved to S3: ${result.url}`);
+            
+            const vcList = await storage.getVideoContent(userId);
+            const matchingVc = vcList.find((v: any) => v.metadata?.heygenVideoId === videoId);
+            if (matchingVc) {
+              await storage.updateVideoContent(matchingVc.id, {
+                videoUrl: result.url,
+                status: "ready",
+              });
+              console.log(`📝 Updated video_content record ${matchingVc.id} with S3 URL`);
+            }
+          }
+        }
+      }
+      
       res.json(status);
     } catch (error) {
       console.error("Failed to get video status:", error);
@@ -7661,17 +9693,21 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
     }
   });
 
-  // List user's videos (My Videos)
+  // List user's videos (My Videos) - Unified from all video sources
   app.get("/api/studio/videos", requireAuth, async (req: any, res) => {
     try {
       const userId = String(req.user?.id);
       const studio = getVideoStudio();
       
-      // Get all videos for this user
-      const allVideos = await storage.getVideoContent(userId);
+      // Get videos from all 3 sources in parallel
+      const [videoContentList, generatedVideosList, videoJobsList] = await Promise.all([
+        storage.getVideoContent(userId),
+        storage.getGeneratedVideos(userId),
+        storage.getVideoGenerationJobsByUser(userId),
+      ]);
       
-      // Check status for videos stuck in "generating" or "processing" (limit to 3 to keep it fast)
-      const pendingVideos = allVideos.filter((v: any) => 
+      // Check status for video_content videos stuck in "generating" or "processing" (limit to 3 to keep it fast)
+      const pendingVideos = videoContentList.filter((v: any) => 
         (v.status === "generating" || v.status === "processing") && v.metadata?.heygenVideoId
       ).slice(0, 3);
 
@@ -7681,13 +9717,11 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           if (heygenId) {
             const status = await studio.getVideoStatus(heygenId);
             if (status.status === "completed" && status.videoUrl) {
-              // Update the video in database
               await storage.updateVideoContent(video.id, {
                 status: "ready",
                 videoUrl: status.videoUrl,
                 thumbnailUrl: status.thumbnailUrl,
               });
-              // Update in our array too
               video.status = "ready";
               video.videoUrl = status.videoUrl;
               video.thumbnailUrl = status.thumbnailUrl;
@@ -7698,16 +9732,64 @@ Return ONLY valid JSON in this format: {"opportunities": [{...}, {...}, ...]}`;
           console.warn(`Failed to check status for video ${video.id}:`, err);
         }
       }
-      
-      // Sort all videos by most recent
-      const sortedVideos = allVideos
-        .sort((a: any, b: any) => {
-          const dateA = new Date(a.createdAt || 0);
-          const dateB = new Date(b.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
-        });
 
-      console.log(`📹 Found ${sortedVideos.length} videos for user ${userId}`);
+      // Normalize video_content items
+      const normalizedVideoContent = videoContentList.map((v: any) => ({
+        id: v.id,
+        title: v.title || "Untitled Video",
+        script: v.script || "",
+        videoUrl: ensureS3Url(v.videoUrl),
+        thumbnailUrl: ensureS3Url(v.thumbnailUrl),
+        status: v.status === "completed" ? "ready" : (v.status || "draft"),
+        platform: v.platform,
+        createdAt: v.createdAt,
+        metadata: { source: "video_content", ...(v.metadata || {}) },
+      }));
+
+      // Normalize generated_videos items
+      const normalizedGeneratedVideos = generatedVideosList.map((gv: any) => ({
+        id: gv.id,
+        title: gv.title || "Untitled Video",
+        script: gv.generatedScript || "",
+        videoUrl: ensureS3Url(gv.videoUrl),
+        thumbnailUrl: ensureS3Url(gv.thumbnailUrl),
+        status: gv.status === "completed" ? "ready" : gv.status,
+        createdAt: gv.createdAt,
+        metadata: { source: "generated_videos", templateName: gv.templateName },
+      }));
+
+      // Normalize video_generation_jobs items
+      const normalizedJobVideos = videoJobsList.map((vgj: any) => ({
+        id: vgj.id,
+        title: vgj.title || "Untitled Video",
+        script: "",
+        videoUrl: ensureS3Url(vgj.videoUrl),
+        thumbnailUrl: ensureS3Url(vgj.thumbnailUrl),
+        status: vgj.status === "completed" ? "ready" : vgj.status,
+        createdAt: vgj.createdAt,
+        metadata: { source: "video_generation_jobs", ...(vgj.metadata || {}) },
+      }));
+
+      // Merge all sources
+      const allVideos = [...normalizedVideoContent, ...normalizedGeneratedVideos, ...normalizedJobVideos];
+
+      // Deduplicate by video URL (keep the first occurrence)
+      const seenUrls = new Set<string>();
+      const deduped = allVideos.filter((v) => {
+        if (!v.videoUrl) return true;
+        if (seenUrls.has(v.videoUrl)) return false;
+        seenUrls.add(v.videoUrl);
+        return true;
+      });
+
+      // Sort by date descending
+      const sortedVideos = deduped.sort((a: any, b: any) => {
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      console.log(`📹 Found ${sortedVideos.length} unified videos for user ${userId} (content: ${videoContentList.length}, generated: ${generatedVideosList.length}, jobs: ${videoJobsList.length})`);
       
       res.json({ 
         videos: sortedVideos,
@@ -8099,7 +10181,8 @@ Return JSON: { "content": "post text with emojis", "hashtags": ["tag1", "tag2"] 
       const targetPlatforms = platforms || ['facebook', 'instagram', 'linkedin', 'x'];
       const suggestions: any[] = [];
 
-      const { unifiedAI } = await import('./services/unified-ai');
+      const { UnifiedAIService } = await import('./services/unified-ai');
+      const aiService = new UnifiedAIService();
 
       for (const platform of targetPlatforms) {
         try {
@@ -8120,7 +10203,7 @@ Create an engaging post that:
 
 Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"] }`;
 
-          const result = await unifiedAI.generate(prompt, { jsonMode: true });
+          const result = await aiService.generate(prompt, { jsonMode: true });
           let parsed: any = {};
           
           try {
@@ -9021,6 +11104,110 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
+  // Get all avatar looks across all groups for the current user
+  app.get(
+    "/api/photo-avatars/all-looks",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+        const looks = await storage.listPhotoAvatarsByUser(userId);
+        res.json({ looks, count: looks.length });
+      } catch (error) {
+        console.error("Failed to get all looks:", error);
+        res.status(500).json({ error: "Failed to get all looks" });
+      }
+    }
+  );
+
+  // Get active/in-progress look generation jobs for status tracking
+  app.get(
+    "/api/photo-avatars/active-jobs",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+        
+        // Get all non-terminal jobs (pending or processing)
+        const activeJobs = await db
+          .select()
+          .from(lookGenerationJobs)
+          .where(
+            and(
+              eq(lookGenerationJobs.userId, userId),
+              or(
+                eq(lookGenerationJobs.status, "pending"),
+                eq(lookGenerationJobs.status, "processing")
+              )
+            )
+          )
+          .orderBy(desc(lookGenerationJobs.createdAt));
+        
+        // Also get recently completed jobs (last 2 minutes) so the UI can show completion
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+        const recentlyCompleted = await db
+          .select()
+          .from(lookGenerationJobs)
+          .where(
+            and(
+              eq(lookGenerationJobs.userId, userId),
+              eq(lookGenerationJobs.status, "completed"),
+              gt(lookGenerationJobs.completedAt, twoMinutesAgo)
+            )
+          )
+          .orderBy(desc(lookGenerationJobs.completedAt));
+        
+        res.json({
+          activeJobs,
+          recentlyCompleted,
+          hasActiveJobs: activeJobs.length > 0,
+          totalActive: activeJobs.length,
+          totalRecentlyCompleted: recentlyCompleted.length,
+        });
+      } catch (error) {
+        console.error("Failed to get active jobs:", error);
+        res.status(500).json({ error: "Failed to get active jobs" });
+      }
+    }
+  );
+
+  // Delete a generated look
+  app.delete(
+    "/api/photo-avatars/looks/:lookId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const userId = String(req.user?.id);
+        if (!userId) {
+          return res.status(401).json({ error: "User not authenticated" });
+        }
+        const { lookId } = req.params;
+        const result = await db
+          .delete(lookGenerationJobs)
+          .where(
+            and(
+              eq(lookGenerationJobs.id, lookId),
+              eq(lookGenerationJobs.userId, userId)
+            )
+          )
+          .returning();
+        if (result.length === 0) {
+          return res.status(404).json({ error: "Look not found" });
+        }
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Failed to delete look:", error);
+        res.status(500).json({ error: "Failed to delete look" });
+      }
+    }
+  );
+
   // Get avatar group photos (generated images) (WITH OWNERSHIP CHECK)
   app.get(
     "/api/photo-avatars/groups/:groupId/photos",
@@ -9217,7 +11404,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         if (!dbGroup) {
           return res.status(404).json({ error: "Avatar group not found" });
         }
-        const { numLooks = 4 } = req.body; // Default to 4 professional styles
+        const { numLooks = 3 } = req.body; // Default to 3 professional styles
 
         const photoAvatarService = new HeyGenPhotoAvatarService();
 
@@ -9759,6 +11946,28 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  app.delete("/api/avatar-iv/photos/:photoId", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { photoId } = req.params;
+      const asset = await storage.getMediaAssetById(photoId);
+      if (!asset || asset.userId !== userId) {
+        return res.status(404).json({ error: "Photo not found" });
+      }
+      
+      await storage.deleteMediaAsset(photoId);
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Failed to delete photo:", error);
+      res.status(500).json({ error: "Failed to delete photo", details: error?.message });
+    }
+  });
+
   // Upload photo and get image_key for Avatar IV
   app.post("/api/avatar-iv/upload", requireAuth, memoryImageUpload.single("image"), async (req, res) => {
     try {
@@ -9840,8 +12049,46 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const savedPath = await persistImageBuffer(req.file.buffer, filename, req.file.mimetype || "image/jpeg");
       console.log(`💾 Photo backup saved: ${savedPath || 'failed'}`);
 
-      // Save to media assets library for reuse
+      // Auto-create avatar group and start training (fire-and-forget)
       const photoTitle = req.body.title || req.file.originalname || "Uploaded Photo";
+      let groupId: string | undefined;
+      try {
+        const photoAvatarService = new HeyGenPhotoAvatarService();
+        const groupResult = await photoAvatarService.createAvatarGroup(photoTitle, uploadResult.image_key);
+        groupId = groupResult?.group_id || groupResult?.avatar_group_id;
+        console.log(`🎭 Auto-created avatar group: ${groupId}`);
+
+        if (groupId) {
+          // Save to photoAvatarGroups table for ownership checks (idempotent)
+          try {
+            const existingGroup = await storage.getPhotoAvatarGroupByHeygenId(groupId);
+            if (!existingGroup) {
+              await storage.createPhotoAvatarGroup({
+                userId,
+                groupName: photoTitle,
+                heygenGroupId: groupId,
+                trainingStatus: "pending",
+                heygenImageKey: uploadResult.image_key,
+              });
+              console.log(`💾 Saved avatar group ${groupId} to database`);
+            } else {
+              console.log(`💾 Avatar group ${groupId} already exists in database`);
+            }
+          } catch (dbErr: any) {
+            console.error(`⚠️ Failed to save group to database:`, dbErr?.message);
+          }
+
+          photoAvatarService.trainAvatarGroup(groupId).then(() => {
+            console.log(`🚀 Auto-training started for group: ${groupId}`);
+          }).catch((trainErr: any) => {
+            console.error(`⚠️ Auto-training failed for group ${groupId}:`, trainErr?.message);
+          });
+        }
+      } catch (groupErr: any) {
+        console.error(`⚠️ Auto-create avatar group failed:`, groupErr?.message);
+      }
+
+      // Save to media assets library for reuse
       const mediaAsset = await storage.createMediaAsset({
         userId,
         type: "avatar-photo",
@@ -9855,6 +12102,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           imageKey: uploadResult.image_key,
           heygenAssetId: uploadResult.id,
           savedPath,
+          groupId,
         },
       });
       console.log(`📚 Photo saved to library: ${mediaAsset.id}`);
@@ -9866,10 +12114,84 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         assetId: uploadResult.id,
         savedPath,
         libraryId: mediaAsset.id,
+        groupId,
       });
     } catch (error: any) {
       console.error("Avatar IV upload failed:", error);
       res.status(500).json({ error: "Failed to upload image", details: error?.message });
+    }
+  });
+
+  // Create avatar group on-demand for photos that were uploaded before auto-group-creation
+  app.post("/api/avatar-iv/photos/:photoId/create-group", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      const { photoId } = req.params;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const asset = await storage.getMediaAssetById(photoId);
+      if (!asset || asset.userId !== userId) {
+        return res.status(404).json({ error: "Photo not found" });
+      }
+
+      const metadata = asset.metadata as any;
+      if (!metadata?.imageKey) {
+        return res.status(400).json({ error: "Photo has no imageKey – please re-upload" });
+      }
+
+      if (metadata?.groupId) {
+        return res.json({ groupId: metadata.groupId, alreadyExists: true });
+      }
+
+      console.log(`🎭 On-demand group creation for photo ${photoId}, imageKey: ${metadata.imageKey}`);
+
+      const photoAvatarService = new HeyGenPhotoAvatarService();
+      const title = asset.title || "Uploaded Photo";
+      const groupResult = await photoAvatarService.createAvatarGroup(title, metadata.imageKey);
+      const groupId = groupResult?.group_id || groupResult?.avatar_group_id;
+
+      if (!groupId) {
+        return res.status(500).json({ error: "Failed to create avatar group – no groupId returned" });
+      }
+
+      console.log(`🎭 Created group ${groupId} for photo ${photoId}`);
+
+      // Save to photoAvatarGroups table for ownership checks (idempotent)
+      try {
+        const existingGroup = await storage.getPhotoAvatarGroupByHeygenId(groupId);
+        if (!existingGroup) {
+          await storage.createPhotoAvatarGroup({
+            userId,
+            groupName: title,
+            heygenGroupId: groupId,
+            trainingStatus: "pending",
+            heygenImageKey: metadata.imageKey,
+          });
+          console.log(`💾 Saved on-demand avatar group ${groupId} to database`);
+        } else {
+          console.log(`💾 On-demand avatar group ${groupId} already exists in database`);
+        }
+      } catch (dbErr: any) {
+        console.error(`⚠️ Failed to save on-demand group to database:`, dbErr?.message);
+      }
+
+      photoAvatarService.trainAvatarGroup(groupId).then(() => {
+        console.log(`🚀 Training started for on-demand group: ${groupId}`);
+      }).catch((trainErr: any) => {
+        console.error(`⚠️ Training failed for on-demand group ${groupId}:`, trainErr?.message);
+      });
+
+      await storage.updateMediaAsset(photoId, {
+        metadata: { ...metadata, groupId },
+      });
+
+      res.json({ groupId, created: true });
+    } catch (error: any) {
+      console.error("On-demand group creation failed:", error);
+      res.status(500).json({ error: "Failed to create avatar group", details: error?.message });
     }
   });
 
@@ -9925,6 +12247,84 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
+  // Convert a HeyGen-hosted image URL to an image_key for video generation
+  app.post("/api/avatar-iv/use-look-image", requireAuth, async (req, res) => {
+    try {
+      const userId = String(req.user?.id);
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { imageUrl, lookName } = req.body;
+      if (!imageUrl) {
+        return res.status(400).json({ error: "imageUrl is required" });
+      }
+
+      console.log(`🎨 Converting look image to imageKey for user ${userId}`);
+      console.log(`🎨 Image URL: ${imageUrl}`);
+
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to download image: ${imageResponse.status}`);
+      }
+      const imageArrayBuffer = await imageResponse.arrayBuffer();
+      const imageBuffer = Buffer.from(imageArrayBuffer);
+      const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+
+      console.log(`📥 Downloaded image: ${imageBuffer.length} bytes, type: ${contentType}`);
+
+      const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://gb-video-studio-env-2.eba-h2pwbutp.us-east-2.elasticbeanstalk.com";
+      console.log(`📤 Uploading look image via external service: ${externalServiceUrl}`);
+
+      const tmpFilePath = path.join(os.tmpdir(), `look-upload-${Date.now()}.jpg`);
+      fs.writeFileSync(tmpFilePath, imageBuffer);
+      console.log(`📁 Wrote temp file: ${tmpFilePath} (${imageBuffer.length} bytes)`);
+
+      let uploadResult: any;
+      try {
+        const curlCmd = `curl -s --max-time 60 -X POST "${externalServiceUrl}/api/heygen/assets" -F "file=@${tmpFilePath};type=image/jpeg" -F "kind=image"`;
+        const curlOutput = execSync(curlCmd, { timeout: 65000 }).toString();
+        console.log("📦 External service raw response:", curlOutput.substring(0, 500));
+        uploadResult = JSON.parse(curlOutput);
+      } catch (curlError: any) {
+        console.error("❌ External service upload failed:", curlError.message);
+        throw new Error(`Failed to upload photo to external service`);
+      } finally {
+        try { fs.unlinkSync(tmpFilePath); } catch(e) {}
+      }
+      console.log("📦 External service upload result:", JSON.stringify(uploadResult));
+
+      const imageKey = uploadResult.image_key || uploadResult.data?.image_key;
+      if (!imageKey) {
+        throw new Error("No image_key returned from external service");
+      }
+
+      console.log(`✅ Look image uploaded via proxy: image_key = ${imageKey}`);
+
+      const photoTitle = lookName || "AI Generated Look";
+      await storage.createPhotoAvatar({
+        groupId: "ai-generated-looks",
+        photoUrl: imageUrl,
+        poseType: photoTitle,
+        heygenPhotoId: imageKey,
+        processingStatus: "completed",
+      });
+
+      res.json({
+        success: true,
+        imageKey: imageKey,
+        imageUrl: imageUrl,
+        message: "Look ready for video generation",
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to convert look image:", error);
+      res.status(500).json({
+        error: "Failed to prepare look for video",
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   // Generate Avatar IV video (with background job support)
   app.post("/api/avatar-iv/generate", requireAuth, async (req, res) => {
     try {
@@ -9972,7 +12372,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           audioUrl,
           audioAssetId,
           videoOrientation: videoOrientation || "landscape",
-          fit: fit || "cover",
+          fit: fit || "contain",
           customMotionPrompt,
           enhanceCustomMotionPrompt,
         });
@@ -9991,7 +12391,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           script,
           voiceId,
           videoOrientation: videoOrientation || "landscape",
-          fit: fit || "cover",
+          fit: fit || "contain",
           customMotionPrompt,
           enhanceCustomMotionPrompt,
         });
@@ -10120,19 +12520,23 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         console.log(`💾 Video saved to S3: ${savedPath || 'failed'}${result ? `, media asset: ${result.mediaAsset.id}` : ''}`);
         (status as any).saved_path = savedPath;
         
+        if (savedPath) {
+          status.video_url = savedPath;
+        }
+        
         // Check if already in quick posts library
         const existingVideos = await storage.getGeneratedVideos(userId);
         const alreadySaved = existingVideos.some(v => v.heygenVideoId === videoId);
         
         if (!alreadySaved) {
-          // Save to quick posts library (generatedVideos table)
+          // Save to quick posts library (generatedVideos table) with S3 URL
           const generatedVideo = await storage.createGeneratedVideo({
             userId,
             title: (title as string) || "Avatar IV Video",
             generatedScript: (script as string) || "",
             status: "completed",
             heygenVideoId: videoId,
-            videoUrl: status.video_url,
+            videoUrl: savedPath || status.video_url,
             thumbnailUrl: status.thumbnail_url || "",
             duration: status.duration || 0,
           });
@@ -10199,13 +12603,40 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(400).json({ error: "Prompt is required" });
       }
 
-      // Ownership check
-      const dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
+      // Ownership check - try photoAvatarGroups table first, fallback to media asset metadata
+      let dbGroup = await storage.getPhotoAvatarGroupByHeygenIdAndUser(
         groupId,
         userId
       );
       if (!dbGroup) {
-        return res.status(404).json({ error: "Avatar group not found" });
+        // Fallback: check if any media asset owned by this user has this groupId in metadata
+        const userAssets = await storage.getMediaAssets(userId);
+        const matchingAsset = userAssets.find((a: any) => {
+          const meta = a.metadata as any;
+          return meta?.groupId === groupId;
+        });
+        if (!matchingAsset) {
+          return res.status(404).json({ error: "Avatar group not found" });
+        }
+        // Auto-create the missing DB record for this legacy group
+        try {
+          const existing = await storage.getPhotoAvatarGroupByHeygenId(groupId);
+          if (!existing) {
+            dbGroup = await storage.createPhotoAvatarGroup({
+              userId,
+              groupName: matchingAsset.title || "Uploaded Photo",
+              heygenGroupId: groupId,
+              trainingStatus: "pending",
+              heygenImageKey: (matchingAsset.metadata as any)?.imageKey || "",
+            });
+            console.log(`💾 Auto-backfilled avatar group ${groupId} to database`);
+          } else {
+            dbGroup = existing;
+          }
+        } catch (backfillErr: any) {
+          console.error(`⚠️ Backfill failed:`, backfillErr?.message);
+          // Still allow the request through since we verified ownership via media asset
+        }
       }
 
       console.log("✏️ Editing look for group:", groupId);
@@ -10223,11 +12654,40 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         console.log("📋 Avatar group training status:", statusCheck);
 
         if (statusCheck.status !== "ready") {
+          if (statusCheck.status === "empty" || statusCheck.status === "failed") {
+            // Training was never started or failed - auto-trigger it now
+            console.log(`🔄 Training status is "${statusCheck.status}" - auto-triggering training for group ${groupId}`);
+            try {
+              await photoAvatarService.trainAvatarGroup(groupId);
+              console.log(`🚀 Auto-training triggered for group: ${groupId}`);
+            } catch (trainErr: any) {
+              console.error(`⚠️ Auto-training trigger failed:`, trainErr?.message);
+            }
+            return res.status(400).json({
+              error: "Avatar is being prepared",
+              status: statusCheck.status,
+              message: "We've started preparing your avatar for style changes. This takes about 1-2 minutes. Please try again shortly.",
+            });
+          }
+          if (statusCheck.status === "pending" || statusCheck.status === "processing") {
+            return res.status(400).json({
+              error: "Avatar is still being prepared",
+              status: statusCheck.status,
+              message: "Your avatar is still training. This usually takes 1-2 minutes after upload. Please try again shortly.",
+            });
+          }
           return res.status(400).json({
             error: "Avatar group must be trained before generating looks",
             status: statusCheck.status,
-            message: `Current status: ${statusCheck.status}. Please train the avatar group first using the 'Train Avatar' button.`,
+            message: `Current status: ${statusCheck.status}. Please train the avatar group first.`,
           });
+        } else {
+          // Update DB training status to "ready" if it was pending
+          if (dbGroup && dbGroup.trainingStatus !== "ready") {
+            try {
+              await storage.updatePhotoAvatarGroup(dbGroup.id, { trainingStatus: "ready" });
+            } catch (e) { /* ignore */ }
+          }
         }
       } catch (statusError) {
         console.error("Failed to check training status:", statusError);
@@ -10243,7 +12703,103 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         referenceImages,
       });
 
-      res.json(result);
+      console.log("✏️ editLook result:", JSON.stringify(result, null, 2));
+
+      const generationId = result?.generation_id || result?.id;
+      
+      if (generationId) {
+        const bgUserId = userId;
+        const bgGroupId = groupId;
+        const bgPrompt = prompt;
+        
+        (async () => {
+          const maxAttempts = 36;
+          let attempt = 0;
+          
+          const pollStatus = async () => {
+            attempt++;
+            try {
+              console.log(`🔄 [BG] Polling look generation status (attempt ${attempt}/${maxAttempts}) for generation: ${generationId}`);
+              const statusResult = await photoAvatarService.getLookGenerationStatus(generationId);
+              console.log(`🔄 [BG] Generation status response:`, JSON.stringify(statusResult, null, 2));
+              
+              const status = statusResult?.status || statusResult?.generation_status;
+              
+              if (status === "completed" || status === "ready" || status === "success") {
+                const avatarList = statusResult?.avatar_list || statusResult?.avatars || [];
+                let imageUrl = statusResult?.image_url || statusResult?.url;
+                let newImageKey = statusResult?.image_key;
+                
+                if (avatarList.length > 0) {
+                  const latestAvatar = avatarList[avatarList.length - 1];
+                  imageUrl = imageUrl || latestAvatar?.image_url || latestAvatar?.preview_image_url || latestAvatar?.url;
+                  newImageKey = newImageKey || latestAvatar?.image_key || latestAvatar?.id;
+                }
+                
+                if (!imageUrl && statusResult?.data) {
+                  imageUrl = statusResult.data.image_url || statusResult.data.url || statusResult.data.preview_image_url;
+                  newImageKey = newImageKey || statusResult.data.image_key || statusResult.data.id;
+                }
+                
+                if (imageUrl) {
+                  const truncatedPrompt = bgPrompt.length > 50 ? bgPrompt.substring(0, 50) + "..." : bgPrompt;
+                  try {
+                    const existingAssets = await storage.getMediaAssets(bgUserId, "avatar-photo");
+                    const isDuplicate = existingAssets.some((a: any) => {
+                      const meta = a.metadata as any;
+                      return meta?.imageKey === (newImageKey || generationId) && meta?.groupId === bgGroupId;
+                    });
+                    if (isDuplicate) {
+                      console.log(`⏭️ [BG] Style look already exists in library, skipping duplicate`);
+                      return;
+                    }
+                    await storage.createMediaAsset({
+                      userId: bgUserId,
+                      type: "avatar-photo",
+                      source: "heygen-style",
+                      url: imageUrl,
+                      thumbnailUrl: imageUrl,
+                      title: `Style: ${truncatedPrompt}`,
+                      metadata: {
+                        imageKey: newImageKey || generationId,
+                        groupId: bgGroupId,
+                        isStyleVariant: true,
+                        originalPrompt: bgPrompt,
+                      },
+                    });
+                    console.log(`✅ [BG] New style look saved to photo library for user ${bgUserId}`);
+                  } catch (saveErr: any) {
+                    console.error(`❌ [BG] Failed to save style look to library:`, saveErr?.message);
+                  }
+                } else {
+                  console.warn(`⚠️ [BG] Generation completed but no image URL found in response`);
+                }
+                return;
+              }
+              
+              if (status === "failed" || status === "error") {
+                console.error(`❌ [BG] Look generation failed for ${generationId}`);
+                return;
+              }
+              
+              if (attempt < maxAttempts) {
+                setTimeout(pollStatus, 5000);
+              } else {
+                console.warn(`⚠️ [BG] Max polling attempts reached for generation ${generationId}`);
+              }
+            } catch (pollErr: any) {
+              console.error(`❌ [BG] Polling error (attempt ${attempt}):`, pollErr?.message);
+              if (attempt < maxAttempts) {
+                setTimeout(pollStatus, 5000);
+              }
+            }
+          };
+          
+          setTimeout(pollStatus, 5000);
+        })();
+      }
+
+      res.json({ ...result, lookSaveInProgress: !!generationId });
     } catch (error) {
       console.error("Failed to edit look:", error);
       const errorMessage =
@@ -10946,9 +13502,13 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   );
 
   // ==================== PHOTO AVATAR PROXY ENDPOINTS ====================
-  // Proxies to external photo avatar service on port 3001
-  
-  // Create avatar with looks - Proxies to external service
+  // Proxies to external photo avatar service (AWS Elastic Beanstalk)
+  // External service API base: /api/heygen/*
+
+  const getExternalServiceUrl = () =>
+    process.env.PHOTO_AVATAR_SERVICE_URL || "http://gb-video-studio-env-2.eba-h2pwbutp.us-east-2.elasticbeanstalk.com";
+
+  // Create avatar with looks - multi-step proxy through external service
   app.post(
     "/api/photo-avatars/create-with-looks",
     requireAuth,
@@ -10959,49 +13519,357 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           return res.status(400).json({ error: "No image uploaded" });
         }
 
-        console.log("🚀 Proxying create-with-looks to external service");
+        const externalServiceUrl = getExternalServiceUrl();
+        console.log("🚀 [PROXY] create-with-looks: Starting multi-step flow via", externalServiceUrl);
 
-        // Read file buffer
         const fileBuffer = fs.readFileSync(req.file.path);
-        
-        // Clean up temp file early
         fs.unlinkSync(req.file.path);
 
-        // Use Node.js native FormData with Blob for proper multipart handling
-        const formData = new FormData();
-        const blob = new Blob([fileBuffer], { type: req.file.mimetype });
-        formData.append("image", blob, req.file.originalname);
-        
-        // Forward all body fields
-        if (req.body.name) formData.append("name", req.body.name);
-        if (req.body.prompt) formData.append("prompt", req.body.prompt);
-        if (req.body.orientation) formData.append("orientation", req.body.orientation);
-        if (req.body.pose) formData.append("pose", req.body.pose);
-        if (req.body.style) formData.append("style", req.body.style);
+        // ✨ AVATAR REUSE: Hash the image to detect if we already have a trained group
+        const crypto = await import("crypto");
+        const imageHash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+        const capturedUserId = (req as any).user?.id;
+        console.log(`🔍 [PROXY] Image hash: ${imageHash}, userId: ${capturedUserId}`);
 
-        // Proxy to external service (AWS Elastic Beanstalk)
-        const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://gb-video-studio-env-2.eba-h2pwbutp.us-east-2.elasticbeanstalk.com";
-        console.log("📤 Forwarding to:", externalServiceUrl);
-        
-        const response = await fetch(`${externalServiceUrl}/api/photo-avatars/create-with-looks`, {
-          method: "POST",
-          body: formData,
-        });
+        let groupId: string | null = null;
+        let reusedExistingGroup = false;
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("❌ External service error:", response.status, errorText);
-          return res.status(response.status).json({
-            error: "External service error",
-            details: errorText,
-          });
+        // Check if this image already has a trained avatar group
+        if (capturedUserId) {
+          const existingGroup = await storage.getPhotoAvatarGroupByImageHash(imageHash, capturedUserId);
+          if (existingGroup && existingGroup.heygenGroupId) {
+            console.log(`♻️ [PROXY] Reusing existing trained group: ${existingGroup.heygenGroupId} (name: ${existingGroup.groupName})`);
+            groupId = existingGroup.heygenGroupId;
+            reusedExistingGroup = true;
+          }
         }
 
-        const data = await response.json();
-        console.log("✅ Avatar created via external service:", data.group_id);
-        res.json(data);
+        if (!reusedExistingGroup) {
+          // Step 1: Upload image to external service (kind must be "image" not "photo")
+          console.log("📤 [PROXY] Step 1: Uploading image to /api/heygen/assets");
+          const uploadFormData = new FormData();
+          const blob = new Blob([fileBuffer], { type: req.file.mimetype });
+          uploadFormData.append("file", blob, req.file.originalname);
+          uploadFormData.append("kind", "image");
+
+          const uploadResponse = await fetch(`${externalServiceUrl}/api/heygen/assets`, {
+            method: "POST",
+            body: uploadFormData,
+          });
+
+          if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text();
+            console.error("❌ [PROXY] Asset upload failed:", uploadResponse.status, errorText);
+            return res.status(uploadResponse.status).json({
+              error: "Failed to upload image to external service",
+              details: errorText,
+            });
+          }
+
+          const uploadData = await uploadResponse.json();
+          console.log("📦 [PROXY] Upload response:", JSON.stringify(uploadData));
+          const imageKey = uploadData.image_key || uploadData.asset_id || uploadData.key;
+          console.log("✅ [PROXY] Step 1 complete: image_key =", imageKey);
+
+          if (!imageKey) {
+            return res.status(500).json({
+              error: "External service did not return an image_key",
+              details: JSON.stringify(uploadData),
+            });
+          }
+
+          // Step 2: Create avatar group
+          console.log("📤 [PROXY] Step 2: Creating avatar group via /api/heygen/avatars/create-group");
+          const createGroupResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/create-group`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_key: imageKey }),
+          });
+
+          if (!createGroupResponse.ok) {
+            const errorText = await createGroupResponse.text();
+            console.error("❌ [PROXY] Create group failed:", createGroupResponse.status, errorText);
+            return res.status(createGroupResponse.status).json({
+              error: "Failed to create avatar group on external service",
+              details: errorText,
+            });
+          }
+
+          const createGroupData = await createGroupResponse.json();
+          groupId = createGroupData.group_id || createGroupData.groupId;
+          console.log("✅ [PROXY] Step 2 complete: group_id =", groupId);
+
+          if (!groupId) {
+            return res.status(500).json({
+              error: "External service did not return a group_id",
+              details: JSON.stringify(createGroupData),
+            });
+          }
+
+          // Save new group to database for future reuse
+          if (capturedUserId) {
+            try {
+              await storage.createPhotoAvatarGroup({
+                userId: capturedUserId,
+                heygenGroupId: groupId,
+                groupName: req.body.name || `Avatar_${Date.now()}`,
+                imageHash: imageHash,
+                s3ImageUrl: null,
+                heygenImageKey: imageKey,
+                trainingStatus: "pending",
+              });
+              console.log("💾 [PROXY] Avatar group metadata saved for reuse detection");
+            } catch (dbError) {
+              console.error("⚠️ [PROXY] Failed to save avatar group metadata:", dbError);
+            }
+          }
+        }
+
+        // Return immediately with group_id
+        res.json({
+          success: true,
+          group_id: groupId,
+          status: "processing",
+          reused: reusedExistingGroup,
+          message: reusedExistingGroup
+            ? "Reusing existing trained avatar. New looks will be generated in the background (~2-3 min)."
+            : "Avatar group created. Training and look generation will happen in the background (~6-8 min).",
+        });
+
+        // Step 3+: Background async process - train (if new), poll, generate looks
+        const backgroundPrompt = req.body.prompt || "";
+        const backgroundOrientation = req.body.orientation || "square";
+        const backgroundPose = req.body.pose || "half_body";
+        const backgroundStyle = req.body.style || "Realistic";
+
+        (async () => {
+          try {
+            if (!reusedExistingGroup) {
+              // Wait 30 seconds for HeyGen to process the image
+              console.log(`⏳ [PROXY BG] Waiting 30s before training group ${groupId}...`);
+              await new Promise(resolve => setTimeout(resolve, 30000));
+
+              // Step 3: Start training
+              console.log(`🎓 [PROXY BG] Step 3: Starting training for group ${groupId}`);
+              const trainResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/${groupId}/train`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+              });
+
+              if (!trainResponse.ok) {
+                const errorText = await trainResponse.text();
+                console.error(`❌ [PROXY BG] Training start failed for ${groupId}:`, errorText);
+                return;
+              }
+              console.log(`✅ [PROXY BG] Training started for group ${groupId}`);
+
+              // Step 4: Poll training status until trained
+              let trained = false;
+              let pollAttempts = 0;
+              const maxPollAttempts = 180; // 30 minutes max (180 * 10s)
+
+              while (!trained && pollAttempts < maxPollAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s between polls
+                pollAttempts++;
+
+                try {
+                  const statusResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/train/status/${groupId}`);
+                  if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    console.log(`📊 [PROXY BG] Training status for ${groupId} (attempt ${pollAttempts}):`, statusData.status, "trained:", statusData.trained);
+                    if (statusData.trained === true || statusData.status === "completed" || statusData.status === "ready") {
+                      trained = true;
+                    }
+                  }
+                } catch (pollError) {
+                  console.error(`⚠️ [PROXY BG] Poll error for ${groupId}:`, pollError);
+                }
+              }
+
+              if (!trained) {
+                console.error(`❌ [PROXY BG] Training timed out for group ${groupId} after ${maxPollAttempts} attempts`);
+                return;
+              }
+            } else {
+              console.log(`♻️ [PROXY BG] Skipping training for reused group ${groupId} - already trained`);
+            }
+
+            console.log(`✅ [PROXY BG] Training complete for group ${groupId}. Generating 3 looks...`);
+
+            // Step 5: Generate 3 looks with different prompts
+            const facePreservation = "maintain the exact same face, facial features, and likeness of the person";
+            const lookLabels = ["executive", "friendly-agent", "outdoor-guide"];
+            const lookNames = ["Executive", "Friendly Agent", "Outdoor Guide"];
+            const lookPrompts = [
+              { prompt: backgroundPrompt ? `${backgroundPrompt}, ${facePreservation}` : `Professional executive in a navy business suit, confident and approachable, ${facePreservation}`, orientation: backgroundOrientation, pose: backgroundPose, style: backgroundStyle },
+              { prompt: `Friendly real estate agent in smart casual blazer, warm and welcoming smile, ${facePreservation}`, orientation: backgroundOrientation, pose: backgroundPose, style: backgroundStyle },
+              { prompt: `Outdoor property tour guide in clean casual attire, natural setting, ${facePreservation}`, orientation: backgroundOrientation, pose: backgroundPose, style: backgroundStyle },
+            ];
+
+            const generationJobs: Array<{ generationId: string; lookLabel: string; lookName: string; prompt: string }> = [];
+
+            for (let i = 0; i < lookPrompts.length; i++) {
+              try {
+                console.log(`🎨 [PROXY BG] Generating look ${i + 1}/3 for group ${groupId}`);
+                const lookResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/${groupId}/generate-look`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(lookPrompts[i]),
+                });
+
+                if (lookResponse.ok) {
+                  const lookData = await lookResponse.json();
+                  console.log(`✅ [PROXY BG] Look ${i + 1} generation started:`, lookData);
+                  if (lookData.generation_id) {
+                    generationJobs.push({
+                      generationId: lookData.generation_id,
+                      lookLabel: lookLabels[i],
+                      lookName: lookNames[i],
+                      prompt: lookPrompts[i].prompt,
+                    });
+                  }
+                } else {
+                  const errorText = await lookResponse.text();
+                  console.error(`❌ [PROXY BG] Look ${i + 1} generation failed:`, errorText);
+                }
+
+                // Small delay between look generation requests
+                if (i < lookPrompts.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+              } catch (lookError) {
+                console.error(`❌ [PROXY BG] Look ${i + 1} generation error:`, lookError);
+              }
+            }
+
+            console.log(`🎉 [PROXY BG] All look generation requests sent for group ${groupId}. Polling ${generationJobs.length} generation jobs...`);
+
+            // Step 6: Poll each generation job for completion and save results
+            const maxGenPollAttempts = 60; // 10 minutes max (60 * 10s)
+            for (const job of generationJobs) {
+              try {
+                let genComplete = false;
+                let genPollAttempts = 0;
+
+                while (!genComplete && genPollAttempts < maxGenPollAttempts) {
+                  await new Promise(resolve => setTimeout(resolve, 10000));
+                  genPollAttempts++;
+
+                  try {
+                    const genStatusResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/generation/${job.generationId}`);
+                    if (genStatusResponse.ok) {
+                      const genStatusData = await genStatusResponse.json();
+                      console.log(`📊 [PROXY BG] Generation status for ${job.generationId} (attempt ${genPollAttempts}): ${genStatusData.status}`);
+
+                      if (genStatusData.status === "success") {
+                        genComplete = true;
+                        const imageUrls: string[] = genStatusData.image_url_list || (genStatusData.image_url ? [genStatusData.image_url] : []);
+                        console.log(`✅ [PROXY BG] Generation ${job.generationId} complete with ${imageUrls.length} images`);
+
+                        for (const imageUrl of imageUrls) {
+                          try {
+                            await db.insert(lookGenerationJobs).values({
+                              userId: capturedUserId || "unknown",
+                              groupId: groupId,
+                              heygenGenerationId: job.generationId,
+                              lookLabel: job.lookLabel,
+                              lookName: job.lookName,
+                              prompt: job.prompt,
+                              status: "completed",
+                              resultImageUrl: imageUrl,
+                              completedAt: new Date(),
+                            });
+                            console.log(`💾 [PROXY BG] Saved look result for ${job.lookLabel}: ${imageUrl.substring(0, 80)}...`);
+                          } catch (dbError) {
+                            console.error(`❌ [PROXY BG] Failed to save look result to DB:`, dbError);
+                          }
+                        }
+                        if (capturedUserId) {
+                          realtimeService.notifyLookGenerationComplete(
+                            parseInt(capturedUserId),
+                            groupId!,
+                            job.lookName,
+                            imageUrls.length
+                          );
+                        }
+                      } else if (genStatusData.status === "failed") {
+                        genComplete = true;
+                        console.error(`❌ [PROXY BG] Generation ${job.generationId} failed`);
+                        try {
+                          await db.insert(lookGenerationJobs).values({
+                            userId: capturedUserId || "unknown",
+                            groupId: groupId,
+                            heygenGenerationId: job.generationId,
+                            lookLabel: job.lookLabel,
+                            lookName: job.lookName,
+                            prompt: job.prompt,
+                            status: "failed",
+                            errorMessage: "Generation failed on HeyGen",
+                            completedAt: new Date(),
+                          });
+                        } catch (dbError) {
+                          console.error(`❌ [PROXY BG] Failed to save failed status to DB:`, dbError);
+                        }
+                        if (capturedUserId) {
+                          realtimeService.notifyLookGenerationFailed(
+                            parseInt(capturedUserId),
+                            groupId!,
+                            job.lookName,
+                            "Generation failed on HeyGen"
+                          );
+                        }
+                      }
+                    }
+                  } catch (pollError) {
+                    console.error(`⚠️ [PROXY BG] Generation poll error for ${job.generationId}:`, pollError);
+                  }
+                }
+
+                if (!genComplete) {
+                  console.error(`❌ [PROXY BG] Generation ${job.generationId} timed out after ${maxGenPollAttempts} attempts`);
+                  try {
+                    await db.insert(lookGenerationJobs).values({
+                      userId: capturedUserId || "unknown",
+                      groupId: groupId,
+                      heygenGenerationId: job.generationId,
+                      lookLabel: job.lookLabel,
+                      lookName: job.lookName,
+                      prompt: job.prompt,
+                      status: "failed",
+                      errorMessage: "Generation polling timed out",
+                      completedAt: new Date(),
+                    });
+                  } catch (dbError) {
+                    console.error(`❌ [PROXY BG] Failed to save timeout status to DB:`, dbError);
+                  }
+                  if (capturedUserId) {
+                    realtimeService.notifyLookGenerationFailed(
+                      parseInt(capturedUserId),
+                      groupId!,
+                      job.lookName,
+                      "Generation timed out"
+                    );
+                  }
+                }
+              } catch (jobError) {
+                console.error(`❌ [PROXY BG] Error processing generation job ${job.generationId}:`, jobError);
+              }
+            }
+
+            console.log(`🎉 [PROXY BG] All generation jobs processed for group ${groupId}`);
+            if (capturedUserId) {
+              realtimeService.sendNotification(
+                parseInt(capturedUserId),
+                `All AI looks for avatar group have finished processing.`
+              );
+            }
+          } catch (bgError) {
+            console.error(`❌ [PROXY BG] Background process failed for group ${groupId}:`, bgError);
+          }
+        })();
       } catch (error: any) {
-        console.error("❌ Failed to proxy create-with-looks:", error);
+        console.error("❌ [PROXY] Failed to proxy create-with-looks:", error);
         if (req.file?.path && fs.existsSync(req.file.path)) {
           fs.unlinkSync(req.file.path);
         }
@@ -11013,19 +13881,229 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   );
 
-  // Get avatar group workflow status (for polling) - Proxies to external service on port 3001
+  // Generate video from image - multi-step proxy through external service
+  app.post(
+    "/api/photo-avatars/generate-video-from-image",
+    requireAuth,
+    upload.single("image"),
+    async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No image uploaded" });
+        }
+
+        const externalServiceUrl = getExternalServiceUrl();
+        console.log("🎬 [PROXY] generate-video-from-image: Starting multi-step flow via", externalServiceUrl);
+
+        const fileBuffer = fs.readFileSync(req.file.path);
+        fs.unlinkSync(req.file.path);
+
+        // ✨ AVATAR REUSE: Hash image to detect existing trained groups
+        const crypto = await import("crypto");
+        const imageHash = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+        const capturedUserId = (req as any).user?.id;
+        console.log(`🔍 [PROXY VIDEO] Image hash: ${imageHash}, userId: ${capturedUserId}`);
+
+        let groupId: string | null = null;
+        let imageKey: string | null = null;
+        let reusedExistingGroup = false;
+
+        if (capturedUserId) {
+          const existingGroup = await storage.getPhotoAvatarGroupByImageHash(imageHash, capturedUserId);
+          if (existingGroup && existingGroup.heygenGroupId) {
+            console.log(`♻️ [PROXY VIDEO] Reusing existing trained group: ${existingGroup.heygenGroupId}`);
+            groupId = existingGroup.heygenGroupId;
+            imageKey = existingGroup.heygenImageKey;
+            reusedExistingGroup = true;
+          }
+        }
+
+        if (!reusedExistingGroup) {
+          // Step 1: Upload image
+          console.log("📤 [PROXY] Step 1: Uploading image to /api/heygen/assets");
+          const uploadFormData = new FormData();
+          const blob = new Blob([fileBuffer], { type: req.file.mimetype });
+          uploadFormData.append("file", blob, req.file.originalname);
+          uploadFormData.append("kind", "image");
+
+          const uploadResponse = await fetch(`${externalServiceUrl}/api/heygen/assets`, {
+            method: "POST",
+            body: uploadFormData,
+          });
+
+          if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text();
+            console.error("❌ [PROXY] Asset upload failed:", errorText);
+            return res.status(uploadResponse.status).json({
+              error: "Failed to upload image",
+              details: errorText,
+            });
+          }
+
+          const uploadData = await uploadResponse.json();
+          console.log("📦 [PROXY] Upload response:", JSON.stringify(uploadData));
+          imageKey = uploadData.image_key || uploadData.asset_id || uploadData.key;
+          console.log("✅ [PROXY] Image uploaded, image_key =", imageKey);
+
+          // Step 2: Create avatar group
+          console.log("📤 [PROXY] Step 2: Creating avatar group");
+          const createGroupResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/create-group`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_key: imageKey }),
+          });
+
+          if (!createGroupResponse.ok) {
+            const errorText = await createGroupResponse.text();
+            console.error("❌ [PROXY] Create group failed:", errorText);
+            return res.status(createGroupResponse.status).json({
+              error: "Failed to create avatar group",
+              details: errorText,
+            });
+          }
+
+          const createGroupData = await createGroupResponse.json();
+          groupId = createGroupData.group_id || createGroupData.groupId;
+          console.log("✅ [PROXY] Group created, group_id =", groupId);
+
+          // Save to DB for future reuse
+          if (capturedUserId && groupId) {
+            try {
+              await storage.createPhotoAvatarGroup({
+                userId: capturedUserId,
+                heygenGroupId: groupId,
+                groupName: req.body.name || `Avatar_${Date.now()}`,
+                imageHash: imageHash,
+                s3ImageUrl: null,
+                heygenImageKey: imageKey,
+                trainingStatus: "pending",
+              });
+              console.log("💾 [PROXY VIDEO] Avatar group saved for reuse");
+            } catch (dbError) {
+              console.error("⚠️ [PROXY VIDEO] Failed to save group metadata:", dbError);
+            }
+          }
+        }
+
+        // Return immediately
+        res.json({
+          success: true,
+          group_id: groupId,
+          status: "processing",
+          reused: reusedExistingGroup,
+          message: reusedExistingGroup
+            ? "Reusing existing trained avatar. Video generation will start shortly (~3-5 min)."
+            : "Avatar group created. Training and video generation will happen in the background (~8-13 min).",
+        });
+
+        // Background: train (if new) -> poll -> create video
+        const { sanitizeScriptForTTS } = await import("./services/heygen-avatar-iv");
+        const scriptText = sanitizeScriptForTTS(req.body.script || "");
+        const voiceId = req.body.voice_id || "";
+        const avatarName = req.body.name || "";
+
+        (async () => {
+          try {
+            if (!reusedExistingGroup) {
+              // Wait 30s for image processing
+              console.log(`⏳ [PROXY BG VIDEO] Waiting 30s before training group ${groupId}...`);
+              await new Promise(resolve => setTimeout(resolve, 30000));
+
+              // Train
+              console.log(`🎓 [PROXY BG VIDEO] Starting training for group ${groupId}`);
+              const trainResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/${groupId}/train`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+              });
+
+              if (!trainResponse.ok) {
+                console.error(`❌ [PROXY BG VIDEO] Training failed for ${groupId}`);
+                return;
+              }
+
+              // Poll training status
+              let trained = false;
+              let pollAttempts = 0;
+              const maxPollAttempts = 180; // 30 minutes max (180 * 10s)
+
+              while (!trained && pollAttempts < maxPollAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                pollAttempts++;
+
+                try {
+                  const statusResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/train/status/${groupId}`);
+                  if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    console.log(`📊 [PROXY BG VIDEO] Training status ${groupId} (${pollAttempts}):`, statusData.status);
+                    if (statusData.trained === true || statusData.status === "completed" || statusData.status === "ready") {
+                      trained = true;
+                    }
+                  }
+                } catch (pollError) {
+                  console.error(`⚠️ [PROXY BG VIDEO] Poll error:`, pollError);
+                }
+            }
+
+              if (!trained) {
+                console.error(`❌ [PROXY BG VIDEO] Training timed out for ${groupId}`);
+                return;
+              }
+            } else {
+              console.log(`♻️ [PROXY BG VIDEO] Skipping training for reused group ${groupId}`);
+            }
+
+            // Create video if script is provided
+            if (scriptText) {
+              console.log(`🎬 [PROXY BG VIDEO] Creating video for group ${groupId}`);
+              const videoResponse = await fetch(`${externalServiceUrl}/api/heygen/videos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  group_id: groupId,
+                  script: scriptText,
+                  voice_id: voiceId,
+                  name: avatarName,
+                }),
+              });
+
+              if (videoResponse.ok) {
+                const videoData = await videoResponse.json();
+                console.log(`✅ [PROXY BG VIDEO] Video creation started:`, videoData);
+              } else {
+                const errorText = await videoResponse.text();
+                console.error(`❌ [PROXY BG VIDEO] Video creation failed:`, errorText);
+              }
+            }
+          } catch (bgError) {
+            console.error(`❌ [PROXY BG VIDEO] Background process failed:`, bgError);
+          }
+        })();
+      } catch (error: any) {
+        console.error("❌ [PROXY] Failed to proxy generate-video-from-image:", error);
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        res.status(500).json({
+          error: "Failed to generate video from image",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
+  // Get avatar group workflow status - Proxies to external service training status
   app.get("/api/photo-avatars/status/:groupId", requireAuth, async (req, res) => {
     try {
       const { groupId } = req.params;
-      console.log("📊 Proxying workflow status request to port 3001 for group:", groupId);
+      const externalServiceUrl = getExternalServiceUrl();
+      console.log("📊 [PROXY] Checking training status for group:", groupId);
 
-      // Proxy to external photo avatar service (AWS Elastic Beanstalk)
-      const externalServiceUrl = process.env.PHOTO_AVATAR_SERVICE_URL || "http://gb-video-studio-env-2.eba-h2pwbutp.us-east-2.elasticbeanstalk.com";
-      const response = await fetch(`${externalServiceUrl}/api/photo-avatars/status/${groupId}`);
-      
+      const response = await fetch(`${externalServiceUrl}/api/heygen/avatars/train/status/${groupId}`);
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("❌ External service error:", response.status, errorText);
+        console.error("❌ [PROXY] Training status error:", response.status, errorText);
         return res.status(response.status).json({
           error: "External service error",
           details: errorText,
@@ -11033,16 +14111,307 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       }
 
       const data = await response.json();
-      console.log("✅ Status received from external service:", data.workflow_status?.percent_complete || 0, "%");
-      res.json(data);
+      const isTrained = data.trained === true || data.status === "completed" || data.status === "ready";
+      const percentComplete = isTrained ? 100 : (data.status === "processing" ? 50 : 10);
+
+      console.log("✅ [PROXY] Training status:", data.status, "trained:", data.trained, "percent:", percentComplete);
+
+      res.json({
+        group_id: groupId,
+        status: isTrained ? "completed" : (data.status || "processing"),
+        trained: isTrained,
+        workflow_status: {
+          percent_complete: percentComplete,
+          status: isTrained ? "completed" : (data.status || "processing"),
+        },
+        ...data,
+      });
     } catch (error: any) {
-      console.error("❌ Failed to get workflow status from external service:", error);
+      console.error("❌ [PROXY] Failed to get workflow status:", error);
       res.status(500).json({
         error: "Failed to get workflow status",
         details: error?.message || String(error),
       });
     }
   });
+
+  // Proxy generate-look endpoint - forwards to external service instead of direct HeyGen API
+  app.post(
+    "/api/photo-avatars/groups/:groupId/proxy-generate-look",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { groupId } = req.params;
+        const { prompt, orientation, pose, style, numLooks } = req.body;
+        const externalServiceUrl = getExternalServiceUrl();
+
+        console.log(`🎨 [PROXY] Generating look for group ${groupId} via external service`);
+        console.log(`🎨 [PROXY] Prompt: "${prompt}", orientation: ${orientation}, pose: ${pose}, style: ${style}`);
+
+        // Verify training is complete before generating looks
+        console.log(`📊 [PROXY] Checking training status before generating looks for group ${groupId}`);
+        let trained = false;
+        let pollAttempts = 0;
+        const maxPollAttempts = 180; // 30 minutes max (180 * 10s)
+
+        while (!trained && pollAttempts < maxPollAttempts) {
+          try {
+            const statusResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/train/status/${groupId}`);
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              console.log(`📊 [PROXY] Training status for ${groupId} (attempt ${pollAttempts + 1}):`, statusData.status, "trained:", statusData.trained);
+              if (statusData.trained === true || statusData.status === "completed" || statusData.status === "ready") {
+                trained = true;
+                break;
+              }
+              if (statusData.status === "failed" || statusData.status === "error") {
+                console.error(`❌ [PROXY] Training failed for group ${groupId}:`, statusData.status);
+                return res.status(400).json({
+                  error: "Training failed for this avatar group",
+                  details: `Training status: ${statusData.status}`,
+                });
+              }
+            }
+          } catch (pollError) {
+            console.error(`⚠️ [PROXY] Poll error for ${groupId}:`, pollError);
+          }
+
+          pollAttempts++;
+          if (!trained && pollAttempts < maxPollAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s between polls
+          }
+        }
+
+        if (!trained) {
+          console.error(`❌ [PROXY] Training timed out for group ${groupId} after ${maxPollAttempts} attempts`);
+          return res.status(408).json({
+            error: "Training timed out",
+            details: `Training did not complete within ${maxPollAttempts * 10} seconds for group ${groupId}`,
+          });
+        }
+
+        console.log(`✅ [PROXY] Training verified complete for group ${groupId}. Proceeding with look generation.`);
+
+        const numToGenerate = numLooks || 1;
+        const results = [];
+        const capturedUserId = (req as any).user?.id;
+
+        const facePreservation = "maintain the exact same face, facial features, and likeness of the person";
+        const enhancedPrompt = prompt ? `${prompt}, ${facePreservation}` : `Professional headshot, ${facePreservation}`;
+
+        for (let i = 0; i < numToGenerate; i++) {
+          const lookResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/${groupId}/generate-look`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: enhancedPrompt,
+              orientation: orientation || "square",
+              pose: pose || "half_body",
+              style: style || "Realistic",
+            }),
+          });
+
+          if (!lookResponse.ok) {
+            const errorText = await lookResponse.text();
+            console.error(`❌ [PROXY] Generate look ${i + 1} failed:`, lookResponse.status, errorText);
+            if (i === 0) {
+              return res.status(lookResponse.status).json({
+                error: "Failed to generate look via external service",
+                details: errorText,
+              });
+            }
+            continue;
+          }
+
+          const lookData = await lookResponse.json();
+          console.log(`✅ [PROXY] Look ${i + 1}/${numToGenerate} generation started:`, lookData);
+          results.push(lookData);
+
+          if (i < numToGenerate - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+
+        res.json({
+          success: true,
+          group_id: groupId,
+          looks: results,
+          message: `${results.length} look generation(s) started via external service`,
+        });
+
+        // Background: Poll each generation for completion and save results to DB
+        (async () => {
+          const maxGenPollAttempts = 60; // 10 minutes max (60 * 10s)
+          const lookLabel = (prompt || "custom-look").toLowerCase().replace(/[^a-z0-9]+/g, "-").substring(0, 50);
+          const lookName = prompt || "Custom Look";
+
+          for (const lookResult of results) {
+            const generationId = lookResult.generation_id;
+            if (!generationId) {
+              console.warn(`⚠️ [PROXY BG] No generation_id in look result, skipping polling`);
+              continue;
+            }
+
+            try {
+              let genComplete = false;
+              let genPollAttempts = 0;
+
+              while (!genComplete && genPollAttempts < maxGenPollAttempts) {
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                genPollAttempts++;
+
+                try {
+                  const genStatusResponse = await fetch(`${externalServiceUrl}/api/heygen/avatars/generation/${generationId}`);
+                  if (genStatusResponse.ok) {
+                    const genStatusData = await genStatusResponse.json();
+                    console.log(`📊 [PROXY BG] Generation status for ${generationId} (attempt ${genPollAttempts}): ${genStatusData.status}`);
+
+                    if (genStatusData.status === "success") {
+                      genComplete = true;
+                      const imageUrls: string[] = genStatusData.image_url_list || (genStatusData.image_url ? [genStatusData.image_url] : []);
+                      console.log(`✅ [PROXY BG] Generation ${generationId} complete with ${imageUrls.length} images`);
+
+                      for (const imageUrl of imageUrls) {
+                        try {
+                          await db.insert(lookGenerationJobs).values({
+                            userId: capturedUserId || "unknown",
+                            groupId: groupId,
+                            heygenGenerationId: generationId,
+                            lookLabel: lookLabel,
+                            lookName: lookName,
+                            prompt: enhancedPrompt,
+                            status: "completed",
+                            resultImageUrl: imageUrl,
+                            completedAt: new Date(),
+                          });
+                          console.log(`💾 [PROXY BG] Saved look result: ${imageUrl.substring(0, 80)}...`);
+                        } catch (dbError) {
+                          console.error(`❌ [PROXY BG] Failed to save look result to DB:`, dbError);
+                        }
+                      }
+                      if (capturedUserId) {
+                        realtimeService.notifyLookGenerationComplete(
+                          parseInt(capturedUserId),
+                          groupId,
+                          lookName,
+                          imageUrls.length
+                        );
+                      }
+                    } else if (genStatusData.status === "failed") {
+                      genComplete = true;
+                      console.error(`❌ [PROXY BG] Generation ${generationId} failed`);
+                      try {
+                        await db.insert(lookGenerationJobs).values({
+                          userId: capturedUserId || "unknown",
+                          groupId: groupId,
+                          heygenGenerationId: generationId,
+                          lookLabel: lookLabel,
+                          lookName: lookName,
+                          prompt: enhancedPrompt,
+                          status: "failed",
+                          errorMessage: "Generation failed on HeyGen",
+                          completedAt: new Date(),
+                        });
+                      } catch (dbError) {
+                        console.error(`❌ [PROXY BG] Failed to save failed status to DB:`, dbError);
+                      }
+                      if (capturedUserId) {
+                        realtimeService.notifyLookGenerationFailed(
+                          parseInt(capturedUserId),
+                          groupId,
+                          lookName,
+                          "Generation failed on HeyGen"
+                        );
+                      }
+                    }
+                  }
+                } catch (pollError) {
+                  console.error(`⚠️ [PROXY BG] Generation poll error for ${generationId}:`, pollError);
+                }
+              }
+
+              if (!genComplete) {
+                console.error(`❌ [PROXY BG] Generation ${generationId} timed out after ${maxGenPollAttempts} attempts`);
+                try {
+                  await db.insert(lookGenerationJobs).values({
+                    userId: capturedUserId || "unknown",
+                    groupId: groupId,
+                    heygenGenerationId: generationId,
+                    lookLabel: lookLabel,
+                    lookName: lookName,
+                    prompt: enhancedPrompt,
+                    status: "failed",
+                    errorMessage: "Generation polling timed out",
+                    completedAt: new Date(),
+                  });
+                } catch (dbError) {
+                  console.error(`❌ [PROXY BG] Failed to save timeout status to DB:`, dbError);
+                }
+                if (capturedUserId) {
+                  realtimeService.notifyLookGenerationFailed(
+                    parseInt(capturedUserId),
+                    groupId,
+                    lookName,
+                    "Generation timed out"
+                  );
+                }
+              }
+            } catch (jobError) {
+              console.error(`❌ [PROXY BG] Error processing generation ${generationId}:`, jobError);
+            }
+          }
+          console.log(`🎉 [PROXY BG] All generation jobs processed for proxy-generate-look on group ${groupId}`);
+          if (capturedUserId) {
+            realtimeService.sendNotification(
+              parseInt(capturedUserId),
+              `AI look generation complete for your avatar.`
+            );
+          }
+        })();
+      } catch (error: any) {
+        console.error("❌ [PROXY] Failed to generate look:", error);
+        res.status(500).json({
+          error: "Failed to generate look",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
+
+  // Proxy check generation status - forwards to external service
+  app.get(
+    "/api/photo-avatars/proxy/generation-status/:generationId",
+    requireAuth,
+    async (req, res) => {
+      try {
+        const { generationId } = req.params;
+        const externalServiceUrl = getExternalServiceUrl();
+
+        console.log(`📊 [PROXY] Checking generation status for ${generationId}`);
+
+        const response = await fetch(`${externalServiceUrl}/api/heygen/avatars/generation/${generationId}`);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("❌ [PROXY] Generation status error:", response.status, errorText);
+          return res.status(response.status).json({
+            error: "Failed to check generation status",
+            details: errorText,
+          });
+        }
+
+        const data = await response.json();
+        console.log(`✅ [PROXY] Generation status for ${generationId}:`, data.status);
+        res.json(data);
+      } catch (error: any) {
+        console.error("❌ [PROXY] Failed to check generation status:", error);
+        res.status(500).json({
+          error: "Failed to check generation status",
+          details: error?.message || String(error),
+        });
+      }
+    }
+  );
 
   // Get video generation status
   app.get("/api/photo-avatars/video-status/:videoId", requireAuth, async (req, res) => {
@@ -11051,7 +14420,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.log("🎬 Checking video status:", videoId);
 
       const heygenService = new HeyGenService();
-      const videoStatus = await heygenService.checkVideoStatus(videoId);
+      const videoStatus = await heygenService.getVideoStatus(videoId);
 
       const status = (videoStatus.status || "unknown").toLowerCase();
       const isComplete = status === "completed" || status === "complete";
@@ -11186,29 +14555,24 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         console.log("🎥 Backend: Check video avatar status:", avatarId);
 
         const videoAvatarService = new HeyGenVideoAvatarService();
-        const response = await videoAvatarService.checkVideoAvatarStatus(
+        const status = await videoAvatarService.checkVideoAvatarStatus(
           avatarId
         );
 
-        console.log("✅ Video avatar status response:", JSON.stringify(response, null, 2));
-
-        // Extract status data
-        const statusData = response.data || response;
-        const status = statusData.status;
-        const errorMessage = statusData.error_message;
+        console.log("✅ Video avatar status:", status);
 
         // Update database if status changed
         const userId = req.user?.id;
         if (
           userId &&
-          (status === "complete" || status === "failed")
+          (status.status === "complete" || status.status === "failed")
         ) {
           try {
             await storage.updateVideoAvatarStatus(
               userId,
               avatarId,
-              status,
-              errorMessage
+              status.status,
+              status.error_message
             );
             console.log("💾 Video avatar status updated in database");
           } catch (dbError) {
@@ -11216,23 +14580,10 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
           }
         }
 
-        // Return formatted status response
-        res.json({
-          success: true,
-          avatarId,
-          status: status || 'unknown',
-          progress: statusData.progress,
-          errorMessage: errorMessage,
-          thumbnailUrl: statusData.thumbnail_url,
-          previewVideoUrl: statusData.preview_video_url,
-          createdAt: statusData.created_at,
-          updatedAt: statusData.updated_at,
-          rawResponse: response, // Include raw response for debugging
-        });
+        res.json(status);
       } catch (error: any) {
         console.error("❌ Failed to check video avatar status:", error);
         res.status(500).json({
-          success: false,
           error: "Failed to check video avatar status",
           details: error?.message || String(error),
         });
@@ -11277,15 +14628,15 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         id: avatar.avatar_id,
         heygenAvatarId: avatar.avatar_id,
         avatarName: avatar.avatar_name,
-        status: avatar.status || 'complete',
+        status: 'complete' as const,
         thumbnailUrl: avatar.preview_image_url,
         previewVideoUrl: avatar.preview_video_url,
-        createdAt: avatar.created_at ? new Date(avatar.created_at * 1000) : new Date(),
+        createdAt: new Date(),
         completedAt: new Date(),
         errorMessage: null,
         trainingVideoUrl: '',
         consentVideoUrl: '',
-        voiceId: avatar.default_voice_id || null, // Use HeyGen's default voice
+        voiceId: null,
         source: 'heygen' as const,
       }));
 
@@ -11332,83 +14683,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.error("❌ Debug endpoint failed:", error);
       res.status(500).json({
         error: "Failed to fetch HeyGen data",
-        details: error?.message || String(error),
-      });
-    }
-  });
-
-  // Sync HeyGen avatars - Import only VIDEO (instant) avatars to current user's account
-  app.post("/api/video-avatars/sync", requireAuth, async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
-
-      console.log("🔄 Syncing HeyGen video avatars for user:", userId);
-
-      const videoAvatarService = new HeyGenVideoAvatarService();
-      const response = await videoAvatarService.listVideoAvatars();
-      const heygenAvatars = response.data?.avatars || [];
-
-      // Debug: Log all avatar types being returned
-      console.log(`🔄 All avatars returned:`, heygenAvatars.map((a: any) => ({
-        name: a.avatar_name,
-        type: a.avatar_type,
-        id: a.avatar_id
-      })));
-
-      // Only import instant_avatar type (video-based avatars), not photo_avatar
-      const videoAvatarsOnly = heygenAvatars.filter((a: any) => a.avatar_type === 'instant_avatar');
-      console.log(`🔄 Found ${heygenAvatars.length} total avatars, ${videoAvatarsOnly.length} are video avatars (instant_avatar type)`);
-
-      // Get existing avatars for this user
-      const existingAvatars = await storage.listVideoAvatars(String(userId));
-      const existingIds = new Set(existingAvatars.map(a => a.heygenAvatarId));
-
-      let imported = 0;
-      let skipped = 0;
-
-      for (const avatar of videoAvatarsOnly) {
-        if (existingIds.has(avatar.avatar_id)) {
-          skipped++;
-          console.log(`⏭️ Skipping existing avatar: ${avatar.avatar_name} (${avatar.avatar_id})`);
-          continue;
-        }
-
-        try {
-          await storage.createVideoAvatar({
-            userId,
-            heygenAvatarId: avatar.avatar_id,
-            avatarName: avatar.avatar_name,
-            trainingVideoUrl: '',
-            consentVideoUrl: '',
-            voiceId: avatar.default_voice_id || null,
-            audioAssetId: null,
-            status: 'complete',
-            thumbnailUrl: avatar.preview_image_url || null,
-            previewVideoUrl: avatar.preview_video_url || null,
-          });
-          imported++;
-          console.log(`✅ Imported video avatar: ${avatar.avatar_name} (${avatar.avatar_id})`);
-        } catch (dbError) {
-          console.error(`⚠️ Failed to import avatar ${avatar.avatar_id}:`, dbError);
-        }
-      }
-
-      console.log(`🔄 Sync complete: ${imported} imported, ${skipped} already existed`);
-
-      res.json({
-        success: true,
-        imported,
-        skipped,
-        total: videoAvatarsOnly.length,
-        message: `Synced ${imported} new video avatars. ${skipped} already existed.`,
-      });
-    } catch (error: any) {
-      console.error("❌ Sync failed:", error);
-      res.status(500).json({
-        error: "Failed to sync HeyGen avatars",
         details: error?.message || String(error),
       });
     }
@@ -11591,7 +14865,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         title,
         test,
         isTalkingPhoto,
-        isVideoAvatar,
         voiceSpeed,
         voiceId,
         customVoiceAvatarId,
@@ -11604,7 +14877,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       console.log("🎬 Backend: Title:", title);
       console.log("🎬 Backend: Test mode:", test);
       console.log("🎬 Backend: isTalkingPhoto:", isTalkingPhoto);
-      console.log("🎬 Backend: isVideoAvatar:", isVideoAvatar);
       console.log("🎬 Backend: Voice speed:", voiceSpeed);
       console.log("🎬 Backend: Voice ID:", voiceId);
       console.log("🎬 Backend: Custom voice avatar ID:", customVoiceAvatarId);
@@ -11620,34 +14892,6 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         });
       }
 
-      // For video avatars (instant avatars), we may need to resolve the actual avatar_id
-      // The frontend might be sending a group_id instead of the actual avatar_id
-      // This is a backwards compatibility fix for existing data
-      let resolvedAvatarId = avatarId;
-      
-      if (isVideoAvatar) {
-        console.log("🎬 Backend: Video avatar detected, checking if avatar_id needs resolution...");
-        
-        const videoAvatarService = new HeyGenVideoAvatarService();
-        try {
-          // Try to get avatars in this group (treating avatarId as a potential group_id)
-          const avatarsInGroup = await videoAvatarService.listAvatarsInGroup(avatarId);
-          const avatarList = avatarsInGroup.data?.avatar_list || avatarsInGroup.data?.avatars || [];
-          
-          if (avatarList.length > 0) {
-            // Found avatars in this group - use the first avatar's actual ID
-            resolvedAvatarId = avatarList[0].avatar_id;
-            console.log(`✅ Backend: Resolved avatar_id from group: ${avatarId} → ${resolvedAvatarId}`);
-          } else {
-            // No avatars found - avatarId might already be the correct avatar_id
-            console.log("📋 Backend: No avatars found in group, using avatarId as-is:", avatarId);
-          }
-        } catch (error) {
-          // Group lookup failed - avatarId might already be the correct avatar_id
-          console.log("📋 Backend: Group lookup failed (likely already an avatar_id):", avatarId);
-        }
-      }
-
       // Handle custom voice if provided
       let finalVoiceId = voiceId;
       let audioAssetId: string | undefined;
@@ -11658,22 +14902,14 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       // Check if this is a video avatar and use its extracted voice
       const user = (req as any).user;
       const userVideoAvatars = await storage.listVideoAvatars(user.id);
-      const videoAvatar = userVideoAvatars.find((va) => va.heygenAvatarId === avatarId || va.heygenAvatarId === resolvedAvatarId);
+      const videoAvatar = userVideoAvatars.find((va) => va.heygenAvatarId === avatarId);
       
-      // For video avatars, use their built-in voice by default
-      if (isVideoAvatar && videoAvatar) {
-        console.log("🎤 Backend: Video Avatar detected!");
-        
-        if (videoAvatar.audioAssetId && (!voiceId || voiceId === "avatar_voice")) {
-          // Use the video avatar's own extracted voice (audio asset)
-          console.log("🎤 Backend: Using Video Avatar Audio Asset ID:", videoAvatar.audioAssetId);
-          audioAssetId = videoAvatar.audioAssetId;
-          finalVoiceId = undefined; // Don't use text voice when using audio
-        } else if (videoAvatar.voiceId && (!voiceId || voiceId === videoAvatar.voiceId)) {
-          // Use the video avatar's default voice ID (HeyGen voice)
-          console.log("🎤 Backend: Using Video Avatar Voice ID:", videoAvatar.voiceId);
-          finalVoiceId = videoAvatar.voiceId;
-        }
+      if (videoAvatar?.audioAssetId && (!voiceId || voiceId === "avatar_voice")) {
+        // Use the video avatar's own extracted voice
+        console.log("🎤 Backend: Video Avatar detected with extracted voice!");
+        console.log("🎤 Backend: Using Video Avatar Audio Asset ID:", videoAvatar.audioAssetId);
+        audioAssetId = videoAvatar.audioAssetId;
+        finalVoiceId = undefined; // Don't use text voice when using audio
       }
 
       // Handle Voice Library voices
@@ -11754,10 +14990,9 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const heyGenService = new HeyGenService();
       console.log("🎬 Backend: Calling HeyGenService.generateVideo");
-      console.log("🎬 Backend: Using avatar ID:", resolvedAvatarId, isVideoAvatar ? "(resolved from video avatar)" : "");
 
       const result = await heyGenService.generateVideo({
-        avatarId: resolvedAvatarId,
+        avatarId,
         script,
         title: title || "Generated Video",
         test: test || false,
@@ -12268,40 +15503,40 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       res.json(templates);
     } catch (error) {
-      console.error("Failed to get restaurant templates:", error);
+      console.error("Failed to get real estate templates:", error);
       // Return suggestions when HeyGen API is not available
       res.json({
         templates: [],
         suggestions: [
           {
-            name: "Menu Feature Template",
-            description: "Showcase new dishes and seasonal menu items",
+            name: "Property Tour Template",
+            description: "Virtual property walkthrough with agent narration",
             recommended_variables: {
-              dish_name: "text",
-              chef_avatar: "avatar",
-              dish_images: "image[]",
+              property_address: "text",
+              agent_avatar: "avatar",
+              property_images: "image[]",
               price: "text",
-              ingredients: "text",
+              features: "text",
             },
           },
           {
-            name: "Special Event Template",
-            description: "Promote special events, live music, and themed nights",
+            name: "Market Update Template",
+            description: "Monthly real estate market analysis video",
             recommended_variables: {
-              event_name: "text",
-              event_date: "text",
-              host_avatar: "avatar",
-              event_images: "image[]",
+              month: "text",
+              market_stats: "text",
+              agent_avatar: "avatar",
+              charts: "image[]",
             },
           },
           {
-            name: "Chef Introduction Template",
-            description: "Professional chef introduction and culinary expertise",
+            name: "Agent Introduction Template",
+            description: "Professional agent introduction and services",
             recommended_variables: {
-              chef_name: "text",
-              chef_avatar: "avatar",
+              agent_name: "text",
+              agent_avatar: "avatar",
               expertise: "text",
-              signature_dishes: "text",
+              contact_info: "text",
             },
           },
         ],
@@ -12861,9 +16096,8 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(400).json({ error: "File URL is required" });
       }
 
-      // Import OpenAI here to avoid issues with module loading
-      const { default: OpenAI } = await import("openai");
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const { GoogleGenAI } = await import("@google/genai");
+      const openai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
       let messages: any[] = [];
       let extractedText = "";
@@ -13023,18 +16257,24 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         });
       }
 
-      console.log("🤖 Sending to OpenAI for analysis...");
+      console.log("🤖 Sending to Gemini for analysis...");
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o", // Use GPT-4O for vision capabilities
-        messages,
-        response_format: { type: "json_object" },
-        max_tokens: 1500,
+      const systemMsg = messages.find((m: any) => m.role === "system")?.content;
+      const otherMsgs = messages.filter((m: any) => m.role !== "system");
+      const geminiContents = otherMsgs.map((m: any) => {
+        const parts = Array.isArray(m.content)
+          ? m.content.map((p: any) => p.type === "image_url" ? { text: `[Image URL for analysis: ${p.image_url?.url}]` } : { text: p.text || "" })
+          : [{ text: m.content || "" }];
+        return { role: m.role === "assistant" ? "model" : "user", parts };
       });
 
-      const analysisResult = JSON.parse(
-        response.choices[0].message.content || "{}"
-      );
+      const response = await openai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: geminiContents,
+        config: { systemInstruction: systemMsg, responseMimeType: "application/json", maxOutputTokens: 1500 },
+      });
+
+      const analysisResult = JSON.parse(response.text || "{}");
 
       // Debug logging to help troubleshoot
       console.log(
@@ -13226,7 +16466,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
             accent: "Cormorant Garamond",
           },
           description:
-            "Your Restaurant Name - Exceptional dining experiences with fresh, locally-sourced ingredients. Specializing in memorable cuisine with warm hospitality and passionate service.",
+            "Golden Brick Real Estate - Premium luxury properties in Omaha, Nebraska. Specializing in high-end residential and commercial real estate with personalized service and expert market knowledge.",
         };
         return res.json(defaultBrandSettings);
       }
@@ -13332,11 +16572,19 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
 
       const brandSettings = await storage.getBrandSettings(user.id);
 
+      const hasKlingEnvKeys = !!(process.env.KLING_ACCESS_KEY && process.env.KLING_SECRET_KEY);
+      const hasKlingUserKeys = !!(brandSettings?.klingApiKeyEncrypted);
+
       res.json({
         aiProvider: brandSettings?.aiProvider || "openai",
         hasCustomApiKey: !!brandSettings?.aiApiKeyEncrypted,
         aiApiKeyMasked: brandSettings?.aiApiKeyLastFour 
           ? `****...${brandSettings.aiApiKeyLastFour}` 
+          : null,
+        hasKlingApiKey: hasKlingEnvKeys || hasKlingUserKeys,
+        klingConfiguredViaEnv: hasKlingEnvKeys,
+        klingApiKeyMasked: brandSettings?.klingApiKeyLastFour 
+          ? `****...${brandSettings.klingApiKeyLastFour}` 
           : null,
         availableProviders: [
           { id: "platform", name: "Platform Default (OpenAI)", description: "Use the platform's AI service" },
@@ -13374,6 +16622,414 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error) {
       console.error("Error removing API key:", error);
       res.status(500).json({ error: "Failed to remove API key" });
+    }
+  });
+
+  // ==================== KLING API KEY MANAGEMENT ====================
+
+  // Update Kling API key
+  app.put("/api/kling-preferences", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { apiKey } = req.body;
+
+      // Import encryption utilities
+      const { encryptApiKey, getLastFourChars } = await import("./services/encryption");
+
+      // Prepare update data
+      const updateData: any = {
+        userId: user.id,
+      };
+
+      // Handle Kling API key update
+      if (apiKey && apiKey !== "" && !apiKey.startsWith("****")) {
+        // Validate Kling API key format (should be alphanumeric)
+        if (apiKey.length < 20) {
+          return res.status(400).json({ 
+            error: "Invalid Kling API key format. Please check your key." 
+          });
+        }
+
+        // Encrypt and store the key
+        updateData.klingApiKeyEncrypted = encryptApiKey(apiKey);
+        updateData.klingApiKeyLastFour = getLastFourChars(apiKey);
+      } else if (apiKey === "") {
+        // Clear the API key if empty string sent
+        updateData.klingApiKeyEncrypted = null;
+        updateData.klingApiKeyLastFour = null;
+      }
+
+      // Update brand settings with Kling API key
+      const updatedSettings = await storage.upsertBrandSettings(updateData);
+
+      console.log(`✅ Kling API key updated for user ${user.id}: hasKey=${!!updateData.klingApiKeyEncrypted}`);
+
+      res.json({
+        success: true,
+        message: "Kling API key saved successfully",
+        hasKlingApiKey: !!updatedSettings.klingApiKeyEncrypted,
+        klingApiKeyMasked: updatedSettings.klingApiKeyLastFour 
+          ? `****...${updatedSettings.klingApiKeyLastFour}` 
+          : null,
+      });
+    } catch (error) {
+      console.error("Error saving Kling API key:", error);
+      res.status(500).json({ error: "Failed to save Kling API key" });
+    }
+  });
+
+  // Delete Kling API key
+  app.delete("/api/kling-preferences/api-key", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      await storage.upsertBrandSettings({
+        userId: user.id,
+        klingApiKeyEncrypted: null,
+        klingApiKeyLastFour: null,
+      });
+
+      console.log(`✅ Kling API key removed for user ${user.id}`);
+
+      res.json({
+        success: true,
+        message: "Kling API key removed successfully",
+      });
+    } catch (error) {
+      console.error("Error removing Kling API key:", error);
+      res.status(500).json({ error: "Failed to remove Kling API key" });
+    }
+  });
+
+  // ==================== KLING MOTION VIDEO GENERATION ====================
+
+  // Generate motion video from static image
+  app.post("/api/kling/generate-motion", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { imageUrl, prompt, duration, waitForCompletion } = req.body;
+
+      if (!imageUrl || !prompt) {
+        return res.status(400).json({ error: "Image URL and prompt are required" });
+      }
+
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        return res.status(400).json({ 
+          error: "Kling API credentials not configured. Please set KLING_ACCESS_KEY and KLING_SECRET_KEY." 
+        });
+      }
+
+      console.log(`🎬 Generating motion video for user ${user.id}`);
+      console.log(`📸 Image: ${imageUrl}`);
+      console.log(`📝 Prompt: ${prompt}`);
+
+      const { generateMotionVideo } = await import("./services/kling");
+      
+      const result = await generateMotionVideo(
+        imageUrl,
+        prompt,
+        {
+          duration: duration || "5",
+          mode: "pro",
+          waitForCompletion: waitForCompletion || false,
+        }
+      );
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Video generation failed" });
+      }
+
+      res.json({
+        success: true,
+        taskId: result.taskId,
+        status: result.status,
+        videoUrl: result.videoUrl,
+      });
+    } catch (error) {
+      console.error("Error generating motion video:", error);
+      res.status(500).json({ error: "Failed to generate motion video" });
+    }
+  });
+
+  // Check motion video generation status
+  app.get("/api/kling/status/:taskId", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { taskId } = req.params;
+
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        return res.status(400).json({ error: "Kling API credentials not configured" });
+      }
+
+      const { checkMotionVideoStatus } = await import("./services/kling");
+      const status = await checkMotionVideoStatus(taskId);
+
+      res.json({
+        taskId,
+        status: status.status,
+        progress: status.progress,
+        videoUrl: status.videoUrl,
+        error: status.error,
+      });
+    } catch (error) {
+      console.error("Error checking motion video status:", error);
+      res.status(500).json({ error: "Failed to check video status" });
+    }
+  });
+
+  // Kling Lip-Sync - Generate lip-synced video from motion video + text
+  app.post("/api/kling/lip-sync", requireAuth, async (req, res) => {
+    console.log("🎤 Received Kling lip-sync request");
+    try {
+      const user = await resolveMemStorageUser(req);
+      console.log("🎤 User resolved:", user?.id);
+      if (!user) {
+        console.log("🎤 User not authenticated");
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { videoUrl, text, voiceId, mode, audioUrl } = req.body;
+      console.log("🎤 Request body - videoUrl:", videoUrl?.substring(0, 50), "text length:", text?.length, "voiceId:", voiceId, "mode:", mode || "text2video");
+
+      if (!videoUrl) {
+        console.log("🎤 Missing video URL");
+        return res.status(400).json({ error: "Video URL is required" });
+      }
+
+      if (mode !== "audio2video" && (!text || typeof text !== "string" || text.trim().length === 0)) {
+        console.log("🎤 Missing or invalid text");
+        return res.status(400).json({ error: "Text script is required" });
+      }
+      
+      if (mode === "audio2video" && !audioUrl) {
+        console.log("🎤 Missing audio URL for audio2video mode");
+        return res.status(400).json({ error: "Audio URL is required for audio2video mode" });
+      }
+
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        console.log("🎤 Kling API credentials not configured");
+        return res.status(400).json({ error: "Kling API credentials not configured" });
+      }
+
+      console.log(`🎤 Starting Kling lip-sync for user ${user.id} in ${mode || "text2video"} mode`);
+
+      const { generateLipSyncVideo } = await import("./services/kling");
+      const result = await generateLipSyncVideo({
+        videoUrl,
+        text: text?.trim() || "",
+        voiceId: voiceId || "female_calm",
+        mode: mode || "text2video",
+        audioUrl: audioUrl,
+      });
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error || "Failed to start lip-sync generation" });
+      }
+
+      res.json({
+        taskId: result.taskId,
+        status: result.status,
+        videoUrl: result.videoUrl,
+      });
+    } catch (error) {
+      console.error("Error starting Kling lip-sync:", error);
+      res.status(500).json({ error: "Failed to start lip-sync generation" });
+    }
+  });
+
+  // Kling Lip-Sync - Check status
+  app.get("/api/kling/lip-sync/:taskId", requireAuth, async (req, res) => {
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { taskId } = req.params;
+
+      if (!process.env.KLING_ACCESS_KEY || !process.env.KLING_SECRET_KEY) {
+        return res.status(400).json({ error: "Kling API credentials not configured" });
+      }
+
+      const { checkLipSyncStatus } = await import("./services/kling");
+      const status = await checkLipSyncStatus(taskId);
+
+      res.json({
+        taskId,
+        status: status.status,
+        progress: status.progress,
+        videoUrl: status.videoUrl,
+        error: status.error,
+      });
+    } catch (error) {
+      console.error("Error checking lip-sync status:", error);
+      res.status(500).json({ error: "Failed to check lip-sync status" });
+    }
+  });
+
+  // Kling Lip-Sync - Upload audio for lip-sync (uses memory storage for S3 upload)
+  // Converts WebM/WebA to MP3 for Kling API compatibility
+  app.post("/api/kling/upload-audio", requireAuth, memoryUpload.single("audio"), async (req, res) => {
+    console.log("🎤 Received audio upload for lip-sync");
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No audio file provided" });
+      }
+
+      const originalName = req.file.originalname;
+      const mimeType = req.file.mimetype;
+      console.log(`🎤 Audio file received: ${originalName}, size: ${req.file.size} bytes, type: ${mimeType}`);
+
+      // Check if we need to convert the audio format
+      const needsConversion = mimeType.includes("webm") || 
+                              mimeType.includes("weba") || 
+                              originalName.endsWith(".webm") || 
+                              originalName.endsWith(".weba");
+
+      let audioBuffer = req.file.buffer;
+      let finalMimeType = mimeType;
+      let finalFileName = originalName;
+
+      if (needsConversion) {
+        console.log("🔄 Converting WebM/WebA audio to MP3 for Kling API compatibility...");
+        
+        const { spawn } = await import("child_process");
+        const path = await import("path");
+        const fs = await import("fs/promises");
+        const os = await import("os");
+        
+        // Create temp files for conversion
+        const tempDir = os.tmpdir();
+        const tempInputPath = path.join(tempDir, `input-${Date.now()}.webm`);
+        const tempOutputPath = path.join(tempDir, `output-${Date.now()}.mp3`);
+        
+        try {
+          // Write input file
+          await fs.writeFile(tempInputPath, req.file.buffer);
+          
+          // Run ffmpeg conversion
+          await new Promise<void>((resolve, reject) => {
+            const ffmpeg = spawn("ffmpeg", [
+              "-i", tempInputPath,
+              "-vn",                    // No video
+              "-acodec", "libmp3lame", // MP3 codec
+              "-ab", "128k",           // 128kbps bitrate
+              "-ar", "44100",          // 44.1kHz sample rate
+              "-y",                     // Overwrite output
+              tempOutputPath
+            ]);
+            
+            let errorOutput = "";
+            ffmpeg.stderr.on("data", (data) => {
+              errorOutput += data.toString();
+            });
+            
+            ffmpeg.on("close", (code) => {
+              if (code === 0) {
+                resolve();
+              } else {
+                reject(new Error(`FFmpeg exited with code ${code}: ${errorOutput}`));
+              }
+            });
+            
+            ffmpeg.on("error", (err) => {
+              reject(err);
+            });
+          });
+          
+          // Read converted file
+          audioBuffer = await fs.readFile(tempOutputPath);
+          finalMimeType = "audio/mpeg";
+          finalFileName = originalName.replace(/\.(webm|weba)$/i, ".mp3");
+          
+          console.log(`✅ Audio converted to MP3: ${audioBuffer.length} bytes`);
+          
+          // Cleanup temp files
+          await fs.unlink(tempInputPath).catch(() => {});
+          await fs.unlink(tempOutputPath).catch(() => {});
+          
+        } catch (conversionError) {
+          console.error("❌ Audio conversion failed:", conversionError);
+          // Cleanup on error
+          const fs2 = await import("fs/promises");
+          await fs2.unlink(tempInputPath).catch(() => {});
+          await fs2.unlink(tempOutputPath).catch(() => {});
+          return res.status(500).json({ error: "Failed to convert audio format" });
+        }
+      }
+
+      // Upload to S3 and get presigned URL for Kling API access
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+      
+      const fileName = `lip-sync-audio/${user.id}/${Date.now()}-${finalFileName}`;
+      // Use presigned URL (valid for 1 hour) since bucket doesn't allow public ACLs
+      const audioUrl = await s3Service.uploadBuffer(audioBuffer, fileName, finalMimeType, true, 3600);
+      
+      console.log(`✅ Audio uploaded to S3 with presigned URL: ${audioUrl.substring(0, 100)}...`);
+
+      res.json({
+        success: true,
+        audioUrl,
+      });
+    } catch (error) {
+      console.error("Error uploading audio for lip-sync:", error);
+      res.status(500).json({ error: "Failed to upload audio file" });
+    }
+  });
+
+  // Kling Lip-Sync - Upload video for lip-sync (when user uploads their own motion video)
+  app.post("/api/kling/upload-video", requireAuth, memoryVideoUpload.single("video"), async (req, res) => {
+    console.log("🎬 Received video upload for lip-sync");
+    try {
+      const user = await resolveMemStorageUser(req);
+      if (!user) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No video file provided" });
+      }
+
+      console.log(`🎬 Video file received: ${req.file.originalname}, size: ${req.file.size} bytes, type: ${req.file.mimetype}`);
+
+      // Upload to S3 and get presigned URL for Kling API access
+      const { S3UploadService } = await import("./services/s3Upload");
+      const s3Service = new S3UploadService();
+      
+      const fileName = `lip-sync-video/${user.id}/${Date.now()}-${req.file.originalname}`;
+      // Use presigned URL (valid for 1 hour) since bucket doesn't allow public ACLs
+      const videoUrl = await s3Service.uploadBuffer(req.file.buffer, fileName, req.file.mimetype, true, 3600);
+      
+      console.log(`✅ Video uploaded to S3 with presigned URL: ${videoUrl.substring(0, 100)}...`);
+
+      res.json({
+        success: true,
+        videoUrl,
+      });
+    } catch (error) {
+      console.error("Error uploading video for lip-sync:", error);
+      res.status(500).json({ error: "Failed to upload video file" });
     }
   });
 
@@ -13476,7 +17132,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     }
   });
 
-  // Generate speech and return as audio buffer
+  // Generate speech and return as audio buffer (for direct use with Kling)
   app.post("/api/elevenlabs/tts/buffer", requireAuth, async (req, res) => {
     try {
       const user = await resolveMemStorageUser(req);
@@ -13789,44 +17445,31 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   // Create or update company profile
   app.post("/api/company/profile", requireAuth, async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = String(req.user?.id || "");
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      console.log("[company-profile POST] Request body:", req.body);
-      console.log("[company-profile POST] userId (raw):", userId, typeof userId);
-
-      // Build the profile data with userId as string
-      const userIdString = String(userId);
-      console.log("[company-profile POST] userId (converted):", userIdString, typeof userIdString);
-
-      const profileData = {
-        ...req.body,
-        userId: userIdString,
-      };
-
-      console.log("[company-profile POST] profileData before validation:", JSON.stringify(profileData, null, 2));
-      console.log("[company-profile POST] profileData.userId type:", typeof profileData.userId);
-
       // Use partial schema to allow any subset of fields
-      const validation = insertCompanyProfileSchema.partial().safeParse(profileData);
+      const validation = insertCompanyProfileSchema.partial().safeParse({
+        ...req.body,
+        userId,
+      });
 
       if (!validation.success) {
-        console.error("[company-profile POST] Validation errors:", validation.error.errors);
-        console.error("[company-profile POST] Full validation error:", JSON.stringify(validation.error, null, 2));
+        console.error("Company profile validation errors:", validation.error.errors);
         return res.status(400).json({
           error: "Invalid company profile data",
           details: validation.error.errors,
         });
       }
 
-      console.log("[company-profile POST] Validated data:", validation.data);
-      const profile = await storage.upsertCompanyProfile(validation.data as any);
-      console.log("[company-profile POST] Saved successfully");
+      // Ensure userId is always included
+      const profileData = { ...validation.data, userId: String(userId) };
+      const profile = await storage.upsertCompanyProfile(profileData as any);
       res.json(profile);
     } catch (error) {
-      console.error("[company-profile POST] Error saving company profile:", error);
+      console.error("Error saving company profile:", error);
       res.status(500).json({ error: "Failed to save company profile" });
     }
   });
@@ -15371,6 +19014,12 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   // PROPERTY TOUR VIDEO GENERATION
   // =====================================================
 
+  interface RoomConnection {
+    fromRoom: string;
+    toRoom: string;
+    label: string;
+  }
+
   interface PropertyTourJob {
     id: string;
     userId: number;
@@ -15378,18 +19027,169 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     progress: number;
     message: string;
     photos: string[];
+    roomTypes?: string[];
+    tourOrder?: string[];
+    roomClipDuration?: number;
+    cameraPositions?: Record<string, { x: number; y: number; photoIndex: number; direction?: number }[]>;
+    roomConnections?: RoomConnection[];
     avatarId: string;
     avatarImageKey?: string;
     script: string;
     backgroundType: string;
     includeBranding: boolean;
     property: any;
+    klingTaskIds: string[];
     motionVideos: string[];
+    roomVideoMap?: Record<string, string>;
+    combinedTourUrl?: string;
     avatarVideoId?: string;
     avatarVideoUrl?: string;
     finalVideoUrl?: string;
     error?: string;
+    quotaExceeded?: boolean;
+    quotaError?: string;
     createdAt: Date;
+  }
+  
+  // Group photos by room for batch processing
+  interface RoomBatch {
+    roomType: string;
+    photos: string[];
+    cameraPositions?: { x: number; y: number; photoIndex: number; direction?: number }[];
+  }
+  
+  function groupPhotosByRoom(photos: string[], roomTypes: string[], cameraPositions?: Record<string, { x: number; y: number; photoIndex: number; direction?: number }[]>): RoomBatch[] {
+    const roomMap = new Map<string, string[]>();
+    
+    for (let i = 0; i < photos.length; i++) {
+      const roomType = roomTypes[i] || "auto";
+      if (!roomMap.has(roomType)) {
+        roomMap.set(roomType, []);
+      }
+      roomMap.get(roomType)!.push(photos[i]);
+    }
+    
+    return Array.from(roomMap.entries()).map(([roomType, photos]) => ({
+      roomType,
+      photos: photos.slice(0, 6), // Max 6 photos per room
+      cameraPositions: cameraPositions?.[roomType] || [],
+    }));
+  }
+  
+  // COMPLIANCE-FOCUSED: These prompts ONLY describe camera motion, NOT content to add
+  // Real Estate Commission compliant - no AI-generated additions to actual property photos
+  const ROOM_PROMPT_MAP: Record<string, string> = {
+    "auto": "interior space",
+    "living-room": "living room",
+    "kitchen": "kitchen",
+    "master-bedroom": "master bedroom",
+    "bedroom": "bedroom",
+    "bathroom": "bathroom",
+    "dining-room": "dining room",
+    "office": "home office",
+    "basement": "basement",
+    "garage": "garage",
+    "laundry": "laundry room",
+    "hallway": "entryway",
+    "front-yard": "front yard",
+    "backyard": "backyard",
+    "pool": "pool area",
+    "patio": "patio",
+    "driveway": "driveway",
+    "garden": "garden",
+    "roof": "exterior",
+    "aerial": "aerial view",
+  };
+  
+  function angleToDirection(deg: number): string {
+    const dirs = ["forward", "forward-right", "right", "back-right", "backward", "back-left", "left", "forward-left"];
+    return dirs[Math.round(((deg % 360 + 360) % 360) / 45) % 8];
+  }
+
+  function angleToCameraMove(deg: number): string {
+    const normalized = ((deg % 360) + 360) % 360;
+    if (normalized <= 22 || normalized >= 338) return "dolly forward";
+    if (normalized <= 67) return "dolly forward while panning right";
+    if (normalized <= 112) return "truck right";
+    if (normalized <= 157) return "truck right while pulling back";
+    if (normalized <= 202) return "dolly backward";
+    if (normalized <= 247) return "truck left while pulling back";
+    if (normalized <= 292) return "truck left";
+    return "dolly forward while panning left";
+  }
+
+  function getCompliancePrompt(
+    roomDesc: string, 
+    isFirstClip: boolean, 
+    positions?: { x: number; y: number; photoIndex: number; direction?: number }[],
+    connectionContext?: { fromRoom?: string; toRoom?: string; label?: string }
+  ): string {
+    let cameraMotion = "";
+    
+    if (positions && positions.length >= 1) {
+      const clipPositions = isFirstClip 
+        ? positions.filter(p => p.photoIndex < 3)
+        : positions.filter(p => p.photoIndex >= 3);
+      
+      if (clipPositions.length >= 2) {
+        const first = clipPositions[0];
+        const last = clipPositions[clipPositions.length - 1];
+        const dx = last.x - first.x;
+        const dy = last.y - first.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const movements: string[] = [];
+        
+        if (distance > 30) {
+          if (Math.abs(dx) > Math.abs(dy) * 2) {
+            movements.push(dx > 0 ? "slow truck right" : "slow truck left");
+          } else if (Math.abs(dy) > Math.abs(dx) * 2) {
+            movements.push(dy > 0 ? "slow dolly forward" : "slow dolly backward");
+          } else {
+            const hDir = dx > 0 ? "right" : "left";
+            const vDir = dy > 0 ? "forward" : "backward";
+            movements.push(`slow dolly ${vDir} while trucking ${hDir}`);
+          }
+        } else if (distance > 10) {
+          movements.push("gentle dolly forward");
+        } else {
+          movements.push("very slow push-in");
+        }
+        
+        if (first.direction !== undefined) {
+          const startMove = angleToCameraMove(first.direction);
+          movements.unshift(`Begin facing ${angleToDirection(first.direction)}, then ${startMove}`);
+          
+          if (last.direction !== undefined && Math.abs(first.direction - last.direction) > 30) {
+            const rotDelta = ((last.direction - first.direction + 540) % 360) - 180;
+            const panDir = rotDelta > 0 ? "right" : "left";
+            movements.push(`with a gradual ${Math.abs(rotDelta)}° pan ${panDir}`);
+          }
+        }
+        
+        cameraMotion = movements.join(", ") + ".";
+      } else if (clipPositions.length === 1 && clipPositions[0].direction !== undefined) {
+        const dir = clipPositions[0].direction;
+        cameraMotion = `Camera facing ${angleToDirection(dir)}, ${angleToCameraMove(dir)}.`;
+      }
+    }
+
+    let transitionHint = "";
+    if (connectionContext) {
+      if (isFirstClip && connectionContext.fromRoom) {
+        transitionHint = ` Begin the motion as if entering from the ${connectionContext.fromRoom}.`;
+      } else if (!isFirstClip && connectionContext.toRoom) {
+        transitionHint = ` End the motion drifting toward the ${connectionContext.toRoom}.`;
+      }
+    }
+
+    const defaultMotion = isFirstClip
+      ? "Slow, steady dolly forward into the room."
+      : "Gentle pan across the room revealing the full space.";
+
+    const motion = cameraMotion || defaultMotion;
+
+    return `Smooth, professional real estate video of this ${roomDesc}. Apply camera motion only (pan, tilt, dolly, truck, zoom) — do not alter, add, or remove anything in the scene. ${motion}${transitionHint} Gimbal-stabilized, 8 seconds, constant slow speed, no sudden moves or jerky transitions. Sharp focus, natural lighting preserved.`;
   }
 
   const propertyTourJobs = new Map<string, PropertyTourJob>();
@@ -15405,36 +19205,27 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     const ext = mimeType.split('/')[1]?.split('+')[0] || 'jpg';
     const filename = `property-tour-${userId}-${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
     
-    const objectStorage = new ObjectStorageService();
-    if (!objectStorage.isConfigured()) {
-      throw new Error('Object storage not configured');
+    // Use S3 storage (same as working video-source upload)
+    const { S3UploadService } = await import("./services/s3Upload");
+    const s3Service = new S3UploadService();
+    
+    const s3Key = `property-tour/${userId}/${filename}`;
+    
+    // Upload with presigned URL so VEO API can access it
+    const url = await s3Service.uploadBuffer(
+      buffer, 
+      s3Key, 
+      mimeType,
+      true, // return presigned URL
+      3600 // 1 hour expiration
+    );
+    
+    if (!url) {
+      throw new Error('Failed to upload image to S3');
     }
     
-    const privateDir = objectStorage.getPrivateObjectDir();
-    const fullPath = `${privateDir}/property-tour-uploads/${filename}`;
-    
-    const pathParts = fullPath.startsWith('/') ? fullPath.split('/') : `/${fullPath}`.split('/');
-    const bucketName = pathParts[1];
-    const objectName = pathParts.slice(2).join('/');
-    
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
-    
-    await file.save(buffer, {
-      contentType: mimeType,
-      resumable: false,
-      metadata: {
-        cacheControl: 'private, max-age=86400',
-      },
-    });
-    
-    const [signedUrl] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 24 * 60 * 60 * 1000,
-    });
-    
-    console.log(`✅ [PropertyTour] Uploaded base64 image to storage: ${filename}`);
-    return signedUrl;
+    console.log(`✅ [PropertyTour] Uploaded base64 image to S3: ${filename}`);
+    return url;
   }
 
   async function processPhotoUrls(photos: string[], userId: string): Promise<string[]> {
@@ -15475,55 +19266,430 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
       const { VideoStudioService } = await import("./services/video-studio");
       
       if (veoVideoService.isConfigured()) {
-        job.message = "Starting Gemini VEO 3.1 video generation...";
+        job.message = "Starting Gemini VEO 3.1 panoramic video generation...";
         console.log(`🎬 [PropertyTour] ========================================`);
-        console.log(`🎬 [PropertyTour] VIDEO ENGINE: GEMINI VEO 3.1`);
+        console.log(`🎬 [PropertyTour] VIDEO ENGINE: GEMINI VEO 3.1 (PANORAMIC BATCH PROCESSING)`);
+        console.log(`🎬 [PropertyTour] COMPLIANCE MODE: Camera motion only, no AI additions`);
         console.log(`🎬 [PropertyTour] ========================================`);
         
         job.progress = 10;
         
-        const primaryPhoto = processedPhotos[0];
-        const veoPrompt = job.script 
-          ? `Cinematic real estate property tour video. ${job.script.substring(0, 200)}. Slow, smooth camera movements showcasing the property. Professional real estate cinematography.`
-          : `Cinematic real estate property tour video. Slow dolly movement through an elegant home. Professional real estate cinematography with smooth transitions. High-end property showcase.`;
+        // Group photos by room (max 6 per room, process 3 at a time)
+        const roomBatches = groupPhotosByRoom(processedPhotos, job.roomTypes || [], job.cameraPositions);
+        const roomVideos: string[] = [];
+        const roomVideoMap: Record<string, string> = {};
+        const totalRooms = roomBatches.length;
+        const connections = job.roomConnections || [];
         
-        job.progress = 20;
-        job.message = "Generating cinematic video with VEO 3.1...";
+        console.log(`🏠 [PropertyTour] Processing ${totalRooms} rooms with grouped photos`);
+        if (connections.length > 0) {
+          console.log(`🚪 [PropertyTour] Room connections: ${connections.map(c => `${c.fromRoom}→${c.toRoom}`).join(', ')}`);
+        }
         
-        const veoResult = await veoVideoService.generateVideo({
-          imageUrl: primaryPhoto,
-          prompt: veoPrompt,
-          aspectRatio: "16:9",
-          duration: 8,
-        });
-        
-        if (veoResult.success && veoResult.operationId) {
-          job.progress = 30;
-          job.message = "VEO 3.1 video processing (this may take 1-3 minutes)...";
+        for (let roomIdx = 0; roomIdx < roomBatches.length; roomIdx++) {
+          const room = roomBatches[roomIdx];
+          const roomDesc = ROOM_PROMPT_MAP[room.roomType] || ROOM_PROMPT_MAP["auto"];
           
-          const completion = await veoVideoService.waitForCompletion(veoResult.operationId, 180000);
+          job.progress = 10 + Math.floor((roomIdx / totalRooms) * 50);
+          job.message = `Generating ${room.roomType.replace("-", " ")} (${room.photos.length} photos)...`;
           
-          if (completion.done && completion.videoUrl) {
-            job.motionVideos.push(completion.videoUrl);
-            job.progress = 60;
-            console.log(`✅ [PropertyTour] VEO 3.1 video ready: ${completion.videoUrl}`);
-          } else {
-            console.error(`❌ [PropertyTour] VEO 3.1 failed:`, completion.error);
-            job.message = `VEO generation failed: ${completion.error}. Falling back to FFmpeg...`;
-            await fallbackToFFmpeg(job, processedPhotos);
+          console.log(`🏠 [PropertyTour] Room ${roomIdx + 1}/${totalRooms}: ${room.roomType} with ${room.photos.length} photos`);
+          
+          const incomingConn = connections.find(c => c.toRoom === room.roomType);
+          const outgoingConn = connections.find(c => c.fromRoom === room.roomType);
+          const connectionCtx = {
+            fromRoom: incomingConn ? (ROOM_PROMPT_MAP[incomingConn.fromRoom] || incomingConn.fromRoom) : undefined,
+            toRoom: outgoingConn ? (ROOM_PROMPT_MAP[outgoingConn.toRoom] || outgoingConn.toRoom) : undefined,
+            label: incomingConn?.label || outgoingConn?.label || undefined,
+          };
+          
+          const wantsDualClips = (job.roomClipDuration || 8) >= 16;
+          
+          const batch1Photos = room.photos.slice(0, 3);
+          const batch2Photos = wantsDualClips ? room.photos.slice(3, 6) : [];
+          
+          const clipUrls: string[] = [];
+          
+          console.log(`⏱️ [PropertyTour] Clip mode: ${wantsDualClips ? '16 seconds (2 clips)' : '8 seconds (single clip)'}`);
+          
+          if (batch1Photos.length > 0) {
+            const primaryPhoto = batch1Photos[0];
+            const prompt1 = getCompliancePrompt(roomDesc, true, room.cameraPositions, connectionCtx);
+            
+            console.log(`📸 [PropertyTour] Batch 1: ${batch1Photos.length} photos for first 8-sec clip`);
+            
+            const veoResult1 = await veoVideoService.generateVideo({
+              imageUrl: primaryPhoto,
+              prompt: prompt1,
+              aspectRatio: "16:9",
+              duration: 8,
+            });
+            
+            // Check for quota exceeded - don't silently fall back
+            if (veoResult1.quotaExceeded) {
+              console.error(`⚠️ [PropertyTour] VEO QUOTA EXCEEDED - cannot generate high-quality video`);
+              job.quotaExceeded = true;
+              job.quotaError = veoResult1.error || "Gemini VEO quota exceeded";
+            } else if (veoResult1.success && veoResult1.operationId) {
+              const completion1 = await veoVideoService.waitForCompletion(veoResult1.operationId, 180000);
+              if (completion1.quotaExceeded) {
+                job.quotaExceeded = true;
+                job.quotaError = completion1.error || "Gemini VEO quota exceeded during processing";
+              } else if (completion1.done && completion1.videoUrl) {
+                clipUrls.push(completion1.videoUrl);
+                console.log(`✅ [PropertyTour] Room ${roomIdx + 1} clip 1 ready (from ${batch1Photos.length} photos)`);
+              }
+            }
           }
+          
+          if (wantsDualClips && batch2Photos.length > 0) {
+            const primaryPhoto = batch2Photos[0];
+            const prompt2 = getCompliancePrompt(roomDesc, false, room.cameraPositions, connectionCtx);
+            
+            console.log(`📸 [PropertyTour] Batch 2: ${batch2Photos.length} photos for second 8-sec clip`);
+            
+            const veoResult2 = await veoVideoService.generateVideo({
+              imageUrl: primaryPhoto,
+              prompt: prompt2,
+              aspectRatio: "16:9",
+              duration: 8,
+            });
+            
+            if (veoResult2.quotaExceeded) {
+              job.quotaExceeded = true;
+              job.quotaError = veoResult2.error || "Gemini VEO quota exceeded";
+            } else if (veoResult2.success && veoResult2.operationId) {
+              const completion2 = await veoVideoService.waitForCompletion(veoResult2.operationId, 180000);
+              if (completion2.quotaExceeded) {
+                job.quotaExceeded = true;
+                job.quotaError = completion2.error || "Gemini VEO quota exceeded during processing";
+              } else if (completion2.done && completion2.videoUrl) {
+                clipUrls.push(completion2.videoUrl);
+                console.log(`✅ [PropertyTour] Room ${roomIdx + 1} clip 2 ready (from ${batch2Photos.length} photos)`);
+              }
+            }
+          } else if (wantsDualClips && clipUrls.length === 1) {
+            const primaryPhoto = batch1Photos[batch1Photos.length - 1] || batch1Photos[0];
+            const prompt2 = getCompliancePrompt(roomDesc, false, room.cameraPositions, connectionCtx);
+            
+            console.log(`📸 [PropertyTour] Generating second clip from same batch (${batch1Photos.length} photos)`);
+            
+            const veoResult2 = await veoVideoService.generateVideo({
+              imageUrl: primaryPhoto,
+              prompt: prompt2,
+              aspectRatio: "16:9",
+              duration: 8,
+            });
+            
+            if (veoResult2.quotaExceeded) {
+              job.quotaExceeded = true;
+              job.quotaError = veoResult2.error || "Gemini VEO quota exceeded";
+            } else if (veoResult2.success && veoResult2.operationId) {
+              const completion2 = await veoVideoService.waitForCompletion(veoResult2.operationId, 180000);
+              if (completion2.quotaExceeded) {
+                job.quotaExceeded = true;
+                job.quotaError = completion2.error || "Gemini VEO quota exceeded during processing";
+              } else if (completion2.done && completion2.videoUrl) {
+                clipUrls.push(completion2.videoUrl);
+                console.log(`✅ [PropertyTour] Room ${roomIdx + 1} clip 2 ready`);
+              }
+            }
+          }
+          
+          // If quota is exceeded, break early and don't process more rooms
+          if (job.quotaExceeded) {
+            console.error(`⚠️ [PropertyTour] Stopping VEO generation due to quota limits`);
+            break;
+          }
+          
+          // Import fs/promises at room level for clip handling
+          const fsPromises = await import('fs/promises');
+          const path = await import('path');
+          
+          // Combine clips into 16-second room video (only in dual clip mode)
+          if (clipUrls.length >= 2) {
+            try {
+              console.log(`🎬 [PropertyTour] Combining ${clipUrls.length} clips for ${room.roomType} into 16-second video...`);
+              const { spawn } = await import('child_process');
+              
+              const outputDir = '/tmp/property-tour-combined';
+              await fsPromises.mkdir(outputDir, { recursive: true });
+              
+              const combinedFilename = `room-${job.id}-${room.roomType}.mp4`;
+              const combinedPath = path.join(outputDir, combinedFilename);
+              
+              // Use local file paths directly (clipUrls now contains /tmp/veo-output/... paths)
+              const clipPaths: string[] = [];
+              for (let c = 0; c < clipUrls.length; c++) {
+                const localPath = clipUrls[c];
+                // Verify file exists
+                try {
+                  await fsPromises.access(localPath);
+                  clipPaths.push(localPath);
+                  console.log(`📁 [PropertyTour] Using local clip: ${localPath}`);
+                } catch {
+                  throw new Error(`Clip file not found: ${localPath}`);
+                }
+              }
+              
+              // Create concat file (use escaped paths)
+              const concatPath = path.join(outputDir, `concat-${job.id}-${roomIdx}.txt`);
+              const concatContent = clipPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+              await fsPromises.writeFile(concatPath, concatContent);
+              
+              // Combine with ffmpeg (use -an since VEO clips don't have audio)
+              await new Promise<void>((resolve, reject) => {
+                const ffmpeg = spawn('ffmpeg', [
+                  '-y',
+                  '-f', 'concat',
+                  '-safe', '0',
+                  '-i', concatPath,
+                  '-c:v', 'libx264',
+                  '-preset', 'fast',
+                  '-crf', '23',
+                  '-an',
+                  '-movflags', '+faststart',
+                  combinedPath
+                ]);
+                
+                ffmpeg.on('close', (code) => {
+                  if (code === 0) resolve();
+                  else reject(new Error(`ffmpeg exited with code ${code}`));
+                });
+                ffmpeg.on('error', reject);
+              });
+              
+              // Upload combined video to S3
+              const combinedBuffer = await fsPromises.readFile(combinedPath);
+              const s3Service = new S3UploadService();
+              const s3Key = `property-tour-videos/${job.userId}/${combinedFilename}`;
+              const uploadedUrl = await s3Service.uploadBuffer(combinedBuffer, s3Key, 'video/mp4', true, 86400);
+              
+              if (uploadedUrl) {
+                roomVideos.push(uploadedUrl);
+                roomVideoMap[room.roomType] = uploadedUrl;
+                console.log(`✅ [PropertyTour] ${room.roomType} 16-second video uploaded: ${uploadedUrl.substring(0, 60)}...`);
+              }
+              
+              // Cleanup temp files (combined output and concat list, keep original VEO clips for now)
+              await Promise.all([
+                fsPromises.unlink(concatPath).catch(() => {}),
+                fsPromises.unlink(combinedPath).catch(() => {}),
+              ]);
+              // Clean up original VEO clips after successful combine
+              for (const clipPath of clipPaths) {
+                await fsPromises.unlink(clipPath).catch(() => {});
+              }
+            } catch (combineError: any) {
+              console.error(`❌ [PropertyTour] Failed to combine ${room.roomType} clips:`, combineError.message);
+              // Fall back to uploading just the first clip to S3
+              if (clipUrls.length > 0) {
+                try {
+                  const fallbackBuffer = await fsPromises.readFile(clipUrls[0]);
+                  const s3Service = new S3UploadService();
+                  const fallbackKey = `property-tour-videos/${job.userId}/fallback-${job.id}-${room.roomType}.mp4`;
+                  const fallbackUrl = await s3Service.uploadBuffer(fallbackBuffer, fallbackKey, 'video/mp4', true, 86400);
+                  if (fallbackUrl) {
+                    roomVideos.push(fallbackUrl);
+                    roomVideoMap[room.roomType] = fallbackUrl;
+                  }
+                } catch (uploadErr) {
+                  console.error(`❌ [PropertyTour] Failed to upload fallback clip:`, uploadErr);
+                }
+              }
+            }
+          } else if (clipUrls.length === 1) {
+            // Only one clip succeeded - upload it to S3
+            try {
+              const singleBuffer = await fsPromises.readFile(clipUrls[0]);
+              const s3Service = new S3UploadService();
+              const singleKey = `property-tour-videos/${job.userId}/single-${job.id}-${room.roomType}.mp4`;
+              const singleUrl = await s3Service.uploadBuffer(singleBuffer, singleKey, 'video/mp4', true, 86400);
+              if (singleUrl) {
+                roomVideos.push(singleUrl);
+                roomVideoMap[room.roomType] = singleUrl;
+              }
+            } catch (uploadErr) {
+              console.error(`❌ [PropertyTour] Failed to upload single clip:`, uploadErr);
+            }
+          }
+        }
+        
+        if (roomVideos.length > 0) {
+          job.motionVideos = roomVideos;
+          job.roomVideoMap = roomVideoMap;
+          job.progress = 50;
+          console.log(`✅ [PropertyTour] Generated ${roomVideos.length} room videos`);
+          
+          // Combine all room videos into one final property tour
+          if (roomVideos.length > 1) {
+            job.progress = 55;
+            job.message = "Combining room videos into complete tour...";
+            console.log(`🎬 [PropertyTour] Combining ${roomVideos.length} room videos with transitions...`);
+            
+            try {
+              const { spawn } = await import('child_process');
+              const fsPromises = await import('fs/promises');
+              const path = await import('path');
+              
+              const outputDir = '/tmp/property-tour-final';
+              await fsPromises.mkdir(outputDir, { recursive: true });
+              
+              const finalFilename = `complete-tour-${job.id}.mp4`;
+              const finalPath = path.join(outputDir, finalFilename);
+              
+              // Download room videos to local files for combining
+              const localVideoPaths: string[] = [];
+              for (let i = 0; i < roomVideos.length; i++) {
+                const videoUrl = roomVideos[i];
+                const localPath = path.join(outputDir, `room-${i}.mp4`);
+                
+                if (videoUrl.startsWith('/tmp/')) {
+                  // Already local
+                  localVideoPaths.push(videoUrl);
+                } else if (videoUrl.startsWith('http')) {
+                  // Download from URL
+                  const response = await fetch(videoUrl);
+                  const buffer = Buffer.from(await response.arrayBuffer());
+                  await fsPromises.writeFile(localPath, buffer);
+                  localVideoPaths.push(localPath);
+                } else {
+                  localVideoPaths.push(videoUrl);
+                }
+              }
+              
+              // Build ffmpeg command with xfade crossfade transitions
+              const fadeDuration = 0.5; // 0.5 second crossfade between clips
+              const clipDuration = job.roomClipDuration || 8;
+              
+              // For 2+ videos, use xfade filter for smooth transitions
+              // For single video, just copy it
+              if (localVideoPaths.length === 1) {
+                // Single video - just copy
+                await fsPromises.copyFile(localVideoPaths[0], finalPath);
+              } else if (localVideoPaths.length === 2) {
+                // Two videos - simple xfade with dynamic offset based on clip duration
+                const offset = clipDuration - fadeDuration;
+                await new Promise<void>((resolve, reject) => {
+                  const ffmpeg = spawn('ffmpeg', [
+                    '-y',
+                    '-i', localVideoPaths[0],
+                    '-i', localVideoPaths[1],
+                    '-filter_complex',
+                    `[0:v]scale=1280:720,fps=30,format=yuv420p[v0];[1:v]scale=1280:720,fps=30,format=yuv420p[v1];[v0][v1]xfade=transition=fade:duration=${fadeDuration}:offset=${offset}[vout]`,
+                    '-map', '[vout]',
+                    '-c:v', 'libx264',
+                    '-preset', 'fast',
+                    '-crf', '22',
+                    '-an',
+                    '-movflags', '+faststart',
+                    finalPath
+                  ]);
+                  
+                  ffmpeg.stderr.on('data', (data) => {
+                    console.log(`[FFmpeg Tour] ${data.toString().slice(0, 200)}`);
+                  });
+                  
+                  ffmpeg.on('close', (code) => {
+                    if (code === 0) resolve();
+                    else reject(new Error(`ffmpeg xfade exited with code ${code}`));
+                  });
+                  ffmpeg.on('error', reject);
+                });
+              } else {
+                // 3+ videos - chain xfade filters with normalized inputs
+                // First normalize all inputs, then chain xfades
+                const inputs = localVideoPaths.map((p, i) => ['-i', p]).flat();
+                
+                // Build normalization filters for each input
+                let filterComplex = localVideoPaths.map((_, i) => 
+                  `[${i}:v]scale=1280:720,fps=30,format=yuv420p[n${i}]`
+                ).join(';');
+                
+                // Chain xfade filters
+                // First xfade: [n0][n1]xfade[x1]
+                // Second xfade: [x1][n2]xfade[x2]
+                // etc.
+                let prevOutput = 'n0';
+                for (let i = 1; i < localVideoPaths.length; i++) {
+                  // Cumulative offset: each clip adds (clipDuration - fadeDuration) after the first
+                  const offset = (clipDuration - fadeDuration) * i;
+                  const outputLabel = i === localVideoPaths.length - 1 ? 'vout' : `x${i}`;
+                  filterComplex += `;[${prevOutput}][n${i}]xfade=transition=fade:duration=${fadeDuration}:offset=${offset}[${outputLabel}]`;
+                  prevOutput = outputLabel;
+                }
+                
+                await new Promise<void>((resolve, reject) => {
+                  const ffmpegArgs = [
+                    '-y',
+                    ...inputs,
+                    '-filter_complex', filterComplex,
+                    '-map', '[vout]',
+                    '-c:v', 'libx264',
+                    '-preset', 'fast',
+                    '-crf', '22',
+                    '-an',
+                    '-movflags', '+faststart',
+                    finalPath
+                  ];
+                  
+                  console.log(`[FFmpeg Tour] Running xfade with ${localVideoPaths.length} clips, filter: ${filterComplex.slice(0, 200)}...`);
+                  const ffmpeg = spawn('ffmpeg', ffmpegArgs);
+                  
+                  ffmpeg.stderr.on('data', (data) => {
+                    console.log(`[FFmpeg Tour] ${data.toString().slice(0, 200)}`);
+                  });
+                  
+                  ffmpeg.on('close', (code) => {
+                    if (code === 0) resolve();
+                    else reject(new Error(`ffmpeg xfade chain exited with code ${code}`));
+                  });
+                  ffmpeg.on('error', reject);
+                });
+              }
+              
+              // Upload combined tour to S3
+              const combinedBuffer = await fsPromises.readFile(finalPath);
+              const s3Service = new S3UploadService();
+              const tourKey = `property-tour-videos/${job.userId}/complete-tour-${job.id}.mp4`;
+              const tourUrl = await s3Service.uploadBuffer(combinedBuffer, tourKey, 'video/mp4', true, 86400);
+              
+              if (tourUrl) {
+                job.combinedTourUrl = tourUrl;
+                console.log(`✅ [PropertyTour] Complete tour video ready: ${roomVideos.length} rooms combined`);
+              }
+              
+              // Clean up local files
+              await fsPromises.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+            } catch (combineErr) {
+              console.error(`❌ [PropertyTour] Failed to combine tour videos:`, combineErr);
+              // Continue without combined video - individual room videos still available
+            }
+          }
+          
+          job.progress = 60;
+        } else if (job.quotaExceeded) {
+          console.error(`❌ [PropertyTour] VEO quota exceeded - cannot generate video`);
+          job.status = "failed";
+          job.error = job.quotaError || "Gemini VEO quota exceeded. Please wait for your quota to reset or upgrade your Gemini API plan.";
+          job.message = job.error;
+          propertyTourJobs.set(job.id, job);
+          return;
         } else {
-          console.error(`❌ [PropertyTour] VEO start failed:`, veoResult.error);
-          job.message = `VEO start failed: ${veoResult.error}. Falling back to FFmpeg...`;
-          await fallbackToFFmpeg(job, processedPhotos);
+          console.error(`❌ [PropertyTour] VEO failed to generate clips`);
+          job.status = "failed";
+          job.error = "VEO video generation failed. Please try again or check your Gemini API configuration.";
+          job.message = job.error;
+          propertyTourJobs.set(job.id, job);
+          return;
         }
       } else {
-        console.log(`🎬 [PropertyTour] ========================================`);
-        console.log(`🎬 [PropertyTour] VIDEO ENGINE: FFMPEG KEN BURNS (VEO not configured)`);
-        console.log(`🎬 [PropertyTour] Reason: GEMINI_API_KEY secret not found`);
-        console.log(`🎬 [PropertyTour] ========================================`);
-        job.message = "Using FFmpeg Ken Burns effects (VEO not configured)...";
-        await fallbackToFFmpeg(job, processedPhotos);
+        console.error(`❌ [PropertyTour] GEMINI_API_KEY not configured - VEO 3.1 required`);
+        job.status = "failed";
+        job.error = "Gemini API key is required for video generation. Please add your GEMINI_API_KEY in secrets.";
+        job.message = job.error;
+        propertyTourJobs.set(job.id, job);
+        return;
       }
       
       if (job.motionVideos.length > 0 && job.avatarImageKey && job.avatarId !== "no-avatar") {
@@ -15637,7 +19803,7 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(401).json({ error: "Unauthorized" });
       }
 
-      const { photos, avatarId, avatarImageKey, script, backgroundType, includeBranding, property } = req.body;
+      const { photos, roomTypes, tourOrder, avatarId, avatarImageKey, script, backgroundType, includeBranding, property, roomClipDuration, cameraPositions, roomConnections } = req.body;
 
       if (!photos || !Array.isArray(photos) || photos.length === 0) {
         return res.status(400).json({ error: "At least one photo is required" });
@@ -15652,11 +19818,23 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(400).json({ error: "Script is required" });
       }
 
+      // Normalize roomTypes array to match photos length
+      let normalizedRoomTypes: string[] = [];
+      if (Array.isArray(roomTypes) && roomTypes.length === photos.length) {
+        normalizedRoomTypes = roomTypes;
+      } else {
+        // Default to "auto" for all photos if roomTypes missing or mismatched
+        normalizedRoomTypes = photos.map(() => "auto");
+      }
+
       console.log("🎬 Property Tour: Starting generation for user", userId);
       console.log("📸 Photos:", photos.length);
+      console.log("🏠 Room types:", normalizedRoomTypes.join(", "));
+      console.log("🗺️ Tour order:", tourOrder?.join(" → ") || "default");
       console.log("🎭 Avatar ID:", avatarId);
       console.log("🎨 Background:", backgroundType);
       console.log("🏷️ Branding:", includeBranding);
+      console.log("⏱️ Room clip duration:", roomClipDuration || 8, "seconds");
 
       const jobId = `tour-${userId}-${Date.now()}`;
       
@@ -15667,12 +19845,18 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         progress: 0,
         message: "Job queued for processing",
         photos,
+        roomTypes: normalizedRoomTypes,
         avatarId,
         avatarImageKey: avatarImageKey || undefined,
         script,
         backgroundType: backgroundType || "office",
         includeBranding: includeBranding !== false,
+        roomClipDuration: roomClipDuration || 8,
+        cameraPositions: cameraPositions || {},
+        roomConnections: Array.isArray(roomConnections) ? roomConnections : [],
+        tourOrder: tourOrder || [],
         property,
+        klingTaskIds: [],
         motionVideos: [],
         createdAt: new Date(),
       };
@@ -15728,9 +19912,13 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         progress: job.progress,
         message: job.message,
         motionVideos: motionVideoUrls,
+        roomVideoMap: job.roomVideoMap || {},
+        combinedTourUrl: job.combinedTourUrl,
         avatarVideoUrl: job.avatarVideoUrl,
         finalVideoUrl: finalUrl,
         error: job.error,
+        quotaExceeded: job.quotaExceeded,
+        quotaError: job.quotaError,
       });
     } catch (error: any) {
       console.error("Error checking property tour status:", error);
@@ -15762,6 +19950,124 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
     } catch (error: any) {
       console.error("Error fetching property tour jobs:", error);
       res.status(500).json({ error: "Failed to fetch jobs" });
+    }
+  });
+
+  // POST /api/property-tour/combine - Combine selected room videos into a custom tour
+  app.post("/api/property-tour/combine", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const { jobId, selectedRooms } = req.body;
+      if (!jobId || !Array.isArray(selectedRooms) || selectedRooms.length < 2) {
+        return res.status(400).json({ error: "Job ID and at least 2 selected rooms are required" });
+      }
+
+      const job = propertyTourJobs.get(jobId);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+      if (job.userId !== Number(userId)) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const roomMap = job.roomVideoMap || {};
+      const selectedVideoUrls: string[] = [];
+      for (const roomId of selectedRooms) {
+        const url = roomMap[roomId];
+        if (url) selectedVideoUrls.push(url);
+      }
+
+      if (selectedVideoUrls.length < 2) {
+        return res.status(400).json({ error: "Need at least 2 room videos to combine" });
+      }
+
+      console.log(`🎬 [PropertyTour] Combining ${selectedVideoUrls.length} selected rooms for user ${userId}`);
+
+      const { spawn } = await import('child_process');
+      const fsPromises = await import('fs/promises');
+      const path = await import('path');
+
+      const outputDir = '/tmp/property-tour-custom';
+      await fsPromises.mkdir(outputDir, { recursive: true });
+
+      const finalFilename = `custom-tour-${jobId}-${Date.now()}.mp4`;
+      const finalPath = path.join(outputDir, finalFilename);
+
+      const localPaths: string[] = [];
+      for (let i = 0; i < selectedVideoUrls.length; i++) {
+        const videoUrl = selectedVideoUrls[i];
+        const localPath = path.join(outputDir, `selected-${i}.mp4`);
+        if (videoUrl.startsWith('/tmp/')) {
+          localPaths.push(videoUrl);
+        } else if (videoUrl.startsWith('http')) {
+          const response = await fetch(videoUrl);
+          const buffer = Buffer.from(await response.arrayBuffer());
+          await fsPromises.writeFile(localPath, buffer);
+          localPaths.push(localPath);
+        } else {
+          localPaths.push(videoUrl);
+        }
+      }
+
+      const fadeDuration = 0.5;
+      const clipDuration = job.roomClipDuration || 8;
+
+      if (localPaths.length === 2) {
+        const offset = clipDuration - fadeDuration;
+        await new Promise<void>((resolve, reject) => {
+          const ffmpeg = spawn('ffmpeg', [
+            '-y', '-i', localPaths[0], '-i', localPaths[1],
+            '-filter_complex',
+            `[0:v]scale=1280:720,fps=30,format=yuv420p[v0];[1:v]scale=1280:720,fps=30,format=yuv420p[v1];[v0][v1]xfade=transition=fade:duration=${fadeDuration}:offset=${offset}[vout]`,
+            '-map', '[vout]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-an', '-movflags', '+faststart',
+            finalPath
+          ]);
+          ffmpeg.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+          ffmpeg.on('error', reject);
+        });
+      } else {
+        const inputs = localPaths.map((p) => ['-i', p]).flat();
+        let filterComplex = localPaths.map((_, i) => `[${i}:v]scale=1280:720,fps=30,format=yuv420p[n${i}]`).join(';');
+        let prevOutput = 'n0';
+        for (let i = 1; i < localPaths.length; i++) {
+          const offset = (clipDuration - fadeDuration) * i;
+          const outputLabel = i === localPaths.length - 1 ? 'vout' : `x${i}`;
+          filterComplex += `;[${prevOutput}][n${i}]xfade=transition=fade:duration=${fadeDuration}:offset=${offset}[${outputLabel}]`;
+          prevOutput = outputLabel;
+        }
+        await new Promise<void>((resolve, reject) => {
+          const ffmpeg = spawn('ffmpeg', [
+            '-y', ...inputs, '-filter_complex', filterComplex,
+            '-map', '[vout]', '-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-an', '-movflags', '+faststart',
+            finalPath
+          ]);
+          ffmpeg.on('close', (code) => code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`)));
+          ffmpeg.on('error', reject);
+        });
+      }
+
+      const { S3UploadService } = await import("./services/s3Upload");
+      const combinedBuffer = await fsPromises.readFile(finalPath);
+      const s3Service = new S3UploadService();
+      const tourKey = `property-tour-videos/${userId}/custom-tour-${Date.now()}.mp4`;
+      const tourUrl = await s3Service.uploadBuffer(combinedBuffer, tourKey, 'video/mp4', true, 86400);
+
+      await fsPromises.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+
+      if (tourUrl) {
+        job.combinedTourUrl = tourUrl;
+        console.log(`✅ [PropertyTour] Custom tour combined: ${selectedVideoUrls.length} rooms`);
+        res.json({ success: true, combinedUrl: tourUrl });
+      } else {
+        res.status(500).json({ error: "Failed to upload combined tour" });
+      }
+    } catch (error: any) {
+      console.error("Error combining room videos:", error);
+      res.status(500).json({ error: error.message || "Failed to combine videos" });
     }
   });
 
@@ -15932,13 +20238,19 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
         return res.status(400).json({ error: "Invalid filename" });
       }
       
-      const userOwnsVideo = Array.from(propertyTourJobs.values()).some(job => {
+      // Check property tour jobs ownership
+      const userOwnsPropertyTourVideo = Array.from(propertyTourJobs.values()).some(job => {
         if (job.userId !== Number(userId)) return false;
         return job.motionVideos.some(v => v.includes(filename)) || 
                job.finalVideoUrl?.includes(filename);
       });
       
-      if (!userOwnsVideo) {
+      // Check AI assistant VEO videos ownership (filename contains operationId)
+      const userOwnsAiVideo = Array.from(aiVeoVideos.entries()).some(([operationId, ownerId]) => {
+        return filename.includes(operationId) && ownerId === Number(userId);
+      });
+      
+      if (!userOwnsPropertyTourVideo && !userOwnsAiVideo) {
         return res.status(403).json({ error: "Access denied" });
       }
       
@@ -15980,342 +20292,2393 @@ Return JSON with: { "content": "post text", "hashtags": ["hashtag1", "hashtag2"]
   });
 
   // =====================================================
-  // MENU ITEMS & FOOD CATEGORIES API ROUTES
+  // AI ASSISTANT ROUTES
+  // =====================================================
+  
+  // Configure multer for AI assistant file uploads (images and documents)
+  const aiAssistantUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 20 * 1024 * 1024, // 20MB limit
+      files: 5, // Max 5 files per request
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'text/plain', 'text/csv',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error(`File type ${file.mimetype} not allowed`));
+      }
+    },
+  });
+
+  // GET /api/ai-assistant/history - Get chat history for the user
+  app.get("/api/ai-assistant/history", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const messages = await db
+        .select()
+        .from(aiAssistantMessages)
+        .where(eq(aiAssistantMessages.userId, userId))
+        .orderBy(aiAssistantMessages.createdAt);
+
+      res.json({ messages });
+    } catch (error: any) {
+      console.error("Error fetching AI assistant history:", error);
+      res.status(500).json({ error: "Failed to fetch chat history" });
+    }
+  });
+
+  // POST /api/ai-assistant/chat - Send message with optional file uploads
+  app.post("/api/ai-assistant/chat", requireAuth, aiAssistantUpload.array('files', 5), async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { message } = req.body;
+      const files = req.files as Express.Multer.File[] || [];
+
+      if (!message && files.length === 0) {
+        return res.status(400).json({ error: "Message or files required" });
+      }
+
+      // Upload files to S3 and collect attachment info
+      const attachments: { url: string; type: string; name: string }[] = [];
+      const imageUrls: string[] = [];
+
+      for (const file of files) {
+        try {
+          const timestamp = Date.now();
+          const safeFileName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+          const key = `user-${userId}/ai-assistant/${timestamp}-${safeFileName}`;
+          
+          const url = await s3UploadService.uploadBuffer(
+            file.buffer,
+            key,
+            file.mimetype
+          );
+
+          attachments.push({
+            url,
+            type: file.mimetype,
+            name: file.originalname,
+          });
+
+          // Collect image URLs for OpenAI vision
+          if (file.mimetype.startsWith('image/')) {
+            imageUrls.push(url);
+          }
+        } catch (uploadError) {
+          console.error("Error uploading file:", uploadError);
+        }
+      }
+
+      // Save user message to database
+      const [userMessage] = await db
+        .insert(aiAssistantMessages)
+        .values({
+          userId,
+          role: 'user',
+          content: message || '',
+          attachments: attachments.length > 0 ? attachments : null,
+        })
+        .returning();
+
+      // Prepare OpenAI request with image support
+      let aiResponse: string;
+      
+      const systemPrompt = `You are an AI assistant for iMakePage (imakepage.com), an AI-powered real estate marketing platform built by My Golden Brick. You help real estate agents with:
+
+CONTENT & MARKETING:
+- Writing property descriptions and marketing content
+- Analyzing market trends and property photos
+- Creating social media posts for Facebook, Instagram, LinkedIn, X/Twitter, YouTube, TikTok
+- Answering questions about real estate best practices
+- Providing advice on home staging, pricing, and marketing strategies
+
+VIDEO GENERATION (You CAN help create videos!):
+- This platform has a built-in Video Studio that generates professional real estate videos
+- Kling AI Motion Videos: Turn any property photo into a cinematic panning/zooming video. Users can go to the Media Library, select a photo, and click "Generate Motion Video"
+- HeyGen Talking Avatar Videos: Create AI spokesperson videos with a talking avatar presenting a property listing or marketing script. Users can upload their photo to create a custom avatar, write a script, and generate a video
+- Property Tour Studio: A 4-step wizard that creates virtual property tour videos from room photos with spatial camera motion
+- AI Content Generator: Creates marketing videos with text overlays, property details, and professional templates
+
+When someone asks about creating a video, guide them to the appropriate tool in the platform:
+1. For property photo animations → "Go to Media Library, select your photo, and click Generate Motion Video"
+2. For talking head/presenter videos → "Go to the Avatar section to create a talking avatar video with your script"
+3. For property tours → "Use the Property Tour Studio to create a virtual walkthrough from your room photos"
+4. For marketing/social media videos → "Use the Video Studio to create professional marketing videos"
+
+WHATSAPP & BULK MESSAGING:
+- The platform supports WhatsApp Business bulk messaging
+- Users can upload CSV, PDF, Word, or text files to import phone numbers
+- Supports up to 5,000 recipients per send
+
+Be helpful, professional, and concise. Always let users know what the platform can do for them.`;
+
+      try {
+        if (imageUrls.length > 0) {
+          // Use vision model for image analysis
+          const contentParts: any[] = [];
+          
+          if (message) {
+            contentParts.push({ type: 'text', text: message });
+          }
+          
+          for (const imageUrl of imageUrls) {
+            contentParts.push({
+              type: 'image_url',
+              image_url: { url: imageUrl },
+            });
+          }
+
+          const response = await multiOpenAI.makeRequest(
+            'vision',
+            async (client) => {
+              return await client.chat.completions.create({
+                model: 'gpt-4o',
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: contentParts },
+                ],
+                max_tokens: 2000,
+              });
+            }
+          );
+
+          // Debug logging
+          console.log("🤖 [AI Assistant] Vision response received:");
+          console.log("  - choices count:", response.choices?.length || 0);
+          console.log("  - finish_reason:", response.choices?.[0]?.finish_reason);
+          console.log("  - content length:", response.choices?.[0]?.message?.content?.length || 0);
+
+          aiResponse = response.choices?.[0]?.message?.content || "";
+          
+          // Retry with simpler request if empty
+          if (!aiResponse || aiResponse.trim() === "") {
+            console.warn("⚠️ [AI Assistant] Empty vision response, retrying with text-only...");
+            const retryResponse = await multiOpenAI.makeRequest(
+              'content',
+              async (client) => {
+                return await client.chat.completions.create({
+                  model: 'gpt-4o',
+                  messages: [
+                    { role: 'system', content: "You are a helpful real estate AI assistant. Be concise." },
+                    { role: 'user', content: message || "Please describe what you see in the uploaded images." },
+                  ],
+                  max_tokens: 1000,
+                });
+              }
+            );
+            aiResponse = retryResponse.choices?.[0]?.message?.content || "";
+            console.log("🔄 [AI Assistant] Retry response length:", aiResponse?.length || 0);
+          }
+        } else {
+          // Text-only request
+          const response = await multiOpenAI.makeRequest(
+            'content',
+            async (client) => {
+              return await client.chat.completions.create({
+                model: 'gpt-4o',
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: message },
+                ],
+                max_tokens: 2000,
+              });
+            }
+          );
+
+          // Debug logging
+          console.log("🤖 [AI Assistant] Text response received:");
+          console.log("  - choices count:", response.choices?.length || 0);
+          console.log("  - finish_reason:", response.choices?.[0]?.finish_reason);
+          console.log("  - content length:", response.choices?.[0]?.message?.content?.length || 0);
+
+          aiResponse = response.choices?.[0]?.message?.content || "";
+          
+          // Retry with simpler prompt if empty
+          if (!aiResponse || aiResponse.trim() === "") {
+            console.warn("⚠️ [AI Assistant] Empty text response, retrying with simpler prompt...");
+            const retryResponse = await multiOpenAI.makeRequest(
+              'content',
+              async (client) => {
+                return await client.chat.completions.create({
+                  model: 'gpt-4o',
+                  messages: [
+                    { role: 'system', content: "You are a helpful assistant. Be concise." },
+                    { role: 'user', content: message },
+                  ],
+                  max_tokens: 1000,
+                });
+              }
+            );
+            aiResponse = retryResponse.choices?.[0]?.message?.content || "";
+            console.log("🔄 [AI Assistant] Retry response length:", aiResponse?.length || 0);
+          }
+        }
+        
+        // Final fallback
+        if (!aiResponse || aiResponse.trim() === "") {
+          aiResponse = "I'm having trouble processing your request right now. Could you try rephrasing your question or try again in a moment?";
+        }
+      } catch (openaiError: any) {
+        console.error("OpenAI error:", openaiError);
+        aiResponse = "I apologize, but I'm having trouble processing your request right now. Please try again later.";
+      }
+
+      // Save assistant response to database
+      const [assistantMessage] = await db
+        .insert(aiAssistantMessages)
+        .values({
+          userId,
+          role: 'assistant',
+          content: aiResponse,
+          attachments: null,
+        })
+        .returning();
+
+      res.json({
+        userMessage,
+        assistantMessage,
+      });
+    } catch (error: any) {
+      console.error("Error in AI assistant chat:", error);
+      res.status(500).json({ error: "Failed to process chat message" });
+    }
+  });
+
+  // DELETE /api/ai-assistant/history - Clear chat history for the user
+  app.delete("/api/ai-assistant/history", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      await db
+        .delete(aiAssistantMessages)
+        .where(eq(aiAssistantMessages.userId, userId));
+
+      res.json({ success: true, message: "Chat history cleared" });
+    } catch (error: any) {
+      console.error("Error clearing AI assistant history:", error);
+      res.status(500).json({ error: "Failed to clear chat history" });
+    }
+  });
+
+  // =====================================================
+  // WHATSAPP BUSINESS API ROUTES
   // =====================================================
 
-  // --- FOOD CATEGORIES ---
+  // Debug WhatsApp token (shows length/format without exposing the value)
+  app.get("/api/whatsapp/debug-token", requireAuth, async (req, res) => {
+    const userId = req.user?.id;
+    const settings = userId ? await getWhatsappSettingsWithFallback(String(userId)) : null;
+    const token = settings?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || "";
+    const phoneNumberId = settings?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "";
+    const trimmed = token.trim();
+    res.json({
+      source: settings?.accessToken ? "database" : "environment_variable",
+      token_length: token.length,
+      trimmed_length: trimmed.length,
+      has_leading_whitespace: token.length > 0 && token[0] !== trimmed[0],
+      has_trailing_whitespace: token.length > 0 && token[token.length - 1] !== trimmed[trimmed.length - 1],
+      starts_with: token.length >= 10 ? token.substring(0, 10) + "..." : "(too short)",
+      ends_with: token.length >= 5 ? "..." + token.substring(token.length - 5) : "(too short)",
+      looks_like_valid_facebook_token: /^EAA[A-Za-z0-9]+$/.test(trimmed),
+      phone_number_id: phoneNumberId || "(not set)",
+      phone_number_id_is_numeric: /^\d+$/.test(phoneNumberId),
+    });
+  });
 
-  // Get all categories for current user
-  app.get("/api/menu/categories", requireAuth, async (req, res) => {
+  // Get WhatsApp settings for current user
+  app.get("/api/whatsapp/settings", requireAuth, async (req, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const categories = await db
-        .select()
-        .from(foodCategories)
-        .where(eq(foodCategories.userId, userId))
-        .orderBy(foodCategories.displayOrder);
-
-      res.json(categories);
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      res.json(settings || { isEnabled: false });
     } catch (error: any) {
-      console.error("[Menu] Error fetching categories:", error);
-      res.status(500).json({ error: "Failed to fetch categories" });
+      console.error("Error getting WhatsApp settings:", error);
+      res.status(500).json({ error: "Failed to get WhatsApp settings" });
     }
   });
 
-  // Create a new category
-  app.post("/api/menu/categories", requireAuth, async (req, res) => {
+  // Get WhatsApp accounts (multiple phone numbers)
+  app.get("/api/whatsapp/accounts", requireAuth, async (req, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const DEFAULT_ACCOUNTS = [
+        { label: "Namaste28 - Main", phoneNumberId: "1009337698927791", wabaId: "2690438238000842", displayPhoneNumber: "+1 402-320-4775" },
+        { label: "Flavors Cuisine", phoneNumberId: "957638934108525", wabaId: "3832373050232855", displayPhoneNumber: "+1 479-254-1035" },
+      ];
+
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      let accounts = (settings?.accounts as Array<{ label: string; phoneNumberId: string; wabaId: string; displayPhoneNumber?: string }>) || [];
+
+      if (accounts.length === 0) {
+        accounts = DEFAULT_ACCOUNTS;
+        try {
+          await storage.createOrUpdateWhatsappSettings({
+            ...settings,
+            userId: String(userId),
+            accounts: accounts as any,
+            phoneNumberId: settings?.phoneNumberId || DEFAULT_ACCOUNTS[0].phoneNumberId,
+            wabaId: settings?.wabaId || DEFAULT_ACCOUNTS[0].wabaId,
+          });
+        } catch (e) {}
       }
 
-      const parsed = insertFoodCategorySchema.safeParse({
-        ...req.body,
-        userId,
+      const activePhoneNumberId = settings?.phoneNumberId || DEFAULT_ACCOUNTS[0].phoneNumberId;
+
+      res.json({ accounts, activePhoneNumberId });
+    } catch (error: any) {
+      console.error("Error getting WhatsApp accounts:", error);
+      res.status(500).json({ error: "Failed to get WhatsApp accounts" });
+    }
+  });
+
+  // Add a WhatsApp account
+  app.post("/api/whatsapp/accounts", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const { label, phoneNumberId, wabaId, displayPhoneNumber } = req.body;
+      if (!label || !phoneNumberId) {
+        return res.status(400).json({ error: "Label and Phone Number ID are required" });
+      }
+
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const accounts = (settings?.accounts as Array<{ label: string; phoneNumberId: string; wabaId: string; displayPhoneNumber?: string }>) || [];
+
+      const exists = accounts.find(a => a.phoneNumberId === phoneNumberId);
+      if (exists) {
+        return res.status(400).json({ error: "Account with this Phone Number ID already exists" });
+      }
+
+      accounts.push({ label, phoneNumberId, wabaId: wabaId || settings?.wabaId || "", displayPhoneNumber: displayPhoneNumber || "" });
+
+      await storage.createOrUpdateWhatsappSettings({
+        ...settings,
+        userId: String(userId),
+        accounts: accounts as any,
       });
 
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid category data", details: parsed.error.errors });
-      }
-
-      const [category] = await db
-        .insert(foodCategories)
-        .values(parsed.data)
-        .returning();
-
-      res.status(201).json(category);
+      console.log(`📱 WhatsApp: Added account "${label}" (${phoneNumberId}) for user ${userId}`);
+      res.json({ success: true, accounts });
     } catch (error: any) {
-      console.error("[Menu] Error creating category:", error);
-      res.status(500).json({ error: "Failed to create category" });
+      console.error("Error adding WhatsApp account:", error);
+      res.status(500).json({ error: "Failed to add WhatsApp account" });
     }
   });
 
-  // Update a category
-  app.put("/api/menu/categories/:id", requireAuth, async (req, res) => {
+  // Delete a WhatsApp account
+  app.delete("/api/whatsapp/accounts/:phoneNumberId", requireAuth, async (req, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
-      const { id } = req.params;
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
 
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+      const { phoneNumberId } = req.params;
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const allAccounts = (settings?.accounts as Array<{ label: string; phoneNumberId: string; wabaId: string; displayPhoneNumber?: string }>) || [];
+      const accounts = allAccounts.filter(a => a.phoneNumberId !== phoneNumberId);
+
+      const updates: any = { ...settings, userId: String(userId), accounts: accounts as any };
+
+      if (settings?.phoneNumberId === phoneNumberId && accounts.length > 0) {
+        updates.phoneNumberId = accounts[0].phoneNumberId;
+        updates.wabaId = accounts[0].wabaId || settings?.wabaId;
+        updates.displayPhoneNumber = accounts[0].displayPhoneNumber || "";
       }
 
-      const [updated] = await db
-        .update(foodCategories)
-        .set(req.body)
-        .where(eq(foodCategories.id, id))
-        .returning();
+      await storage.createOrUpdateWhatsappSettings(updates);
 
-      if (!updated) {
-        return res.status(404).json({ error: "Category not found" });
+      res.json({ success: true, accounts, activePhoneNumberId: updates.phoneNumberId || settings?.phoneNumberId });
+    } catch (error: any) {
+      console.error("Error deleting WhatsApp account:", error);
+      res.status(500).json({ error: "Failed to delete WhatsApp account" });
+    }
+  });
+
+  // Switch active WhatsApp account
+  app.post("/api/whatsapp/accounts/switch", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const { phoneNumberId } = req.body;
+      if (!phoneNumberId) {
+        return res.status(400).json({ error: "Phone Number ID is required" });
       }
 
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const accounts = (settings?.accounts as Array<{ label: string; phoneNumberId: string; wabaId: string; displayPhoneNumber?: string }>) || [];
+      const account = accounts.find(a => a.phoneNumberId === phoneNumberId);
+
+      if (!account) {
+        return res.status(404).json({ error: "Account not found" });
+      }
+
+      await storage.createOrUpdateWhatsappSettings({
+        ...settings,
+        userId: String(userId),
+        phoneNumberId: account.phoneNumberId,
+        wabaId: account.wabaId || settings?.wabaId || "",
+        displayPhoneNumber: account.displayPhoneNumber || "",
+      });
+
+      console.log(`📱 WhatsApp: Switched to account "${account.label}" (${phoneNumberId}) for user ${userId}`);
+      res.json({ success: true, activePhoneNumberId: phoneNumberId, label: account.label });
+    } catch (error: any) {
+      console.error("Error switching WhatsApp account:", error);
+      res.status(500).json({ error: "Failed to switch WhatsApp account" });
+    }
+  });
+
+  // Save/update WhatsApp settings
+  app.post("/api/whatsapp/settings", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const incoming = { ...req.body };
+      const existing = await getWhatsappSettingsWithFallback(String(userId));
+
+      if (!incoming.accessToken || incoming.accessToken.trim() === "") {
+        if (existing?.accessToken) {
+          incoming.accessToken = existing.accessToken;
+        } else {
+          delete incoming.accessToken;
+        }
+      }
+      const accounts = (existing?.accounts as Array<{ label: string; phoneNumberId: string; wabaId: string; displayPhoneNumber?: string }>) || [];
+
+      if (incoming.phoneNumberId) {
+        const idx = accounts.findIndex((a: any) => a.phoneNumberId === incoming.phoneNumberId);
+        const entry = {
+          label: incoming.displayPhoneNumber || incoming.phoneNumberId,
+          phoneNumberId: incoming.phoneNumberId,
+          wabaId: incoming.wabaId || existing?.wabaId || "",
+          displayPhoneNumber: incoming.displayPhoneNumber || "",
+        };
+        if (idx >= 0) {
+          accounts[idx] = { ...accounts[idx], ...entry };
+        } else {
+          accounts.push(entry);
+        }
+        incoming.accounts = accounts;
+      }
+
+      const settings = await storage.createOrUpdateWhatsappSettings({
+        ...incoming,
+        userId: String(userId),
+      });
+      res.json(settings);
+    } catch (error: any) {
+      console.error("Error saving WhatsApp settings:", error);
+      res.status(500).json({ error: "Failed to save WhatsApp settings" });
+    }
+  });
+
+  app.get("/api/whatsapp/messaging-limit", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const accessToken = (settings?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+      const phoneNumberId = (settings?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+
+      if (!accessToken || !phoneNumberId) {
+        return res.json({ limit: 250, tier: "TIER_250", source: "default" });
+      }
+
+      const url = `https://graph.facebook.com/v25.0/${phoneNumberId}?fields=whatsapp_business_manager_messaging_limit,quality_score&access_token=${accessToken}`;
+      const response = await fetch(url);
+      const data = await response.json() as any;
+
+      if (data.error) {
+        console.log(`⚠️ WhatsApp messaging limit fetch failed: ${data.error.message}`);
+        return res.json({ limit: 250, tier: "TIER_250", source: "default" });
+      }
+
+      const tierMap: Record<string, number> = {
+        "TIER_NOT_SET": 250,
+        "TIER_250": 250,
+        "TIER_2K": 2000,
+        "TIER_10K": 10000,
+        "TIER_100K": 100000,
+        "TIER_UNLIMITED": 999999,
+      };
+
+      const tier = data.whatsapp_business_manager_messaging_limit || "TIER_250";
+      const limit = tierMap[tier] || 250;
+      const qualityScore = data.quality_score?.score || "UNKNOWN";
+
+      console.log(`📱 WhatsApp messaging limit (portfolio-level) for phone ${phoneNumberId}: ${tier} (${limit}/day), quality: ${qualityScore}`);
+      res.json({ limit, tier, qualityScore, source: "meta_api" });
+    } catch (error: any) {
+      console.error("Error fetching WhatsApp messaging limit:", error);
+      res.json({ limit: 250, tier: "TIER_250", source: "default" });
+    }
+  });
+
+  app.get("/api/whatsapp/guide/content", async (req, res) => {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const mdPath = path.join(process.cwd(), "docs", "whatsapp-bulk-messaging-guide.md");
+      const mdContent = fs.readFileSync(mdPath, "utf-8");
+      const guideImgDir = path.join(process.cwd(), "docs", "guide-images");
+      const images: string[] = [];
+      if (fs.existsSync(guideImgDir)) {
+        const files = fs.readdirSync(guideImgDir).filter((f: string) => f.endsWith(".png")).sort();
+        images.push(...files);
+      }
+      const videoDir = path.join(process.cwd(), "attached_assets", "generated_videos");
+      const videos: { type: string; label: string; filename: string }[] = [];
+      const videoMap = [
+        { type: "template", label: "How to Create Templates", filename: "whatsapp-template-creation-tutorial.mp4" },
+        { type: "bulk", label: "How to Send Bulk Messages", filename: "whatsapp-bulk-send-tutorial.mp4" },
+      ];
+      for (const v of videoMap) {
+        if (fs.existsSync(path.join(videoDir, v.filename))) videos.push(v);
+      }
+      res.json({ markdown: mdContent, images, videos });
+    } catch (error: any) {
+      console.error("Error loading guide content:", error);
+      res.status(500).json({ error: "Failed to load guide content" });
+    }
+  });
+
+  app.get("/api/whatsapp/guide/image/:filename", async (req, res) => {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, "");
+      if (!filename.endsWith(".png")) return res.status(400).json({ error: "Invalid file type" });
+      const imgPath = path.join(process.cwd(), "docs", "guide-images", filename);
+      if (!fs.existsSync(imgPath)) return res.status(404).json({ error: "Image not found" });
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      fs.createReadStream(imgPath).pipe(res);
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to serve image" });
+    }
+  });
+
+  app.get("/api/whatsapp/guide/video", async (req, res) => {
+    try {
+      const type = (req.query.type as string) || "template";
+      const fs = await import("fs");
+      const path = await import("path");
+      const videoMap: Record<string, { file: string; name: string }> = {
+        template: { file: "whatsapp-template-creation-tutorial.mp4", name: "How-to-Create-WhatsApp-Templates.mp4" },
+        bulk: { file: "whatsapp-bulk-send-tutorial.mp4", name: "How-to-Send-Bulk-Messages.mp4" },
+      };
+      const video = videoMap[type];
+      if (!video) return res.status(400).json({ error: "Invalid video type. Use 'template' or 'bulk'." });
+      const videoPath = path.join(process.cwd(), "attached_assets", "generated_videos", video.file);
+      if (!fs.existsSync(videoPath)) return res.status(404).json({ error: "Video not found" });
+      const stat = fs.statSync(videoPath);
+      const fileSize = stat.size;
+      const range = req.headers.range;
+
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+        res.writeHead(206, {
+          "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunkSize,
+          "Content-Type": "video/mp4",
+        });
+        const stream = fs.createReadStream(videoPath, { start, end });
+        stream.on("error", (err: any) => { if (!res.headersSent) res.status(500).end(); else res.end(); });
+        stream.pipe(res);
+      } else {
+        const isDownload = req.query.download === "true";
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Length", fileSize);
+        res.setHeader("Accept-Ranges", "bytes");
+        if (isDownload) res.setHeader("Content-Disposition", `attachment; filename=${video.name}`);
+        const stream = fs.createReadStream(videoPath);
+        stream.on("error", (err: any) => {
+          console.error("Error streaming guide video:", err);
+          if (!res.headersSent) res.status(500).json({ error: "Failed to stream video" });
+          else res.end();
+        });
+        stream.pipe(res);
+      }
+    } catch (error: any) {
+      console.error("Error serving guide video:", error);
+      res.status(500).json({ error: "Failed to serve video" });
+    }
+  });
+
+  app.get("/api/whatsapp/guide/download", async (req, res) => {
+    try {
+      const format = (req.query.format as string) || "pdf";
+      if (!["pdf", "docx"].includes(format)) {
+        return res.status(400).json({ error: "Invalid format. Use 'pdf' or 'docx'." });
+      }
+      const fs = await import("fs");
+      const path = await import("path");
+      const mdPath = path.join(process.cwd(), "docs", "whatsapp-bulk-messaging-guide.md");
+      const mdContent = fs.readFileSync(mdPath, "utf-8");
+      const lines = mdContent.split("\n");
+
+      const guideImgDir = path.join(process.cwd(), "docs", "guide-images");
+      const sectionImages: Record<string, { file: string; caption: string }> = {
+        "## 1. Setting Up WhatsApp": { file: "01-whatsapp-settings.png", caption: "Figure 1: WhatsApp Business Settings — enter your Phone Number ID, WABA ID, and Access Token" },
+        "## 2. Creating Message Templates": { file: "02-create-template.png", caption: "Figure 2: Template Creation Form — fill in name, category, header, body, and footer" },
+        "## 4. Sending Bulk Messages": { file: "03-bulk-send-workflow.png", caption: "Figure 3: Bulk Send Workflow — from uploading contacts to automatic queue management" },
+        "## 6. Managing Bulk Queues": { file: "04-queue-management.png", caption: "Figure 4: Queue Management Dashboard — pause, resume, send now, or cancel queues" },
+        "## 8. WhatsApp Analytics": { file: "05-analytics-dashboard.png", caption: "Figure 5: Analytics Dashboard — messages sent, delivery rate, read rate, and cost breakdown" },
+        "## 5. Understanding the Bulk Queue System": { file: "06-messaging-tiers.png", caption: "Figure 6: Meta Messaging Tiers — your daily limit increases with quality and volume" },
+        "## 11. Meta/Facebook Account Issues & Restrictions": { file: "09-meta-restrictions.png", caption: "Figure 9: Meta Account Restrictions — common flags, marketing blocks, and recovery steps" },
+      };
+      const subsectionImages: Record<string, { file: string; caption: string }> = {
+        "### Step 1: Prepare Your Contact List": { file: "07-file-import.png", caption: "Figure 7: File Import — supported formats and smart number extraction" },
+        "### Template Approval:": { file: "08-template-lifecycle.png", caption: "Figure 8: Template Lifecycle — from draft to approved or rejected" },
+      };
+
+      function getImagePath(filename: string): string | null {
+        const full = path.join(guideImgDir, filename);
+        return fs.existsSync(full) ? full : null;
+      }
+
+      if (format === "docx") {
+        const docx = await import("docx");
+        const sections: any[] = [];
+
+        function addDocxImage(imgInfo: { file: string; caption: string }) {
+          const imgPath = getImagePath(imgInfo.file);
+          if (!imgPath) return;
+          const imgBuf = fs.readFileSync(imgPath);
+          sections.push(new docx.Paragraph({
+            spacing: { before: 200, after: 100 },
+            alignment: docx.AlignmentType.CENTER,
+            children: [
+              new docx.ImageRun({
+                data: imgBuf,
+                transformation: { width: 500, height: 280 },
+                type: "png",
+              }),
+            ],
+          }));
+          sections.push(new docx.Paragraph({
+            spacing: { after: 200 },
+            alignment: docx.AlignmentType.CENTER,
+            children: [
+              new docx.TextRun({ text: imgInfo.caption, italics: true, size: 18, color: "666666" }),
+            ],
+          }));
+        }
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed === "---") continue;
+
+          if (trimmed.startsWith("# ")) {
+            sections.push(new docx.Paragraph({ text: trimmed.replace(/^# /, ""), heading: docx.HeadingLevel.HEADING_1, spacing: { after: 200 } }));
+          } else if (trimmed.startsWith("## ")) {
+            sections.push(new docx.Paragraph({ text: trimmed.replace(/^## /, ""), heading: docx.HeadingLevel.HEADING_2, spacing: { before: 400, after: 200 } }));
+            if (sectionImages[trimmed]) addDocxImage(sectionImages[trimmed]);
+          } else if (trimmed.startsWith("### ")) {
+            sections.push(new docx.Paragraph({ text: trimmed.replace(/^### /, ""), heading: docx.HeadingLevel.HEADING_3, spacing: { before: 300, after: 150 } }));
+            if (subsectionImages[trimmed]) addDocxImage(subsectionImages[trimmed]);
+          } else if (trimmed.startsWith("- **") || trimmed.startsWith("* **")) {
+            const cleanText = trimmed.replace(/^[-*]\s*/, "").replace(/\*\*/g, "");
+            sections.push(new docx.Paragraph({ text: cleanText, bullet: { level: 0 }, spacing: { after: 80 } }));
+          } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+            sections.push(new docx.Paragraph({ text: trimmed.replace(/^[-*]\s*/, ""), bullet: { level: 0 }, spacing: { after: 80 } }));
+          } else if (/^\d+\.\s/.test(trimmed)) {
+            sections.push(new docx.Paragraph({ text: trimmed, spacing: { after: 80 } }));
+          } else if (trimmed.startsWith("|")) {
+            const cells = trimmed.split("|").filter(c => c.trim()).map(c => c.trim());
+            if (!cells.every(c => /^[-:]+$/.test(c))) {
+              sections.push(new docx.Paragraph({ text: cells.join("  |  "), spacing: { after: 60 } }));
+            }
+          } else {
+            const cleanText = trimmed.replace(/\*\*/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+            sections.push(new docx.Paragraph({ text: cleanText, spacing: { after: 120 } }));
+          }
+        }
+
+        const doc = new docx.Document({
+          sections: [{ properties: {}, children: sections }],
+          creator: "iMakePage",
+          title: "WhatsApp Bulk Messaging Guide",
+        });
+
+        const buffer = await docx.Packer.toBuffer(doc);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        res.setHeader("Content-Disposition", "attachment; filename=WhatsApp-Bulk-Messaging-Guide.docx");
+        return res.send(buffer);
+      }
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const doc = new PDFDocument({ size: "LETTER", margins: { top: 60, bottom: 60, left: 60, right: 60 } });
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      doc.on("end", () => {
+        const pdfBuffer = Buffer.concat(chunks);
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", "attachment; filename=WhatsApp-Bulk-Messaging-Guide.pdf");
+        res.send(pdfBuffer);
+      });
+
+      const pageWidth = 612 - 120;
+
+      function addPdfImage(imgInfo: { file: string; caption: string }) {
+        const imgPath = getImagePath(imgInfo.file);
+        if (!imgPath) return;
+        const imgW = pageWidth * 0.85;
+        const imgH = imgW * 0.56;
+        if (doc.y + imgH + 40 > 700) doc.addPage();
+        doc.moveDown(0.5);
+        const xOffset = 60 + (pageWidth - imgW) / 2;
+        doc.image(imgPath, xOffset, doc.y, { width: imgW, height: imgH });
+        doc.y += imgH + 8;
+        doc.fontSize(8).font("Helvetica-Oblique").fillColor("#666666").text(imgInfo.caption, { align: "center" });
+        doc.fillColor("#000000").font("Helvetica");
+        doc.moveDown(0.5);
+      }
+
+      doc.fontSize(24).font("Helvetica-Bold").text("WhatsApp Bulk Messaging Guide", { align: "center" });
+      doc.moveDown(0.5);
+      doc.fontSize(11).font("Helvetica").text("Complete guide for sending bulk WhatsApp messages through iMakePage", { align: "center" });
+      doc.moveDown(0.3);
+      doc.fontSize(9).font("Helvetica-Oblique").fillColor("#888888").text("Includes visual illustrations for every major section", { align: "center" });
+      doc.fillColor("#000000").font("Helvetica");
+      doc.moveDown(1);
+      doc.moveTo(60, doc.y).lineTo(552, doc.y).stroke("#cccccc");
+      doc.moveDown(1);
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === "---") continue;
+        if (trimmed.startsWith("# ") && trimmed.includes("WhatsApp Bulk")) continue;
+        if (trimmed.startsWith("Complete guide for sending")) continue;
+
+        if (doc.y > 680) doc.addPage();
+
+        if (trimmed.startsWith("## ")) {
+          doc.moveDown(0.8);
+          doc.fontSize(16).font("Helvetica-Bold").fillColor("#1a5276").text(trimmed.replace(/^## /, ""));
+          doc.moveDown(0.3);
+          doc.fillColor("#000000");
+          if (sectionImages[trimmed]) addPdfImage(sectionImages[trimmed]);
+        } else if (trimmed.startsWith("### ")) {
+          doc.moveDown(0.5);
+          doc.fontSize(13).font("Helvetica-Bold").fillColor("#2c3e50").text(trimmed.replace(/^### /, ""));
+          doc.moveDown(0.2);
+          doc.fillColor("#000000");
+          if (subsectionImages[trimmed]) addPdfImage(subsectionImages[trimmed]);
+        } else if (trimmed.startsWith("- **") || trimmed.startsWith("* **")) {
+          const cleanText = trimmed.replace(/^[-*]\s*/, "").replace(/\*\*/g, "");
+          doc.fontSize(10).font("Helvetica").text(`  •  ${cleanText}`, { indent: 15 });
+        } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+          doc.fontSize(10).font("Helvetica").text(`  •  ${trimmed.replace(/^[-*]\s*/, "")}`, { indent: 15 });
+        } else if (/^\d+\.\s/.test(trimmed)) {
+          const cleanText = trimmed.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\*\*/g, "");
+          doc.fontSize(10).font("Helvetica").text(cleanText, { indent: 10 });
+        } else if (trimmed.startsWith("|")) {
+          const cells = trimmed.split("|").filter(c => c.trim()).map(c => c.trim());
+          if (!cells.every(c => /^[-:]+$/.test(c))) {
+            doc.fontSize(9).font("Helvetica").text(cells.join("  |  "), { indent: 10 });
+          }
+        } else {
+          const cleanText = trimmed.replace(/\*\*/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+          doc.fontSize(10).font("Helvetica").text(cleanText);
+          doc.moveDown(0.3);
+        }
+      }
+
+      doc.end();
+    } catch (error: any) {
+      console.error("Error generating WhatsApp guide:", error);
+      res.status(500).json({ error: "Failed to generate guide" });
+    }
+  });
+
+  app.get("/api/whatsapp/analytics", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const DEFAULT_WABA_ID = "2690438238000842";
+      const DEFAULT_PHONE_NUMBER_ID = "1009337698927791";
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const accessToken = (settings?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+      const wabaId = (settings?.wabaId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || DEFAULT_WABA_ID).trim();
+      const phoneNumberId = (settings?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || DEFAULT_PHONE_NUMBER_ID).trim();
+
+      if (!accessToken) {
+        return res.status(400).json({ error: "WhatsApp access token not configured" });
+      }
+
+      const days = parseInt(req.query.days as string) || 7;
+      const endDate = Math.floor(Date.now() / 1000);
+      const startDate = endDate - (days * 86400);
+
+      const results: any = {
+        period: { days, startDate, endDate },
+        templateAnalytics: null,
+        messagingAnalytics: null,
+        conversationAnalytics: null,
+        pricingAnalytics: null,
+        phoneQuality: null,
+        accountInfo: null,
+      };
+
+      const insightsCacheKey = `insights_enabled_${wabaId}`;
+      if (!(global as any)[insightsCacheKey]) {
+        try {
+          await whatsappService.enableTemplateInsights(wabaId, accessToken);
+          (global as any)[insightsCacheKey] = Date.now();
+        } catch (e: any) {
+          console.warn("⚠️ Failed to enable template insights:", e.message?.substring(0, 100));
+        }
+      }
+
+      try {
+        const templates = await whatsappService.getMessageTemplates(wabaId, accessToken);
+        const templateIds = templates
+          .filter((t: any) => t.id)
+          .map((t: any) => t.id)
+          .slice(0, 10);
+
+        const templateMap = new Map<string, any>();
+        for (const t of templates) {
+          templateMap.set(t.id, { name: t.name, category: t.category });
+        }
+
+        if (templateIds.length > 0) {
+          const analytics = await whatsappService.getTemplateAnalytics(wabaId, accessToken, templateIds, startDate, endDate);
+          const dataPoints = analytics?.data || [];
+
+          let totalSent = 0, totalDelivered = 0, totalRead = 0, totalClicked = 0, totalReplied = 0;
+          let totalCost = 0;
+          const dailyData: any[] = [];
+          const templateBreakdown: any[] = [];
+
+          for (const tp of dataPoints) {
+            for (const dp of (tp.data_points || [])) {
+              const tplInfo = templateMap.get(dp.template_id) || { name: "Unknown", category: "MARKETING" };
+              const s = dp.sent || 0;
+              const d = dp.delivered || 0;
+              const r = dp.read || 0;
+              const replied = dp.replied || 0;
+              let c = 0;
+              if (Array.isArray(dp.clicked)) {
+                c = dp.clicked.reduce((sum: number, click: any) => sum + (click.count || 0), 0);
+              } else {
+                c = dp.clicked || 0;
+              }
+              let cost = 0;
+              if (Array.isArray(dp.cost)) {
+                const amountSpent = dp.cost.find((co: any) => co.type === "amount_spent");
+                cost = amountSpent?.value || 0;
+              }
+              const costPerDelivered = d > 0 ? cost / d : 0;
+
+              totalSent += s; totalDelivered += d; totalRead += r; totalClicked += c; totalReplied += replied;
+              totalCost += cost;
+
+              dailyData.push({
+                date: dp.start ? new Date(dp.start * 1000).toISOString().split("T")[0] : null,
+                sent: s, delivered: d, read: r, replied, clicked: c, cost,
+                template: tplInfo.name,
+                category: tplInfo.category,
+              });
+
+              const existing = templateBreakdown.find((b: any) => b.templateId === dp.template_id);
+              if (existing) {
+                existing.sent += s; existing.delivered += d; existing.read += r; existing.replied += replied; existing.clicked += c; existing.cost += cost;
+                existing.costPerDelivered = existing.delivered > 0 ? existing.cost / existing.delivered : 0;
+              } else {
+                templateBreakdown.push({
+                  templateId: dp.template_id,
+                  name: tplInfo.name,
+                  category: tplInfo.category,
+                  sent: s, delivered: d, read: r, replied, clicked: c, cost, costPerDelivered,
+                });
+              }
+            }
+          }
+
+          results.templateAnalytics = {
+            totals: { sent: totalSent, delivered: totalDelivered, read: totalRead, replied: totalReplied, clicked: totalClicked, cost: Math.round(totalCost * 100) / 100, costPerDelivered: totalDelivered > 0 ? Math.round((totalCost / totalDelivered) * 100) / 100 : 0 },
+            deliveryRate: totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0,
+            readRate: totalDelivered > 0 ? Math.round((totalRead / totalDelivered) * 100) : 0,
+            ecosystemBlocked: totalSent - totalDelivered,
+            dailyData,
+            templateBreakdown,
+          };
+        }
+      } catch (err: any) {
+        console.error("Template analytics error:", err.message);
+        results.templateAnalytics = { error: err.message };
+      }
+
+      try {
+        const msgData = await whatsappService.getMessagingAnalytics(wabaId, accessToken, startDate, endDate);
+        const analytics = msgData?.analytics;
+        if (analytics?.data_points) {
+          let totalSent = 0, totalDelivered = 0;
+          for (const dp of analytics.data_points) {
+            totalSent += dp.sent || 0;
+            totalDelivered += dp.delivered || 0;
+          }
+          results.messagingAnalytics = {
+            totals: { sent: totalSent, delivered: totalDelivered },
+            deliveryRate: totalSent > 0 ? Math.round((totalDelivered / totalSent) * 100) : 0,
+            notDelivered: totalSent - totalDelivered,
+            phoneNumbers: analytics.phone_numbers || [],
+            countries: analytics.country_codes || [],
+            dailyData: analytics.data_points.map((dp: any) => ({
+              date: dp.start ? new Date(dp.start * 1000).toISOString().split("T")[0] : null,
+              sent: dp.sent || 0,
+              delivered: dp.delivered || 0,
+            })),
+          };
+        }
+      } catch (err: any) {
+        console.error("Messaging analytics error:", err.message);
+        results.messagingAnalytics = { error: err.message };
+      }
+
+      try {
+        const convData = await whatsappService.getConversationAnalytics(wabaId, accessToken, startDate, endDate);
+        const convAnalytics = convData?.conversation_analytics;
+        if (convAnalytics?.data?.[0]?.data_points) {
+          const dataPoints = convAnalytics.data[0].data_points;
+          const categoryTotals: Record<string, { conversations: number; cost: number }> = {};
+          const countryTotals: Record<string, { conversations: number; cost: number }> = {};
+          let totalConversations = 0, totalCost = 0;
+
+          for (const dp of dataPoints) {
+            const cat = dp.conversation_category || "UNKNOWN";
+            const country = dp.country || "UNKNOWN";
+            const conv = dp.conversation || 0;
+            const cost = dp.cost || 0;
+
+            totalConversations += conv;
+            totalCost += cost;
+
+            if (!categoryTotals[cat]) categoryTotals[cat] = { conversations: 0, cost: 0 };
+            categoryTotals[cat].conversations += conv;
+            categoryTotals[cat].cost += cost;
+
+            if (!countryTotals[country]) countryTotals[country] = { conversations: 0, cost: 0 };
+            countryTotals[country].conversations += conv;
+            countryTotals[country].cost += cost;
+          }
+
+          results.conversationAnalytics = {
+            totalConversations,
+            totalCost: Math.round(totalCost * 100) / 100,
+            byCategory: categoryTotals,
+            byCountry: countryTotals,
+          };
+        }
+      } catch (err: any) {
+        console.error("Conversation analytics error:", err.message);
+        results.conversationAnalytics = { error: err.message };
+      }
+
+      try {
+        const pricingData = await whatsappService.getPricingAnalytics(wabaId, accessToken, startDate, endDate);
+        const pricingAnalytics = pricingData?.pricing_analytics;
+        if (pricingAnalytics?.data?.[0]?.data_points) {
+          const dataPoints = pricingAnalytics.data[0].data_points;
+          const categoryTotals: Record<string, { volume: number; cost: number }> = {};
+          let totalVolume = 0, totalCost = 0;
+
+          for (const dp of dataPoints) {
+            const cat = dp.pricing_category || "UNKNOWN";
+            const volume = dp.volume || 0;
+            const cost = dp.cost || 0;
+
+            totalVolume += volume;
+            totalCost += cost;
+
+            if (!categoryTotals[cat]) categoryTotals[cat] = { volume: 0, cost: 0 };
+            categoryTotals[cat].volume += volume;
+            categoryTotals[cat].cost += cost;
+          }
+
+          results.pricingAnalytics = {
+            totalVolume,
+            totalCost: Math.round(totalCost * 100) / 100,
+            byCategory: categoryTotals,
+          };
+        }
+      } catch (err: any) {
+        console.error("Pricing analytics error:", err.message);
+        results.pricingAnalytics = { error: err.message };
+      }
+
+      try {
+        const phoneData = await whatsappService.getPhoneNumberAnalytics(phoneNumberId, accessToken);
+        results.phoneQuality = {
+          qualityRating: phoneData.quality_rating || "UNKNOWN",
+          messagingLimitTier: phoneData.messaging_limit_tier || "UNKNOWN",
+          verifiedName: phoneData.verified_name || "",
+          displayPhoneNumber: phoneData.display_phone_number || "",
+          status: phoneData.status || "UNKNOWN",
+        };
+      } catch (err: any) {
+        console.error("Phone quality error:", err.message);
+        results.phoneQuality = { error: err.message };
+      }
+
+      try {
+        const accountData = await whatsappService.getAccountInfo(wabaId, accessToken);
+        results.accountInfo = {
+          reviewStatus: accountData.account_review_status || "UNKNOWN",
+          insightsEnabled: accountData.is_enabled_for_insights || false,
+        };
+      } catch (err: any) {
+        console.error("Account info error:", err.message);
+        results.accountInfo = { error: err.message };
+      }
+
+      res.json(results);
+    } catch (error: any) {
+      console.error("Error fetching WhatsApp analytics:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch analytics" });
+    }
+  });
+
+  app.get("/api/whatsapp/phone-numbers", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const accessToken = (settings?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+      const wabaId = (req.query.wabaId as string || settings?.wabaId || "").trim();
+
+      if (!accessToken || !wabaId) {
+        return res.status(400).json({ error: "Access token and WABA ID required" });
+      }
+
+      const url = `https://graph.facebook.com/v25.0/${wabaId}/phone_numbers?access_token=${accessToken}`;
+      const response = await fetch(url);
+      const data = await response.json() as any;
+
+      if (data.error) {
+        return res.status(400).json({ error: data.error.message });
+      }
+
+      res.json({ phoneNumbers: data.data || [] });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/whatsapp/templates", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const DEFAULT_WABA_ID = "2690438238000842";
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const accessToken = (settings?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+      const wabaId = (settings?.wabaId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || DEFAULT_WABA_ID).trim();
+
+      if (!accessToken) {
+        return res.status(400).json({ error: "WhatsApp access token not configured" });
+      }
+
+      if (!wabaId) {
+        return res.json({ templates: [], message: "WhatsApp Business Account ID (WABA ID) not configured in settings" });
+      }
+
+      const lookupId = wabaId;
+
+      const templates = await whatsappService.getMessageTemplates(lookupId, accessToken);
+      res.json({ templates });
+    } catch (error: any) {
+      console.error("Error fetching WhatsApp templates:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch templates" });
+    }
+  });
+
+  app.post("/api/whatsapp/templates", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const { name, body, category, header, footer } = req.body;
+      if (!name || !body) {
+        return res.status(400).json({ error: "Template name and body are required" });
+      }
+
+      const safeName = name.toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 512);
+      const safeCategory = ["MARKETING", "UTILITY"].includes(category) ? category : "MARKETING";
+
+      const DEFAULT_WABA_ID_POST = "2690438238000842";
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      const accessToken = (settings?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+      const wabaId = (settings?.wabaId || process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || DEFAULT_WABA_ID_POST).trim();
+
+      if (!accessToken || !wabaId) {
+        return res.status(400).json({ error: "WhatsApp Business Account not configured" });
+      }
+
+      const sanitizeText = (text: string) => text
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+        .replace(/[\u2013\u2014]/g, "-")
+        .replace(/\u2026/g, "...");
+
+      const components: any[] = [];
+      if (header?.trim()) {
+        components.push({ type: "HEADER", format: "TEXT", text: sanitizeText(header.trim()).slice(0, 60) });
+      }
+      components.push({ type: "BODY", text: sanitizeText(body).slice(0, 1024) });
+      if (footer?.trim()) {
+        components.push({ type: "FOOTER", text: sanitizeText(footer.trim()).slice(0, 60) });
+      }
+
+      const response = await fetch(
+        `https://graph.facebook.com/v25.0/${wabaId}/message_templates`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: safeName,
+            category: safeCategory,
+            language: "en_US",
+            components,
+          }),
+        }
+      );
+
+      const result = await response.json();
+      if (!response.ok) {
+        console.error("WhatsApp Template Create Error:", result);
+        return res.status(response.status).json({ error: result.error?.message || "Failed to create template" });
+      }
+
+      console.log(`📱 WhatsApp: Template "${safeName}" created, id: ${result.id}, status: ${result.status}`);
+      res.json({ success: true, id: result.id, status: result.status, name: safeName });
+    } catch (error: any) {
+      console.error("Error creating WhatsApp template:", error);
+      res.status(500).json({ error: error.message || "Failed to create template" });
+    }
+  });
+
+  const activeBulkSends = new Map<string, {
+    sent: number; failed: number; total: number; queued: number;
+    percent: number; elapsed: number; estimatedRemaining: number;
+    message: string; complete: boolean; startedAt: number;
+    errorBreakdown?: Record<string, number>;
+    estimatedCost?: number;
+  }>();
+
+  app.get("/api/whatsapp/bulk-send-status", requireAuth, async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    const status = activeBulkSends.get(String(userId));
+    if (status) return res.json({ active: true, ...status });
+
+    try {
+      const dbResult = await storage.getLatestWhatsappBulkSendResult(String(userId));
+      if (dbResult && dbResult.message !== "dismissed") {
+        const ageMs = Date.now() - new Date(dbResult.updatedAt || dbResult.createdAt).getTime();
+        if (ageMs < 24 * 60 * 60 * 1000) {
+          return res.json({ active: true, ...dbResult });
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching bulk send result from DB:", err);
+    }
+    res.json({ active: false });
+  });
+
+  app.post("/api/whatsapp/bulk-send-status/dismiss", requireAuth, async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    activeBulkSends.delete(String(userId));
+    try {
+      const result = await storage.getLatestWhatsappBulkSendResult(String(userId));
+      if (result && result.id) {
+        await storage.saveWhatsappBulkSendResult(String(userId), { ...result, complete: true, sent: result.sent, failed: result.failed, total: result.total, queued: result.queued, percent: 100, elapsed: result.elapsed, message: "dismissed" });
+      }
+    } catch (err) {
+      console.error("Error dismissing bulk send result:", err);
+    }
+    res.json({ success: true });
+  });
+
+  // Send WhatsApp message (for marketing/posting) - supports bulk recipients
+  app.post("/api/whatsapp/send", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      
+      const { to, message, imageUrl, templateName, templateLanguage } = req.body;
+
+      if (!to || typeof to !== "string" || !to.trim()) {
+        return res.status(400).json({ error: "Missing required field: 'to' (recipient phone number)" });
+      }
+      if (!templateName && (!message || typeof message !== "string" || !message.trim())) {
+        return res.status(400).json({ error: "Missing required field: 'message' (message text)" });
+      }
+
+      const settings = await getWhatsappSettingsWithFallback(String(userId));
+      
+      const phoneNumberId = (settings?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+      const accessToken = (settings?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+
+      if (!accessToken) {
+        return res.status(400).json({ error: "WhatsApp not configured. Please add a valid access token in your WhatsApp Business settings or set WHATSAPP_ACCESS_TOKEN environment variable." });
+      }
+      if (!phoneNumberId) {
+        return res.status(400).json({ error: "WhatsApp not configured. Please set up your WhatsApp Business settings or set WHATSAPP_PHONE_NUMBER_ID environment variable." });
+      }
+
+      const rawNumbers = to.split(/[\n,]+/)
+        .map((n: string) => {
+          let cleaned = n.replace(/\D/g, "");
+          if (cleaned.length === 10 && !cleaned.startsWith("1")) {
+            cleaned = "1" + cleaned;
+          }
+          return cleaned;
+        })
+        .filter((n: string) => n.length >= 10 && n.length <= 15);
+      const phoneNumbers = [...new Set(rawNumbers)].slice(0, 30000);
+      const duplicatesRemoved = rawNumbers.length - phoneNumbers.length;
+      if (duplicatesRemoved > 0) {
+        console.log(`📱 WhatsApp: Removed ${duplicatesRemoved} duplicate numbers (${rawNumbers.length} → ${phoneNumbers.length})`);
+      }
+      const isBulk = phoneNumbers.length > 1;
+
+      if (phoneNumbers.length === 0) {
+        return res.status(400).json({ error: "No valid phone numbers provided" });
+      }
+
+      if (isBulk && !templateName && message) {
+        console.log(`📱 WhatsApp: Bulk send with text message (no template) — sending as text to ${phoneNumbers.length} recipients`);
+      }
+
+      let resolvedLang = templateLanguage || "en_US";
+      if (templateName && !templateLanguage) {
+        try {
+          const wabaId = settings?.wabaId;
+          if (wabaId) {
+            const templates = await whatsappService.getMessageTemplates(wabaId, accessToken);
+            const match = templates.find((t: any) => t.name === templateName);
+            if (match?.language) {
+              resolvedLang = match.language;
+              console.log(`📱 WhatsApp: Auto-detected language "${resolvedLang}" for template "${templateName}"`);
+            }
+          }
+        } catch (langErr) {
+          console.log(`📱 WhatsApp: Could not auto-detect language, using default "${resolvedLang}"`);
+        }
+      }
+
+      if (!isBulk) {
+        const singlePhone = phoneNumbers[0];
+        let result;
+        if (templateName) {
+          result = await whatsappService.sendTemplateMessage(
+            phoneNumberId, accessToken, singlePhone, templateName, resolvedLang
+          );
+        } else if (imageUrl) {
+          result = await whatsappService.sendImageMessage(
+            phoneNumberId, accessToken, singlePhone, imageUrl, message
+          );
+        } else {
+          result = await whatsappService.sendTextMessage(
+            phoneNumberId, accessToken, singlePhone, message
+          );
+        }
+
+        let conversation = await storage.getWhatsappConversationByWaId(String(userId), singlePhone);
+        if (!conversation) {
+          conversation = await storage.createWhatsappConversation({
+            userId: String(userId),
+            waId: singlePhone,
+            status: "active",
+          });
+        }
+        
+        await storage.createWhatsappMessage({
+          conversationId: conversation.id,
+          whatsappMessageId: result.messages?.[0]?.id,
+          direction: "outbound",
+          messageType: imageUrl ? "image" : templateName ? "template" : "text",
+          body: message || `[Template: ${templateName}]`,
+        });
+
+        res.json({ success: true, messageId: result.messages?.[0]?.id, sent: 1, failed: 0, total: 1 });
+      } else {
+        const BATCH_SIZE = 8;
+        const BATCH_DELAY_MS = 2000;
+        const LARGE_BATCH_THRESHOLD = 100;
+        const RATE_LIMIT_BACKOFF_MS = 30000;
+        const INTRA_BATCH_DELAY_MS = 150;
+
+        const bulkQueue = await storage.createWhatsappBulkQueue({
+          userId: String(userId),
+          status: "active",
+          templateName: templateName || null,
+          messageText: message || null,
+          totalNumbers: phoneNumbers.length,
+          sentCount: 0,
+          failedCount: 0,
+          remainingNumbers: [...phoneNumbers],
+          sentNumbers: [],
+          failedNumbers: [],
+          dailyLimit: 0,
+        });
+        const bulkQueueId = bulkQueue.id;
+        console.log(`📱 WhatsApp: Created bulk queue ${bulkQueueId} for ${phoneNumbers.length} contacts — sending until Meta quota limit`);
+
+        const numbersToSend = phoneNumbers;
+
+        if (numbersToSend.length > LARGE_BATCH_THRESHOLD) {
+          res.json({
+            success: true,
+            sent: 0,
+            failed: 0,
+            total: numbersToSend.length,
+            queued: 0,
+            bulkQueueId,
+            background: true,
+            message: `Sending ${numbersToSend.length.toLocaleString()} messages — will keep going until Meta quota limit is reached.`,
+          });
+
+          (async () => {
+            let sentCount = 0;
+            let failedCount = 0;
+            const startTime = Date.now();
+            const errorCodes: Record<string, number> = {};
+            const sentNumbersList: string[] = [];
+            const failedNumbersList: string[] = [];
+            const quotaErrorNumbers: string[] = [];
+            let quotaLimitReached = false;
+            let stoppedAtIndex = numbersToSend.length;
+
+            const extractErrorCode = (errMsg: string): string => {
+              const codes = ["131049", "131056", "131051", "130429", "131047", "131048", "131026", "131053"];
+              for (const code of codes) {
+                if (errMsg.includes(code)) return code;
+              }
+              if (errMsg.includes("429")) return "429";
+              if (errMsg.includes("503")) return "503";
+              return "unknown";
+            };
+
+            const isQuotaLimitError = (errMsg: string) =>
+              errMsg.includes("130429") || errMsg.includes("131048") ||
+              errMsg.toLowerCase().includes("rate limit") || errMsg.toLowerCase().includes("spam rate limit");
+
+            const isEcosystemBlock = (errMsg: string) =>
+              errMsg.includes("131049") || errMsg.includes("131056") || errMsg.includes("130472");
+
+            const isPermanentBlock = (errMsg: string) =>
+              errMsg.includes("131050") || errMsg.includes("131026") || errMsg.includes("131031") ||
+              errMsg.includes("368") || errMsg.includes("130497") || errMsg.includes("132001");
+
+            const isRetryableError = (errMsg: string) =>
+              errMsg.includes("429") || errMsg.includes("503") ||
+              errMsg.includes("131057") || errMsg.includes("131016") || errMsg.includes("133004") ||
+              errMsg.toLowerCase().includes("throttl") || errMsg.toLowerCase().includes("temporarily");
+
+            const sendOneWithRetry = async (phone: string, attempt = 1): Promise<{ success: boolean; phone: string; errorType?: string }> => {
+              try {
+                if (templateName) {
+                  await whatsappService.sendTemplateMessage(phoneNumberId, accessToken, phone, templateName, resolvedLang);
+                } else {
+                  await whatsappService.sendTextMessage(phoneNumberId, accessToken, phone, message);
+                }
+                return { success: true, phone };
+              } catch (err: any) {
+                const errMsg = err.message || "";
+                if (isQuotaLimitError(errMsg)) {
+                  return { success: false, phone, errorType: "quota" };
+                }
+                if (isEcosystemBlock(errMsg)) {
+                  return { success: false, phone, errorType: "ecosystem" };
+                }
+                if (isPermanentBlock(errMsg)) {
+                  return { success: false, phone, errorType: "permanent" };
+                }
+                if (isRetryableError(errMsg) && attempt <= 2) {
+                  const backoff = RATE_LIMIT_BACKOFF_MS * attempt;
+                  console.warn(`📱 WhatsApp: Retry error for ${phone} (attempt ${attempt}), backoff ${backoff / 1000}s`);
+                  await new Promise((resolve) => setTimeout(resolve, backoff));
+                  return sendOneWithRetry(phone, attempt + 1);
+                }
+                return { success: false, phone, errorType: "permanent" };
+              }
+            };
+
+            let consecutiveQuotaErrors = 0;
+
+            for (let i = 0; i < numbersToSend.length; i += BATCH_SIZE) {
+              if (quotaLimitReached) {
+                stoppedAtIndex = i;
+                break;
+              }
+
+              const batch = numbersToSend.slice(i, i + BATCH_SIZE);
+              const results = await Promise.allSettled(
+                batch.map(async (phone: string, idx: number) => {
+                  if (idx > 0) {
+                    await new Promise((resolve) => setTimeout(resolve, idx * INTRA_BATCH_DELAY_MS));
+                  }
+                  return sendOneWithRetry(phone);
+                })
+              );
+
+              let batchQuotaHits = 0;
+              for (const r of results) {
+                if (r.status === "fulfilled") {
+                  const res = r.value;
+                  if (res.success) {
+                    sentCount++;
+                    sentNumbersList.push(res.phone);
+                    consecutiveQuotaErrors = 0;
+                  } else if (res.errorType === "quota") {
+                    batchQuotaHits++;
+                    consecutiveQuotaErrors++;
+                    quotaErrorNumbers.push(res.phone);
+                    errorCodes["130429"] = (errorCodes["130429"] || 0) + 1;
+                  } else if (res.errorType === "ecosystem") {
+                    failedCount++;
+                    failedNumbersList.push(res.phone);
+                    const code = "131049";
+                    errorCodes[code] = (errorCodes[code] || 0) + 1;
+                  } else {
+                    failedCount++;
+                    failedNumbersList.push(res.phone);
+                    errorCodes["other"] = (errorCodes["other"] || 0) + 1;
+                  }
+                } else {
+                  failedCount++;
+                  failedNumbersList.push("unknown");
+                  errorCodes["unknown"] = (errorCodes["unknown"] || 0) + 1;
+                }
+              }
+
+              if (batchQuotaHits >= Math.ceil(batch.length * 0.5) || consecutiveQuotaErrors >= 10) {
+                quotaLimitReached = true;
+                stoppedAtIndex = i + BATCH_SIZE;
+                console.log(`📱 WhatsApp: Quota limit reached! Sent ${sentCount} messages. Queuing remaining.`);
+              }
+
+              const processed = i + batch.length;
+              const percent = Math.round((processed / numbersToSend.length) * 100);
+              const elapsed = Math.round((Date.now() - startTime) / 1000);
+              const rate = processed > 0 ? (elapsed / processed) : 0;
+              const remaining = Math.round(rate * (numbersToSend.length - processed));
+
+              const COST_PER_MARKETING_MSG_USD = 0.025;
+              const estimatedCost = parseFloat((sentCount * COST_PER_MARKETING_MSG_USD).toFixed(2));
+
+              const queuedNow = quotaLimitReached ? numbersToSend.length - stoppedAtIndex : 0;
+              const progressData = {
+                sent: sentCount,
+                failed: failedCount,
+                total: numbersToSend.length,
+                queued: queuedNow,
+                percent,
+                elapsed,
+                estimatedRemaining: remaining,
+                message: quotaLimitReached
+                  ? `Quota limit reached after ${sentCount.toLocaleString()} sent. ${(numbersToSend.length - stoppedAtIndex).toLocaleString()} contacts queued for next batch.`
+                  : `Sent ${sentCount.toLocaleString()} of ${numbersToSend.length.toLocaleString()} messages (${percent}%)`,
+                complete: false,
+                startedAt: startTime,
+                errorBreakdown: Object.keys(errorCodes).length > 0 ? errorCodes : undefined,
+                estimatedCost,
+                bulkQueueId,
+              };
+              activeBulkSends.set(String(userId), progressData);
+
+              try {
+                await storage.saveWhatsappBulkSendResult(String(userId), progressData);
+              } catch (dbErr) {
+                console.error("Failed to persist bulk send progress:", dbErr);
+              }
+
+              realtimeService.sendToUser(String(userId), {
+                type: "whatsapp_bulk_progress",
+                data: progressData,
+                timestamp: new Date().toISOString(),
+              });
+
+              if (!quotaLimitReached && i + BATCH_SIZE < numbersToSend.length) {
+                await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+              }
+            }
+
+            const unattemptedNumbers = quotaLimitReached
+              ? numbersToSend.slice(stoppedAtIndex)
+              : [];
+            const remainingNumbers = [...quotaErrorNumbers, ...unattemptedNumbers];
+            const queuedCount = remainingNumbers.length;
+
+            const tomorrow = new Date();
+            tomorrow.setHours(tomorrow.getHours() + 24);
+
+            await storage.updateWhatsappBulkQueue(bulkQueueId, {
+              sentCount,
+              failedCount,
+              sentNumbers: sentNumbersList,
+              failedNumbers: failedNumbersList,
+              remainingNumbers: remainingNumbers,
+              lastBatchSentAt: new Date(),
+              nextBatchAt: queuedCount > 0 ? tomorrow : null,
+              status: queuedCount > 0 ? "active" : "completed",
+            });
+
+            const COST_PER_MARKETING_MSG_USD = 0.025;
+            const finalCost = parseFloat((sentCount * COST_PER_MARKETING_MSG_USD).toFixed(2));
+            const completeData = {
+              sent: sentCount,
+              failed: failedCount,
+              total: numbersToSend.length,
+              queued: queuedCount,
+              bulkQueueId,
+              elapsed: Math.round((Date.now() - startTime) / 1000),
+              percent: 100,
+              estimatedRemaining: 0,
+              message: quotaLimitReached
+                ? `Quota limit reached: ${sentCount.toLocaleString()} delivered, ${failedCount.toLocaleString()} failed. ${queuedCount.toLocaleString()} contacts queued for next batch.`
+                : `Bulk send complete: ${sentCount.toLocaleString()} delivered, ${failedCount.toLocaleString()} failed out of ${numbersToSend.length.toLocaleString()}.`,
+              complete: true,
+              startedAt: startTime,
+              errorBreakdown: Object.keys(errorCodes).length > 0 ? errorCodes : undefined,
+              estimatedCost: finalCost,
+            };
+            activeBulkSends.set(String(userId), completeData);
+            setTimeout(() => activeBulkSends.delete(String(userId)), 5 * 60 * 1000);
+
+            try {
+              await storage.saveWhatsappBulkSendResult(String(userId), completeData);
+            } catch (dbErr) {
+              console.error("Failed to persist bulk send completion:", dbErr);
+            }
+
+            realtimeService.sendToUser(String(userId), {
+              type: "whatsapp_bulk_complete",
+              data: completeData,
+              timestamp: new Date().toISOString(),
+            });
+
+            console.log(`📱 WhatsApp bulk send complete for user ${userId}: ${sentCount} sent, ${failedCount} failed out of ${numbersToSend.length}${queuedCount > 0 ? ` (${queuedCount} auto-queued)` : ''}`);
+          })().catch((err) => {
+            console.error("WhatsApp background bulk send error:", err);
+            activeBulkSends.delete(String(userId));
+            realtimeService.sendToUser(String(userId), {
+              type: "whatsapp_bulk_complete",
+              data: { sent: 0, failed: numbersToSend.length, total: numbersToSend.length, queued: queuedCount, error: err.message, message: `Bulk send failed: ${err.message}`, complete: true },
+              timestamp: new Date().toISOString(),
+            });
+          });
+        } else {
+          let sentCount = 0;
+          let failedCount = 0;
+          let queuedCount = 0;
+
+          const isRetryableSync = (errMsg: string) =>
+            errMsg.includes("130429") || errMsg.includes("429") || errMsg.includes("503") ||
+            errMsg.toLowerCase().includes("rate limit") || errMsg.toLowerCase().includes("throttl");
+
+          const sendOneSyncRetry = async (phone: string, attempt = 1): Promise<boolean> => {
+            try {
+              if (templateName) {
+                await whatsappService.sendTemplateMessage(phoneNumberId, accessToken, phone, templateName, resolvedLang);
+              } else {
+                await whatsappService.sendTextMessage(phoneNumberId, accessToken, phone, message);
+              }
+              return true;
+            } catch (err: any) {
+              const errMsg = err.message || "";
+              if (errMsg.includes("131056") || errMsg.includes("131049")) {
+                throw err;
+              }
+              if (isRetryableSync(errMsg) && attempt <= 2) {
+                const backoff = RATE_LIMIT_BACKOFF_MS * attempt;
+                console.warn(`📱 WhatsApp: Rate error for ${phone} (attempt ${attempt}), backoff ${backoff / 1000}s`);
+                await new Promise((resolve) => setTimeout(resolve, backoff));
+                return sendOneSyncRetry(phone, attempt + 1);
+              }
+              console.error(`WhatsApp bulk send failed for ${phone}:`, err);
+              throw err;
+            }
+          };
+
+          for (let i = 0; i < numbersToSend.length; i += BATCH_SIZE) {
+            const batch = numbersToSend.slice(i, i + BATCH_SIZE);
+
+            const results = await Promise.allSettled(
+              batch.map(async (phone: string, idx: number) => {
+                if (idx > 0) {
+                  await new Promise((resolve) => setTimeout(resolve, idx * INTRA_BATCH_DELAY_MS));
+                }
+                return sendOneSyncRetry(phone);
+              })
+            );
+
+            for (const r of results) {
+              if (r.status === "fulfilled") sentCount++;
+              else failedCount++;
+            }
+
+            if (i + BATCH_SIZE < numbersToSend.length) {
+              await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+            }
+          }
+
+          res.json({
+            success: sentCount > 0,
+            sent: sentCount,
+            failed: failedCount,
+            total: numbersToSend.length,
+            queued: queuedCount,
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error("Error sending WhatsApp message:", error);
+      res.status(500).json({ error: `Failed to send WhatsApp message: ${error.message}` });
+    }
+  });
+
+  app.post("/api/whatsapp/extract-numbers", requireAuth, documentUpload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const filePath = req.file.path;
+      const originalName = req.file.originalname.toLowerCase();
+      let text = "";
+
+      try {
+        if (originalName.endsWith(".csv") || originalName.endsWith(".txt")) {
+          const fsPromises = await import("fs/promises");
+          text = await fsPromises.readFile(filePath, "utf-8");
+        } else if (originalName.endsWith(".pdf")) {
+          const fsPromises = await import("fs/promises");
+          const pdfParse = (await import("pdf-parse")).default;
+          const buffer = await fsPromises.readFile(filePath);
+          const data = await pdfParse(buffer);
+          text = data.text;
+        } else if (originalName.endsWith(".docx")) {
+          const fsPromises = await import("fs/promises");
+          const mammoth = await import("mammoth");
+          const buffer = await fsPromises.readFile(filePath);
+          const result = await mammoth.extractRawText({ buffer });
+          text = result.value;
+        } else if (originalName.endsWith(".numbers") || originalName.endsWith(".xlsx") || originalName.endsWith(".xls")) {
+          const fsPromises = await import("fs/promises");
+          const XLSX = await import("xlsx");
+          const buffer = await fsPromises.readFile(filePath);
+          const workbook = XLSX.read(buffer, { type: "buffer" });
+          const allText: string[] = [];
+          for (const sheetName of workbook.SheetNames) {
+            const sheet = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as any[][];
+            for (const row of rows) {
+              allText.push(row.map((cell: any) => String(cell || "")).join(" "));
+            }
+          }
+          text = allText.join("\n");
+          console.log(`📱 Parsed spreadsheet "${originalName}": ${workbook.SheetNames.length} sheet(s), ${allText.length} rows`);
+        } else {
+          return res.status(400).json({ error: "Unsupported file type. Please upload CSV, TXT, PDF, Word (.docx), Excel (.xlsx), or Apple Numbers (.numbers) files." });
+        }
+      } finally {
+        const fsPromises = await import("fs/promises");
+        await fsPromises.unlink(filePath).catch(() => {});
+      }
+
+      const totalLines = text.split("\n").length;
+
+      const phoneRegex = /(?:\+?\d[\d\s\-().]{6,}\d)/g;
+      const rawMatches = text.match(phoneRegex) || [];
+
+      const plainNumberRegex = /\b\d{10,15}\b/g;
+      const plainMatches = text.match(plainNumberRegex) || [];
+
+      const allMatches = [...rawMatches, ...plainMatches];
+
+      const invalidList: string[] = [];
+      const cleanedAll: string[] = [];
+
+      for (const n of allMatches) {
+        let cleaned = n.replace(/[\s\-().+]/g, "");
+        if (cleaned.length === 10 && !cleaned.startsWith("1")) {
+          cleaned = "1" + cleaned;
+        }
+        if (/^\d{10,15}$/.test(cleaned)) {
+          cleanedAll.push(cleaned);
+        } else {
+          invalidList.push(n.trim());
+        }
+      }
+
+      const seenOnce = new Set<string>();
+      const duplicateList: string[] = [];
+      for (const n of cleanedAll) {
+        if (seenOnce.has(n)) {
+          duplicateList.push(n);
+        } else {
+          seenOnce.add(n);
+        }
+      }
+
+      const numbers = [...seenOnce];
+      const emptyRows = totalLines - allMatches.length;
+
+      console.log(`📱 Extracted ${numbers.length} phone numbers from ${originalName} (${emptyRows} empty, ${duplicateList.length} dupes, ${invalidList.length} invalid)`);
+      res.json({
+        numbers,
+        count: numbers.length,
+        filename: req.file.originalname,
+        breakdown: {
+          totalRows: totalLines,
+          emptyRows,
+          validNumbers: numbers.length,
+          invalidNumbers: invalidList.length,
+          duplicates: duplicateList.length,
+          invalidList: invalidList.slice(0, 50),
+          duplicateList: [...new Set(duplicateList)].slice(0, 50),
+        },
+      });
+    } catch (error: any) {
+      console.error("Error extracting phone numbers:", error);
+      res.status(500).json({ error: "Failed to extract phone numbers from file" });
+    }
+  });
+
+  // WhatsApp Bulk Queue Management
+  app.get("/api/whatsapp/bulk-queues", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const allIds = await getAllUserIds(userId);
+      let queues: any[] = [];
+      for (const uid of allIds) {
+        const q = await storage.getWhatsappBulkQueuesByUserId(uid);
+        queues.push(...q);
+      }
+      queues.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      res.json(queues);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/whatsapp/bulk-queues/:id", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const queue = await storage.getWhatsappBulkQueueById(req.params.id);
+      if (!queue) return res.status(404).json({ error: "Queue not found" });
+      const userIds = await getAllUserIds(userId);
+      if (!userIds.includes(queue.userId)) return res.status(403).json({ error: "Access denied" });
+      res.json(queue);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/whatsapp/bulk-queues/:id/pause", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const queue = await storage.getWhatsappBulkQueueById(req.params.id);
+      if (!queue) return res.status(404).json({ error: "Queue not found" });
+      const userIds1 = await getAllUserIds(userId);
+      if (!userIds1.includes(queue.userId)) return res.status(403).json({ error: "Access denied" });
+      if (queue.status !== "active") return res.status(400).json({ error: "Queue is not active" });
+      const updated = await storage.updateWhatsappBulkQueue(req.params.id, { status: "paused" });
       res.json(updated);
     } catch (error: any) {
-      console.error("[Menu] Error updating category:", error);
-      res.status(500).json({ error: "Failed to update category" });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  // Delete a category
-  app.delete("/api/menu/categories/:id", requireAuth, async (req, res) => {
+  app.post("/api/whatsapp/bulk-queues/:id/resume", requireAuth, async (req, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
-      const { id } = req.params;
-
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      // First, unset categoryId on any menu items using this category
-      await db
-        .update(menuItems)
-        .set({ categoryId: null })
-        .where(eq(menuItems.categoryId, id));
-
-      const [deleted] = await db
-        .delete(foodCategories)
-        .where(eq(foodCategories.id, id))
-        .returning();
-
-      if (!deleted) {
-        return res.status(404).json({ error: "Category not found" });
-      }
-
-      res.json({ success: true, deleted });
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const queue = await storage.getWhatsappBulkQueueById(req.params.id);
+      if (!queue) return res.status(404).json({ error: "Queue not found" });
+      const userIds2 = await getAllUserIds(userId);
+      if (!userIds2.includes(queue.userId)) return res.status(403).json({ error: "Access denied" });
+      if (queue.status !== "paused") return res.status(400).json({ error: "Queue is not paused" });
+      const updated = await storage.updateWhatsappBulkQueue(req.params.id, { status: "active" });
+      res.json(updated);
     } catch (error: any) {
-      console.error("[Menu] Error deleting category:", error);
-      res.status(500).json({ error: "Failed to delete category" });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  // --- MENU ITEMS ---
-
-  // Get all menu items for current user
-  app.get("/api/menu/items", requireAuth, async (req, res) => {
+  app.post("/api/whatsapp/bulk-queues/:id/send-now", requireAuth, async (req, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const queue = await storage.getWhatsappBulkQueueById(req.params.id);
+      if (!queue) return res.status(404).json({ error: "Queue not found" });
+      const userIds3 = await getAllUserIds(userId);
+      if (!userIds3.includes(queue.userId)) return res.status(403).json({ error: "Access denied" });
+      if (queue.status !== "active" && queue.status !== "paused") {
+        return res.status(400).json({ error: `Queue is ${queue.status}, cannot send now` });
+      }
+      if (!queue.remainingNumbers || queue.remainingNumbers.length === 0) {
+        return res.status(400).json({ error: "No remaining numbers to send" });
       }
 
-      const { categoryId, search } = req.query;
+      await storage.updateWhatsappBulkQueue(req.params.id, {
+        status: "active",
+        nextBatchAt: new Date(Date.now() - 1000),
+      });
 
-      let query = db
-        .select({
-          id: menuItems.id,
-          userId: menuItems.userId,
-          categoryId: menuItems.categoryId,
-          name: menuItems.name,
-          description: menuItems.description,
-          price: menuItems.price,
-          specialPrice: menuItems.specialPrice,
-          isSpecial: menuItems.isSpecial,
-          specialEndDate: menuItems.specialEndDate,
-          ingredients: menuItems.ingredients,
-          dietaryTags: menuItems.dietaryTags,
-          allergens: menuItems.allergens,
-          spiceLevel: menuItems.spiceLevel,
-          calories: menuItems.calories,
-          preparationTime: menuItems.preparationTime,
-          servingSize: menuItems.servingSize,
-          imageUrls: menuItems.imageUrls,
-          videoUrl: menuItems.videoUrl,
-          availability: menuItems.availability,
-          popularityScore: menuItems.popularityScore,
-          isFeatured: menuItems.isFeatured,
-          isChefRecommended: menuItems.isChefRecommended,
-          tags: menuItems.tags,
-          metadata: menuItems.metadata,
-          createdAt: menuItems.createdAt,
-          updatedAt: menuItems.updatedAt,
-          categoryName: foodCategories.name,
-        })
-        .from(menuItems)
-        .leftJoin(foodCategories, eq(menuItems.categoryId, foodCategories.id))
-        .where(eq(menuItems.userId, userId));
-
-      const items = await query;
-
-      // Filter by categoryId if provided
-      let filtered = items;
-      if (categoryId && categoryId !== "all") {
-        filtered = filtered.filter(item => item.categoryId === categoryId);
-      }
-
-      // Filter by search if provided
-      if (search && typeof search === "string") {
-        const searchLower = search.toLowerCase();
-        filtered = filtered.filter(item =>
-          item.name.toLowerCase().includes(searchLower) ||
-          item.description?.toLowerCase().includes(searchLower) ||
-          item.tags?.some(tag => tag.toLowerCase().includes(searchLower))
-        );
-      }
-
-      res.json(filtered);
+      res.json({ success: true, message: `Next batch triggered for ${queue.remainingNumbers.length} remaining contacts. Processing will start within 60 seconds.` });
     } catch (error: any) {
-      console.error("[Menu] Error fetching menu items:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/whatsapp/bulk-queues/:id/download", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const queue = await storage.getWhatsappBulkQueueById(req.params.id);
+      if (!queue) return res.status(404).json({ error: "Queue not found" });
+      const userIds4 = await getAllUserIds(userId);
+      if (!userIds4.includes(queue.userId)) return res.status(403).json({ error: "Access denied" });
+
+      const type = (req.query.type as string) || "remaining";
+
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+
+      workbook.creator = "iMakePage";
+      workbook.created = new Date();
+
+      const remaining = queue.remainingNumbers || [];
+      const sentNums = (queue as any).sentNumbers || [];
+      const failedNums = (queue as any).failedNumbers || [];
+
+      if (type === "sent") {
+        const sheet = workbook.addWorksheet("Sent Contacts");
+        sheet.columns = [
+          { header: "Phone Number", key: "phone", width: 20 },
+          { header: "Status", key: "status", width: 15 },
+        ];
+        sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4CAF50" } };
+        for (const phone of sentNums) {
+          sheet.addRow({ phone, status: "Sent" });
+        }
+      } else if (type === "failed") {
+        const sheet = workbook.addWorksheet("Failed Contacts");
+        sheet.columns = [
+          { header: "Phone Number", key: "phone", width: 20 },
+          { header: "Status", key: "status", width: 15 },
+        ];
+        sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+        for (const phone of failedNums) {
+          sheet.addRow({ phone, status: "Failed" });
+        }
+      } else if (type === "all") {
+        const sentSheet = workbook.addWorksheet("Sent");
+        sentSheet.columns = [
+          { header: "Phone Number", key: "phone", width: 20 },
+          { header: "Status", key: "status", width: 15 },
+        ];
+        sentSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        sentSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4CAF50" } };
+        for (const phone of sentNums) {
+          sentSheet.addRow({ phone, status: "Sent" });
+        }
+
+        const remainSheet = workbook.addWorksheet("Remaining (Not Sent)");
+        remainSheet.columns = [
+          { header: "Phone Number", key: "phone", width: 20 },
+          { header: "Status", key: "status", width: 15 },
+        ];
+        remainSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        remainSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF9800" } };
+        for (const phone of remaining) {
+          remainSheet.addRow({ phone, status: "Pending" });
+        }
+
+        const failedSheet = workbook.addWorksheet("Failed");
+        failedSheet.columns = [
+          { header: "Phone Number", key: "phone", width: 20 },
+          { header: "Status", key: "status", width: 15 },
+        ];
+        failedSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        failedSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF0000" } };
+        for (const phone of failedNums) {
+          failedSheet.addRow({ phone, status: "Failed" });
+        }
+      } else {
+        const sheet = workbook.addWorksheet("Remaining Contacts");
+        sheet.columns = [
+          { header: "Phone Number", key: "phone", width: 20 },
+          { header: "Status", key: "status", width: 15 },
+        ];
+        sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF9800" } };
+        for (const phone of remaining) {
+          sheet.addRow({ phone, status: "Pending" });
+        }
+      }
+
+      const summarySheet = workbook.addWorksheet("Summary");
+      summarySheet.columns = [
+        { header: "Metric", key: "metric", width: 30 },
+        { header: "Value", key: "value", width: 20 },
+      ];
+      summarySheet.getRow(1).font = { bold: true };
+      summarySheet.addRow({ metric: "Queue ID", value: queue.id });
+      summarySheet.addRow({ metric: "Template", value: queue.templateName || "Free text" });
+      summarySheet.addRow({ metric: "Total Contacts Uploaded", value: queue.totalNumbers });
+      summarySheet.addRow({ metric: "Successfully Sent", value: sentNums.length });
+      summarySheet.addRow({ metric: "Failed", value: failedNums.length });
+      summarySheet.addRow({ metric: "Remaining (Not Yet Sent)", value: remaining.length });
+      summarySheet.addRow({ metric: "Queue Status", value: queue.status });
+      summarySheet.addRow({ metric: "Created At", value: queue.createdAt ? new Date(queue.createdAt).toISOString() : "N/A" });
+      summarySheet.addRow({ metric: "Last Batch At", value: queue.lastBatchSentAt ? new Date(queue.lastBatchSentAt).toISOString() : "N/A" });
+
+      const filename = type === "all" ? "bulk_send_report" : type === "sent" ? "sent_contacts" : type === "failed" ? "failed_contacts" : "remaining_contacts";
+      const count = type === "sent" ? sentNums.length : type === "failed" ? failedNums.length : type === "all" ? queue.totalNumbers : remaining.length;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename=${filename}_${queue.id.slice(0, 8)}_${count}.xlsx`);
+
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (error: any) {
+      console.error("Error generating Excel download:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/whatsapp/bulk-queues/:id/cancel", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const queue = await storage.getWhatsappBulkQueueById(req.params.id);
+      if (!queue) return res.status(404).json({ error: "Queue not found" });
+      const userIds5 = await getAllUserIds(userId);
+      if (!userIds5.includes(queue.userId)) return res.status(403).json({ error: "Access denied" });
+      if (queue.status === "completed" || queue.status === "cancelled") {
+        return res.status(400).json({ error: `Queue is already ${queue.status}` });
+      }
+      const updated = await storage.updateWhatsappBulkQueue(req.params.id, { status: "cancelled" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get WhatsApp conversations
+  app.get("/api/whatsapp/conversations", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      
+      const conversations = await storage.getWhatsappConversationsByUserId(String(userId));
+      res.json(conversations);
+    } catch (error: any) {
+      console.error("Error getting WhatsApp conversations:", error);
+      res.status(500).json({ error: "Failed to get conversations" });
+    }
+  });
+
+  // Get messages for a conversation
+  app.get("/api/whatsapp/conversations/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      
+      const messages = await storage.getWhatsappMessagesByConversationId(req.params.id);
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Error getting WhatsApp messages:", error);
+      res.status(500).json({ error: "Failed to get messages" });
+    }
+  });
+
+  // WhatsApp Webhook Verification (Meta requires this)
+  app.get("/api/webhooks/whatsapp", async (req, res) => {
+    const mode = req.query["hub.mode"];
+    const token = req.query["hub.verify_token"] as string | undefined;
+    const challenge = req.query["hub.challenge"];
+    
+    console.log("📱 WhatsApp webhook verification:", { mode, token: token ? "provided" : "missing" });
+    
+    if (mode !== "subscribe" || !token) {
+      return res.sendStatus(403);
+    }
+
+    try {
+      const allSettings = await db.select().from(whatsappSettingsTable);
+      const matchingSettings = allSettings.find(
+        (s) => s.webhookVerifyToken === token
+      );
+
+      if (!matchingSettings) {
+        console.warn("📱 WhatsApp webhook verification failed: token does not match any user settings");
+        return res.sendStatus(403);
+      }
+
+      console.log("📱 WhatsApp webhook verified successfully for user:", matchingSettings.userId);
+      res.status(200).send(challenge);
+    } catch (error) {
+      console.error("📱 WhatsApp webhook verification error:", error);
+      res.sendStatus(500);
+    }
+  });
+
+  // WhatsApp Webhook for incoming messages
+  app.post("/api/webhooks/whatsapp", async (req, res) => {
+    try {
+      const appSecret = process.env.FACEBOOK_APP_SECRET;
+      if (appSecret) {
+        const signature = req.headers["x-hub-signature-256"] as string | undefined;
+        const rawBody = (req as any).rawBody;
+        if (!signature || !rawBody) {
+          console.warn("📱 WhatsApp webhook: Missing signature or raw body");
+          return res.sendStatus(403);
+        }
+        const expectedSignature = "sha256=" + crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
+        if (signature !== expectedSignature) {
+          console.warn("📱 WhatsApp webhook: Invalid signature");
+          return res.sendStatus(403);
+        }
+      } else {
+        console.warn("⚠️ FACEBOOK_APP_SECRET not set - skipping webhook signature validation");
+      }
+
+      // Always respond 200 immediately to Meta
+      res.sendStatus(200);
+
+      const body = req.body;
+      if (body.object !== "whatsapp_business_account") return;
+
+      const entries = body.entry || [];
+      for (const entry of entries) {
+        const changes = entry.changes || [];
+        for (const change of changes) {
+          if (change.field !== "messages") continue;
+          
+          const value = change.value;
+          const phoneNumberId = value.metadata?.phone_number_id;
+          const messages = value.messages || [];
+
+          if (!phoneNumberId || messages.length === 0) continue;
+
+          // Find which user owns this phone number
+          const settings = await storage.getWhatsappSettingsByPhoneNumberId(phoneNumberId);
+          if (!settings) {
+            console.warn(`📱 WhatsApp: No settings found for phone number ID ${phoneNumberId}`);
+            continue;
+          }
+
+          for (const msg of messages) {
+            const waId = msg.from;
+            const messageText = msg.text?.body || msg.caption || "[media]";
+            const contactName = value.contacts?.[0]?.profile?.name;
+
+            console.log(`📱 WhatsApp incoming from ${waId}: ${messageText.substring(0, 50)}...`);
+
+            // Mark as read
+            await whatsappService.markAsRead(phoneNumberId, settings.accessToken!, msg.id);
+
+            // Get or create conversation
+            let conversation = await storage.getWhatsappConversationByWaId(settings.userId, waId);
+            if (!conversation) {
+              conversation = await storage.createWhatsappConversation({
+                userId: settings.userId,
+                waId,
+                contactName: contactName || null,
+                status: "active",
+              });
+            } else if (contactName && !conversation.contactName) {
+              await storage.updateWhatsappConversation(conversation.id, { contactName });
+            }
+
+            // Save inbound message
+            await storage.createWhatsappMessage({
+              conversationId: conversation.id,
+              whatsappMessageId: msg.id,
+              direction: "inbound",
+              messageType: msg.type || "text",
+              body: messageText,
+              mediaUrl: msg.image?.link || msg.video?.link || null,
+            });
+
+            // Update last message time
+            await storage.updateWhatsappConversation(conversation.id, {
+              lastMessageAt: new Date(),
+            });
+
+            // Generate AI response if enabled and properly configured
+            if (settings.isEnabled && settings.accessToken) {
+              // Get conversation history for context
+              const allMessages = await storage.getWhatsappMessagesByConversationId(conversation.id);
+              const history = allMessages.slice(-10).map(m => ({
+                role: m.direction === "inbound" ? "user" : "assistant",
+                content: m.body,
+              }));
+
+              const { response, extractedInfo } = await whatsappService.generateChatbotResponse(
+                messageText,
+                history,
+                {
+                  aiPersonality: settings.aiPersonality || "friendly",
+                  agentName: settings.agentName || undefined,
+                  brokerageName: settings.brokerageName || undefined,
+                  serviceAreas: settings.serviceAreas || undefined,
+                  specialties: settings.specialties || undefined,
+                },
+                {
+                  leadName: conversation.leadName,
+                  leadEmail: conversation.leadEmail,
+                  askForName: settings.askForName ?? true,
+                  askForEmail: settings.askForEmail ?? true,
+                }
+              );
+
+              // Update lead info if extracted
+              const updates: any = {};
+              if (extractedInfo.name && !conversation.leadName) updates.leadName = extractedInfo.name;
+              if (extractedInfo.email && !conversation.leadEmail) updates.leadEmail = extractedInfo.email;
+              if (extractedInfo.interest && !conversation.leadInterest) updates.leadInterest = extractedInfo.interest;
+              if (Object.keys(updates).length > 0) {
+                await storage.updateWhatsappConversation(conversation.id, updates);
+              }
+
+              // Send AI response
+              await whatsappService.sendTextMessage(
+                phoneNumberId, settings.accessToken!, waId, response
+              );
+
+              // Save outbound AI message
+              await storage.createWhatsappMessage({
+                conversationId: conversation.id,
+                direction: "outbound",
+                messageType: "text",
+                body: response,
+                isAiGenerated: true,
+                aiModel: "gpt-4o",
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("WhatsApp webhook error:", error);
+    }
+  });
+
+  // =====================================================
+  // MENU ITEMS / CATALOG ROUTES (Multi-vertical catalog)
+  // =====================================================
+  app.get("/api/menu-items", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const { businessType } = req.query;
+      const items = await storage.getMenuItems(userId, businessType as string);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching menu items:", error);
       res.status(500).json({ error: "Failed to fetch menu items" });
     }
   });
 
-  // Get a single menu item
-  app.get("/api/menu/items/:id", requireAuth, async (req, res) => {
+  app.post("/api/menu-items", requireAuth, async (req: any, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
-      const { id } = req.params;
-
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const [item] = await db
-        .select()
-        .from(menuItems)
-        .where(eq(menuItems.id, id));
-
-      if (!item) {
-        return res.status(404).json({ error: "Menu item not found" });
-      }
-
-      // Verify ownership
-      if (item.userId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      res.json(item);
-    } catch (error: any) {
-      console.error("[Menu] Error fetching menu item:", error);
-      res.status(500).json({ error: "Failed to fetch menu item" });
-    }
-  });
-
-  // Create a new menu item
-  app.post("/api/menu/items", requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const parsed = insertMenuItemSchema.safeParse({
-        ...req.body,
-        userId,
-      });
-
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid menu item data", details: parsed.error.errors });
-      }
-
-      const [item] = await db
-        .insert(menuItems)
-        .values(parsed.data)
-        .returning();
-
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const item = await storage.createMenuItem({ ...req.body, userId });
       res.status(201).json(item);
-    } catch (error: any) {
-      console.error("[Menu] Error creating menu item:", error);
+    } catch (error) {
+      console.error("Error creating menu item:", error);
       res.status(500).json({ error: "Failed to create menu item" });
     }
   });
 
-  // Update a menu item
-  app.put("/api/menu/items/:id", requireAuth, async (req, res) => {
+  app.patch("/api/menu-items/:id", requireAuth, async (req: any, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
       const { id } = req.params;
-
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      // Verify ownership
-      const [existing] = await db
-        .select()
-        .from(menuItems)
-        .where(eq(menuItems.id, id));
-
-      if (!existing) {
-        return res.status(404).json({ error: "Menu item not found" });
-      }
-
-      if (existing.userId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      const [updated] = await db
-        .update(menuItems)
-        .set({ ...req.body, updatedAt: new Date() })
-        .where(eq(menuItems.id, id))
-        .returning();
-
-      res.json(updated);
-    } catch (error: any) {
-      console.error("[Menu] Error updating menu item:", error);
+      const item = await storage.updateMenuItem(id, req.body);
+      if (!item) return res.status(404).json({ error: "Item not found" });
+      res.json(item);
+    } catch (error) {
+      console.error("Error updating menu item:", error);
       res.status(500).json({ error: "Failed to update menu item" });
     }
   });
 
-  // Delete a menu item
-  app.delete("/api/menu/items/:id", requireAuth, async (req, res) => {
+  app.delete("/api/menu-items/:id", requireAuth, async (req: any, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
       const { id } = req.params;
-
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      // Verify ownership
-      const [existing] = await db
-        .select()
-        .from(menuItems)
-        .where(eq(menuItems.id, id));
-
-      if (!existing) {
-        return res.status(404).json({ error: "Menu item not found" });
-      }
-
-      if (existing.userId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-
-      const [deleted] = await db
-        .delete(menuItems)
-        .where(eq(menuItems.id, id))
-        .returning();
-
-      res.json({ success: true, deleted });
-    } catch (error: any) {
-      console.error("[Menu] Error deleting menu item:", error);
+      await storage.deleteMenuItem(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting menu item:", error);
       res.status(500).json({ error: "Failed to delete menu item" });
     }
   });
 
-  // Get featured/recommended items (for quick content creation)
-  app.get("/api/menu/featured", requireAuth, async (req, res) => {
+  // =====================================================
+  // BUSINESS LOCATIONS ROUTES
+  // =====================================================
+  // =====================================================
+  // SJinn AI Video Generation Routes
+  // =====================================================
+  app.post("/api/sjinn/create-video", requireAuth, async (req: any, res) => {
     try {
-      const userId = (req as any).user?.id?.toString();
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+      const { prompt, model } = req.body;
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ error: "prompt is required" });
+      }
+      const result = await sjinnService.createVideoTask(
+        prompt,
+        model || "auto"
+      );
+      res.json(result);
+    } catch (error: any) {
+      console.error("SJinn create-video error:", error);
+      res.status(500).json({ error: error.message || "Failed to start SJinn video task" });
+    }
+  });
+
+  app.get("/api/sjinn/status/:chatId", requireAuth, async (req: any, res) => {
+    try {
+      const { chatId } = req.params;
+      if (!chatId) {
+        return res.status(400).json({ error: "chatId is required" });
+      }
+      const result = await sjinnService.getTaskStatus(chatId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("SJinn status error:", error);
+      res.status(500).json({ error: error.message || "Failed to get SJinn task status" });
+    }
+  });
+
+  app.post("/api/sjinn/notify-completion", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const { videoUrl, chatId } = req.body;
+      if (!videoUrl || !chatId) {
+        return res.status(400).json({ error: "videoUrl and chatId are required" });
       }
 
-      const featured = await db
-        .select()
-        .from(menuItems)
-        .where(eq(menuItems.userId, userId))
-        .orderBy(desc(menuItems.isFeatured), desc(menuItems.isChefRecommended), desc(menuItems.popularityScore));
+      let notifiedVia = "in-app";
 
-      res.json(featured.slice(0, 10)); // Top 10 featured/recommended
+      try {
+        const settings = await storage.getWhatsappSettingsByUserId(String(userId));
+        if (settings?.phoneNumberId && settings?.accessToken && settings?.displayPhoneNumber) {
+          const userPhone = settings.displayPhoneNumber.replace(/[^0-9]/g, "");
+          if (userPhone) {
+            await whatsappService.sendTextMessage(
+              settings.phoneNumberId,
+              settings.accessToken,
+              userPhone,
+              `Your AI video is ready!\n\nView it here: ${videoUrl}\n\n- iMakePage Video Studio`
+            );
+            notifiedVia = "whatsapp";
+          }
+        }
+      } catch (waErr: any) {
+        console.warn("WhatsApp notification failed, falling back to in-app:", waErr.message);
+      }
+
+      if (notifiedVia !== "whatsapp") {
+        realtimeService.notifySjinnVideoReady(String(userId), videoUrl, chatId);
+      }
+
+      res.json({ success: true, notifiedVia });
     } catch (error: any) {
-      console.error("[Menu] Error fetching featured items:", error);
-      res.status(500).json({ error: "Failed to fetch featured items" });
+      console.error("SJinn notify-completion error:", error);
+      res.status(500).json({ error: error.message || "Failed to send notification" });
+    }
+  });
+
+  app.get("/api/business-locations", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const locations = await storage.getBusinessLocations(userId);
+      res.json(locations);
+    } catch (error) {
+      console.error("Error fetching business locations:", error);
+      res.status(500).json({ error: "Failed to fetch locations" });
+    }
+  });
+
+  app.post("/api/business-locations", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id || req.user?.claims?.sub;
+      const location = await storage.createBusinessLocation({ ...req.body, userId });
+      res.status(201).json(location);
+    } catch (error) {
+      console.error("Error creating business location:", error);
+      res.status(500).json({ error: "Failed to create location" });
+    }
+  });
+
+  app.patch("/api/business-locations/:id", requireAuth, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const location = await storage.updateBusinessLocation(id, req.body);
+      if (!location) return res.status(404).json({ error: "Location not found" });
+      res.json(location);
+    } catch (error) {
+      console.error("Error updating business location:", error);
+      res.status(500).json({ error: "Failed to update location" });
+    }
+  });
+
+  app.delete("/api/business-locations/:id", requireAuth, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteBusinessLocation(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting business location:", error);
+      res.status(500).json({ error: "Failed to delete location" });
     }
   });
 

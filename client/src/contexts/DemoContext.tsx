@@ -20,44 +20,44 @@ const DEMO_SOCIAL_ACCOUNTS: DemoSocialAccount[] = [
   {
     id: 'demo-facebook',
     platform: 'facebook',
-    accountUsername: 'Demo Restaurant',
+    accountUsername: 'Nebraska Home Hub',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-instagram',
     platform: 'instagram',
-    accountUsername: '@demorestaurant',
+    accountUsername: '@nebraskahomehub',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-linkedin',
     platform: 'linkedin',
-    accountUsername: 'Demo Restaurant',
+    accountUsername: 'Nebraska Home Hub Real Estate',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-x',
     platform: 'x',
-    accountUsername: '@DemoRestaurant',
+    accountUsername: '@NebraskaHomeHub',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-youtube',
     platform: 'youtube',
-    accountUsername: 'Demo Restaurant Channel',
+    accountUsername: 'Nebraska Home Hub Channel',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
   },
   {
     id: 'demo-tiktok',
     platform: 'tiktok',
-    accountUsername: '@demorestaurant',
+    accountUsername: '@nebraskahomehub',
     isConnected: true,
-    profileImage: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop'
+    profileImage: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=100&h=100&fit=crop'
   }
 ];
 

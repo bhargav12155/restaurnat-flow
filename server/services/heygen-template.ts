@@ -206,68 +206,68 @@ export class HeyGenTemplateService {
     return await response.json();
   }
 
-  // Get popular templates for restaurants
-  async getRestaurantTemplates() {
-    let restaurantTemplates: Template[] = [];
+  // Get popular templates for real estate
+  async getRealEstateTemplates() {
+    let realEstateTemplates: Template[] = [];
     
     try {
       const allTemplates = await this.listTemplates();
       
-      // Filter for restaurant related templates
-      const restaurantKeywords = ['restaurant', 'food', 'menu', 'dining', 'chef', 'cuisine', 'culinary'];
+      // Filter for real estate related templates
+      const realEstateKeywords = ['property', 'real estate', 'home', 'house', 'listing', 'tour', 'walkthrough'];
       
-      restaurantTemplates = allTemplates.templates?.filter((template: Template) => {
+      realEstateTemplates = allTemplates.templates?.filter((template: Template) => {
         const searchString = `${template.name} ${template.description}`.toLowerCase();
-        return restaurantKeywords.some(keyword => searchString.includes(keyword));
+        return realEstateKeywords.some(keyword => searchString.includes(keyword));
       }) || [];
       
-      if (restaurantTemplates.length > 0) {
-        return { templates: restaurantTemplates };
+      if (realEstateTemplates.length > 0) {
+        return { templates: realEstateTemplates };
       }
     } catch (error) {
       console.log('Failed to fetch templates, returning suggestions instead');
     }
 
-    // If no restaurant templates found, provide suggestions
-    if (restaurantTemplates.length === 0) {
+    // If no real estate templates found, provide suggestions
+    if (realEstateTemplates.length === 0) {
       return {
         templates: [],
         suggestions: [
           {
-            name: "Menu Feature Template",
-            description: "Showcase new dishes and seasonal menu items",
+            name: "Property Tour Template",
+            description: "Virtual property walkthrough with agent narration",
             recommended_variables: {
-              dish_name: "text",
-              chef_avatar: "avatar",
-              dish_images: "image[]",
+              property_address: "text",
+              agent_avatar: "avatar",
+              property_images: "image[]",
               price: "text",
-              ingredients: "text"
+              features: "text"
             }
           },
           {
-            name: "Special Event Template",
-            description: "Promote special events, live music, and themed nights",
+            name: "Market Update Template",
+            description: "Monthly real estate market analysis video",
             recommended_variables: {
-              event_name: "text",
-              event_date: "text",
-              host_avatar: "avatar",
-              event_images: "image[]"
+              month: "text",
+              market_stats: "text",
+              agent_avatar: "avatar",
+              charts: "image[]"
             }
           },
           {
-            name: "Chef Introduction Template",
-            description: "Professional chef introduction and culinary expertise",
+            name: "Agent Introduction Template",
+            description: "Professional agent introduction and services",
             recommended_variables: {
-              chef_name: "text",
-              chef_avatar: "avatar",
+              agent_name: "text",
+              agent_avatar: "avatar",
               expertise: "text",
-              signature_dishes: "text"
+              contact_info: "text"
             }
           }
         ]
       };
     }
 
-    return { templates: restaurantTemplates };
+    return { templates: realEstateTemplates };
   }
 }

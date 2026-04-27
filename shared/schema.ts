@@ -5,8 +5,7 @@ import {
   integer,
   jsonb,
   numeric,
-  pgSchema,
-  pgTable as basePgTable,
+  pgTable,
   real,
   serial,
   text,
@@ -16,15 +15,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-
-const ACTIVE_DB_SCHEMA = (process.env.DB_SCHEMA || "public").trim() || "public";
-const pgTable: typeof basePgTable = ((...args: any[]) => {
-  if (ACTIVE_DB_SCHEMA === "public") {
-    return (basePgTable as any)(...args);
-  }
-  const schema = pgSchema(ACTIVE_DB_SCHEMA);
-  return (schema.table as any)(...args);
-}) as any;
 
 // Session storage table (required for Replit Auth)
 export const sessions = pgTable(
@@ -54,6 +44,23 @@ export const users = pgTable("users", {
 });
 
 // =====================================================
+// USER PREFERENCES TABLE (AI Settings & Location)
+// =====================================================
+export const userPreferences = pgTable("user_preferences", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  aiProvider: text("ai_provider").default("auto"), // "auto" | "openai" | "gemini"
+  serviceArea: text("service_area"), // Main city/area (e.g., "Omaha, NE")
+  communities: text("communities").array(), // List of neighborhoods/communities
+  agentPhotoUrl: text("agent_photo_url"), // URL to agent's profile photo/avatar
+  onboardingCompleted: boolean("onboarding_completed").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// =====================================================
 // PUBLIC USERS TABLE (for multi-user support)
 // =====================================================
 export const publicUsers = pgTable(
@@ -62,17 +69,9 @@ export const publicUsers = pgTable(
     id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     email: text("email").notNull(),
     name: text("name"),
-    password: text("password"), // Hashed password for secure login
     agentSlug: text("agent_slug").notNull(),
     role: text("role").default("user"),
     preferences: jsonb("preferences"), // Store user preferences
-    // Email verification fields
-    emailVerified: boolean("email_verified").default(false),
-    verificationToken: text("verification_token"),
-    verificationTokenExpiry: timestamp("verification_token_expiry"),
-    // Business type configuration
-    businessType: text("business_type").default("restaurant"),
-    businessSubtype: text("business_subtype").default("fast_casual"),
     lastLogin: timestamp("last_login"),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -83,75 +82,18 @@ export const publicUsers = pgTable(
 );
 
 // =====================================================
-// 2. FOOD CATEGORIES TABLE (Restaurant Menu Categories)
-// =====================================================
-export const foodCategories = pgTable("food_categories", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull(),
-  name: text("name").notNull(), // "Pizza", "Pasta", "Appetizers", etc.
-  description: text("description"),
-  displayOrder: integer("display_order").default(0),
-  icon: text("icon"), // emoji or icon name
-  imageUrl: text("image_url"),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// =====================================================
-// 3. MENU ITEMS TABLE (Restaurant Dishes)
-// =====================================================
-export const menuItems = pgTable("menu_items", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull(),
-  categoryId: varchar("category_id"), // references foodCategories
-  name: text("name").notNull(),
-  description: text("description"),
-  price: numeric("price", { precision: 10, scale: 2 }).notNull(),
-  // Optional pricing
-  specialPrice: numeric("special_price", { precision: 10, scale: 2 }),
-  isSpecial: boolean("is_special").default(false),
-  specialEndDate: timestamp("special_end_date"),
-  // Food details
-  ingredients: text("ingredients").array(),
-  dietaryTags: text("dietary_tags").array(), // "vegetarian", "vegan", "gluten-free", "halal", "kosher"
-  allergens: text("allergens").array(), // "dairy", "nuts", "shellfish", "soy", "eggs", "wheat"
-  spiceLevel: integer("spice_level").default(0), // 0-5 scale
-  calories: integer("calories"),
-  preparationTime: integer("preparation_time"), // in minutes
-  servingSize: text("serving_size"), // "1 person", "2-3 persons", etc.
-  // Media
-  imageUrls: text("image_urls").array(),
-  videoUrl: text("video_url"),
-  // Status
-  availability: text("availability").default("available"), // "available", "sold_out", "seasonal", "limited"
-  popularityScore: integer("popularity_score").default(0), // 0-100
-  isFeatured: boolean("is_featured").default(false),
-  isChefRecommended: boolean("is_chef_recommended").default(false),
-  // Metadata
-  tags: text("tags").array(), // custom tags for search
-  metadata: jsonb("metadata"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// =====================================================
-// 4. CONTENT PIECES TABLE (AI Generated Content)
+// 2. CONTENT PIECES TABLE (AI Generated Content)
 // =====================================================
 export const contentPieces = pgTable("content_pieces", {
   id: varchar("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  type: text("type").notNull(), // 'blog', 'social', 'menu_highlight', 'daily_special', 'chef_recommendation'
+  type: text("type").notNull(), // 'blog', 'social', 'property_feature'
   title: text("title").notNull(),
   content: text("content").notNull(),
   keywords: text("keywords").array(),
   neighborhood: text("neighborhood"),
-  menuItemId: varchar("menu_item_id"), // NEW: link to menu item
   seoOptimized: boolean("seo_optimized").default(false),
   status: text("status").notNull().default("draft"), // 'draft', 'published', 'scheduled'
   publishedAt: timestamp("published_at"),
@@ -162,7 +104,7 @@ export const contentPieces = pgTable("content_pieces", {
 });
 
 // =====================================================
-// 5. SCHEDULED POSTS TABLE (Social Media)
+// 3. SCHEDULED POSTS TABLE (Social Media)
 // =====================================================
 export const scheduledPosts = pgTable("scheduled_posts", {
   id: varchar("id")
@@ -170,8 +112,7 @@ export const scheduledPosts = pgTable("scheduled_posts", {
     .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   platform: text("platform").notNull(), // 'facebook', 'instagram', 'linkedin', 'x'
-  postType: text("post_type"), // 'daily_special', 'new_item', 'chef_pick', 'food_photo', 'behind_scenes', 'promo', 'event'
-  menuItemId: varchar("menu_item_id"), // NEW: link to menu item being promoted
+  postType: text("post_type"), // 'open_houses', 'just_listed', 'just_sold', etc.
   content: text("content").notNull(),
   hashtags: text("hashtags").array(),
   scheduledFor: timestamp("scheduled_for").notNull(),
@@ -303,8 +244,8 @@ export const videoAvatars = pgTable("video_avatars", {
   userId: varchar("user_id").notNull(),
   avatarName: text("avatar_name").notNull(),
   heygenAvatarId: text("heygen_avatar_id").notNull().unique(),
-  trainingVideoUrl: text("training_video_url"), // S3 URL to training footage (optional for synced avatars)
-  consentVideoUrl: text("consent_video_url"), // S3 URL to consent video (optional for synced avatars)
+  trainingVideoUrl: text("training_video_url").notNull(), // S3 URL to training footage
+  consentVideoUrl: text("consent_video_url").notNull(), // S3 URL to consent video
   voiceId: text("voice_id"), // Optional voice ID for the avatar
   audioAssetId: text("audio_asset_id"), // HeyGen audio asset ID for voice (extracted from training video)
   status: text("status").notNull().default("in_progress"), // in_progress, complete, failed
@@ -396,6 +337,7 @@ export const socialMediaAccounts = pgTable("social_media_accounts", {
   tokenExpiresAt: timestamp("token_expires_at"),
   isConnected: boolean("is_connected").default(false),
   accountUsername: text("account_username"),
+  metadata: jsonb("metadata"),
   lastSynced: timestamp("last_synced"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -487,6 +429,28 @@ export const properties = pgTable("properties", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// =====================================================
+// AI CHAT HISTORY TABLE
+// =====================================================
+export const aiChatSessions = pgTable("ai_chat_sessions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  title: text("title").default("New Chat"),
+  messages: jsonb("messages").$type<Array<{ role: string; content: string }>>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAiChatSessionSchema = createInsertSchema(aiChatSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertAiChatSession = z.infer<typeof insertAiChatSessionSchema>;
+export type AiChatSession = typeof aiChatSessions.$inferSelect;
+
 // Legacy AI Content and Social Posts (keeping for compatibility)
 export const aiContent = pgTable("ai_content", {
   id: varchar("id")
@@ -566,6 +530,7 @@ export const socialApiKeys = pgTable("social_api_keys", {
   youtubeApiKey: text("youtube_api_key"),
   youtubeChannelId: text("youtube_channel_id"),
   tiktokAccessToken: text("tiktok_access_token"),
+  keysConfigured: boolean("keys_configured").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -574,19 +539,6 @@ export const socialApiKeys = pgTable("social_api_keys", {
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
-});
-
-// Food Categories insert schema
-export const insertFoodCategorySchema = createInsertSchema(foodCategories).omit({
-  id: true,
-  createdAt: true,
-});
-
-// Menu Items insert schema
-export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
 });
 
 export const insertContentPieceSchema = createInsertSchema(contentPieces).omit({
@@ -712,11 +664,13 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type PublicUser = typeof publicUsers.$inferSelect;
 export type InsertPublicUser = typeof publicUsers.$inferInsert;
 
-// Food & Menu Types
-export type FoodCategory = typeof foodCategories.$inferSelect;
-export type InsertFoodCategory = z.infer<typeof insertFoodCategorySchema>;
-export type MenuItem = typeof menuItems.$inferSelect;
-export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
+export const insertUserPreferencesSchema = createInsertSchema(userPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserPreferences = z.infer<typeof insertUserPreferencesSchema>;
+export type UserPreferences = typeof userPreferences.$inferSelect;
 
 export type ContentPiece = typeof contentPieces.$inferSelect;
 export type InsertContentPiece = z.infer<typeof insertContentPieceSchema>;
@@ -830,6 +784,8 @@ export const companyProfiles = pgTable("company_profiles", {
   tagline: text("tagline"),
   bio: text("bio"),
   socialLinks: jsonb("social_links"),
+  businessType: text("business_type").default("real_estate"),
+  businessSubtype: text("business_subtype"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1570,3 +1526,256 @@ export type TwilioConversation = typeof twilioConversations.$inferSelect;
 export type InsertTwilioConversation = z.infer<typeof insertTwilioConversationSchema>;
 export type TwilioMessage = typeof twilioMessages.$inferSelect;
 export type InsertTwilioMessage = z.infer<typeof insertTwilioMessageSchema>;
+
+// =====================================================
+// AI ASSISTANT MESSAGES TABLE
+// =====================================================
+export const aiAssistantMessages = pgTable("ai_assistant_messages", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  role: text("role").notNull(), // 'user' or 'assistant'
+  content: text("content").notNull(),
+  attachments: jsonb("attachments"), // Array of { url: string, type: string, name: string }
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiAssistantMessageSchema = createInsertSchema(aiAssistantMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AiAssistantMessage = typeof aiAssistantMessages.$inferSelect;
+export type InsertAiAssistantMessage = z.infer<typeof insertAiAssistantMessageSchema>;
+
+// =====================================================
+// WHATSAPP SETTINGS TABLE (Per-user WhatsApp Business configuration)
+// =====================================================
+export const whatsappSettings = pgTable("whatsapp_settings", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique(),
+  phoneNumberId: text("phone_number_id"), // WhatsApp Cloud API phone number ID
+  wabaId: text("waba_id"), // WhatsApp Business Account ID
+  displayPhoneNumber: text("display_phone_number"), // formatted phone number for display
+  accessToken: text("access_token"), // permanent token from Meta
+  webhookVerifyToken: text("webhook_verify_token"), // random token for webhook verification
+  isEnabled: boolean("is_enabled").default(false),
+  // AI Chatbot Settings
+  aiGreeting: text("ai_greeting").default("Hello! Thanks for reaching out. I'm an AI assistant for a local real estate agent. How can I help you today?"),
+  aiPersonality: text("ai_personality").default("friendly"), // 'friendly', 'professional', 'casual'
+  businessHoursStart: text("business_hours_start").default("09:00"),
+  businessHoursEnd: text("business_hours_end").default("17:00"),
+  afterHoursMessage: text("after_hours_message").default("Thanks for reaching out! Our office is currently closed. We'll get back to you during business hours."),
+  // Lead capture settings
+  captureLeadOnFirstMessage: boolean("capture_lead_on_first_message").default(true),
+  askForName: boolean("ask_for_name").default(true),
+  askForEmail: boolean("ask_for_email").default(true),
+  // Business info for AI context
+  agentName: text("agent_name"),
+  brokerageName: text("brokerage_name"),
+  serviceAreas: text("service_areas").array(), // Neighborhoods/areas served
+  specialties: text("specialties").array(), // 'luxury', 'first-time buyers', etc.
+  accounts: jsonb("accounts").default([]), // [{label, phoneNumberId, wabaId, displayPhoneNumber}]
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// =====================================================
+// WHATSAPP CONVERSATIONS TABLE (Chat threads)
+// =====================================================
+export const whatsappConversations = pgTable("whatsapp_conversations", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  waId: text("wa_id").notNull(), // the contact's WhatsApp ID (phone number)
+  contactName: text("contact_name"),
+  status: text("status").notNull().default("active"), // 'active', 'closed', 'converted'
+  // Lead info captured during conversation
+  leadName: text("lead_name"),
+  leadEmail: text("lead_email"),
+  leadInterest: text("lead_interest"), // 'buying', 'selling', 'both', 'general'
+  leadQuality: text("lead_quality").default("warm"), // 'hot', 'warm', 'cold'
+  leadNotes: text("lead_notes"), // AI-generated summary of conversation
+  // Timestamps
+  lastMessageAt: timestamp("last_message_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  convertedToLeadAt: timestamp("converted_to_lead_at"),
+});
+
+// =====================================================
+// WHATSAPP MESSAGES TABLE (Individual messages in conversations)
+// =====================================================
+export const whatsappMessages = pgTable("whatsapp_messages", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull(),
+  whatsappMessageId: text("whatsapp_message_id"), // Meta's message ID
+  direction: text("direction").notNull(), // 'inbound' or 'outbound'
+  messageType: text("message_type").notNull().default("text"), // 'text', 'image', 'template'
+  body: text("body").notNull(),
+  mediaUrl: text("media_url"),
+  status: text("status").default("delivered"), // 'queued', 'sent', 'delivered', 'failed'
+  isAiGenerated: boolean("is_ai_generated").default(false),
+  aiModel: text("ai_model"), // 'gpt-4o', etc.
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// WhatsApp insert schemas and types
+export const insertWhatsappSettingsSchema = createInsertSchema(whatsappSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWhatsappConversationSchema = createInsertSchema(whatsappConversations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertWhatsappMessageSchema = createInsertSchema(whatsappMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type WhatsappSettings = typeof whatsappSettings.$inferSelect;
+export type InsertWhatsappSettings = z.infer<typeof insertWhatsappSettingsSchema>;
+export type WhatsappConversation = typeof whatsappConversations.$inferSelect;
+export type InsertWhatsappConversation = z.infer<typeof insertWhatsappConversationSchema>;
+export type WhatsappMessage = typeof whatsappMessages.$inferSelect;
+export type InsertWhatsappMessage = z.infer<typeof insertWhatsappMessageSchema>;
+
+// =====================================================
+// MENU ITEMS / CATALOG TABLE (Multi-vertical items)
+// Used for: restaurant menu items, services, products, listings
+// =====================================================
+export const menuItems = pgTable("menu_items", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  businessType: text("business_type").notNull().default("restaurant"),
+  name: text("name").notNull(),
+  category: text("category"),
+  price: numeric("price", { precision: 10, scale: 2 }),
+  description: text("description"),
+  ingredients: text("ingredients").array(),
+  dietaryTags: text("dietary_tags").array(),
+  allergens: text("allergens").array(),
+  imageUrls: text("image_urls").array(),
+  availability: text("availability").default("always"),
+  isSpecial: boolean("is_special").default(false),
+  specialPrice: numeric("special_price", { precision: 10, scale: 2 }),
+  status: text("status").default("active"),
+  tags: text("tags").array(),
+  notes: text("notes"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type MenuItem = typeof menuItems.$inferSelect;
+export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
+
+// =====================================================
+// BUSINESS LOCATIONS TABLE (Restaurants, offices, etc.)
+// =====================================================
+export const businessLocations = pgTable("business_locations", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  phoneNumber: text("phone_number"),
+  email: text("email"),
+  website: text("website"),
+  operatingHours: jsonb("operating_hours"),
+  cuisineTypes: text("cuisine_types").array(),
+  diningOptions: text("dining_options").array(),
+  acceptsReservations: boolean("accepts_reservations").default(false),
+  deliveryRadius: integer("delivery_radius"),
+  status: text("status").default("open"),
+  isPrimary: boolean("is_primary").default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBusinessLocationSchema = createInsertSchema(businessLocations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type BusinessLocation = typeof businessLocations.$inferSelect;
+export type InsertBusinessLocation = z.infer<typeof insertBusinessLocationSchema>;
+
+// =====================================================
+// WHATSAPP BULK SEND QUEUES
+// Auto-queue remaining contacts for next-day delivery
+// =====================================================
+export const whatsappBulkQueues = pgTable("whatsapp_bulk_queues", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  status: text("status").notNull().default("active"),
+  templateName: text("template_name"),
+  messageText: text("message_text"),
+  totalNumbers: integer("total_numbers").notNull(),
+  sentCount: integer("sent_count").notNull().default(0),
+  failedCount: integer("failed_count").notNull().default(0),
+  remainingNumbers: text("remaining_numbers").array().notNull(),
+  sentNumbers: text("sent_numbers").array().notNull().default(sql`'{}'::text[]`),
+  failedNumbers: text("failed_numbers").array().notNull().default(sql`'{}'::text[]`),
+  dailyLimit: integer("daily_limit").notNull().default(2000),
+  lastBatchSentAt: timestamp("last_batch_sent_at"),
+  nextBatchAt: timestamp("next_batch_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertWhatsappBulkQueueSchema = createInsertSchema(whatsappBulkQueues).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type WhatsappBulkQueue = typeof whatsappBulkQueues.$inferSelect;
+export type InsertWhatsappBulkQueue = z.infer<typeof insertWhatsappBulkQueueSchema>;
+
+export const whatsappBulkSendResults = pgTable("whatsapp_bulk_send_results", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  sent: integer("sent").notNull().default(0),
+  failed: integer("failed").notNull().default(0),
+  total: integer("total").notNull().default(0),
+  queued: integer("queued").notNull().default(0),
+  percent: integer("percent").notNull().default(0),
+  elapsed: integer("elapsed").notNull().default(0),
+  estimatedCost: text("estimated_cost"),
+  errorBreakdown: text("error_breakdown"),
+  complete: boolean("complete").notNull().default(false),
+  message: text("message"),
+  bulkQueueId: varchar("bulk_queue_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WhatsappBulkSendResult = typeof whatsappBulkSendResults.$inferSelect;

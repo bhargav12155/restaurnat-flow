@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import OAuth from "oauth-1.0a";
 import path from "path";
+import { whatsappService } from "./whatsapp";
 
 export class SocialMediaError extends Error {
   statusCode: number;
@@ -179,7 +180,7 @@ export class SocialMediaService {
         snippet: {
           title: title,
           description: description,
-          tags: ["restaurant", "Omaha", "dining", "food", "marketing"],
+          tags: ["real estate", "property", "home", "marketing"],
           categoryId: "28", // Science & Technology category
         },
         status: {
@@ -375,25 +376,52 @@ export class SocialMediaService {
         throw new Error("Instagram user ID not available");
       }
 
+      // Priority: options.photoUrls/videoUrls > imageUrl param
+      const mediaUrl =
+        options?.photoUrls?.[0] || options?.videoUrls?.[0] || imageUrl;
+
+      if (!mediaUrl) {
+        throw new Error("Instagram requires an image or video. Text-only posts are not supported.");
+      }
+
       // Step 1: Create media container
       const containerData: any = {
         access_token: token,
         caption: content,
       };
 
-      // Priority: options.photoUrls/videoUrls > imageUrl param
-      const mediaUrl =
-        options?.photoUrls?.[0] || options?.videoUrls?.[0] || imageUrl;
-
-      // Add media URL if provided
+      // Add media URL
       if (mediaUrl) {
         const baseUrl =
           process.env.REPLIT_DEPLOYMENT_URL ||
           process.env.CLIENT_URL ||
           "http://localhost:5000";
-        const resolvedUrl = mediaUrl.startsWith("http")
+        let resolvedUrl = mediaUrl.startsWith("http")
           ? mediaUrl
           : `${baseUrl}${mediaUrl}`;
+
+        // Instagram requires HTTPS URLs - if source is HTTP, proxy through our HTTPS server
+        if (resolvedUrl.startsWith("http://")) {
+          const proxyBaseUrl = process.env.REPLIT_DEPLOYMENT_URL || baseUrl;
+          const httpsBase = proxyBaseUrl.startsWith("https://") ? proxyBaseUrl : proxyBaseUrl.replace("http://", "https://");
+          resolvedUrl = `${httpsBase}/api/image-proxy?url=${encodeURIComponent(resolvedUrl)}`;
+          console.log("📸 Proxying HTTP image through HTTPS server for Instagram compatibility");
+        }
+
+        // Encode special characters in URL path (spaces, unicode) for Instagram compatibility
+        if (!resolvedUrl.includes("/api/image-proxy")) {
+          try {
+            const urlObj = new URL(resolvedUrl);
+            urlObj.pathname = urlObj.pathname
+              .split("/")
+              .map((segment) => encodeURIComponent(decodeURIComponent(segment)))
+              .join("/");
+            resolvedUrl = urlObj.toString();
+          } catch (e) {
+            console.warn("Failed to encode media URL, using as-is:", e);
+          }
+        }
+        console.log(`📸 Instagram resolved media URL: ${resolvedUrl}`);
 
         // Instagram supports both image_url and video_url
         if (options?.videoUrls?.[0]) {
@@ -404,33 +432,63 @@ export class SocialMediaService {
         }
       }
 
-      const containerResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${userId}/media`,
-        {
+      // Try Facebook Graph API first (works with Page tokens for Instagram Business Accounts)
+      // Then fall back to Instagram Graph API (works with Instagram Business Login tokens)
+      const endpoints = [
+        `https://graph.facebook.com/v22.0/${userId}/media`,
+        `https://graph.instagram.com/v22.0/${userId}/media`,
+        `https://graph.instagram.com/v22.0/me/media`,
+      ];
+
+      let containerResponse: Response | null = null;
+      let lastError: any = null;
+
+      for (const endpoint of endpoints) {
+        console.log(`📸 Instagram: Trying container creation at ${endpoint}`);
+        containerResponse = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams(containerData).toString(),
-        },
-      );
+        });
 
-      if (!containerResponse.ok) {
+        if (containerResponse.ok) {
+          console.log(`📸 Instagram: Container created successfully via ${endpoint}`);
+          break;
+        }
+
         const errorData = await containerResponse.json();
-        console.error("Instagram Container API Error:", errorData);
+        lastError = errorData;
+        console.error(`📸 Instagram Container Error (${endpoint}):`, JSON.stringify(errorData));
+      }
 
-        if (errorData.error?.code === 190) {
+      if (!containerResponse || !containerResponse.ok) {
+        const errorData = lastError;
+        console.error("📸 Instagram: All container creation endpoints failed. Last error:", JSON.stringify(errorData));
+
+        if (errorData?.error?.code === 190) {
           throw new Error(
-            "Instagram setup incomplete. Token must be from Facebook page admin with connected Instagram business account.",
+            "Instagram session expired. Please reconnect your Instagram account.",
           );
         }
-        if (errorData.error?.code === 100) {
+        if (errorData?.error?.code === 100 && errorData?.error?.error_subcode === 33) {
           throw new Error(
-            "Invalid Instagram parameters. Please check your content and image.",
+            "Instagram content publishing permission not granted. Please ensure your Meta app has 'instagram_business_content_publish' approved through App Review.",
+          );
+        }
+        if (errorData?.error?.message?.includes("Unsupported request")) {
+          throw new Error(
+            "Instagram Content Publishing API not available. Please ensure: 1) Your Instagram account is a Business or Creator account, 2) Your Meta app has 'instagram_business_content_publish' approved through App Review, 3) The app is in Live mode.",
+          );
+        }
+        if (errorData?.error?.code === 100) {
+          throw new Error(
+            `Instagram API error: ${errorData.error?.message || "Invalid parameters. Please check your content and image."}`,
           );
         }
 
         throw new Error(
           `Instagram container creation failed: ${
-            errorData.error?.message || "Unknown error"
+            errorData?.error?.message || "Unknown error"
           }`,
         );
       }
@@ -438,27 +496,75 @@ export class SocialMediaService {
       const containerResult = await containerResponse.json();
       const containerId = containerResult.id;
 
-      // Step 2: Publish the media container
-      const publishResponse = await fetch(
-        `https://graph.facebook.com/v21.0/${userId}/media_publish`,
-        {
+      // Step 2: Wait for container to be ready (Instagram needs time to process media)
+      const maxWaitTime = 60000;
+      const pollInterval = 3000;
+      let waited = 0;
+      while (waited < maxWaitTime) {
+        let statusRes = await fetch(
+          `https://graph.facebook.com/v22.0/${containerId}?fields=status_code&access_token=${token}`,
+        );
+        if (!statusRes.ok) {
+          statusRes = await fetch(
+            `https://graph.instagram.com/v22.0/${containerId}?fields=status_code&access_token=${token}`,
+          );
+        }
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          console.log(`Instagram container ${containerId} status: ${statusData.status_code}`);
+          if (statusData.status_code === "FINISHED") break;
+          if (statusData.status_code === "ERROR") {
+            throw new Error("Instagram media processing failed. Please try a different image.");
+          }
+        }
+        await new Promise((r) => setTimeout(r, pollInterval));
+        waited += pollInterval;
+      }
+      if (waited >= maxWaitTime) {
+        throw new Error("Instagram media processing timed out. Please try again.");
+      }
+
+      // Step 3: Publish the media container (try Facebook Graph API first)
+      const publishEndpoints = [
+        `https://graph.facebook.com/v22.0/${userId}/media_publish`,
+        `https://graph.instagram.com/v22.0/${userId}/media_publish`,
+        `https://graph.instagram.com/v22.0/me/media_publish`,
+      ];
+
+      let publishResponse: Response | null = null;
+      let lastPublishError: any = null;
+
+      for (const endpoint of publishEndpoints) {
+        console.log(`📸 Instagram: Trying publish at ${endpoint}`);
+        publishResponse = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
             access_token: token,
             creation_id: containerId,
           }).toString(),
-        },
-      );
+        });
 
-      if (!publishResponse.ok) {
-        const errorData = await publishResponse.json();
-        console.error("Instagram Publish API Error:", errorData);
+        if (publishResponse.ok) {
+          console.log(`📸 Instagram: Published successfully via ${endpoint}`);
+          break;
+        }
 
-        if (errorData.error?.code === 190) {
+        const pubError = await publishResponse.json();
+        lastPublishError = pubError;
+        console.error(`📸 Instagram Publish Error (${endpoint}):`, JSON.stringify(pubError));
+
+        if (pubError.error?.code === 190) break;
+      }
+
+      if (!publishResponse || !publishResponse.ok) {
+        const errorData = lastPublishError;
+        console.error("📸 Instagram: All publish endpoints failed. Last error:", JSON.stringify(errorData));
+
+        if (errorData?.error?.code === 190) {
           throw new Error("Instagram session expired during publishing.");
         }
-        if (errorData.error?.code === 100) {
+        if (errorData?.error?.code === 100) {
           throw new Error(
             "Failed to publish Instagram content. Please try again.",
           );
@@ -466,12 +572,12 @@ export class SocialMediaService {
 
         throw new Error(
           `Instagram publishing failed: ${
-            errorData.error?.message || "Unknown error"
+            errorData?.error?.message || "Unknown error"
           }`,
         );
       }
 
-      const publishResult = await publishResponse.json();
+      const publishResult = await publishResponse!.json();
       console.log("Instagram post successful:", publishResult.id);
 
       return { postId: publishResult.id || `ig_${Date.now()}` };
@@ -803,7 +909,7 @@ export class SocialMediaService {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
-          "User-Agent": "RestaurantFlowAI/1.0",
+          "User-Agent": "RealEstateAI/1.0",
         },
         body: JSON.stringify(tweetData),
       });
@@ -909,7 +1015,7 @@ export class SocialMediaService {
         method: "DELETE",
         headers: {
           Authorization: authHeader["Authorization"],
-          "User-Agent": "RestaurantFlowAI/1.0",
+          "User-Agent": "RealEstateAI/1.0",
         },
       });
 
@@ -1005,7 +1111,7 @@ export class SocialMediaService {
 
         // Validate Facebook token by making a simple API call
         const response = await fetch(
-          `https://graph.facebook.com/v18.0/me?access_token=${token}`,
+          `https://graph.facebook.com/v22.0/me?access_token=${token}`,
         );
         return response.ok;
       }
@@ -1080,7 +1186,7 @@ export class SocialMediaService {
 
   async getFacebookPageInfo(
     accessToken?: string,
-  ): Promise<{ id: string; name: string; category: string }[]> {
+  ): Promise<{ id: string; name: string; category: string; access_token?: string }[]> {
     try {
       const token = accessToken || process.env.FACEBOOK_USER_TOKEN;
       console.log("🔍 Facebook Debug - Token available:", !!token);
@@ -1093,9 +1199,9 @@ export class SocialMediaService {
         throw new SocialMediaError("Facebook access token not available", 401);
       }
 
-      console.log("🔍 Facebook Debug - Making API call to me/accounts");
+      console.log("🔍 Facebook Debug - Making API call to me/accounts with fields");
       const response = await fetch(
-        `https://graph.facebook.com/v18.0/me/accounts?access_token=${token}`,
+        `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,category,access_token&limit=100&access_token=${token}`,
       );
 
       console.log("🔍 Facebook Debug - Response status:", response.status);
@@ -1110,16 +1216,114 @@ export class SocialMediaService {
 
       const result = await response.json();
       console.log("🔍 Facebook Debug - Pages found:", result.data?.length || 0);
-      console.log("🔍 Facebook Debug - Pages data:", result.data);
 
-      return result.data.map((page: any) => ({
-        id: page.id,
-        name: page.name,
-        category: page.category,
-      }));
+      if (result.data && result.data.length > 0) {
+        return result.data.map((page: any) => ({
+          id: page.id,
+          name: page.name,
+          category: page.category,
+          access_token: page.access_token,
+        }));
+      }
+
+      console.log("🔍 Facebook Debug - me/accounts returned 0, trying me?fields=accounts approach");
+      const altResponse = await fetch(
+        `https://graph.facebook.com/v22.0/me?fields=accounts.limit(100){id,name,category,access_token}&access_token=${token}`,
+      );
+
+      if (altResponse.ok) {
+        const altResult = await altResponse.json();
+        const altPages = altResult.accounts?.data || [];
+        console.log("🔍 Facebook Debug - Alternative approach found:", altPages.length, "pages");
+        if (altPages.length > 0) {
+          return altPages.map((page: any) => ({
+            id: page.id,
+            name: page.name,
+            category: page.category,
+            access_token: page.access_token,
+          }));
+        }
+      }
+
+      const clientId = process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID;
+      const clientSecret = process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET;
+      
+      if (clientId && clientSecret) {
+        console.log("🔍 Facebook Debug - Trying Debug Token fallback to discover pages...");
+        try {
+          const appAccessToken = `${clientId}|${clientSecret}`;
+          const debugResp = await fetch(
+            `https://graph.facebook.com/v22.0/debug_token?input_token=${token}&access_token=${encodeURIComponent(appAccessToken)}`
+          );
+          if (debugResp.ok) {
+            const debugData = await debugResp.json();
+            const granularScopes = debugData.data?.granular_scopes || [];
+            console.log("🔍 Facebook Debug Token - granular_scopes:", JSON.stringify(granularScopes));
+            
+            const pageRelatedScopes = ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement', 'pages_manage_metadata'];
+            const pageIds = new Set<string>();
+            for (const scope of granularScopes) {
+              if (pageRelatedScopes.includes(scope.scope) && scope.target_ids && Array.isArray(scope.target_ids)) {
+                for (const id of scope.target_ids) {
+                  pageIds.add(String(id));
+                }
+              }
+            }
+            
+            if (pageIds.size > 0) {
+              console.log(`✅ Facebook Debug Token - Found ${pageIds.size} authorized page IDs:`, [...pageIds]);
+              const resolvedPages: { id: string; name: string; category: string; access_token?: string }[] = [];
+              
+              for (const pageId of pageIds) {
+                try {
+                  const pageResp = await fetch(
+                    `https://graph.facebook.com/v22.0/${pageId}?fields=id,name,category,access_token&access_token=${token}`
+                  );
+                  if (pageResp.ok) {
+                    const pageData = await pageResp.json();
+                    if (pageData.id) {
+                      resolvedPages.push({
+                        id: pageData.id,
+                        name: pageData.name || `Page ${pageData.id}`,
+                        category: pageData.category || 'Unknown',
+                        access_token: pageData.access_token || token,
+                      });
+                      console.log(`✅ Resolved page via Debug Token: ${pageData.name} (${pageData.id})`);
+                    }
+                  }
+                } catch (pageErr) {
+                  console.warn(`⚠️ Could not fetch page ${pageId}:`, pageErr);
+                }
+              }
+              
+              if (resolvedPages.length > 0) {
+                return resolvedPages;
+              }
+            }
+          }
+        } catch (debugError) {
+          console.warn("⚠️ Facebook Debug Token fallback error:", debugError);
+        }
+      }
+
+      console.log("🔍 Facebook Debug - No pages found via any method (including Debug Token)");
+      return [];
     } catch (error) {
       console.error("Error fetching Facebook pages:", error);
       throw error;
+    }
+  }
+
+  private encodeMediaUrl(url: string): string {
+    if (!url) return url;
+    if (!url.startsWith("http")) return url;
+    
+    try {
+      const urlObj = new URL(url);
+      urlObj.pathname = urlObj.pathname.split('/').map(segment => encodeURIComponent(decodeURIComponent(segment))).join('/');
+      return urlObj.toString();
+    } catch (e) {
+      return encodeURI(url);
     }
   }
 
@@ -1134,9 +1338,13 @@ export class SocialMediaService {
     try {
       const token = accessToken || process.env.FACEBOOK_USER_TOKEN;
       const presetPageAccessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+      
+      // Support multiple images from options.photoUrls
+      const effectiveImageUrl = imageUrl || (options?.photoUrls && options.photoUrls.length > 0 ? options.photoUrls[0] : undefined);
+
       console.log("🔍 Facebook Post Debug - Token available:", !!token);
       console.log("🔍 Facebook Post Debug - Page ID:", pageId);
-      console.log("🔍 Facebook Post Debug - Content length:", content?.length);
+      console.log("🔍 Facebook Post Debug - Effective Image URL:", effectiveImageUrl);
 
       if (!token) {
         throw new Error("Facebook access token not available");
@@ -1151,34 +1359,21 @@ export class SocialMediaService {
         formData.append("message", content);
         formData.append("access_token", presetPageAccessToken);
 
-        // Handle media from library (options) or direct upload (imageUrl)
-        // Note: Facebook Graph API supports multi-photo, but current implementation uses first asset only
-        if (options?.photoUrls && options.photoUrls.length > 1) {
-          console.warn(
-            `Facebook posting: ${options.photoUrls.length} photos selected, using first only. Multi-asset support coming soon.`,
-          );
-        }
-        if (options?.videoUrls && options.videoUrls.length > 0) {
-          console.warn(
-            `Facebook posting: Videos not yet supported via media library. Use direct upload for now.`,
-          );
-        }
-
-        const photoUrl = imageUrl || options?.photoUrls?.[0];
-        if (photoUrl) {
+        // Use the effective image URL
+        if (effectiveImageUrl) {
           const deploymentUrl =
             process.env.REPLIT_DEPLOYMENT_URL ||
             process.env.CLIENT_URL ||
             "http://localhost:5000";
-          const fullImageUrl = photoUrl.startsWith("http")
-            ? photoUrl
-            : `${baseUrl || deploymentUrl}${photoUrl}`;
+          const fullImageUrl = effectiveImageUrl.startsWith("http")
+            ? effectiveImageUrl
+            : `${baseUrl || deploymentUrl}${effectiveImageUrl}`;
           formData.append("url", fullImageUrl);
         }
 
-        const endpoint = photoUrl
-          ? `https://graph.facebook.com/v18.0/${pageId}/photos`
-          : `https://graph.facebook.com/v18.0/${pageId}/feed`;
+        const endpoint = effectiveImageUrl
+          ? `https://graph.facebook.com/v22.0/${pageId}/photos`
+          : `https://graph.facebook.com/v22.0/${pageId}/feed`;
 
         const response = await fetch(endpoint, {
           method: "POST",
@@ -1205,7 +1400,7 @@ export class SocialMediaService {
       // First get the page access token
       console.log("🔍 Facebook Post Debug - Fetching page access token");
       const pagesResponse = await fetch(
-        `https://graph.facebook.com/v18.0/me/accounts?access_token=${token}`,
+        `https://graph.facebook.com/v22.0/me/accounts?access_token=${token}`,
       );
 
       console.log(
@@ -1257,7 +1452,7 @@ export class SocialMediaService {
           "🔍 Facebook Post Debug - Page not in me/accounts. Trying /{pageId}?fields=name,access_token",
         );
         const pageInfoResp = await fetch(
-          `https://graph.facebook.com/v18.0/${pageId}?fields=name,access_token&access_token=${token}`,
+          `https://graph.facebook.com/v22.0/${pageId}?fields=name,access_token&access_token=${token}`,
         );
         console.log(
           "🔍 Facebook Post Debug - Direct page info status:",
@@ -1294,40 +1489,32 @@ export class SocialMediaService {
         );
       }
 
-      // Prepare the request using form data for better compatibility
+      // Handle multiple images: if more than one photoUrl, use multi-photo post
+      const photoUrls = options?.photoUrls || (imageUrl ? [imageUrl] : []);
+      if (photoUrls.length > 1) {
+        return this.postMultiPhotoToFacebookPage(pageId, content, photoUrls, pageAccessToken);
+      }
+
+            // Prepare the request using form data for better compatibility
       const formData = new URLSearchParams();
       formData.append("message", content);
       formData.append("access_token", pageAccessToken);
 
-      // Handle media from library (options) or direct upload (imageUrl)
-      // Note: Facebook Graph API supports multi-photo, but current implementation uses first asset only
-      if (options?.photoUrls && options.photoUrls.length > 1) {
-        console.warn(
-          `Facebook posting: ${options.photoUrls.length} photos selected, using first only. Multi-asset support coming soon.`,
-        );
-      }
-      if (options?.videoUrls && options.videoUrls.length > 0) {
-        console.warn(
-          `Facebook posting: Videos not yet supported via media library. Use direct upload for now.`,
-        );
-      }
-
-      const photoUrl = imageUrl || options?.photoUrls?.[0];
-      if (photoUrl) {
+      if (effectiveImageUrl) {
         const deploymentUrl =
           process.env.REPLIT_DEPLOYMENT_URL ||
           process.env.CLIENT_URL ||
           "http://localhost:5000";
-        const fullImageUrl = photoUrl.startsWith("http")
-          ? photoUrl
-          : `${baseUrl || deploymentUrl}${photoUrl}`;
+        const fullImageUrl = effectiveImageUrl.startsWith("http")
+          ? effectiveImageUrl
+          : `${baseUrl || deploymentUrl}${effectiveImageUrl}`;
         formData.append("url", fullImageUrl);
       }
 
       // Make the API call to post to the page
-      const endpoint = photoUrl
-        ? `https://graph.facebook.com/v18.0/${pageId}/photos`
-        : `https://graph.facebook.com/v18.0/${pageId}/feed`;
+      const endpoint = effectiveImageUrl
+        ? `https://graph.facebook.com/v22.0/${pageId}/photos`
+        : `https://graph.facebook.com/v22.0/${pageId}/feed`;
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -1381,7 +1568,83 @@ export class SocialMediaService {
     }
   }
 
-  async getTikTokAccessToken(userId: string): Promise<{
+  /**
+   * Post multiple photos to a Facebook page as a single post
+   */
+  private async postMultiPhotoToFacebookPage(
+    pageId: string,
+    content: string,
+    photoUrls: string[],
+    pageAccessToken: string,
+  ): Promise<{ postId: string }> {
+    try {
+      console.log(`FB: Starting multi-photo post with ${photoUrls.length} images`);
+      const deploymentUrl =
+        process.env.REPLIT_DEPLOYMENT_URL ||
+        process.env.CLIENT_URL ||
+        "http://localhost:5000";
+
+      // Step 1: Upload each photo as unpublished
+      const attachedMedia: Array<{ media_fbid: string }> = [];
+      for (const photoUrl of photoUrls) {
+        const fullImageUrl = photoUrl.startsWith("http")
+          ? photoUrl
+          : `${deploymentUrl}${photoUrl}`;
+
+        const uploadFormData = new URLSearchParams();
+        uploadFormData.append("url", fullImageUrl);
+        uploadFormData.append("published", "false");
+        uploadFormData.append("access_token", pageAccessToken);
+
+        const uploadRes = await fetch(`https://graph.facebook.com/v22.0/${pageId}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: uploadFormData.toString(),
+        });
+
+        const uploadResult = await uploadRes.json();
+        if (!uploadRes.ok) {
+          console.error("FB Multi-photo: Photo upload failed", uploadResult);
+          continue;
+        }
+        attachedMedia.push({ media_fbid: uploadResult.id });
+      }
+
+      if (attachedMedia.length === 0) {
+        throw new Error("Failed to upload any photos for multi-photo post");
+      }
+
+      // Step 2: Create the post with all photo IDs attached
+      const postFormData = new URLSearchParams();
+      postFormData.append("message", content);
+      postFormData.append("access_token", pageAccessToken);
+      attachedMedia.forEach((media, index) => {
+        postFormData.append(`attached_media[${index}]`, JSON.stringify(media));
+      });
+
+      const postRes = await fetch(`https://graph.facebook.com/v22.0/${pageId}/feed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: postFormData.toString(),
+      });
+
+      const postResult = await postRes.json();
+      if (!postRes.ok) {
+        throw new SocialMediaError(
+          postResult.error?.message || "Failed to create multi-photo post",
+          postRes.status,
+          postResult
+        );
+      }
+
+      return { postId: postResult.id };
+    } catch (error) {
+      console.error("Facebook multi-photo post error:", error);
+      throw error;
+    }
+  }
+
+    async getTikTokAccessToken(userId: string): Promise<{
     accessToken: string;
     refreshToken?: string;
     openId?: string;
@@ -1511,6 +1774,13 @@ export class SocialMediaService {
         throw new Error("Video file exceeds TikTok's 4GB limit");
       }
 
+      // TikTok recommended chunk size: 10MB per chunk
+      const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+      const totalChunkCount = Math.ceil(videoSize / CHUNK_SIZE);
+      const chunkSize = Math.min(CHUNK_SIZE, videoSize); // declared chunk_size (all chunks same size except last)
+
+      console.log(`🎵 Video: ${(videoSize / (1024 * 1024)).toFixed(2)} MB, ${totalChunkCount} chunk(s) of ${(chunkSize / (1024 * 1024)).toFixed(0)} MB`);
+
       // Initialize video post using FILE_UPLOAD method
       console.log("🎵 Initializing TikTok FILE_UPLOAD...");
       
@@ -1524,7 +1794,7 @@ export class SocialMediaService {
           },
           body: JSON.stringify({
             post_info: {
-              title: title.substring(0, 2200), // TikTok title limit
+              title: title.substring(0, 2200),
               privacy_level: privacyLevel,
               disable_duet: options?.disableDuet ?? false,
               disable_comment: options?.disableComment ?? false,
@@ -1533,8 +1803,8 @@ export class SocialMediaService {
             source_info: {
               source: "FILE_UPLOAD",
               video_size: videoSize,
-              chunk_size: videoSize, // Upload as single chunk for simplicity
-              total_chunk_count: 1,
+              chunk_size: chunkSize,
+              total_chunk_count: totalChunkCount,
             },
           }),
         },
@@ -1564,26 +1834,37 @@ export class SocialMediaService {
       const uploadUrl = initResult.data.upload_url;
       
       console.log("🎵 TikTok video init successful, publish_id:", publishId);
-      console.log("🎵 Upload URL received, uploading video...");
+      console.log(`🎵 Uploading ${totalChunkCount} chunk(s) to TikTok...`);
 
-      // Upload the video binary to TikTok's upload URL
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "video/mp4",
-          "Content-Length": videoSize.toString(),
-          "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
-        },
-        body: videoBuffer,
-      });
+      // Upload video in chunks per TikTok API specification
+      for (let chunkIndex = 0; chunkIndex < totalChunkCount; chunkIndex++) {
+        const start = chunkIndex * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, videoSize);
+        const chunk = videoBuffer.subarray(start, end);
+        const contentRangeHeader = `bytes ${start}-${end - 1}/${videoSize}`;
 
-      if (!uploadResponse.ok) {
-        const uploadError = await uploadResponse.text();
-        console.error("TikTok video upload failed:", uploadError);
-        throw new Error(`TikTok video upload failed: ${uploadResponse.status} ${uploadError}`);
+        console.log(`🎵 Uploading chunk ${chunkIndex + 1}/${totalChunkCount}: ${contentRangeHeader}`);
+
+        const uploadResponse = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "video/mp4",
+            "Content-Length": chunk.length.toString(),
+            "Content-Range": contentRangeHeader,
+          },
+          body: chunk,
+        });
+
+        if (!uploadResponse.ok) {
+          const uploadError = await uploadResponse.text();
+          console.error(`TikTok chunk ${chunkIndex + 1} upload failed:`, uploadError);
+          throw new Error(`TikTok video upload failed on chunk ${chunkIndex + 1}: ${uploadResponse.status} ${uploadError}`);
+        }
+
+        console.log(`🎵 Chunk ${chunkIndex + 1}/${totalChunkCount} uploaded successfully`);
       }
 
-      console.log("🎵 Video uploaded successfully to TikTok!");
+      console.log("🎵 All chunks uploaded to TikTok!");
 
       // Check post status
       const statusResult = await this.checkTikTokPostStatus(accessToken, publishId);
@@ -1719,3 +2000,42 @@ export class SocialMediaService {
 }
 
 export const socialMediaService = new SocialMediaService();
+
+export async function postToWhatsApp(
+  content: string,
+  recipientPhone: string,
+  phoneNumberId?: string,
+  accessToken?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const resolvedPhoneNumberId = phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const resolvedAccessToken = accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+
+    if (!resolvedPhoneNumberId || !resolvedAccessToken) {
+      return { success: false, error: "WhatsApp credentials not configured. Set phoneNumberId and accessToken in settings or environment variables." };
+    }
+
+    const cleanedPhone = recipientPhone.replace(/\D/g, "");
+    if (!cleanedPhone) {
+      return { success: false, error: "Invalid phone number" };
+    }
+
+    const result = await whatsappService.sendTextMessage(
+      resolvedPhoneNumberId,
+      resolvedAccessToken,
+      cleanedPhone,
+      content
+    );
+
+    return {
+      success: true,
+      messageId: result.messages?.[0]?.id,
+    };
+  } catch (error: any) {
+    console.error("postToWhatsApp error:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to send WhatsApp message",
+    };
+  }
+}

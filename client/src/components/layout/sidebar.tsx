@@ -7,10 +7,23 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { cn, getUserDisplayName, getUserInitials } from "@/lib/utils";
+import { useBusinessType, BUSINESS_TYPE_OPTIONS, BusinessType } from "@/lib/businessContext";
 import {
+  BarChart3,
+  BookOpen,
   Bot,
+  CalendarClock,
   CalendarDays,
   Camera,
   ChevronDown,
@@ -18,12 +31,18 @@ import {
   ChevronRight,
   FileText,
   Home,
+  MapPin,
   Menu,
+  MessageSquare,
+  Package,
   Palette,
+  Plus,
+  Radio,
   Search,
   Settings,
   Share2,
   Sparkles,
+  Target,
   Video,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -32,10 +51,25 @@ import { Link, useLocation } from "wouter";
 const navigationItems = [
   { icon: Home, label: "Dashboard", href: "/dashboard", key: "dashboard", isPageLink: true },
   {
+    icon: MessageSquare,
+    label: "AI Assistant",
+    href: "/ai-assistant",
+    key: "ai-assistant",
+    isPageLink: true,
+    badge: "NEW",
+  },
+  {
     icon: Bot,
     label: "AI Content Generator",
     href: "/dashboard#ai-content",
     key: "ai-content",
+    isPageLink: true,
+  },
+  {
+    icon: Package,
+    label: "Catalog / Menu",
+    href: "/menu-items",
+    key: "menu-items",
     isPageLink: true,
   },
   {
@@ -53,6 +87,13 @@ const navigationItems = [
     isPageLink: true,
   },
   {
+    icon: CalendarClock,
+    label: "Events",
+    href: "/events",
+    key: "events",
+    isPageLink: true,
+  },
+  {
     icon: Video,
     label: "Avatar & Video",
     key: "avatar-video",
@@ -63,13 +104,6 @@ const navigationItems = [
         label: "Photo Avatars",
         href: "/dashboard#photo-avatars",
         key: "photo-avatars",
-        isPageLink: true,
-      },
-      {
-        icon: Video,
-        label: "Video Avatars",
-        href: "/dashboard#video-avatars",
-        key: "video-avatars",
         isPageLink: true,
       },
       {
@@ -87,9 +121,26 @@ const navigationItems = [
         key: "video-generation",
         isPageLink: true,
       },
+      {
+        icon: Radio,
+        label: "Streaming Avatar",
+        href: "/dashboard#streaming-avatar",
+        key: "streaming-avatar",
+        isPageLink: true,
+      },
+      {
+        icon: Home,
+        label: "Property Tours",
+        href: "/dashboard#property-tour",
+        key: "property-tour",
+        isPageLink: true,
+        badge: "NEW",
+        showOnlyFor: ["real_estate"],
+      },
     ],
   },
   { icon: Search, label: "SEO Optimizer", href: "/dashboard#seo", key: "seo", isPageLink: true },
+  { icon: MapPin, label: "Local Market Tools", href: "/dashboard#market", key: "market", isPageLink: true },
   {
     icon: Palette,
     label: "Brand Settings",
@@ -97,6 +148,27 @@ const navigationItems = [
     key: "brand-settings",
     isPageLink: true,
   },
+  { icon: BarChart3, label: "Analytics", href: "/dashboard#analytics", key: "analytics", isPageLink: true },
+  {
+    icon: Target,
+    label: "Advanced Advertising",
+    href: "/dashboard#advertising",
+    key: "advertising",
+    isPageLink: true,
+  },
+  {
+    icon: BookOpen,
+    label: "Help & Guides",
+    href: "/help",
+    key: "help",
+    isPageLink: true,
+  },
+];
+
+const quickActions = [
+  { icon: Plus, label: "New Blog Post", href: "/dashboard?type=blog#ai-content", contentType: "blog" },
+  { icon: Camera, label: "Social Post", href: "/dashboard?type=social#ai-content", contentType: "social" },
+  { icon: Home, label: "Property Feature", href: "/dashboard?type=property_feature#ai-content", contentType: "property_feature" },
 ];
 
 interface SidebarProps {
@@ -116,9 +188,22 @@ function SidebarContent({
   isMobile = false,
   onClose,
 }: SidebarContentProps) {
+  const { toast } = useToast();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [expandedMenus, setExpandedMenus] = useState<string[]>(["avatar-video"]);
+  const { businessType, setBusinessType } = useBusinessType();
+
+  const currentBusinessOption = BUSINESS_TYPE_OPTIONS.find((o) => o.value === businessType) || BUSINESS_TYPE_OPTIONS[0];
+
+  const handleAdvancedAdvertisingClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    toast({
+      title: "Coming Soon",
+      description:
+        "Advanced Advertising features are currently in development and will be available soon!",
+    });
+  };
 
   const handleNavClick = () => {
     if (isMobile && onClose) {
@@ -201,7 +286,7 @@ function SidebarContent({
     <>
       {/* Header */}
       <div
-        className={cn("border-b border-border", isCollapsed ? "p-4" : "p-6")}
+        className={cn("border-b border-border", isCollapsed ? "p-4" : "p-4 px-5")}
       >
         <div
           className={cn(
@@ -209,26 +294,81 @@ function SidebarContent({
             isCollapsed ? "justify-center" : "space-x-3"
           )}
         >
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-lg">
-            🚀
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
+            <img
+              src="/my-golden-brick-logo.png"
+              alt="My Golden Brick LLC Logo"
+              className="w-8 h-8 object-contain"
+            />
           </div>
           {!isCollapsed && (
             <div>
               <h1
-                className="font-bold text-xl bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600 bg-clip-text text-transparent"
+                className="font-bold text-xl bg-gradient-to-b from-yellow-300 via-yellow-500 to-yellow-600 bg-clip-text text-transparent"
+                style={{
+                  textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                }}
               >
-                MarketingFlow
+                My Golden Brick LLC
               </h1>
             </div>
           )}
         </div>
+
+        {/* Business Type Switcher */}
+        {!isCollapsed && (
+          <div className="mt-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-business-type-switcher"
+                  className="w-full justify-between text-xs h-8 border-yellow-500/30 hover:border-yellow-500/60"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>{currentBusinessOption.icon}</span>
+                    <span>{currentBusinessOption.label}</span>
+                  </span>
+                  <ChevronDown className="w-3 h-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel className="text-xs text-gray-500">Switch Business Type</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {BUSINESS_TYPE_OPTIONS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    data-testid={`menu-item-business-type-${opt.value}`}
+                    onClick={() => setBusinessType(opt.value as BusinessType)}
+                    className={cn(
+                      "cursor-pointer",
+                      businessType === opt.value && "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300"
+                    )}
+                  >
+                    <span className="mr-2">{opt.icon}</span>
+                    {opt.label}
+                    {businessType === opt.value && (
+                      <span className="ml-auto text-xs text-amber-500">✓</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6 overflow-y-auto">
         <div className="space-y-1">
           {navigationItems.map((item: any) => {
+            if (item.showOnlyFor && !item.showOnlyFor.includes(businessType)) {
+              return null;
+            }
+
             const isActive = activeView === item.key;
+            const isAdvancedAdvertising = item.key === "advertising";
             const hasSubItems = item.isCollapsible && item.subItems;
             const isExpanded = isMenuExpanded(item.key);
             const hasActiveSubItem = isSubItemActive(item);
@@ -264,7 +404,7 @@ function SidebarContent({
                   </Button>
                   {!isCollapsed && isExpanded && (
                     <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
-                      {item.subItems.map((subItem: any) => {
+                      {item.subItems.filter((subItem: any) => !subItem.showOnlyFor || subItem.showOnlyFor.includes(businessType)).map((subItem: any) => {
                         const isSubActive = activeView === subItem.key;
                         return (
                           <Button
@@ -314,7 +454,13 @@ function SidebarContent({
                 data-testid={`nav-${item.label
                   .toLowerCase()
                   .replace(/\s+/g, "-")}`}
-                onClick={(e) => navigateTo(item.href, e)}
+                onClick={(e) => {
+                  if (isAdvancedAdvertising) {
+                    handleAdvancedAdvertisingClick(e);
+                  } else {
+                    navigateTo(item.href, e);
+                  }
+                }}
                 title={isCollapsed ? item.label : undefined}
               >
                 <item.icon
@@ -323,12 +469,44 @@ function SidebarContent({
                 {!isCollapsed && (
                   <span className="flex items-center gap-2 flex-1">
                     {item.label}
+                    {item.badge && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] px-1.5 py-0 bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                      >
+                        {item.badge}
+                      </Badge>
+                    )}
                   </span>
                 )}
               </Button>
             );
           })}
         </div>
+
+        {!isCollapsed && (
+          <div className="mt-8">
+            <h3 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              Quick Actions
+            </h3>
+            <div className="space-y-1">
+              {quickActions.map((action) => (
+                <Button
+                  key={action.label}
+                  variant="ghost"
+                  className="w-full justify-start text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  data-testid={`quick-${action.label
+                    .toLowerCase()
+                    .replace(/\s+/g, "-")}`}
+                  onClick={(e) => navigateTo(action.href, e)}
+                >
+                  <action.icon className="mr-3 h-4 w-4" />
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* User Profile */}
@@ -397,13 +575,13 @@ export function Sidebar({ activeView = "dashboard" }: SidebarProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden fixed top-3 left-3 z-50 bg-card border border-border shadow-lg h-12 w-12 rounded-xl active:scale-95 transition-transform"
+            className="lg:hidden fixed top-4 left-4 z-50 bg-card border border-border shadow-md"
             data-testid="button-mobile-menu"
           >
-            <Menu className="h-6 w-6" />
+            <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="w-[280px] p-0">
+        <SheetContent side="left" className="w-64 p-0">
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation Menu</SheetTitle>
           </SheetHeader>

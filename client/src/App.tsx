@@ -5,13 +5,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/useAuth";
 import { DemoProvider } from "@/contexts/DemoContext";
+import { BusinessTypeProvider } from "@/lib/businessContext";
+import MenuItemsPage from "@/pages/menu-items";
 import { useTemplateDataImport } from "@/hooks/useTemplateDataImport";
+import AiAssistantPage from "@/pages/ai-assistant";
 import Dashboard from "@/pages/dashboard";
 import SocialMediaPage from "@/pages/social-media";
 import SettingsPage from "@/pages/settings";
 import LoginPage from "@/pages/login";
-import SignupPage from "@/pages/signup";
-import VerifyEmailPage from "@/pages/verify-email";
 import IntegrationPage from "@/pages/integration";
 import VoiceLibrary from "@/pages/VoiceLibrary";
 import ProfilePage from "@/pages/profile";
@@ -19,10 +20,11 @@ import MobileUploadPage from "@/pages/mobile-upload";
 import EventsCalendarPage from "@/pages/events-calendar";
 import UnifiedCalendarPage from "@/pages/unified-calendar";
 import TemplateStudioPage from "@/pages/template-studio";
-import AdminPage from "@/pages/admin";
+import HelpGuidesPage from "@/pages/help-guides";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 import { DemoModeBanner } from "@/components/shared/demo-mode-banner";
+import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
 
 function TemplateDataImporter() {
   useTemplateDataImport();
@@ -33,8 +35,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
-      <Route path="/signup" component={SignupPage} />
-      <Route path="/verify-email" component={VerifyEmailPage} />
       <Route path="/integration" component={IntegrationPage} />
       <Route path="/mobile-upload/:sessionId" component={MobileUploadPage} />
       <Route path="/">
@@ -82,11 +82,17 @@ function Router() {
           <TemplateStudioPage />
         </ProtectedRoute>
       </Route>
-      <Route path="/admin">
+      <Route path="/ai-assistant">
         <ProtectedRoute>
-          <AdminPage />
+          <AiAssistantPage />
         </ProtectedRoute>
       </Route>
+      <Route path="/menu-items">
+        <ProtectedRoute>
+          <MenuItemsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/help" component={HelpGuidesPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -97,13 +103,17 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <TemplateDataImporter />
-        <DemoProvider>
-          <TooltipProvider>
-            <DemoModeBanner />
-            <Toaster />
-            <Router />
-          </TooltipProvider>
-        </DemoProvider>
+        <BusinessTypeProvider>
+          <DemoProvider>
+            <TooltipProvider>
+              <ConfirmDialogProvider>
+                <DemoModeBanner />
+                <Toaster />
+                <Router />
+              </ConfirmDialogProvider>
+            </TooltipProvider>
+          </DemoProvider>
+        </BusinessTypeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

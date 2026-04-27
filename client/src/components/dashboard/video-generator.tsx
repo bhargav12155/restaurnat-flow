@@ -23,7 +23,6 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { useBusinessType } from "@/hooks/useBusinessType";
 import { apiRequest } from "@/lib/queryClient";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -43,6 +42,8 @@ import {
   Wand2,
   X,
   Youtube,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { OmahaVideoTemplates } from "./omaha-video-templates";
@@ -73,41 +74,13 @@ interface VideoContent {
   createdAt: string;
 }
 
-// Dynamic video types based on business type - populated in component
-const getVideoTypes = (businessType: string) => {
-  if (businessType === 'restaurant') {
-    return [
-      { value: "menu_feature", label: "Menu Feature", icon: "🍽️" },
-      { value: "restaurant_tour", label: "Restaurant Tour", icon: "🏠" },
-      { value: "chef_spotlight", label: "Chef Spotlight", icon: "👨‍🍳" },
-      { value: "special_event", label: "Special Event", icon: "🎉" },
-      { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
-    ];
-  } else if (businessType === 'home_services') {
-    return [
-      { value: "service_feature", label: "Service Feature", icon: "🔧" },
-      { value: "business_tour", label: "Business Tour", icon: "🏠" },
-      { value: "team_spotlight", label: "Team Spotlight", icon: "👷" },
-      { value: "special_event", label: "Special Offer", icon: "🎉" },
-      { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
-    ];
-  } else if (businessType === 'real_estate') {
-    return [
-      { value: "property_feature", label: "Property Feature", icon: "🏡" },
-      { value: "neighborhood_tour", label: "Neighborhood Tour", icon: "🏠" },
-      { value: "agent_spotlight", label: "Agent Spotlight", icon: "👔" },
-      { value: "open_house", label: "Open House", icon: "🎉" },
-      { value: "market_update", label: "Market Update", icon: "📊" },
-    ];
-  }
-  return [
-    { value: "product_feature", label: "Product Feature", icon: "📦" },
-    { value: "business_tour", label: "Business Tour", icon: "🏠" },
-    { value: "team_spotlight", label: "Team Spotlight", icon: "👥" },
-    { value: "special_event", label: "Special Event", icon: "🎉" },
-    { value: "seasonal_promo", label: "Seasonal Promo", icon: "🍂" },
-  ];
-};
+const videoTypes = [
+  { value: "market_update", label: "Market Update", icon: "📊" },
+  { value: "neighborhood_tour", label: "Neighborhood Tour", icon: "🏘️" },
+  { value: "buyer_tips", label: "Buyer Tips", icon: "💡" },
+  { value: "seller_guide", label: "Seller Guide", icon: "🏠" },
+  { value: "moving_guide", label: "Moving Guide", icon: "📦" },
+];
 
 const videoPlatforms = [
   {
@@ -139,8 +112,6 @@ const neighborhoods = [
 ];
 
 export function VideoGenerator() {
-  const { businessType } = useBusinessType();
-  const videoTypes = getVideoTypes(businessType || 'restaurant');
   const [selectedAvatar, setSelectedAvatar] = useState<string>("");
   const [avatarType, setAvatarType] = useState<
     "public" | "talking_photo" | "custom"
@@ -161,6 +132,16 @@ export function VideoGenerator() {
   const [uploadedVideo, setUploadedVideo] = useState<string | null>(null);
   const [uploadVideoTitle, setUploadVideoTitle] = useState("");
   const [uploadVideoDescription, setUploadVideoDescription] = useState("");
+
+  // SJinn AI state
+  const [aiEngine, setAiEngine] = useState<"heygen" | "sjinn_auto" | "sjinn_veo3" | "sjinn_sora2">("heygen");
+  const [sjinnChatId, setSjinnChatId] = useState<string | null>(null);
+  const [sjinnStatus, setSjinnStatus] = useState<"idle" | "pending" | "processing" | "completed" | "failed">("idle");
+  const [sjinnVideoUrl, setSjinnVideoUrl] = useState<string | null>(null);
+  const sjinnPollRef = useRef<NodeJS.Timeout | null>(null);
+  const sjinnStartTimeRef = useRef<number | null>(null);
+  const [sjinnElapsed, setSjinnElapsed] = useState(0);
+  const sjinnElapsedRef = useRef<NodeJS.Timeout | null>(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -285,6 +266,96 @@ export function VideoGenerator() {
         description: error.message || "Failed to create video",
         variant: "destructive",
       });
+    },
+  });
+
+  // SJinn polling helpers
+  const stopSjinnPolling = () => {
+    if (sjinnPollRef.current) {
+      clearInterval(sjinnPollRef.current);
+      sjinnPollRef.current = null;
+    }
+    if (sjinnElapsedRef.current) {
+      clearInterval(sjinnElapsedRef.current);
+      sjinnElapsedRef.current = null;
+    }
+    sjinnStartTimeRef.current = null;
+    setSjinnElapsed(0);
+  };
+
+  const cancelSjinnGeneration = () => {
+    stopSjinnPolling();
+    setSjinnStatus("idle");
+    setSjinnChatId(null);
+    setSjinnVideoUrl(null);
+    toast({ title: "Video Generation Cancelled", description: "SJinn video generation has been cancelled." });
+  };
+
+  const startSjinnPolling = (chatId: string) => {
+    stopSjinnPolling();
+    sjinnStartTimeRef.current = Date.now();
+    setSjinnElapsed(0);
+    sjinnElapsedRef.current = setInterval(() => {
+      if (sjinnStartTimeRef.current) {
+        setSjinnElapsed(Math.floor((Date.now() - sjinnStartTimeRef.current) / 1000));
+      }
+    }, 1000);
+    sjinnPollRef.current = setInterval(async () => {
+      try {
+        const response = await apiRequest("GET", `/api/sjinn/status/${chatId}`);
+        const data = await response.json();
+        if (data.status === "completed" && data.videoUrl) {
+          stopSjinnPolling();
+          setSjinnStatus("completed");
+          setSjinnVideoUrl(data.videoUrl);
+          toast({ title: "SJinn Video Ready!", description: "Your AI-generated video is ready to view." });
+          apiRequest("POST", "/api/sjinn/notify-completion", { videoUrl: data.videoUrl, chatId })
+            .catch((err) => console.warn("SJinn completion notification failed:", err));
+        } else if (data.status === "failed") {
+          stopSjinnPolling();
+          setSjinnStatus("failed");
+          toast({ title: "SJinn Generation Failed", description: data.error || "Something went wrong", variant: "destructive" });
+        } else {
+          setSjinnStatus("processing");
+        }
+      } catch (err) {
+        console.error("SJinn poll error:", err);
+      }
+    }, 15000);
+  };
+
+  const sjinnMutation = useMutation({
+    mutationFn: async () => {
+      const prompt = generatedScript || videoTopic || videoTitle;
+      if (!prompt?.trim()) throw new Error("Please enter a topic or generate a script first");
+      const modelMap: Record<string, string> = {
+        sjinn_auto: "auto",
+        sjinn_veo3: "veo3",
+        sjinn_sora2: "sora2",
+      };
+      const response = await apiRequest("POST", "/api/sjinn/create-video", {
+        prompt: prompt.trim(),
+        model: modelMap[aiEngine] || "auto",
+        quality: "quality",
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.error) {
+        toast({ title: "SJinn Error", description: data.error, variant: "destructive" });
+        return;
+      }
+      setSjinnChatId(data.chatId);
+      setSjinnStatus("pending");
+      toast({
+        title: "SJinn Video Started!",
+        description: "SJinn AI is creating your video. This can take 5-15 minutes.",
+        duration: 8000,
+      });
+      startSjinnPolling(data.chatId);
+    },
+    onError: (error: any) => {
+      toast({ title: "SJinn Failed", description: error?.message || "Could not start SJinn video", variant: "destructive" });
     },
   });
 
@@ -423,8 +494,8 @@ export function VideoGenerator() {
       duration: parseInt(duration),
       avatarId: selectedAvatar, // This is either a public avatar ID or photo avatar group_id
       tags: [
-        businessType === 'restaurant' ? "FoodLovers" : businessType === 'home_services' ? "HomeServices" : businessType === 'real_estate' ? "RealEstate" : "Business",
-        businessType === 'restaurant' ? "RestaurantLife" : businessType === 'home_services' ? "ProServices" : businessType === 'real_estate' ? "PropertyTour" : "BusinessLife",
+        "OmahaRealEstate",
+        "RealEstate",
         selectedNeighborhood,
         selectedVideoType,
         selectedVideoPlatform,
@@ -493,7 +564,7 @@ export function VideoGenerator() {
           AI Video Generator
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Create professional restaurant videos with AI avatars for YouTube
+          Create professional real estate videos with AI avatars for YouTube
         </p>
       </CardHeader>
       <CardContent>
@@ -1032,7 +1103,55 @@ export function VideoGenerator() {
                 </div>
               </div>
 
-              {/* Video Platform */}
+              {/* AI Engine Selector */}
+              <div>
+                <Label htmlFor="ai-engine" className="text-sm font-medium">
+                  AI Video Engine
+                </Label>
+                <Select
+                  value={aiEngine}
+                  onValueChange={(v) => setAiEngine(v as typeof aiEngine)}
+                  data-testid="select-ai-engine"
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="heygen">
+                      <div className="flex flex-col items-start">
+                        <span>HeyGen (Talking Avatar)</span>
+                        <span className="text-xs text-muted-foreground">Animate an avatar with voice — 1-3 min</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="sjinn_auto">
+                      <div className="flex flex-col items-start">
+                        <span>SJinn Auto (Kling / Seedance / Hailuo)</span>
+                        <span className="text-xs text-muted-foreground">AI auto-selects best model — 5-15 min</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="sjinn_veo3">
+                      <div className="flex flex-col items-start">
+                        <span>SJinn Veo3</span>
+                        <span className="text-xs text-muted-foreground">Google Veo3 cinematic video with audio — 5-15 min</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="sjinn_sora2">
+                      <div className="flex flex-col items-start">
+                        <span>SJinn Sora2</span>
+                        <span className="text-xs text-muted-foreground">OpenAI Sora2 consistent characters — 5-15 min</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {aiEngine !== "heygen" && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    SJinn will use your topic/script as the video prompt. Avatar selection is not needed.
+                  </p>
+                )}
+              </div>
+
+              {/* Video Platform (social destination) — HeyGen only */}
+              {aiEngine === "heygen" && (
               <div>
                 <Label htmlFor="video-platform" className="text-sm font-medium">
                   Video Platform
@@ -1062,6 +1181,7 @@ export function VideoGenerator() {
                   </SelectContent>
                 </Select>
               </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1176,6 +1296,21 @@ export function VideoGenerator() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2">
+                {aiEngine !== "heygen" ? (
+                  <Button
+                    onClick={() => sjinnMutation.mutate()}
+                    disabled={sjinnMutation.isPending || sjinnStatus === "processing" || sjinnStatus === "pending"}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                    data-testid="button-generate-sjinn"
+                  >
+                    <FileVideo className="mr-2 h-4 w-4" />
+                    {sjinnMutation.isPending || sjinnStatus === "pending" || sjinnStatus === "processing"
+                      ? "SJinn is working..."
+                      : sjinnStatus === "completed"
+                        ? "Generate Another"
+                        : "Generate with SJinn"}
+                  </Button>
+                ) : (
                 <Button
                   onClick={handleCreateVideo}
                   disabled={
@@ -1192,6 +1327,7 @@ export function VideoGenerator() {
                       ? "Sending to HeyGen..."
                       : "Create & Generate Video"}
                 </Button>
+                )}
 
                 {videoTopic && (
                   <Button
@@ -1207,6 +1343,56 @@ export function VideoGenerator() {
                   </Button>
                 )}
               </div>
+
+              {/* SJinn result panel */}
+              {aiEngine !== "heygen" && (sjinnStatus === "pending" || sjinnStatus === "processing" || sjinnStatus === "completed" || sjinnStatus === "failed") && (
+                <div className="mt-4 border rounded-lg p-4">
+                  {sjinnStatus === "completed" && sjinnVideoUrl ? (
+                    <div className="space-y-3">
+                      <p className="font-medium text-green-700 dark:text-green-400">SJinn video is ready!</p>
+                      <video src={sjinnVideoUrl} controls className="w-full rounded-lg max-h-64" data-testid="sjinn-video-result" />
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => { window.open(sjinnVideoUrl!, "_blank"); }}>
+                          Open in New Tab
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => { setSjinnStatus("idle"); setSjinnVideoUrl(null); setSjinnChatId(null); }}>
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  ) : sjinnStatus === "failed" ? (
+                    <div className="text-center py-6 space-y-2">
+                      <p className="text-red-500 font-medium">SJinn generation failed. Please try again.</p>
+                      <Button variant="outline" size="sm" onClick={() => { setSjinnStatus("idle"); setSjinnVideoUrl(null); }}>Reset</Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="animate-spin h-5 w-5 border-2 border-[#D4AF37] border-t-transparent rounded-full" />
+                        <div>
+                          <p className="font-medium">SJinn AI is generating your video...</p>
+                          <p className="text-sm text-muted-foreground">Elapsed: {Math.floor(sjinnElapsed / 60)}:{String(sjinnElapsed % 60).padStart(2, "0")} — Status: {sjinnStatus}</p>
+                        </div>
+                      </div>
+                      {sjinnElapsed >= 600 && (
+                        <div className="flex items-center gap-2 text-sm text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded px-3 py-2" data-testid="sjinn-timeout-warning-vg">
+                          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                          <span>This is taking longer than expected. You can keep waiting or cancel.</span>
+                        </div>
+                      )}
+                      <Button
+                        onClick={cancelSjinnGeneration}
+                        variant="outline"
+                        size="sm"
+                        className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                        data-testid="button-cancel-sjinn-vg"
+                      >
+                        <X className="h-4 w-4 mr-1" />Cancel Generation
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1221,7 +1407,7 @@ export function VideoGenerator() {
                 Upload Your Own Video
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Upload your existing restaurant videos to manage and share them
+                Upload your existing real estate videos to manage and share them
                 through the platform
               </p>
             </div>
@@ -1494,7 +1680,7 @@ export function VideoGenerator() {
                             uploadToYoutubeMutation.mutate({
                               videoId: video.id,
                               title: video.title,
-                              description: `${video.topic} - Your Business Marketing Expert`,
+                              description: `${video.topic} - Your Omaha Real Estate Expert`,
                               tags: video.tags,
                             })
                           }

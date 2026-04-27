@@ -1,7 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "wouter";
-import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, ArrowLeft, Wand2, ListChecks, CheckCircle2 } from "lucide-react";
+import { Sidebar } from "@/components/layout/sidebar";
+import { Calendar, Plus, Trash2, RefreshCw, Settings, Sparkles, Clock, MapPin, ExternalLink, Check, X, Loader2, CalendarDays, Link2, Wand2, ListChecks, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { AddToCalendar } from "@/components/shared/add-to-calendar";
 
 interface EventSource {
   id: string;
@@ -144,6 +146,26 @@ export default function EventsCalendarPage() {
   const { data: eventsData, isLoading: eventsLoading } = useQuery<{ events: Event[] }>({
     queryKey: ["/api/events"],
   });
+
+  const { data: companyProfile } = useQuery<any>({ queryKey: ["/api/company/profile"] });
+  const { data: userPreferences } = useQuery<any>({ queryKey: ["/api/user/preferences"] });
+
+  const cityName: string = (() => {
+    const serviceArea: string = userPreferences?.serviceArea || "";
+    if (serviceArea) {
+      const parts = serviceArea.split(",");
+      return parts[0].trim() || serviceArea.trim();
+    }
+    return companyProfile?.city || "Local";
+  })();
+
+  const isOmahaUser: boolean = (() => {
+    const serviceArea: string = (userPreferences?.serviceArea || "").toLowerCase();
+    const city: string = (companyProfile?.city || "").toLowerCase();
+    const state: string = (companyProfile?.state || "").toLowerCase();
+    return serviceArea.includes("omaha") || serviceArea.includes(", ne") ||
+      city === "omaha" || state === "ne" || state === "nebraska";
+  })();
 
   const { data: suggestionsData, refetch: refetchSuggestions } = useQuery<{ suggestions: EventPostSuggestion[] }>({
     queryKey: ["/api/events", selectedEvent?.id, "suggestions"],
@@ -277,7 +299,7 @@ export default function EventsCalendarPage() {
     onSuccess: (data) => {
       toast({ 
         title: "Local Sources Added", 
-        description: data.message || `Added ${data.addedSources} local event sources` 
+        description: data.message || `Added ${data.addedSources} real estate event sources` 
       });
       setIsOmahaSourcesSetup(true);
       queryClient.invalidateQueries({ queryKey: ["/api/events/sources"] });
@@ -415,7 +437,7 @@ export default function EventsCalendarPage() {
 
   const getCategoryColor = (category: string | null) => {
     switch (category) {
-      case "restaurant": return "bg-blue-500";
+      case "real_estate": return "bg-blue-500";
       case "market": return "bg-green-500";
       case "festival": return "bg-purple-500";
       case "networking": return "bg-orange-500";
@@ -442,14 +464,12 @@ export default function EventsCalendarPage() {
     .slice(0, 10);
 
   return (
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      <Sidebar activeView="events" />
+      <main className="flex-1 overflow-y-auto">
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <Link href="/dashboard">
-            <Button variant="ghost" size="icon" data-testid="btn-back-dashboard">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-          </Link>
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2" data-testid="page-title">
               <CalendarDays className="w-8 h-8" />
@@ -484,7 +504,7 @@ export default function EventsCalendarPage() {
                 Add Event
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Manual Event</DialogTitle>
                 <DialogDescription>
@@ -502,7 +522,7 @@ export default function EventsCalendarPage() {
                         <FormControl>
                           <Input
                             {...field}
-                            placeholder="Omaha Farmer's Market"
+                            placeholder={`${cityName} Farmer's Market`}
                             data-testid="input-event-title"
                           />
                         </FormControl>
@@ -599,7 +619,7 @@ export default function EventsCalendarPage() {
                         <FormControl>
                           <Input
                             {...field}
-                            placeholder="Old Market, Omaha"
+                            placeholder={`Event venue, ${cityName}`}
                             data-testid="input-event-location"
                           />
                         </FormControl>
@@ -622,7 +642,7 @@ export default function EventsCalendarPage() {
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="community">Community</SelectItem>
-                            <SelectItem value="food_events">Food Events</SelectItem>
+                            <SelectItem value="real_estate">Real Estate</SelectItem>
                             <SelectItem value="market">Market</SelectItem>
                             <SelectItem value="festival">Festival</SelectItem>
                             <SelectItem value="networking">Networking</SelectItem>
@@ -700,11 +720,12 @@ export default function EventsCalendarPage() {
                     Generate Your Weekly Content Plan
                   </CardTitle>
                   <CardDescription>
-                    Automatically fetch local food events and generate AI-powered social media posts for the week
+                    Automatically fetch {cityName} real estate events and generate AI-powered social media posts for the week
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex flex-col sm:flex-row gap-4">
+                    {isOmahaUser && (
                     <Button
                       onClick={() => setupOmahaSourcesMutation.mutate()}
                       disabled={setupOmahaSourcesMutation.isPending || isOmahaSourcesSetup}
@@ -719,8 +740,9 @@ export default function EventsCalendarPage() {
                       ) : (
                         <ListChecks className="w-4 h-4 mr-2" />
                       )}
-                      {isOmahaSourcesSetup ? "Local Sources Ready" : "Setup Local Event Sources"}
+                      {isOmahaSourcesSetup ? `${cityName} Sources Ready` : `Setup ${cityName} Sources`}
                     </Button>
+                    )}
                     <Button
                       onClick={() => generateWeeklyPlanMutation.mutate()}
                       disabled={generateWeeklyPlanMutation.isPending}
@@ -736,9 +758,11 @@ export default function EventsCalendarPage() {
                       Generate Weekly Plan
                     </Button>
                   </div>
+                  {isOmahaUser && (
                   <p className="text-xs text-muted-foreground">
-                    Sources: Local Food Blogs, Restaurant Events, Community Calendars
+                    Sources: Omaha Daily Record, Omaha Realtors, OABR Calendar
                   </p>
+                  )}
                 </CardContent>
               </Card>
 
@@ -777,7 +801,7 @@ export default function EventsCalendarPage() {
                         <div className="text-center py-8 text-muted-foreground">
                           <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
                           <p>No events this week</p>
-                          <p className="text-sm">Click "Setup Local Event Sources" to fetch local food events</p>
+                          <p className="text-sm">{isOmahaUser ? `Click "Setup ${cityName} Sources" to fetch local real estate events` : "Add a calendar source in the Sources tab to fetch local events"}</p>
                         </div>
                       );
                     }
@@ -811,16 +835,19 @@ export default function EventsCalendarPage() {
                                   )}
                                 </div>
                               </div>
-                              {event.eventUrl && (
-                                <a 
-                                  href={event.eventUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-muted-foreground hover:text-primary"
-                                >
-                                  <ExternalLink className="w-4 h-4" />
-                                </a>
-                              )}
+                              <div className="flex items-center gap-2">
+                                <AddToCalendar event={event} size="sm" variant="ghost" className="text-xs" />
+                                {event.eventUrl && (
+                                  <a 
+                                    href={event.eventUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-muted-foreground hover:text-primary"
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                  </a>
+                                )}
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -991,17 +1018,20 @@ export default function EventsCalendarPage() {
                                 )}
                               </div>
                             </div>
-                            {event.eventUrl && (
-                              <a 
-                                href={event.eventUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-muted-foreground hover:text-primary"
-                              >
-                                <ExternalLink className="w-4 h-4" />
-                              </a>
-                            )}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <AddToCalendar event={event} size="sm" variant="ghost" className="text-xs" />
+                              {event.eventUrl && (
+                                <a 
+                                  href={event.eventUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-muted-foreground hover:text-primary"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </a>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -1026,10 +1056,15 @@ export default function EventsCalendarPage() {
                   {selectedEvent ? (
                     <div className="space-y-4">
                       <div className="p-3 bg-muted rounded-lg">
-                        <h4 className="font-medium">{selectedEvent.title}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {formatDate(selectedEvent.startTime)}
-                        </p>
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h4 className="font-medium">{selectedEvent.title}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {formatDate(selectedEvent.startTime)}
+                            </p>
+                          </div>
+                          <AddToCalendar event={selectedEvent} size="sm" variant="outline" />
+                        </div>
                       </div>
 
                       <Button
@@ -1182,7 +1217,7 @@ export default function EventsCalendarPage() {
                       Add Calendar Source
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Add Calendar Source</DialogTitle>
                       <DialogDescription>
@@ -1200,7 +1235,7 @@ export default function EventsCalendarPage() {
                               <FormControl>
                                 <Input
                                   {...field}
-                                  placeholder="Omaha Events"
+                                  placeholder={`${cityName} Events`}
                                   data-testid="input-source-name"
                                 />
                               </FormControl>
@@ -1279,7 +1314,7 @@ export default function EventsCalendarPage() {
               <CardHeader>
                 <CardTitle>Quick Add Templates</CardTitle>
                 <CardDescription>
-                  Popular calendar sources for Omaha area
+                  Popular calendar sources for {cityName} area
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -1321,6 +1356,8 @@ export default function EventsCalendarPage() {
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+      </main>
     </div>
   );
 }

@@ -347,8 +347,8 @@ export class EventIngestionService {
   private categorizeEvent(title: string): string {
     const titleLower = title.toLowerCase();
     
-    if (titleLower.includes('restaurant') || titleLower.includes('dining') || titleLower.includes('food') || titleLower.includes('culinary')) {
-      return 'restaurant';
+    if (titleLower.includes('open house') || titleLower.includes('home tour') || titleLower.includes('property')) {
+      return 'real_estate';
     }
     if (titleLower.includes('market') || titleLower.includes("farmer's") || titleLower.includes('farmers')) {
       return 'market';
@@ -436,8 +436,8 @@ export class EventIngestionService {
         case 'omaha_daily_record':
           events = this.scrapeOmahaDailyRecord(html, config.scrapeUrl);
           break;
-        case 'omaha_restaurants':
-          events = this.scrapeOmahaRestaurants(html, config.scrapeUrl);
+        case 'omaha_realtors':
+          events = this.scrapeOmahaRealtors(html, config.scrapeUrl);
           break;
         case 'calendar_wiz':
           events = this.scrapeCalendarWiz(html, config.scrapeUrl);
@@ -476,8 +476,8 @@ export class EventIngestionService {
             eventUrl: scrapedEvent.url || config.scrapeUrl,
             isAllDay: false,
             visibility: 'public',
-            category: 'restaurant',
-            tags: ['omaha', 'restaurant', 'food'],
+            category: 'real_estate',
+            tags: ['omaha', 'real_estate'],
             rawData: scrapedEvent as any,
           };
 
@@ -532,11 +532,11 @@ export class EventIngestionService {
     return events;
   }
 
-  private scrapeOmahaRestaurants(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
+  private scrapeOmahaRealtors(html: string, baseUrl: string): Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> {
     const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
     const $ = cheerio.load(html);
 
-    // Omaha Restaurants uses divs and specific class structures
+    // Omaha Realtors uses divs and specific class structures
     $('.event-item, .social-event, article, .tribe-events-calendar-list__event').each((_, elem) => {
       try {
         const $elem = $(elem);
@@ -569,7 +569,7 @@ export class EventIngestionService {
     const events: Array<{ title: string; date: Date; location?: string; description?: string; url?: string }> = [];
     const $ = cheerio.load(html);
 
-    // OmahaRestaurants Calendar uses list view with day headers followed by event entries
+    // OmahaRealtors CalendarWiz uses list view with day headers followed by event entries
     // Look for day headers like "Monday, December 1st" or "Tuesday, December 2nd"
     const dayPattern = /(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?/gi;
     const fullText = $('body').text();
@@ -877,21 +877,21 @@ export class EventIngestionService {
         icalUrl: 'https://www.visitomaha.com/events/rss/',
       },
       {
-        name: 'Omaha Food Events',
+        name: 'Omaha Daily Record - Local Real Estate Events',
         type: 'web_scraper',
-        scrapeUrl: 'https://omahadailyrecord.com/calendar/food-dining-events',
+        scrapeUrl: 'https://omahadailyrecord.com/calendar/local-real-estate-events',
         scraperType: 'omaha_daily_record',
       },
       {
-        name: 'Omaha Restaurant Association Events',
+        name: 'Omaha Area Board of Realtors - Social Events',
         type: 'web_scraper',
-        scrapeUrl: 'https://www.omaharestaurants.com/events/',
-        scraperType: 'omaha_restaurants',
+        scrapeUrl: 'https://www.omaharealtors.com/social-events/',
+        scraperType: 'omaha_realtors',
       },
       {
-        name: 'Omaha Food & Dining Calendar',
+        name: 'OABR Calendar (CalendarWiz)',
         type: 'web_scraper',
-        scrapeUrl: 'https://www.calendarwiz.com/calendars/calendar.php?crd=omahafood',
+        scrapeUrl: 'https://www.calendarwiz.com/calendars/calendar.php?crd=oabr',
         scraperType: 'calendar_wiz',
       },
     ];

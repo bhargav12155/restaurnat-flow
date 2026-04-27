@@ -52,13 +52,11 @@ interface VideoAvatarListResponse {
   data: {
     avatars: Array<{
       avatar_id: string;
-      group_id?: string; // The avatar group ID (for instant avatars from video)
       avatar_name: string;
       avatar_type: string; // 'instant_avatar', 'public', 'talking_photo'
       gender?: string;
       preview_image_url?: string;
       preview_video_url?: string;
-      default_voice_id?: string; // Built-in voice for instant avatars
     }>;
   };
   message?: string;
@@ -181,14 +179,12 @@ export class HeyGenVideoAvatarService {
   /**
    * Check Video Avatar Generation Status
    *
-   * Monitor the progress of avatar creation using GET /v2/video_avatar/{avatar_id}
+   * Monitor the progress of avatar creation
    *
    * Status values:
    * - in_progress: Avatar is being processed
    * - complete: Avatar ready to use
    * - failed: Processing failed (check error_message)
-   *
-   * Note: This endpoint is only available for Enterprise API plan users
    *
    * @param avatarId The avatar ID from creation request
    * @returns Current status and details
@@ -198,29 +194,8 @@ export class HeyGenVideoAvatarService {
   ): Promise<VideoAvatarStatusResponse> {
     console.log("📊 Checking video avatar status:", avatarId);
 
-    // Use the correct endpoint: GET /v2/video_avatar/{avatar_id}
-    // This checks the current status of the video avatar generation process
-    const response = await this.makeRequest(`/video_avatar/${avatarId}`);
+    const response = await this.makeRequest(`/video_avatar/${avatarId}/status`);
 
-    // Transform HeyGen response to our expected format
-    if (response.data) {
-      return {
-        code: response.code || 100,
-        data: {
-          avatar_id: response.data.avatar_id || avatarId,
-          avatar_name: response.data.avatar_name || 'Unknown',
-          status: response.data.status || 'in_progress',
-          progress: response.data.progress,
-          error_message: response.data.error_message,
-          thumbnail_url: response.data.thumbnail_url || response.data.preview_image,
-          preview_video_url: response.data.preview_video_url,
-          created_at: response.data.created_at,
-          updated_at: response.data.updated_at || response.data.created_at,
-        },
-        message: response.message,
-      };
-    }
-    
     return response;
   }
 
@@ -248,14 +223,6 @@ export class HeyGenVideoAvatarService {
       if (Array.isArray(groups) && groups.length > 0) {
         console.log(`📋 Found ${groups.length} total avatar groups`);
         
-        // Debug: Log all group types to understand the data structure
-        console.log(`📋 Group types found:`, groups.map((g: any) => ({
-          name: g.name,
-          group_type: g.group_type,
-          type: g.type,
-          train_status: g.train_status
-        })));
-        
         // Filter for PRIVATE groups only (user-created instant avatars from video)
         // group_type: "PRIVATE" = instant avatars (video-based, these are the custom ones!)
         // group_type: "PHOTO" = photo avatars (photo-based)
@@ -265,32 +232,11 @@ export class HeyGenVideoAvatarService {
         
         console.log(`📋 Found ${privateGroups.length} PRIVATE (instant avatar) groups`);
         
-        // Add instant avatars from PRIVATE groups
-        // IMPORTANT: We need to get the actual avatar_id from the group's avatar_list
-        // The group.id is the GROUP ID, but HeyGen API needs the actual AVATAR ID for video generation
+        // Add instant avatars from PRIVATE groups directly
         for (const group of privateGroups) {
-          console.log(`📋 Processing instant avatar group: ${group.name} (Group ID: ${group.id})`);
-          
-          // Fetch the actual avatar_id from the group
-          let actualAvatarId = group.id; // Fallback to group ID
-          try {
-            const avatarsInGroup = await this.listAvatarsInGroup(group.id);
-            const avatarList = avatarsInGroup.data?.avatar_list || avatarsInGroup.data?.avatars || [];
-            
-            if (avatarList.length > 0) {
-              // Use the first avatar's ID (instant avatar groups typically have one avatar)
-              actualAvatarId = avatarList[0].avatar_id;
-              console.log(`📋 Resolved actual avatar_id: ${actualAvatarId} from group ${group.id}`);
-            } else {
-              console.log(`⚠️ No avatars found in group ${group.id}, using group ID as fallback`);
-            }
-          } catch (error) {
-            console.log(`⚠️ Could not fetch avatars from group ${group.id}, using group ID as fallback`);
-          }
-          
+          console.log(`📋 Adding instant avatar: ${group.name} (ID: ${group.id})`);
           customAvatars.push({
-            avatar_id: actualAvatarId,
-            group_id: group.id, // Store the group ID for reference
+            avatar_id: group.id,
             avatar_name: group.name,
             avatar_type: 'instant_avatar',
             preview_image_url: group.preview_image,
@@ -334,7 +280,6 @@ export class HeyGenVideoAvatarService {
       data: {
         avatars: customAvatars.map((avatar: any) => ({
           avatar_id: avatar.avatar_id,
-          group_id: avatar.group_id, // Include group_id for reference
           avatar_name: avatar.avatar_name,
           avatar_type: avatar.avatar_type || 'instant_avatar',
           gender: avatar.gender,

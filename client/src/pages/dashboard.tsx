@@ -1,44 +1,42 @@
 import { AIAssistantDialog, useAIAssistantDialog } from "@/components/dashboard/ai-assistant-dialog";
+import { OnboardingDialog } from "@/components/onboarding/onboarding-dialog";
 import { AIContentGenerator } from "@/components/dashboard/ai-content-generator";
 import { AISearchOptimizer } from "@/components/dashboard/ai-search-optimizer";
 import { APIKeyManager } from "@/components/dashboard/api-key-manager";
 import { AvatarIVStudio } from "@/components/dashboard/avatar-iv-studio";
 import { BrandSettings } from "@/components/dashboard/brand-settings";
 import { ContentCalendar } from "@/components/dashboard/content-calendar";
-import { OverviewCards } from "@/components/dashboard/overview-cards";
+import { LocalMarketTools } from "@/components/dashboard/local-market-tools";
+import { OverviewCards, RecentPostActivity } from "@/components/dashboard/overview-cards";
 import { PhotoAvatarManager } from "@/components/dashboard/photo-avatar-manager";
 import { ScheduledPostsManager } from "@/components/dashboard/scheduled-posts-manager";
 import { SEOOptimizer } from "@/components/dashboard/seo-optimizer";
 import { SocialLinksPrompt } from "@/components/dashboard/social-links-prompt";
 import { SocialMediaManager } from "@/components/dashboard/social-media-manager";
+import { StreamingAvatarComponent } from "@/components/dashboard/streaming-avatar";
 import { TemplateManager } from "@/components/dashboard/template-manager";
 import VideoAvatarManager from "@/components/dashboard/video-avatar-manager";
 import { VideoGenerationManager } from "@/components/dashboard/video-generation-manager";
 import { VideoGenerator } from "@/components/dashboard/video-generator";
 import { VideoStudio } from "@/components/dashboard/video-studio";
 import { VideoTemplates } from "@/components/dashboard/video-templates";
+import { PropertyTourStudio } from "@/components/dashboard/property-tour-studio";
 import { Sidebar } from "@/components/layout/sidebar";
 import { NotificationPanel } from "@/components/notifications/notification-panel";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import UserMenu from "@/components/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { useBusinessType, getBusinessLabels, BUSINESS_TYPES } from "@/hooks/useBusinessType";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useBusinessType } from "@/lib/businessContext";
 import { VERSION_DISPLAY } from "@/lib/version";
-import { Sparkles, ChevronDown, Building2, Utensils, Home, Building, Briefcase, Store } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+
+const VIEW_FEATURE_GATE: Record<string, string> = {
+  "ai-content": "aiContentGenerator",
+  "property-tour": "propertyTours",
+};
 
 export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -47,62 +45,7 @@ export default function Dashboard() {
   const { user, isAuthenticated } = useAuth();
   const [location] = useLocation();
   const aiAssistant = useAIAssistantDialog();
-  const { toast } = useToast();
-  const { 
-    businessType,
-    businessSubtype,
-    businessTypeLabel = 'Restaurant', 
-    businessSubtypeLabel,
-    updateBusinessType,
-    isUpdating 
-  } = useBusinessType();
-
-  // Debug log
-  console.log("[Dashboard] Business type state:", { businessType, businessSubtype, businessTypeLabel, businessSubtypeLabel });
-
-  // Only show subtype label if it matches the current business type
-  const VALID_SUBTYPES: Record<string, string[]> = {
-    restaurant: ['fast_casual', 'fine_dining', 'cafe', 'bar', 'food_truck', 'bakery'],
-    home_services: ['plumbing', 'hvac', 'electrical', 'landscaping', 'cleaning', 'roofing'],
-    real_estate: ['residential', 'commercial', 'luxury', 'property_management'],
-    retail: ['clothing', 'electronics', 'grocery', 'specialty'],
-    professional_services: ['legal', 'accounting', 'consulting', 'medical'],
-  };
-  
-  const isSubtypeValidForType = VALID_SUBTYPES[businessType]?.includes(businessSubtype);
-  const displayLabel = isSubtypeValidForType && businessSubtypeLabel ? businessSubtypeLabel : businessTypeLabel;
-
-  // Handle business type change
-  const handleBusinessTypeChange = (newType: string) => {
-    console.log("[Dashboard] handleBusinessTypeChange called with:", newType);
-    updateBusinessType(newType, {
-      onSuccess: () => {
-        toast({
-          title: "Business Type Updated",
-          description: `Switched to ${getBusinessLabels(newType)} mode`,
-        });
-      },
-      onError: () => {
-        toast({
-          title: "Update Failed",
-          description: "Could not update business type. Please try again.",
-          variant: "destructive",
-        });
-      },
-    });
-  };
-
-  // Get icon for business type
-  const getBusinessIcon = (type: string) => {
-    switch (type) {
-      case "restaurant": return <Utensils className="h-4 w-4" />;
-      case "home_services": return <Home className="h-4 w-4" />;
-      case "real_estate": return <Building className="h-4 w-4" />;
-      case "retail": return <Store className="h-4 w-4" />;
-      case "professional_services": return <Briefcase className="h-4 w-4" />;
-      default: return <Building2 className="h-4 w-4" />;
-    }
-  };
+  const { businessType, terms } = useBusinessType();
 
   // Connect to WebSocket for real-time updates
   const { isConnected, lastMessage } = useWebSocket({
@@ -139,6 +82,14 @@ export default function Dashboard() {
     };
   }, [location]); // Re-run when Wouter location changes
 
+  useEffect(() => {
+    const featureKey = VIEW_FEATURE_GATE[activeView];
+    if (featureKey && !(terms.features as any)[featureKey]) {
+      window.location.hash = "";
+      setActiveView("dashboard");
+    }
+  }, [businessType, activeView, terms]);
+
   // Don't auto-show social links prompt on first visit - users can access it in settings
   useEffect(() => {
     const hasSeenPrompt = localStorage.getItem("socialLinksPromptShown");
@@ -149,27 +100,45 @@ export default function Dashboard() {
   }, []);
 
   const renderActiveView = () => {
+    const featureKey = VIEW_FEATURE_GATE[activeView];
+    const viewIsRestricted = featureKey && !(terms.features as any)[featureKey];
+    if (viewIsRestricted) {
+      return (
+        <>
+          <OverviewCards />
+          <RecentPostActivity />
+          <ScheduledPostsManager />
+        </>
+      );
+    }
+
     switch (activeView) {
       case "ai-content":
         return <AIContentGenerator isGenerating={isGenerating} />;
       case "ai-video":
         return <VideoGenerator />;
+      case "streaming-avatar":
+        return <StreamingAvatarComponent />;
       case "photo-avatars":
         return <AvatarIVStudio />;
       case "video-avatars":
         return <VideoAvatarManager />;
       case "video-generation":
-        return <VideoGenerationManager />;
+        return <VideoStudio />;
       case "templates":
         return <TemplateManager />;
       case "video-templates":
         return <VideoTemplates />;
+      case "property-tour":
+        return <PropertyTourStudio />;
       case "social":
         return <SocialMediaManager />;
       case "seo":
         return <SEOOptimizer />;
       case "calendar":
         return <ContentCalendar />;
+      case "market":
+        return <LocalMarketTools />;
       case "brand-settings":
         return <BrandSettings />;
       case "analytics":
@@ -191,6 +160,7 @@ export default function Dashboard() {
         return (
           <>
             <OverviewCards />
+            <RecentPostActivity />
             <ScheduledPostsManager />
           </>
         );
@@ -206,48 +176,14 @@ export default function Dashboard() {
         <header className="bg-card border-b border-border px-3 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-2 sm:gap-4">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg sm:text-2xl font-semibold text-foreground truncate">
-                  <span className="hidden sm:inline">
-                    AI SEO & Social Media Dashboard
-                  </span>
-                  <span className="sm:hidden">Dashboard</span>
-                </h1>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button 
-                      type="button"
-                      className="inline-flex items-center rounded-full border px-2.5 py-0.5 font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80 text-xs cursor-pointer gap-1"
-                    >
-                      {getBusinessIcon(businessType)}
-                      {displayLabel}
-                      <ChevronDown className="h-3 w-3" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuLabel>Switch Business Type</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {BUSINESS_TYPES.map((type) => (
-                      <DropdownMenuItem
-                        key={type.value}
-                        onClick={() => handleBusinessTypeChange(type.value)}
-                        className={businessType === type.value ? "bg-accent" : ""}
-                        disabled={isUpdating}
-                      >
-                        <span className="flex items-center gap-2">
-                          {getBusinessIcon(type.value)}
-                          {type.label}
-                        </span>
-                        {businessType === type.value && (
-                          <span className="ml-auto text-primary">✓</span>
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+              <h1 className="text-lg sm:text-2xl font-semibold text-foreground truncate">
+                <span className="hidden sm:inline">
+                  AI SEO & Social Media Dashboard
+                </span>
+                <span className="sm:hidden">Dashboard</span>
+              </h1>
               <p className="text-xs sm:text-sm text-muted-foreground hidden md:block">
-                Automated content generation for {businessTypeLabel.toLowerCase()} marketing
+                {terms.dashboardSubtitle}
               </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
@@ -271,7 +207,7 @@ export default function Dashboard() {
         </header>
 
         {/* Dashboard Content */}
-        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+        <div key={businessType} className="p-3 sm:p-6 space-y-4 sm:space-y-6">
           {renderActiveView()}
         </div>
       </main>
@@ -294,6 +230,9 @@ export default function Dashboard() {
         open={aiAssistant.open}
         onOpenChange={aiAssistant.setOpen}
       />
+
+      {/* First-time User Onboarding Dialog */}
+      <OnboardingDialog />
     </div>
   );
 }

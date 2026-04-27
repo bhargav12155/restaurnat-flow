@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useBusinessType } from "@/lib/businessContext";
 import { 
   Calendar, 
   Edit2, 
@@ -39,7 +40,8 @@ import {
   ChevronDown,
   Square,
   CheckSquare,
-  Trash
+  Trash,
+  Video
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isSameMonth } from "date-fns";
@@ -97,11 +99,11 @@ const platformIcons = {
 
 const postTypeLabels = {
   local_market: { label: "Local Market", icon: MapPin, color: "bg-green-100 text-green-700" },
-  menu_feature: { label: "Menu Feature", icon: Home, color: "bg-orange-100 text-orange-700" },
-  special_event: { label: "Special Event", icon: Home, color: "bg-purple-100 text-purple-700" },
-  new_dish: { label: "New Dish", icon: Home, color: "bg-yellow-100 text-yellow-700" },
-  happy_hour: { label: "Happy Hour", icon: Clock, color: "bg-blue-100 text-blue-700" },
-  weekend_special: { label: "Weekend Special", icon: Check, color: "bg-green-100 text-green-700" },
+  moving_guide: { label: "Moving Guide", icon: Home, color: "bg-blue-100 text-blue-700" },
+  open_houses: { label: "Open House", icon: Home, color: "bg-purple-100 text-purple-700" },
+  just_listed: { label: "Just Listed", icon: Home, color: "bg-orange-100 text-orange-700" },
+  just_sold: { label: "Just Sold", icon: Check, color: "bg-green-100 text-green-700" },
+  price_improvement: { label: "Price Drop", icon: Clock, color: "bg-red-100 text-red-700" },
 };
 
 // Platform-specific optimal word counts
@@ -124,13 +126,13 @@ const aiPresets = [
     id: "seo", 
     name: "SEO Focus",
     description: "Add keywords & hashtags for discoverability",
-    prompt: "Optimize this post for search and discoverability. Add relevant food and restaurant keywords naturally, include location-specific terms, and suggest 3-5 relevant hashtags at the end."
+    prompt: "Optimize this post for search and discoverability. Add relevant real estate keywords naturally, include location-specific terms for Omaha/Nebraska, and suggest 3-5 relevant hashtags at the end."
   },
   { 
     id: "compliance", 
-    name: "Brand-Safe",
-    description: "Ensure brand-compliant language",
-    prompt: "Review and rewrite this post to ensure it's compliant with food advertising regulations. Avoid making health claims that aren't substantiated, use appropriate language, and maintain professional tone."
+    name: "Compliance-Safe",
+    description: "Ensure brokerage-compliant language",
+    prompt: "Review and rewrite this post to ensure it's compliant with real estate advertising regulations. Avoid making guarantees or promises about property values, use appropriate disclosures, and maintain professional language."
   },
   { 
     id: "shorten", 
@@ -142,7 +144,7 @@ const aiPresets = [
     id: "expand", 
     name: "Add Detail",
     description: "Expand with more compelling content",
-    prompt: "Expand this post with more detail and context. Add storytelling elements, describe the flavors and experience, and include more specific benefits or features."
+    prompt: "Expand this post with more detail and context. Add storytelling elements, paint a picture for the reader, and include more specific benefits or features."
   },
   { 
     id: "custom", 
@@ -154,7 +156,12 @@ const aiPresets = [
 
 export function ScheduledPostsManager() {
   const { user, isLoading: authLoading } = useAuth();
+  const { businessType, terms } = useBusinessType();
+  const isRealEstate = terms.features.complianceCheck;
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [dayModalDate, setDayModalDate] = useState<Date | null>(null);
+  const [dayModalPosts, setDayModalPosts] = useState<any[]>([]);
+  const MAX_VISIBLE_POSTS = 3;
   const [selectedPost, setSelectedPost] = useState<ScheduledPost | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editContent, setEditContent] = useState("");
@@ -166,7 +173,7 @@ export function ScheduledPostsManager() {
   const rawName = user?.name || user?.email?.split('@')[0];
   const userName = rawName 
     ? rawName.charAt(0).toUpperCase() + rawName.slice(1) // Capitalize first letter
-    : "Business Owner";
+    : terms.role;
   const [isEditingWithAI, setIsEditingWithAI] = useState(false);
   const [aiEditContent, setAiEditContent] = useState("");
   const [showPromptEditor, setShowPromptEditor] = useState(false);
@@ -184,6 +191,9 @@ export function ScheduledPostsManager() {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
+  const [editVideoUrl, setEditVideoUrl] = useState("");
+  const [editVideoUploading, setEditVideoUploading] = useState(false);
+  const editVideoFileRef = useRef<HTMLInputElement>(null);
 
   // Recalculate aiPrompt when selected post changes to ensure platform-specific word count is current
   useEffect(() => {
@@ -238,10 +248,11 @@ export function ScheduledPostsManager() {
   const { toast } = useToast();
 
   const updatePostMutation = useMutation({
-    mutationFn: async ({ id, content, scheduledFor }: { id: string; content: string; scheduledFor: string }) => {
+    mutationFn: async ({ id, content, scheduledFor, metadata }: { id: string; content: string; scheduledFor: string; metadata?: Record<string, any> }) => {
       const response = await apiRequest("PUT", `/api/scheduled-posts/${id}`, {
         content,
         scheduledFor,
+        ...(metadata ? { metadata } : {}),
       });
       return response.json();
     },
@@ -315,26 +326,12 @@ export function ScheduledPostsManager() {
       });
       return response.json();
     },
-    onSuccess: (data, variables) => {
+    onSuccess: () => {
       toast({
         title: "Photo Attached!",
         description: "Photo has been attached to your post.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
-      // Update the previewPost state with the new image
-      if (previewPost && previewPost.id === variables.id) {
-        setPreviewPost({
-          ...previewPost,
-          metadata: { ...previewPost.metadata, imageUrl: variables.imageUrl }
-        });
-      }
-      // Update the selectedPost state with the new image (for edit dialog)
-      if (selectedPost && selectedPost.id === variables.id) {
-        setSelectedPost({
-          ...selectedPost,
-          metadata: { ...selectedPost.metadata, imageUrl: variables.imageUrl }
-        });
-      }
       setShowPhotoDialog(false);
       setSelectedPhoto(null);
       setUploadingPostId(null);
@@ -360,9 +357,7 @@ export function ScheduledPostsManager() {
 
   const handleUploadPhoto = (post: ScheduledPost) => {
     setUploadingPostId(post.id);
-    // Preserve existing image from post metadata if available
-    const existingImage = post.metadata?.imageUrl as string | undefined;
-    setSelectedPhoto(existingImage || null);
+    setSelectedPhoto(null);
     setShowPhotoDialog(true);
   };
 
@@ -372,15 +367,26 @@ export function ScheduledPostsManager() {
     setEditScheduledFor(format(new Date(post.scheduledFor), "yyyy-MM-dd'T'HH:mm"));
     setEditMode("manual");
     setAiEditContent(post.content);
+    setEditVideoUrl(post.metadata?.videoUrl || post.metadata?.imageUrl || "");
     setShowEditDialog(true);
   };
 
   const handleSave = () => {
     if (!selectedPost) return;
+    if (selectedPost.platform === 'tiktok' && !editVideoUrl) {
+      toast({ title: "Video Required", description: "TikTok posts require a video. Please upload or paste a video URL.", variant: "destructive" });
+      return;
+    }
+    const metadata: Record<string, any> = { ...(selectedPost.metadata || {}) };
+    if (selectedPost.platform === 'tiktok') {
+      metadata.videoUrl = editVideoUrl;
+      metadata.imageUrl = editVideoUrl;
+    }
     updatePostMutation.mutate({
       id: selectedPost.id,
       content: editContent,
       scheduledFor: new Date(editScheduledFor).toISOString(),
+      metadata,
     });
   };
 
@@ -467,28 +473,27 @@ export function ScheduledPostsManager() {
   return (
     <>
     <Card>
-      <CardHeader className="pb-3 sm:pb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
             Scheduled Posts Calendar
           </CardTitle>
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   size="sm"
                   disabled={generateContentPlanMutation.isPending}
                   data-testid="button-ai-generate"
-                  className="h-8 sm:h-9 text-xs sm:text-sm"
                 >
                   {generateContentPlanMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
-                    <Wand2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <Wand2 className="h-4 w-4 mr-2" />
                   )}
                   AI Generate
-                  <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 ml-1" />
+                  <ChevronDown className="h-4 w-4 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -506,38 +511,33 @@ export function ScheduledPostsManager() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={previousMonth}
-                data-testid="button-previous-month"
-                className="h-8 w-8 sm:h-9 sm:w-9 p-0"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goToToday}
-                data-testid="button-today"
-                className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
-              >
-                Today
-              </Button>
-              <span className="font-semibold text-xs sm:text-sm min-w-[90px] sm:min-w-[140px] text-center">
-                {format(currentMonth, 'MMM yyyy')}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={nextMonth}
-                data-testid="button-next-month"
-                className="h-8 w-8 sm:h-9 sm:w-9 p-0"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={previousMonth}
+              data-testid="button-previous-month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={goToToday}
+              data-testid="button-today"
+            >
+              Today
+            </Button>
+            <span className="font-semibold text-sm min-w-[140px] text-center">
+              {format(currentMonth, 'MMMM yyyy')}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={nextMonth}
+              data-testid="button-next-month"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
         </div>
         
@@ -607,9 +607,8 @@ export function ScheduledPostsManager() {
           {/* Day Headers */}
           <div className="grid grid-cols-7 bg-muted">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="p-1.5 sm:p-2 text-center text-xs sm:text-sm font-semibold border-r last:border-r-0">
-                <span className="hidden sm:inline">{day}</span>
-                <span className="sm:hidden">{day.charAt(0)}</span>
+              <div key={day} className="p-2 text-center text-sm font-semibold border-r last:border-r-0">
+                {day}
               </div>
             ))}
           </div>
@@ -624,20 +623,20 @@ export function ScheduledPostsManager() {
               return (
                 <div
                   key={index}
-                  className={`min-h-[60px] sm:min-h-[100px] md:min-h-[120px] p-1 sm:p-2 border-r border-b last:border-r-0 ${
+                  className={`min-h-[120px] p-2 border-r border-b last:border-r-0 ${
                     !isCurrentMonth ? 'bg-muted/30' : 'bg-background'
                   } ${isToday ? 'bg-golden-accent/10' : ''}`}
                   data-testid={`calendar-day-${format(day, 'yyyy-MM-dd')}`}
                 >
-                  <div className={`text-xs sm:text-sm font-medium mb-1 sm:mb-2 ${
+                  <div className={`text-sm font-medium mb-2 ${
                     !isCurrentMonth ? 'text-muted-foreground' : isToday ? 'text-golden-accent font-bold' : 'text-foreground'
                   }`}>
                     {format(day, 'd')}
                   </div>
                   
                   {/* Platform Icons for Posts */}
-                  <div className="space-y-0.5 sm:space-y-1">
-                    {postsForDay.slice(0, 2).map((post) => {
+                  <div className="space-y-1">
+                    {postsForDay.slice(0, MAX_VISIBLE_POSTS).map((post) => {
                       const platform = platformIcons[post.platform as keyof typeof platformIcons];
                       const Icon = platform?.icon || Home;
                       const isSelected = selectedPostIds.has(post.id);
@@ -645,39 +644,44 @@ export function ScheduledPostsManager() {
                       return (
                         <div
                           key={post.id}
-                          className={`w-full flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1.5 rounded hover:bg-muted/50 transition-colors group ${isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
+                          className={`w-full flex items-center gap-1 p-1 rounded hover:bg-muted/50 transition-colors group ${isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : ''}`}
                           data-testid={`post-${post.id}`}
                           title={`${platform?.name || post.platform} - ${format(new Date(post.scheduledFor), 'h:mm a')}`}
                         >
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => togglePostSelection(post.id)}
-                            className="shrink-0 h-3 w-3 sm:h-4 sm:w-4"
+                            className="shrink-0 h-3 w-3"
                             data-testid={`checkbox-post-${post.id}`}
                           />
                           <button
                             onClick={() => handleEditPost(post)}
-                            className="flex-1 flex items-center gap-1 sm:gap-2 text-left min-w-0"
+                            className="flex-1 flex items-center gap-1.5 text-left min-w-0"
                           >
-                            <div className={`shrink-0 w-4 h-4 sm:w-6 sm:h-6 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
-                              <Icon className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5 text-white" />
+                            <div className={`shrink-0 w-5 h-5 rounded flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
+                              <Icon className="h-3 w-3 text-white" />
                             </div>
-                            <div className="flex-1 min-w-0 hidden sm:block">
-                              <div className="text-xs font-medium truncate">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] font-medium truncate leading-tight">
                                 {format(new Date(post.scheduledFor), 'h:mm a')}
-                              </div>
-                              <div className="text-xs text-muted-foreground truncate">
-                                {post.content.substring(0, 20)}...
                               </div>
                             </div>
                           </button>
                         </div>
                       );
                     })}
-                    {postsForDay.length > 2 && (
-                      <div className="text-[10px] sm:text-xs text-muted-foreground text-center">
-                        +{postsForDay.length - 2} more
-                      </div>
+                    {postsForDay.length > MAX_VISIBLE_POSTS && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDayModalDate(day);
+                          setDayModalPosts(postsForDay);
+                        }}
+                        className="w-full text-[10px] font-semibold text-primary hover:text-primary/80 hover:bg-primary/5 rounded py-0.5 transition-colors"
+                        data-testid={`button-more-posts-${format(day, 'yyyy-MM-dd')}`}
+                      >
+                        +{postsForDay.length - MAX_VISIBLE_POSTS} more
+                      </button>
                     )}
                   </div>
                 </div>
@@ -697,6 +701,58 @@ export function ScheduledPostsManager() {
         )}
       </CardContent>
       
+      {/* Day Detail Modal */}
+      <Dialog open={!!dayModalDate} onOpenChange={(open) => { if (!open) { setDayModalDate(null); setDayModalPosts([]); } }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              {dayModalDate ? format(dayModalDate, 'EEEE, MMMM d, yyyy') : ''}
+            </DialogTitle>
+            <DialogDescription>
+              {dayModalPosts.length} scheduled post{dayModalPosts.length !== 1 ? 's' : ''} for this day
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 mt-2">
+            {dayModalPosts.map((post) => {
+              const platform = platformIcons[post.platform as keyof typeof platformIcons];
+              const Icon = platform?.icon || Home;
+              const isSelected = selectedPostIds.has(post.id);
+              return (
+                <div
+                  key={post.id}
+                  className={`flex items-start gap-3 p-3 rounded-xl border transition-all hover:bg-muted/40 ${isSelected ? 'bg-primary/5 border-primary/30' : 'border-border/50'}`}
+                  data-testid={`modal-post-${post.id}`}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => togglePostSelection(post.id)}
+                    className="shrink-0 mt-1"
+                  />
+                  <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${platform?.bgColor || 'bg-gray-500'}`}>
+                    <Icon className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold capitalize">{platform?.name || post.platform}</span>
+                      <span className="text-xs text-muted-foreground">{format(new Date(post.scheduledFor), 'h:mm a')}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-3 leading-relaxed">{post.content}</p>
+                  </div>
+                  <button
+                    onClick={() => { setDayModalDate(null); setDayModalPosts([]); handleEditPost(post); }}
+                    className="shrink-0 p-1.5 rounded-lg hover:bg-muted transition-colors"
+                    data-testid={`button-edit-modal-post-${post.id}`}
+                  >
+                    <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Post Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -940,6 +996,106 @@ export function ScheduledPostsManager() {
                 )}
               </div>
 
+              {/* BHHS Compliance Check */}
+              {isRealEstate && (editContent.trim().length > 10 || aiEditContent.trim().length > 10) && (
+                <ComplianceChecker
+                  content={editMode === "manual" ? editContent : aiEditContent}
+                  platform={selectedPost?.platform || "general"}
+                  hasMedia={!!selectedPost?.metadata?.imageUrl}
+                  hasVideo={false}
+                  onContentFix={(fixedContent) => {
+                    if (editMode === "manual") {
+                      setEditContent(fixedContent);
+                    } else {
+                      setAiEditContent(fixedContent);
+                    }
+                  }}
+                  showGuidelines={false}
+                />
+              )}
+
+              {selectedPost?.platform === 'tiktok' && (
+                <div className="space-y-3 p-3 border border-red-200 dark:border-red-800 rounded-lg bg-red-50/50 dark:bg-red-950/20">
+                  <div className="flex items-center gap-2">
+                    <Video className="h-5 w-5 text-red-500" />
+                    <span className="text-sm font-semibold">TikTok Video (Required)</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">TikTok only supports video posts. Upload a video or paste a video URL.</p>
+                  <input
+                    type="file"
+                    ref={editVideoFileRef}
+                    accept="video/*"
+                    className="hidden"
+                    data-testid="input-edit-tiktok-video-file"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setEditVideoUploading(true);
+                      try {
+                        const formData = new FormData();
+                        formData.append("media", file);
+                        const res = await fetch("/api/scheduled-posts/upload-media", {
+                          method: "POST",
+                          credentials: "include",
+                          body: formData,
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.url) {
+                          setEditVideoUrl(data.url);
+                          toast({ title: "Video Uploaded", description: "Video ready for TikTok posting." });
+                        } else {
+                          toast({ title: "Upload Failed", description: data.error || "Could not upload video", variant: "destructive" });
+                        }
+                      } catch {
+                        toast({ title: "Upload Failed", description: "Could not upload video", variant: "destructive" });
+                      } finally {
+                        setEditVideoUploading(false);
+                        if (editVideoFileRef.current) editVideoFileRef.current.value = "";
+                      }
+                    }}
+                  />
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => editVideoFileRef.current?.click()}
+                      disabled={editVideoUploading}
+                      data-testid="btn-edit-upload-tiktok-video"
+                      className="border-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+                    >
+                      {editVideoUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                      {editVideoUploading ? "Uploading..." : "Upload Video"}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">or</span>
+                  </div>
+                  <Input
+                    placeholder="Paste video URL here..."
+                    value={editVideoUrl}
+                    onChange={(e) => setEditVideoUrl(e.target.value)}
+                    className="text-sm"
+                    data-testid="input-edit-tiktok-video-url"
+                  />
+                  {editVideoUrl && (
+                    <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-950/30 rounded-md border border-green-200 dark:border-green-800">
+                      <Check className="w-4 h-4 text-green-600" />
+                      <span className="text-xs text-green-700 dark:text-green-300 truncate flex-1">Video ready: {editVideoUrl.length > 50 ? editVideoUrl.slice(0, 50) + "..." : editVideoUrl}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                        onClick={() => setEditVideoUrl("")}
+                        data-testid="btn-edit-remove-tiktok-video"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {!editVideoUrl && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">A video is required for TikTok posts to publish successfully.</p>
+                  )}
+                </div>
+              )}
+
               {/* Schedule Date/Time */}
               <div>
                 <Label htmlFor="edit-scheduled" className="text-sm font-medium">
@@ -980,13 +1136,19 @@ export function ScheduledPostsManager() {
                   Preview
                 </Button>
                 <Button
-                  onClick={() => handleUploadPhoto(selectedPost)}
+                  onClick={() => {
+                    if (selectedPost?.platform === 'tiktok') {
+                      editVideoFileRef.current?.click();
+                    } else {
+                      handleUploadPhoto(selectedPost);
+                    }
+                  }}
                   variant="outline"
                   className="flex-1"
                   data-testid="button-upload-photo"
                 >
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload Photo
+                  {selectedPost?.platform === 'tiktok' ? 'Upload Video' : 'Upload Photo'}
                 </Button>
                 <Button
                   onClick={() => {
@@ -1032,14 +1194,8 @@ export function ScheduledPostsManager() {
       </Dialog>
       
       {/* Enhanced Preview Dialog */}
-      <Dialog open={showPreview} onOpenChange={(open) => {
-        if (!open && isEditingWithAI) {
-          // Reset AI editing state when closing
-          setIsEditingWithAI(false);
-        }
-        setShowPreview(open);
-      }}>
-        <DialogContent className="max-w-sm p-0 overflow-hidden" hideCloseButton={isEditingWithAI}>
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-sm p-0 overflow-hidden">
           <DialogHeader className="sr-only">
             <DialogTitle>Post Preview</DialogTitle>
           </DialogHeader>
@@ -1053,6 +1209,13 @@ export function ScheduledPostsManager() {
                       <Sparkles className="h-4 w-4 text-golden-accent" />
                       AI Content Editor
                     </h3>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setIsEditingWithAI(false)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                   <Textarea
                     value={aiEditContent}
@@ -1116,52 +1279,6 @@ export function ScheduledPostsManager() {
                       onClick={() => setShowPromptEditor(!showPromptEditor)}
                     >
                       Prompt
-                    </Button>
-                  </div>
-                  {/* Apply / Cancel buttons */}
-                  <div className="flex gap-2 pt-2 border-t">
-                    <Button
-                      size="sm"
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      onClick={async () => {
-                        if (!previewPost || !aiEditContent.trim()) return;
-                        try {
-                          await apiRequest('PUT', `/api/scheduled-posts/${previewPost.id}`, {
-                            content: aiEditContent
-                          });
-                          // Update local state
-                          setPreviewPost({ ...previewPost, content: aiEditContent });
-                          if (selectedPost && selectedPost.id === previewPost.id) {
-                            setSelectedPost({ ...selectedPost, content: aiEditContent });
-                            setEditContent(aiEditContent);
-                          }
-                          queryClient.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
-                          toast({
-                            title: "Content Saved",
-                            description: "Your enhanced content has been saved."
-                          });
-                          setIsEditingWithAI(false);
-                        } catch (error) {
-                          toast({
-                            title: "Save Failed",
-                            description: "Unable to save content.",
-                            variant: "destructive"
-                          });
-                        }
-                      }}
-                    >
-                      <Check className="h-3 w-3 mr-1" />
-                      Apply
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setAiEditContent(previewPost.content);
-                        setIsEditingWithAI(false);
-                      }}
-                    >
-                      Cancel
                     </Button>
                   </div>
                 </div>
@@ -1313,7 +1430,7 @@ export function ScheduledPostsManager() {
                         </div>
                         <div>
                           <div className="font-semibold text-sm">{userName}</div>
-                          <div className="text-xs text-gray-500">Restaurant Professional</div>
+                          <div className="text-xs text-gray-500">{terms.role}</div>
                           <div className="text-xs text-gray-400">
                             {format(new Date(previewPost.scheduledFor), "MMM d, h:mm a")}
                           </div>
@@ -1340,7 +1457,7 @@ export function ScheduledPostsManager() {
                       <div className="border rounded bg-gray-50 p-4">
                         <div className="text-center text-gray-600">
                           <Home className="h-8 w-8 mx-auto mb-2" />
-                          <div className="text-sm font-medium">Restaurant Feature</div>
+                          <div className="text-sm font-medium">{terms.featureLabel}</div>
                           <div className="text-xs">Click to view details</div>
                         </div>
                       </div>
@@ -1371,31 +1488,30 @@ export function ScheduledPostsManager() {
       
       {/* Photo Upload Dialog - Enhanced with AI Image Generation */}
       <Dialog open={showPhotoDialog} onOpenChange={setShowPhotoDialog}>
-        <DialogContent className="max-w-3xl w-[95vw] max-h-[85vh] overflow-hidden flex flex-col p-4 sm:p-6">
-          <DialogHeader className="flex-shrink-0 pb-2">
-            <DialogTitle className="text-base sm:text-lg">Add Image to Post</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              Generate with AI, search stock images, upload your own, or select from your menu photos
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Image to Post</DialogTitle>
+            <DialogDescription>
+              Generate with AI, search stock images, upload your own, or select from MLS listings
             </DialogDescription>
           </DialogHeader>
           
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <ImagePicker
-              onSelect={(imageUrl) => {
-                handlePhotoUploadComplete(imageUrl);
-              }}
-              platform={selectedPost?.platform || previewPost?.platform}
-              selectedImage={selectedPhoto}
-              mlsPhotos={[
-                "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&h=600&fit=crop",
-                "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=800&h=600&fit=crop",
-                "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=800&h=600&fit=crop",
-                "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&h=600&fit=crop",
-                "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&h=600&fit=crop",
-                "https://images.unsplash.com/photo-1476224203421-9ac39bcb3327?w=800&h=600&fit=crop",
-              ]}
-            />
-          </div>
+          <ImagePicker
+            onSelect={(imageUrl) => {
+              handlePhotoUploadComplete(imageUrl);
+              setShowPhotoDialog(false);
+            }}
+            platform={previewPost?.platform}
+            selectedImage={selectedPhoto}
+            mlsPhotos={[
+              "https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1554995207-c18c203602cb?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&h=600&fit=crop",
+              "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&h=600&fit=crop",
+            ]}
+          />
         </DialogContent>
       </Dialog>
     </Card>

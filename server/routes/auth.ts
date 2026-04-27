@@ -1,21 +1,17 @@
 import { Request, Response, Router } from "express";
 import { z } from "zod";
-import bcrypt from "bcryptjs";
-import { optionalAuth, requireAuth, generateToken } from "../middleware/auth";
+import { optionalAuth, requireAuth } from "../middleware/auth";
 import {
   createAgent,
   createOrLoginPublicUser,
   loginAgent,
   testUserIdentification,
 } from "../utils/auth";
+import { generateToken } from "../middleware/auth";
 import { db } from "../db";
-import { users, publicUsers } from "../../shared/schema";
-import { eq, and } from "drizzle-orm";
-import {
-  generateVerificationToken,
-  sendVerificationEmail,
-  sendWelcomeEmail,
-} from "../services/email";
+import { users } from "../../shared/schema";
+import { eq } from "drizzle-orm";
+import { storage } from "../storage";
 
 const router = Router();
 
@@ -45,7 +41,7 @@ const publicUserSchema = z.object({
 
 /**
  * POST /api/auth/agent/register
- * Register a new restaurant owner
+ * Register a new real estate agent
  */
 router.post("/agent/register", async (req: Request, res: Response) => {
   try {
@@ -101,7 +97,7 @@ router.post("/agent/register", async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/agent/login
- * Login a restaurant owner
+ * Login a real estate agent
  */
 router.post("/agent/login", async (req: Request, res: Response) => {
   try {
@@ -264,30 +260,37 @@ router.get("/check", optionalAuth, async (req: Request, res: Response) => {
     let enrichedUser = { ...req.user };
     
     if (req.user.type === "agent" && req.user.id) {
-      const dbUser = await db.query.users.findFirst({
-        where: eq(users.id, String(req.user.id)),
-      });
+      const agentUser = await storage.getUser(String(req.user.id));
       
-      if (dbUser) {
+      if (agentUser) {
         enrichedUser = {
           ...enrichedUser,
-          name: dbUser.name,
-          isDemo: dbUser.isDemo || false,
+          name: agentUser.name,
+          isDemo: agentUser.isDemo || false,
         };
       }
     }
     
+    const refreshedToken = (req as any)._refreshedToken;
+    const rawToken = refreshedToken || req.cookies?.authToken ||
+      req.headers.authorization?.replace("Bearer ", "");
+
     res.json({
       success: true,
       authenticated: true,
       user: enrichedUser,
+      token: rawToken || undefined,
     });
   } catch (error) {
     console.error("Error enriching user data:", error);
+    const refreshedToken = (req as any)._refreshedToken;
+    const rawToken = refreshedToken || req.cookies?.authToken ||
+      req.headers.authorization?.replace("Bearer ", "");
     res.json({
       success: true,
       authenticated: !!req.user,
       user: req.user,
+      token: rawToken || undefined,
     });
   }
 });
@@ -314,6 +317,38 @@ router.post("/login", async (req: Request, res: Response) => {
     const cleanIdentifier = identifier.trim();
     let loginResult;
 
+    // Strategy 0: Check if identifier matches an in-memory agent username
+    const agentUser = await storage.getUserByUsername(cleanIdentifier);
+    if (agentUser) {
+      const token = generateToken({
+        id: agentUser.id,
+        username: agentUser.username,
+        email: agentUser.email,
+        type: "agent",
+      });
+
+      res.cookie("authToken", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      return res.json({
+        success: true,
+        message: "Welcome back!",
+        user: {
+          id: agentUser.id,
+          username: agentUser.username,
+          name: agentUser.name,
+          email: agentUser.email,
+          role: agentUser.role,
+          type: "agent",
+        },
+        token,
+      });
+    }
+
     // Strategy 1: If it contains @, treat as email for public user
     if (cleanIdentifier.includes("@")) {
       loginResult = await createOrLoginPublicUser(
@@ -336,7 +371,7 @@ router.post("/login", async (req: Request, res: Response) => {
         return res.json({
           success: true,
           message: `Welcome ${
-            loginResult.isNewUser ? "to RestaurantFlow" : "back"
+            loginResult.isNewUser ? "to RealtyFlow" : "back"
           }!`,
           user: {
             id: loginResult.user.id,
@@ -430,350 +465,5 @@ if (process.env.NODE_ENV === "development") {
     }
   });
 }
-
-// =====================================================
-// USER SIGNUP WITH EMAIL VERIFICATION
-// =====================================================
-
-const signupSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  name: z.string().min(1, "Name is required"),
-});
-
-/**
- * POST /api/auth/signup
- * Register a new user with email verification
- */
-router.post("/signup", async (req: Request, res: Response) => {
-  try {
-    const { email, password, name } = signupSchema.parse(req.body);
-
-    // Check if user already exists
-    const existingUser = await db.query.publicUsers.findFirst({
-      where: and(
-        eq(publicUsers.email, email.toLowerCase()),
-        eq(publicUsers.agentSlug, "default")
-      ),
-    });
-
-    if (existingUser) {
-      if (existingUser.emailVerified) {
-        return res.status(409).json({
-          success: false,
-          error: "An account with this email already exists. Please login instead.",
-        });
-      } else {
-        // User exists but not verified - resend verification email
-        const verificationToken = generateVerificationToken();
-        const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-        await db
-          .update(publicUsers)
-          .set({
-            verificationToken,
-            verificationTokenExpiry: tokenExpiry,
-            name: name || existingUser.name,
-            password: await bcrypt.hash(password, 10),
-          })
-          .where(eq(publicUsers.id, existingUser.id));
-
-        await sendVerificationEmail(email, name || existingUser.name || "there", verificationToken);
-
-        return res.status(200).json({
-          success: true,
-          message: "A new verification email has been sent. Please check your inbox.",
-          requiresVerification: true,
-        });
-      }
-    }
-
-    // Create new user
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const verificationToken = generateVerificationToken();
-    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    const [newUser] = await db
-      .insert(publicUsers)
-      .values({
-        email: email.toLowerCase(),
-        name,
-        password: hashedPassword,
-        agentSlug: "default",
-        emailVerified: false,
-        verificationToken,
-        verificationTokenExpiry: tokenExpiry,
-      })
-      .returning();
-
-    // Send verification email
-    const emailSent = await sendVerificationEmail(email, name, verificationToken);
-
-    if (!emailSent) {
-      console.error("Failed to send verification email to:", email);
-    }
-
-    res.status(201).json({
-      success: true,
-      message: "Account created! Please check your email to verify your account.",
-      requiresVerification: true,
-      user: {
-        id: newUser.id,
-        email: newUser.email,
-        name: newUser.name,
-      },
-    });
-  } catch (error: any) {
-    console.error("Signup error:", error);
-
-    if (error.name === "ZodError") {
-      return res.status(400).json({
-        success: false,
-        error: "Validation failed",
-        details: error.errors,
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      error: "Failed to create account. Please try again.",
-    });
-  }
-});
-
-/**
- * GET /api/auth/verify-email
- * Verify user's email with token
- */
-router.get("/verify-email", async (req: Request, res: Response) => {
-  try {
-    const { token } = req.query;
-
-    if (!token || typeof token !== "string") {
-      return res.status(400).json({
-        success: false,
-        error: "Verification token is required",
-      });
-    }
-
-    // Find user with this token
-    const user = await db.query.publicUsers.findFirst({
-      where: eq(publicUsers.verificationToken, token),
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid or expired verification link",
-      });
-    }
-
-    // Check if token is expired
-    if (user.verificationTokenExpiry && user.verificationTokenExpiry < new Date()) {
-      return res.status(400).json({
-        success: false,
-        error: "Verification link has expired. Please request a new one.",
-        expired: true,
-      });
-    }
-
-    // Mark email as verified
-    await db
-      .update(publicUsers)
-      .set({
-        emailVerified: true,
-        verificationToken: null,
-        verificationTokenExpiry: null,
-      })
-      .where(eq(publicUsers.id, user.id));
-
-    // Send welcome email
-    await sendWelcomeEmail(user.email, user.name || "there");
-
-    // Generate auth token and log them in
-    const authToken = generateToken({
-      id: user.id,
-      email: user.email,
-      type: "public",
-    });
-
-    // Set auth cookie
-    res.cookie("authToken", authToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.json({
-      success: true,
-      message: "Email verified successfully! Welcome to RestaurantFlow.",
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        type: "public",
-      },
-    });
-  } catch (error) {
-    console.error("Email verification error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Verification failed. Please try again.",
-    });
-  }
-});
-
-/**
- * POST /api/auth/resend-verification
- * Resend verification email
- */
-router.post("/resend-verification", async (req: Request, res: Response) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: "Email is required",
-      });
-    }
-
-    const user = await db.query.publicUsers.findFirst({
-      where: and(
-        eq(publicUsers.email, email.toLowerCase()),
-        eq(publicUsers.agentSlug, "default")
-      ),
-    });
-
-    if (!user) {
-      // Don't reveal if user exists or not
-      return res.json({
-        success: true,
-        message: "If an account exists with this email, a verification link has been sent.",
-      });
-    }
-
-    if (user.emailVerified) {
-      return res.status(400).json({
-        success: false,
-        error: "This email is already verified. Please login.",
-      });
-    }
-
-    // Generate new token
-    const verificationToken = generateVerificationToken();
-    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    await db
-      .update(publicUsers)
-      .set({
-        verificationToken,
-        verificationTokenExpiry: tokenExpiry,
-      })
-      .where(eq(publicUsers.id, user.id));
-
-    await sendVerificationEmail(email, user.name || "there", verificationToken);
-
-    res.json({
-      success: true,
-      message: "Verification email sent! Please check your inbox.",
-    });
-  } catch (error) {
-    console.error("Resend verification error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to resend verification email.",
-    });
-  }
-});
-
-/**
- * POST /api/auth/login-with-password
- * Login with email and password
- */
-router.post("/login-with-password", async (req: Request, res: Response) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        error: "Email and password are required",
-      });
-    }
-
-    const user = await db.query.publicUsers.findFirst({
-      where: and(
-        eq(publicUsers.email, email.toLowerCase()),
-        eq(publicUsers.agentSlug, "default")
-      ),
-    });
-
-    if (!user || !user.password) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid email or password",
-      });
-    }
-
-    // Check password
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid email or password",
-      });
-    }
-
-    // Check if email is verified
-    if (!user.emailVerified) {
-      return res.status(403).json({
-        success: false,
-        error: "Please verify your email before logging in",
-        requiresVerification: true,
-        email: user.email,
-      });
-    }
-
-    // Generate token
-    const token = generateToken({
-      id: user.id,
-      email: user.email,
-      type: "public",
-    });
-
-    // Update last login
-    await db
-      .update(publicUsers)
-      .set({ lastLogin: new Date() })
-      .where(eq(publicUsers.id, user.id));
-
-    // Set cookie
-    res.cookie("authToken", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.json({
-      success: true,
-      message: "Login successful!",
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        type: "public",
-      },
-    });
-  } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Login failed. Please try again.",
-    });
-  }
-});
 
 export default router;

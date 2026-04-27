@@ -83,9 +83,28 @@ import {
   videoGenerationJobs as videoGenerationJobsTable,
   type VideoTemplate,
   videoTemplates as videoTemplatesTable,
+  type WhatsappSettings,
+  type InsertWhatsappSettings,
+  type WhatsappConversation,
+  type InsertWhatsappConversation,
+  type WhatsappMessage,
+  type InsertWhatsappMessage,
+  type WhatsappBulkQueue,
+  type InsertWhatsappBulkQueue,
+  whatsappSettings as whatsappSettingsTable,
+  whatsappConversations as whatsappConversationsTable,
+  whatsappMessages as whatsappMessagesTable,
+  whatsappBulkQueues as whatsappBulkQueuesTable,
+  whatsappBulkSendResults as whatsappBulkSendResultsTable,
+  type MenuItem,
+  type InsertMenuItem,
+  menuItems as menuItemsTable,
+  type BusinessLocation,
+  type InsertBusinessLocation,
+  businessLocations as businessLocationsTable,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 
 export interface IStorage {
@@ -242,6 +261,7 @@ export interface IStorage {
   // Individual Photo Avatars (training photos within groups)
   createPhotoAvatar(avatar: InsertPhotoAvatar): Promise<PhotoAvatar>;
   listPhotoAvatarsByGroup(groupId: string): Promise<PhotoAvatar[]>;
+  listPhotoAvatarsByUser(userId: string): Promise<any[]>;
   
   // Avatar Looks (trained avatars from HeyGen - uses avatars table)
   getPhotoAvatarByHeygenIdAndUser(
@@ -371,6 +391,47 @@ export interface IStorage {
   // Twilio Messages
   createTwilioMessage(data: InsertTwilioMessage): Promise<TwilioMessage>;
   getTwilioMessagesByConversationId(conversationId: string): Promise<TwilioMessage[]>;
+
+  // WhatsApp Settings
+  getWhatsappSettingsByUserId(userId: string): Promise<WhatsappSettings | undefined>;
+  getWhatsappSettingsByPhoneNumberId(phoneNumberId: string): Promise<WhatsappSettings | undefined>;
+  createOrUpdateWhatsappSettings(settings: InsertWhatsappSettings): Promise<WhatsappSettings>;
+
+  // WhatsApp Conversations
+  getWhatsappConversationByWaId(userId: string, waId: string): Promise<WhatsappConversation | undefined>;
+  createWhatsappConversation(data: InsertWhatsappConversation): Promise<WhatsappConversation>;
+  updateWhatsappConversation(id: string, updates: Partial<WhatsappConversation>): Promise<WhatsappConversation | undefined>;
+  getWhatsappConversationsByUserId(userId: string): Promise<WhatsappConversation[]>;
+  getWhatsappConversationById(id: string): Promise<WhatsappConversation | undefined>;
+
+  // WhatsApp Messages
+  createWhatsappMessage(data: InsertWhatsappMessage): Promise<WhatsappMessage>;
+  getWhatsappMessagesByConversationId(conversationId: string): Promise<WhatsappMessage[]>;
+
+  // WhatsApp Bulk Queues
+  createWhatsappBulkQueue(data: InsertWhatsappBulkQueue): Promise<WhatsappBulkQueue>;
+  getWhatsappBulkQueuesByUserId(userId: string): Promise<WhatsappBulkQueue[]>;
+  getWhatsappBulkQueueById(id: string): Promise<WhatsappBulkQueue | undefined>;
+  updateWhatsappBulkQueue(id: string, updates: Partial<WhatsappBulkQueue>): Promise<WhatsappBulkQueue | undefined>;
+  getActiveWhatsappBulkQueues(): Promise<WhatsappBulkQueue[]>;
+
+  // WhatsApp Bulk Send Results
+  saveWhatsappBulkSendResult(userId: string, data: any): Promise<any>;
+  getLatestWhatsappBulkSendResult(userId: string): Promise<any | null>;
+
+  // Menu Items (multi-vertical catalog)
+  getMenuItems(userId: string, businessType?: string): Promise<MenuItem[]>;
+  getMenuItemById(id: string): Promise<MenuItem | undefined>;
+  createMenuItem(item: InsertMenuItem): Promise<MenuItem>;
+  updateMenuItem(id: string, updates: Partial<MenuItem>): Promise<MenuItem | undefined>;
+  deleteMenuItem(id: string): Promise<boolean>;
+
+  // Business Locations
+  getBusinessLocations(userId: string): Promise<BusinessLocation[]>;
+  getBusinessLocationById(id: string): Promise<BusinessLocation | undefined>;
+  createBusinessLocation(location: InsertBusinessLocation): Promise<BusinessLocation>;
+  updateBusinessLocation(id: string, updates: Partial<BusinessLocation>): Promise<BusinessLocation | undefined>;
+  deleteBusinessLocation(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
@@ -402,14 +463,14 @@ export class MemStorage implements IStorage {
   }
 
   private seedData() {
-    // Create default user (Demo User)
+    // Create default user (Mike Bjork)
     const userId = randomUUID();
     const user: User = {
       id: userId,
-      username: "demouser",
+      username: "mikebjork",
       password: "password",
-      name: "Demo Restaurant",
-      email: "demo@restaurantflow.com",
+      name: "Mike Bjork",
+      email: "mike@bjorkgroup.com",
       role: "team_lead",
       createdAt: new Date(),
     };
@@ -661,49 +722,105 @@ export class MemStorage implements IStorage {
   }
 
   async getContentPieces(userId: string): Promise<ContentPiece[]> {
-    return Array.from(this.contentPieces.values()).filter(
-      (content) => content.userId === userId
-    );
+    try {
+      const { db } = await import("./db");
+      const { contentPieces: contentPiecesTable } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+      const rows = await db.select().from(contentPiecesTable).where(eq(contentPiecesTable.userId, userId)).orderBy(desc(contentPiecesTable.createdAt));
+      return rows;
+    } catch (error) {
+      console.error("[STORAGE] getContentPieces DB error, falling back to memory:", error);
+      return Array.from(this.contentPieces.values()).filter(
+        (content) => content.userId === userId
+      );
+    }
   }
 
   async getContentPieceById(id: string): Promise<ContentPiece | undefined> {
-    return this.contentPieces.get(id);
+    try {
+      const { db } = await import("./db");
+      const { contentPieces: contentPiecesTable } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const rows = await db.select().from(contentPiecesTable).where(eq(contentPiecesTable.id, id));
+      return rows[0] || undefined;
+    } catch (error) {
+      console.error("[STORAGE] getContentPieceById DB error:", error);
+      return this.contentPieces.get(id);
+    }
   }
 
   async createContentPiece(
     insertContent: InsertContentPiece
   ): Promise<ContentPiece> {
-    const id = randomUUID();
-    const content: ContentPiece = {
-      ...insertContent,
-      id,
-      createdAt: new Date(),
-      metadata: insertContent.metadata || null,
-      neighborhood: insertContent.neighborhood || null,
-      keywords: insertContent.keywords || null,
-      seoOptimized: insertContent.seoOptimized || false,
-      status: insertContent.status || "draft",
-      publishedAt: insertContent.publishedAt || null,
-      scheduledFor: insertContent.scheduledFor || null,
-    };
-    this.contentPieces.set(id, content);
-    return content;
+    try {
+      const { db } = await import("./db");
+      const { contentPieces: contentPiecesTable } = await import("@shared/schema");
+      const [created] = await db.insert(contentPiecesTable).values({
+        userId: insertContent.userId,
+        type: insertContent.type,
+        title: insertContent.title,
+        content: insertContent.content,
+        keywords: insertContent.keywords || null,
+        neighborhood: insertContent.neighborhood || null,
+        seoOptimized: insertContent.seoOptimized || false,
+        status: insertContent.status || "draft",
+        publishedAt: insertContent.publishedAt || null,
+        scheduledFor: insertContent.scheduledFor || null,
+        socialPlatforms: insertContent.socialPlatforms || null,
+        metadata: insertContent.metadata || null,
+      }).returning();
+      return created;
+    } catch (error) {
+      console.error("[STORAGE] createContentPiece DB error, falling back to memory:", error);
+      const id = randomUUID();
+      const content: ContentPiece = {
+        ...insertContent,
+        id,
+        createdAt: new Date(),
+        metadata: insertContent.metadata || null,
+        neighborhood: insertContent.neighborhood || null,
+        keywords: insertContent.keywords || null,
+        seoOptimized: insertContent.seoOptimized || false,
+        status: insertContent.status || "draft",
+        publishedAt: insertContent.publishedAt || null,
+        scheduledFor: insertContent.scheduledFor || null,
+      };
+      this.contentPieces.set(id, content);
+      return content;
+    }
   }
 
   async updateContentPiece(
     id: string,
     updates: Partial<ContentPiece>
   ): Promise<ContentPiece | undefined> {
-    const content = this.contentPieces.get(id);
-    if (!content) return undefined;
-
-    const updated = { ...content, ...updates };
-    this.contentPieces.set(id, updated);
-    return updated;
+    try {
+      const { db } = await import("./db");
+      const { contentPieces: contentPiecesTable } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [updated] = await db.update(contentPiecesTable).set(updates).where(eq(contentPiecesTable.id, id)).returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error("[STORAGE] updateContentPiece DB error:", error);
+      const content = this.contentPieces.get(id);
+      if (!content) return undefined;
+      const updated = { ...content, ...updates };
+      this.contentPieces.set(id, updated);
+      return updated;
+    }
   }
 
   async deleteContentPiece(id: string): Promise<boolean> {
-    return this.contentPieces.delete(id);
+    try {
+      const { db } = await import("./db");
+      const { contentPieces: contentPiecesTable } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const result = await db.delete(contentPiecesTable).where(eq(contentPiecesTable.id, id));
+      return true;
+    } catch (error) {
+      console.error("[STORAGE] deleteContentPiece DB error:", error);
+      return this.contentPieces.delete(id);
+    }
   }
 
   async getSocialMediaAccounts(userId: string): Promise<SocialMediaAccount[]> {
@@ -1134,7 +1251,7 @@ export class MemStorage implements IStorage {
         content,
         hashtags:
           platform === "instagram"
-            ? ["OmahaFood", "OmahaRestaurants", "OmahaDining"]
+            ? ["OmahaRealEstate", "MovingToOmaha", "NebraskaHomes"]
             : [],
         scheduledFor: scheduleDate,
         status: "pending",
@@ -1159,7 +1276,7 @@ export class MemStorage implements IStorage {
       userId,
       name: `${displayName} - Professional`,
       description:
-        "Professional restaurant owner avatar for client-facing content",
+        "Professional real estate agent avatar for client-facing content",
       avatarImageUrl: null, // Would be set when user uploads their photo
       voiceId: "119caed25533477ba63822d5d1552d25", // HeyGen default professional voice
       style: "professional",
@@ -1174,21 +1291,21 @@ export class MemStorage implements IStorage {
   private createSampleVideoContent(userId: string) {
     const sampleTopics = [
       {
-        title: "Why Dundee is Perfect for Foodies",
-        topic: "Dundee neighborhood dining scene",
-        videoType: "location_tour",
+        title: "Why Dundee is Perfect for Families",
+        topic: "Dundee neighborhood family benefits",
+        videoType: "neighborhood_tour",
         neighborhood: "Dundee",
       },
       {
-        title: "Exploring Omaha's Food Scene: Your Complete Guide",
-        topic: "Complete food scene guide for Omaha",
-        videoType: "food_scene_guide",
+        title: "Moving to Omaha: Your Complete Guide",
+        topic: "Complete relocation guide for Omaha",
+        videoType: "moving_guide",
         neighborhood: null,
       },
       {
-        title: "Omaha Restaurant Industry Update - January 2025",
-        topic: "Current dining trends and opportunities",
-        videoType: "industry_update",
+        title: "Omaha Market Update - January 2025",
+        topic: "Current market trends and opportunities",
+        videoType: "market_update",
         neighborhood: null,
       },
     ];
@@ -1201,7 +1318,7 @@ export class MemStorage implements IStorage {
           Array.from(this.avatars.values()).find((a) => a.userId === userId)
             ?.id || null,
         title: sample.title,
-        script: `Welcome! Today I want to talk about ${sample.topic}. As your local Omaha restaurant expert, I'm here to provide you with valuable insights that can help with your dining decisions.`,
+        script: `Welcome! Today I want to talk about ${sample.topic}. As your local Omaha real estate expert, I'm here to provide you with valuable insights that can help with your real estate decisions.`,
         topic: sample.topic,
         neighborhood: sample.neighborhood,
         videoType: sample.videoType,
@@ -1217,9 +1334,9 @@ export class MemStorage implements IStorage {
         heygenVoiceId: null,
         heygenTemplateId: null,
         tags: [
-          "OmahaFood",
-          "RestaurantOwner",
-          "DiningOut",
+          "OmahaRealEstate",
+          "RealEstateExpert",
+          "HomesBuying",
           "Nebraska",
         ],
         seoOptimized: false,
@@ -1608,6 +1725,26 @@ export class MemStorage implements IStorage {
       .select()
       .from(photoAvatars)
       .where(eq(photoAvatars.groupId, groupId));
+  }
+
+  async listPhotoAvatarsByUser(userId: string): Promise<any[]> {
+    const results = await db
+      .select({
+        id: lookGenerationJobs.id,
+        groupId: lookGenerationJobs.groupId,
+        photoUrl: lookGenerationJobs.resultImageUrl,
+        lookLabel: lookGenerationJobs.lookLabel,
+        lookName: lookGenerationJobs.lookName,
+        prompt: lookGenerationJobs.prompt,
+        status: lookGenerationJobs.status,
+        createdAt: lookGenerationJobs.createdAt,
+        groupName: photoAvatarGroups.groupName,
+      })
+      .from(lookGenerationJobs)
+      .leftJoin(photoAvatarGroups, eq(lookGenerationJobs.groupId, photoAvatarGroups.heygenGroupId))
+      .where(eq(lookGenerationJobs.userId, userId))
+      .orderBy(lookGenerationJobs.createdAt);
+    return results;
   }
 
   async getPhotoAvatarByHeygenIdAndUser(
@@ -2401,6 +2538,264 @@ export class MemStorage implements IStorage {
       .from(twilioMessagesTable)
       .where(eq(twilioMessagesTable.conversationId, conversationId))
       .orderBy(twilioMessagesTable.createdAt);
+  }
+
+  // WhatsApp Settings
+  async getWhatsappSettingsByUserId(userId: string): Promise<WhatsappSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(whatsappSettingsTable)
+      .where(eq(whatsappSettingsTable.userId, userId));
+    return settings;
+  }
+
+  async getWhatsappSettingsByPhoneNumberId(phoneNumberId: string): Promise<WhatsappSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(whatsappSettingsTable)
+      .where(eq(whatsappSettingsTable.phoneNumberId, phoneNumberId));
+    return settings;
+  }
+
+  async createOrUpdateWhatsappSettings(settings: InsertWhatsappSettings): Promise<WhatsappSettings> {
+    const [result] = await db
+      .insert(whatsappSettingsTable)
+      .values(settings)
+      .onConflictDoUpdate({
+        target: whatsappSettingsTable.userId,
+        set: { ...settings, updatedAt: new Date() },
+      })
+      .returning();
+    return result;
+  }
+
+  // WhatsApp Conversations
+  async getWhatsappConversationByWaId(userId: string, waId: string): Promise<WhatsappConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(whatsappConversationsTable)
+      .where(
+        and(
+          eq(whatsappConversationsTable.userId, userId),
+          eq(whatsappConversationsTable.waId, waId)
+        )
+      );
+    return conversation;
+  }
+
+  async createWhatsappConversation(data: InsertWhatsappConversation): Promise<WhatsappConversation> {
+    const [conversation] = await db
+      .insert(whatsappConversationsTable)
+      .values(data)
+      .returning();
+    return conversation;
+  }
+
+  async updateWhatsappConversation(id: string, updates: Partial<WhatsappConversation>): Promise<WhatsappConversation | undefined> {
+    const [updated] = await db
+      .update(whatsappConversationsTable)
+      .set(updates)
+      .where(eq(whatsappConversationsTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getWhatsappConversationsByUserId(userId: string): Promise<WhatsappConversation[]> {
+    return await db
+      .select()
+      .from(whatsappConversationsTable)
+      .where(eq(whatsappConversationsTable.userId, userId))
+      .orderBy(desc(whatsappConversationsTable.lastMessageAt));
+  }
+
+  async getWhatsappConversationById(id: string): Promise<WhatsappConversation | undefined> {
+    const [conversation] = await db
+      .select()
+      .from(whatsappConversationsTable)
+      .where(eq(whatsappConversationsTable.id, id));
+    return conversation;
+  }
+
+  // WhatsApp Messages
+  async createWhatsappMessage(data: InsertWhatsappMessage): Promise<WhatsappMessage> {
+    const [message] = await db
+      .insert(whatsappMessagesTable)
+      .values(data)
+      .returning();
+    return message;
+  }
+
+  async getWhatsappMessagesByConversationId(conversationId: string): Promise<WhatsappMessage[]> {
+    return await db
+      .select()
+      .from(whatsappMessagesTable)
+      .where(eq(whatsappMessagesTable.conversationId, conversationId))
+      .orderBy(whatsappMessagesTable.createdAt);
+  }
+
+  async getMenuItems(userId: string, businessType?: string): Promise<MenuItem[]> {
+    const conditions = [eq(menuItemsTable.userId, userId)];
+    if (businessType) conditions.push(eq(menuItemsTable.businessType, businessType));
+    return await db
+      .select()
+      .from(menuItemsTable)
+      .where(and(...conditions))
+      .orderBy(menuItemsTable.sortOrder, menuItemsTable.createdAt);
+  }
+
+  async getMenuItemById(id: string): Promise<MenuItem | undefined> {
+    const [item] = await db.select().from(menuItemsTable).where(eq(menuItemsTable.id, id));
+    return item;
+  }
+
+  async createMenuItem(item: InsertMenuItem): Promise<MenuItem> {
+    const [created] = await db.insert(menuItemsTable).values(item).returning();
+    return created;
+  }
+
+  async updateMenuItem(id: string, updates: Partial<MenuItem>): Promise<MenuItem | undefined> {
+    const [updated] = await db
+      .update(menuItemsTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(menuItemsTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMenuItem(id: string): Promise<boolean> {
+    const result = await db.delete(menuItemsTable).where(eq(menuItemsTable.id, id));
+    return true;
+  }
+
+  async getBusinessLocations(userId: string): Promise<BusinessLocation[]> {
+    return await db
+      .select()
+      .from(businessLocationsTable)
+      .where(eq(businessLocationsTable.userId, userId))
+      .orderBy(businessLocationsTable.isPrimary, businessLocationsTable.createdAt);
+  }
+
+  async getBusinessLocationById(id: string): Promise<BusinessLocation | undefined> {
+    const [location] = await db.select().from(businessLocationsTable).where(eq(businessLocationsTable.id, id));
+    return location;
+  }
+
+  async createBusinessLocation(location: InsertBusinessLocation): Promise<BusinessLocation> {
+    const [created] = await db.insert(businessLocationsTable).values(location).returning();
+    return created;
+  }
+
+  async updateBusinessLocation(id: string, updates: Partial<BusinessLocation>): Promise<BusinessLocation | undefined> {
+    const [updated] = await db
+      .update(businessLocationsTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(businessLocationsTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteBusinessLocation(id: string): Promise<boolean> {
+    await db.delete(businessLocationsTable).where(eq(businessLocationsTable.id, id));
+    return true;
+  }
+
+  async createWhatsappBulkQueue(data: InsertWhatsappBulkQueue): Promise<WhatsappBulkQueue> {
+    const [created] = await db.insert(whatsappBulkQueuesTable).values(data).returning();
+    return created;
+  }
+
+  async getWhatsappBulkQueuesByUserId(userId: string): Promise<WhatsappBulkQueue[]> {
+    return await db
+      .select()
+      .from(whatsappBulkQueuesTable)
+      .where(eq(whatsappBulkQueuesTable.userId, userId))
+      .orderBy(sql`created_at DESC`);
+  }
+
+  async getWhatsappBulkQueueById(id: string): Promise<WhatsappBulkQueue | undefined> {
+    const [queue] = await db.select().from(whatsappBulkQueuesTable).where(eq(whatsappBulkQueuesTable.id, id));
+    return queue;
+  }
+
+  async updateWhatsappBulkQueue(id: string, updates: Partial<WhatsappBulkQueue>): Promise<WhatsappBulkQueue | undefined> {
+    const [updated] = await db
+      .update(whatsappBulkQueuesTable)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(whatsappBulkQueuesTable.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getActiveWhatsappBulkQueues(): Promise<WhatsappBulkQueue[]> {
+    return await db
+      .select()
+      .from(whatsappBulkQueuesTable)
+      .where(eq(whatsappBulkQueuesTable.status, "active"));
+  }
+
+  async saveWhatsappBulkSendResult(userId: string, data: any): Promise<any> {
+    const existing = await db
+      .select()
+      .from(whatsappBulkSendResultsTable)
+      .where(eq(whatsappBulkSendResultsTable.userId, userId))
+      .orderBy(sql`created_at DESC`)
+      .limit(1);
+
+    if (existing.length > 0 && !existing[0].complete) {
+      const [updated] = await db
+        .update(whatsappBulkSendResultsTable)
+        .set({
+          sent: data.sent ?? 0,
+          failed: data.failed ?? 0,
+          total: data.total ?? 0,
+          queued: data.queued ?? 0,
+          percent: data.percent ?? 0,
+          elapsed: data.elapsed ?? 0,
+          estimatedCost: data.estimatedCost ? String(data.estimatedCost) : null,
+          errorBreakdown: data.errorBreakdown ? JSON.stringify(data.errorBreakdown) : null,
+          complete: data.complete ?? false,
+          message: data.message ?? null,
+          bulkQueueId: data.bulkQueueId ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(whatsappBulkSendResultsTable.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(whatsappBulkSendResultsTable)
+      .values({
+        userId,
+        sent: data.sent ?? 0,
+        failed: data.failed ?? 0,
+        total: data.total ?? 0,
+        queued: data.queued ?? 0,
+        percent: data.percent ?? 0,
+        elapsed: data.elapsed ?? 0,
+        estimatedCost: data.estimatedCost ? String(data.estimatedCost) : null,
+        errorBreakdown: data.errorBreakdown ? JSON.stringify(data.errorBreakdown) : null,
+        complete: data.complete ?? false,
+        message: data.message ?? null,
+        bulkQueueId: data.bulkQueueId ?? null,
+      })
+      .returning();
+    return created;
+  }
+
+  async getLatestWhatsappBulkSendResult(userId: string): Promise<any | null> {
+    const [result] = await db
+      .select()
+      .from(whatsappBulkSendResultsTable)
+      .where(eq(whatsappBulkSendResultsTable.userId, userId))
+      .orderBy(sql`created_at DESC`)
+      .limit(1);
+    if (!result) return null;
+    return {
+      ...result,
+      errorBreakdown: result.errorBreakdown ? JSON.parse(result.errorBreakdown) : null,
+      estimatedCost: result.estimatedCost ? parseFloat(result.estimatedCost) : 0,
+    };
   }
 }
 

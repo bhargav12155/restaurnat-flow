@@ -8,18 +8,8 @@ import express, { NextFunction, type Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { registerRoutes } from "./routes";
+import { log, serveStatic, setupVite } from "./vite";
 import { realtimeService } from "./websocket";
-
-// Simple log function for production (vite logger is only for dev)
-function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
 
 const app = express();
 
@@ -28,10 +18,10 @@ if (process.env.NODE_ENV === "production") {
   app.set("trust proxy", 1);
 }
 
-// Increase payload limit to handle audio file uploads (avatar voice recordings)
+// Increase payload limit to handle property tour photo uploads (multiple high-res images as base64)
 // Capture raw body for webhook signature verification
 app.use(express.json({ 
-  limit: "10mb",
+  limit: "50mb",
   verify: (req: any, res, buf) => {
     // Store raw body for webhook signature verification
     if (req.url?.startsWith('/api/webhooks/')) {
@@ -39,14 +29,14 @@ app.use(express.json({
     }
   }
 }));
-app.use(express.urlencoded({ extended: false, limit: "10mb" }));
+app.use(express.urlencoded({ extended: false, limit: "50mb" }));
 app.use(cookieParser());
 
 // CORS configuration for NebraskaHomeHub integration
 app.use(
   cors({
     origin: [
-      "http://localhost:5000", // RestaurantFlow dev
+      "http://localhost:5000", // RealtyFlow dev
       "http://localhost:5173", // NebraskaHomeHub dev
       "http://localhost:3001", // NebraskaHomeHub dev alternative
       "http://gb-home-template-env-dev.eba-pisu79mx.us-east-2.elasticbeanstalk.com",
@@ -124,6 +114,11 @@ app.use((req, res, next) => {
   const postScheduler = new PostScheduler(storage, socialMediaService);
   postScheduler.start();
 
+  // Initialize WhatsApp bulk queue scheduler
+  const { BulkQueueScheduler } = await import("./services/bulk-queue-scheduler");
+  const bulkQueueScheduler = new BulkQueueScheduler(storage, realtimeService);
+  bulkQueueScheduler.start();
+
   // Initialize background video job worker
   const { startVideoJobWorker } = await import("./services/videoJobWorker.js");
   startVideoJobWorker();
@@ -144,25 +139,9 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
-    // Dynamic import vite only in development to avoid production errors
-    const { setupVite } = await import("./vite");
     await setupVite(app, server);
   } else {
-    // Serve static files in production
-    const distPath = path.resolve(import.meta.dirname, "public");
-    if (!fs.existsSync(distPath)) {
-      throw new Error(
-        `Could not find the build directory: ${distPath}, make sure to build the client first`,
-      );
-    }
-    app.use(express.static(distPath));
-    // Serve index.html for all non-API routes (SPA fallback)
-    app.use("*", (req, res, next) => {
-      if (req.originalUrl.startsWith("/api")) {
-        return next();
-      }
-      res.sendFile(path.resolve(distPath, "index.html"));
-    });
+    serveStatic(app);
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
@@ -181,7 +160,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(
-        `🚀 RestaurantFlow Multi-User Server running on http://0.0.0.0:${port}`
+        `🚀 RealtyFlow Multi-User Server running on http://0.0.0.0:${port}`
       );
       log(`📊 Database: Connected to Neon PostgreSQL`);
       log(`🔐 Authentication: JWT Multi-User System Active`);

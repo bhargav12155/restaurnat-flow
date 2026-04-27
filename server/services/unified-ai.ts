@@ -1,16 +1,16 @@
-// Unified AI Service - Uses GitHub Copilot (primary) with OpenAI (fallback)
-// GitHub Copilot deployed at: https://www.imakepage.com/api/copilot
+import { GoogleGenAI } from "@google/genai";
+
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 interface UnifiedAIOptions {
   systemPrompt?: string;
-  temperature?: number;
   maxTokens?: number;
   jsonMode?: boolean;
 }
 
 interface UnifiedAIResponse {
   content: string;
-  provider: 'github-copilot' | 'openai';
+  provider: "google";
   model?: string;
 }
 
@@ -25,8 +25,6 @@ interface ContentGenerationRequest {
   localSeoFocus?: boolean;
   propertyData?: any;
   companyProfile?: any;
-  businessType?: string;
-  businessSubtype?: string;
 }
 
 interface GeneratedContent {
@@ -39,205 +37,39 @@ interface GeneratedContent {
 }
 
 class UnifiedAIService {
-  private copilotBaseUrl: string;
-  private copilotAvailable: boolean = true;
-  private lastCopilotError?: Date;
+  private genAI: GoogleGenAI;
 
   constructor() {
-    this.copilotBaseUrl = process.env.COPILOT_API_URL || 'https://www.imakepage.com/api/copilot';
+    this.genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
     console.log(`🤖 Unified AI Service initialized`);
-    console.log(`   - Primary: GitHub Copilot (${this.copilotBaseUrl})`);
-    console.log(`   - Fallback: OpenAI GPT-5`);
+    console.log(`   - Provider: Google Gemini (${GEMINI_MODEL})`);
   }
 
   async generate(prompt: string, options: UnifiedAIOptions = {}): Promise<UnifiedAIResponse> {
-    const {
-      systemPrompt,
-      temperature = 0.7,
-      maxTokens = 1500,
-      jsonMode = false
-    } = options;
+    const { systemPrompt, maxTokens = 1500, jsonMode = false } = options;
 
-    // Try GitHub Copilot first
-    if (this.copilotAvailable) {
-      try {
-        console.log(`🚀 Trying GitHub Copilot...`);
-        const response = await this.callCopilot(prompt, {
-          systemPrompt,
-          temperature,
-          maxTokens,
-          jsonMode
-        });
-        console.log(`✅ GitHub Copilot success`);
-        return response;
-      } catch (error: any) {
-        console.warn(`⚠️ GitHub Copilot failed: ${error.message}`);
-        this.lastCopilotError = new Date();
-        
-        // Don't disable Copilot permanently, just try fallback
-        console.log(`🔄 Falling back to OpenAI...`);
-      }
-    } else {
-      console.log(`⏭️ Skipping GitHub Copilot (recently failed), using OpenAI directly`);
-    }
+    const config: any = { maxOutputTokens: maxTokens };
+    if (systemPrompt) config.systemInstruction = systemPrompt;
+    if (jsonMode) config.responseMimeType = "application/json";
 
-    // Fallback to OpenAI
-    try {
-      console.log(`🔄 Using OpenAI fallback...`);
-      const response = await this.callOpenAI(prompt, {
-        systemPrompt,
-        temperature,
-        maxTokens,
-        jsonMode
-      });
-      console.log(`✅ OpenAI fallback success`);
-      return response;
-    } catch (error: any) {
-      console.error(`❌ Both GitHub Copilot and OpenAI failed`);
-      throw new Error(`AI generation failed: ${error.message}`);
-    }
-  }
-
-  private async callCopilot(prompt: string, options: UnifiedAIOptions): Promise<UnifiedAIResponse> {
-    // Always use /generate endpoint and parse JSON ourselves
-    // The /generate-json endpoint has issues with markdown-wrapped responses
-    const endpoint = `${this.copilotBaseUrl}/generate`;
-
-    const requestBody: any = {
-      prompt,
-      temperature: options.temperature,
-      maxTokens: options.maxTokens
-    };
-
-    if (options.systemPrompt) {
-      requestBody.systemPrompt = options.systemPrompt;
-    }
-
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
+    const response = await this.genAI.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Copilot API error (${response.status}): ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    // Debug: Log the full response structure
-    console.log('📥 GitHub Copilot API Response:', JSON.stringify(data, null, 2));
-
-    if (!data.success) {
-      throw new Error(data.error || 'Copilot request failed');
-    }
-
-    // Always extract content from data.data.content
-    // The response structure is: { success: true, data: { content: "...", provider: "...", model: "..." } }
-    let content = data.data?.content;
-    
-    // Debug: Log what we extracted
-    console.log('📤 Extracted content (raw):', typeof content, content ? content.substring(0, 100) + '...' : 'EMPTY/UNDEFINED');
-
-    if (!content) {
-      throw new Error('No content in Copilot response');
-    }
-
-    // GitHub Copilot sometimes returns markdown-wrapped JSON, clean it up
-    if (typeof content === 'string') {
-      content = content.trim();
-      if (content.startsWith('```json')) {
-        content = content.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
-        console.log('🧹 Cleaned markdown wrapper from JSON response');
-      } else if (content.startsWith('```')) {
-        content = content.replace(/```\n?/g, '').trim();
-        console.log('🧹 Cleaned markdown wrapper from response');
-      }
-    }
-
     return {
-      content,
-      provider: 'github-copilot',
-      model: data.metadata?.model || data.data?.model
+      content: response.text || "",
+      provider: "google",
+      model: GEMINI_MODEL,
     };
   }
 
-  private async callOpenAI(prompt: string, options: UnifiedAIOptions): Promise<UnifiedAIResponse> {
-    const { multiOpenAI } = await import('./openai');
-
-    const messages: any[] = [];
-    
-    if (options.systemPrompt) {
-      messages.push({ role: 'system', content: options.systemPrompt });
-    }
-    
-    messages.push({ role: 'user', content: prompt });
-
-    const requestOptions: any = {
-      model: 'gpt-5',
-      messages,
-      max_completion_tokens: options.maxTokens
-    };
-
-    // GPT-5 only supports default temperature (1.0), don't set custom values
-    // temperature parameter removed for GPT-5 compatibility
-
-    if (options.jsonMode) {
-      requestOptions.response_format = { type: 'json_object' };
-    }
-
-    const response = await multiOpenAI.makeRequest(
-      'content',
-      async (client) => {
-        return await client.chat.completions.create(requestOptions);
-      }
-    );
-
-    const content = response.choices[0]?.message?.content || '';
-
-    return {
-      content,
-      provider: 'openai',
-      model: response.model
-    };
-  }
-
-  async generateBlogPost(topic: string, tone: string = 'professional', length: string = 'medium'): Promise<UnifiedAIResponse> {
-    // Try Copilot's specialized blog-post endpoint first
-    if (this.copilotAvailable) {
-      try {
-        console.log(`📝 Generating blog post with GitHub Copilot...`);
-        const response = await fetch(`${this.copilotBaseUrl}/blog-post`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic, tone, length })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            console.log(`✅ GitHub Copilot blog post generated`);
-            return {
-              content: data.data.content,
-              provider: 'github-copilot',
-              model: data.metadata?.model
-            };
-          }
-        }
-      } catch (error) {
-        console.warn(`⚠️ Copilot blog-post endpoint failed, using generic generate`);
-      }
-    }
-
-    // Fallback to generic generate
+  async generateBlogPost(topic: string, tone: string = "professional", length: string = "medium"): Promise<UnifiedAIResponse> {
     const prompt = `Write a ${length} blog post about "${topic}" in a ${tone} tone. Format the content in Markdown.`;
     return this.generate(prompt, {
-      systemPrompt: 'You are a professional content writer specializing in restaurants and local dining.',
-      temperature: 0.7,
-      maxTokens: 2000
+      systemPrompt: "You are a professional content writer specializing in real estate and local market insights.",
+      maxTokens: 2000,
     });
   }
 
@@ -247,105 +79,69 @@ class UnifiedAIService {
     price?: number,
     neighborhood?: string
   ): Promise<UnifiedAIResponse> {
-    // Try Copilot's specialized property-description endpoint
-    if (this.copilotAvailable) {
-      try {
-        console.log(`🏠 Generating property description with GitHub Copilot...`);
-        const response = await fetch(`${this.copilotBaseUrl}/property-description`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, features, price, neighborhood })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            console.log(`✅ GitHub Copilot property description generated`);
-            return {
-              content: data.data.description,
-              provider: 'github-copilot',
-              model: data.metadata?.model
-            };
-          }
-        }
-      } catch (error) {
-        console.warn(`⚠️ Copilot property-description endpoint failed, using generic generate`);
-      }
-    }
-
-    // Fallback to generic generate
-    const featureText = features.length > 0 ? `Features: ${features.join(', ')}. ` : '';
-    const priceText = price ? `Price: $${price.toLocaleString()}. ` : '';
-    const neighborhoodText = neighborhood ? `Located in ${neighborhood}. ` : '';
-    
+    const featureText = features.length > 0 ? `Features: ${features.join(", ")}. ` : "";
+    const priceText = price ? `Price: $${price.toLocaleString()}. ` : "";
+    const neighborhoodText = neighborhood ? `Located in ${neighborhood}. ` : "";
     const prompt = `Write a compelling property description for ${address}. ${neighborhoodText}${featureText}${priceText}Make it engaging and highlight key selling points.`;
-    
     return this.generate(prompt, {
-      systemPrompt: 'You are a professional restaurant copywriter who creates compelling menu descriptions.',
-      temperature: 0.8,
-      maxTokens: 500
+      systemPrompt: "You are a professional real estate copywriter who creates compelling property descriptions.",
+      maxTokens: 500,
     });
   }
 
   async chat(message: string, context?: string): Promise<UnifiedAIResponse> {
-    // Try Copilot's specialized chat endpoint
-    if (this.copilotAvailable) {
-      try {
-        console.log(`💬 Chat with GitHub Copilot...`);
-        const response = await fetch(`${this.copilotBaseUrl}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, context })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            console.log(`✅ GitHub Copilot chat response`);
-            return {
-              content: data.response,
-              provider: 'github-copilot',
-              model: data.metadata?.model
-            };
-          }
-        }
-      } catch (error) {
-        console.warn(`⚠️ Copilot chat endpoint failed, using generic generate`);
-      }
-    }
-
-    // Fallback to generic generate
     const fullMessage = context ? `Context: ${context}\n\nUser: ${message}` : message;
     return this.generate(fullMessage, {
-      systemPrompt: 'You are a helpful restaurant assistant.',
-      temperature: 0.7,
-      maxTokens: 1000
+      systemPrompt: "You are a helpful real estate assistant.",
+      maxTokens: 1000,
     });
+  }
+
+  private getBusinessDefaults(companyProfile?: any) {
+    const bt = companyProfile?.businessType || "real_estate";
+    const defaults: Record<string, { role: string; industry: string; fallbackName: string }> = {
+      real_estate: { role: "real estate agent", industry: "real estate", fallbackName: "your local real estate agent" },
+      restaurant: { role: "restaurant professional", industry: "food & hospitality", fallbackName: "our restaurant team" },
+      home_services: { role: "home services professional", industry: "home services", fallbackName: "our service team" },
+      retail: { role: "retail professional", industry: "retail", fallbackName: "our retail team" },
+      professional_services: { role: "professional consultant", industry: "professional services", fallbackName: "our team" },
+      general: { role: "business professional", industry: "business", fallbackName: "our team" },
+    };
+    return defaults[bt] || defaults.general;
   }
 
   async generateStructuredContent(request: ContentGenerationRequest): Promise<GeneratedContent> {
     try {
-      const prompt = this.buildContentPrompt(request);
-      const agentName = request.companyProfile?.agentName || "your local business";
-      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our company";
-      const agentTitle = request.companyProfile?.agentTitle || "owner";
+      const bizDefaults = this.getBusinessDefaults(request.companyProfile);
+      const agentName = request.companyProfile?.agentName || bizDefaults.fallbackName;
+      const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our business";
+      const agentTitle = request.companyProfile?.agentTitle || bizDefaults.role;
 
-      const businessTypeLabel = this.describeBusinessType(request.businessType) || 'Restaurant';
-      const businessSubtypeLabel = this.describeBusinessSubtype(request.businessSubtype);
-
-      const systemPrompt = `You are an expert ${businessTypeLabel.toLowerCase()} content writer and SEO specialist. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName}. Always weave in ${agentName}'s name and credentials for better SEO and personal branding. Always respond with valid JSON. Make sure tone, examples, CTAs, and terminology match ${businessTypeLabel}${businessSubtypeLabel ? ` (${businessSubtypeLabel})` : ""}.`;
+      let prompt = `Generate ${request.type} content about "${request.topic}"`;
+      if (request.neighborhood) prompt += ` focusing on the ${request.neighborhood} area`;
+      else prompt += ` for a ${bizDefaults.industry} business`;
+      if (request.aiPrompt) prompt += `\n\nAdditional instructions: ${request.aiPrompt}`;
+      if (request.keywords && request.keywords.length > 0) prompt += `\n\nInclude these keywords: ${request.keywords.join(", ")}`;
+      if (request.seoOptimized) prompt += `\n\nOptimize for SEO with proper headings, meta descriptions, and keyword placement.`;
+      if (request.propertyData) prompt += `\n\nProperty details: ${JSON.stringify(request.propertyData)}`;
+      prompt += `\n\nRespond with a JSON object containing: title, content, keywords (array), metaDescription, seoScore (0-100), wordCount`;
 
       const response = await this.generate(prompt, {
-        systemPrompt,
-        temperature: 0.7,
-        maxTokens: 2000,
-        jsonMode: true
+        systemPrompt: `You are an expert ${bizDefaults.industry} content writer and SEO specialist. Generate high-quality, SEO-optimized content for ${agentName}, a top ${agentTitle} with ${businessName}. Always respond with valid JSON. Keep the content field under 800 words to avoid truncation.`,
+        maxTokens: 4000,
+        jsonMode: true,
       });
 
-      console.log('📝 Parsing structured content response from:', response.provider);
-
-      const result = JSON.parse(response.content);
-
+      let result: any;
+      try {
+        result = JSON.parse(response.content);
+      } catch {
+        const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try { result = JSON.parse(jsonMatch[0]); } catch { result = null; }
+        }
+        if (!result) throw new Error("Failed to parse AI response as JSON");
+      }
       return {
         title: result.title || "Untitled Content",
         content: result.content || "",
@@ -360,149 +156,30 @@ class UnifiedAIService {
     }
   }
 
-  private buildContentPrompt(request: ContentGenerationRequest): string {
-    const businessTypeLabel = this.describeBusinessType(request.businessType);
-    const businessSubtypeLabel = this.describeBusinessSubtype(request.businessSubtype);
-
-    let prompt = `Generate ${request.type} content about "${request.topic}" for a ${businessTypeLabel}`;
-
-    if (businessSubtypeLabel) {
-      prompt += ` (${businessSubtypeLabel})`;
-    }
-
-    if (request.neighborhood) {
-      prompt += ` focusing on the ${request.neighborhood} area`;
-    } else {
-      prompt += ` for the local market`;
-    }
-
-    // Add platform-specific length guidance for social posts
-    if (request.type === 'social') {
-      prompt += `\n\n**CRITICAL LENGTH REQUIREMENT**: Generate a SHORT, punchy social post. 
-      - Target 40-80 characters for maximum engagement
-      - Lead with a strong hook or emoji
-      - Be concise and impactful
-      - No long paragraphs or multiple sentences
-      - Example good length: "🍽️ New menu alert! Our chef's tasting menu is back. Book now!"`;
-    }
-
-    if (request.aiPrompt) {
-      prompt += `\n\nAdditional instructions: ${request.aiPrompt}`;
-    }
-
-    if (request.keywords && request.keywords.length > 0) {
-      prompt += `\n\nInclude these keywords naturally: ${request.keywords.join(', ')}`;
-    }
-
-    if (request.seoOptimized) {
-      prompt += `\n\nOptimize for SEO with proper headings, meta descriptions, and keyword placement.`;
-    }
-
-    if (request.longTailKeywords) {
-      prompt += `\n\nInclude long-tail keywords relevant to this ${(businessTypeLabel || 'restaurant').toLowerCase()} audience.`;
-    }
-
-    if (request.localSeoFocus) {
-      prompt += `\n\nFocus on local SEO by mentioning specific neighborhoods, landmarks, and local insights.`;
-    }
-
-    if (request.propertyData) {
-      prompt += `\n\nProperty details: ${JSON.stringify(request.propertyData)}`;
-    }
-
-    prompt += `\n\nRespond with a JSON object containing: title, content, keywords (array), metaDescription, seoScore (0-100), wordCount`;
-
-    return prompt;
-  }
-
   private getFallbackContent(request: ContentGenerationRequest): GeneratedContent {
-    const businessTypeLabel = this.describeBusinessType(request.businessType);
-    const businessSubtypeLabel = this.describeBusinessSubtype(request.businessSubtype);
-    const agentName = request.companyProfile?.agentName || "your local expert";
-    const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our company";
-
+    const bizDefaults = this.getBusinessDefaults(request.companyProfile);
+    const agentName = request.companyProfile?.agentName || bizDefaults.fallbackName;
+    const businessName = request.companyProfile?.businessName || request.companyProfile?.brokerageName || "our business";
+    const area = request.neighborhood || "your area";
     return {
-      title: `${request.topic} - ${request.neighborhood || 'Local'} ${businessTypeLabel} Guide`,
-      content: `Looking for trusted insights in ${request.neighborhood || 'your area'}? ${agentName} at ${businessName} specializes in ${businessSubtypeLabel || businessTypeLabel}. Get actionable advice tailored to your needs.`,
-      keywords: [
-        `${businessTypeLabel} tips`,
-        request.neighborhood ? `${request.neighborhood} ${businessTypeLabel}` : 'local business tips',
-        request.topic
-      ],
-      metaDescription: `${request.topic} for ${businessTypeLabel} in ${request.neighborhood || 'your area'} with ${agentName}`,
+      title: `${request.topic} - ${bizDefaults.industry}`,
+      content: `Looking for expert ${bizDefaults.industry} guidance in ${area}? Contact ${agentName} with ${businessName} for professional service and expertise.`,
+      keywords: [bizDefaults.industry, request.neighborhood || "local", request.topic],
+      metaDescription: `${request.topic} - ${agentName} with ${businessName}`,
       seoScore: 45,
-      wordCount: 50
+      wordCount: 25,
     };
-  }
-
-  private describeBusinessType(type?: string): string {
-    const map: Record<string, string> = {
-      restaurant: "Restaurant & Food Service",
-      home_services: "Home Services",
-      real_estate: "Real Estate",
-      retail: "Retail & E-commerce",
-      professional_services: "Professional Services",
-      general: "General Business",
-    };
-    return map[type || ""] || "Restaurant & Food Service";
-  }
-
-  private describeBusinessSubtype(subtype?: string): string {
-    const map: Record<string, string> = {
-      fine_dining: "Fine Dining",
-      fast_casual: "Fast Casual",
-      cafe: "Café & Coffee Shop",
-      bar_pub: "Bar & Pub",
-      food_truck: "Food Truck",
-      catering: "Catering Service",
-      bakery: "Bakery",
-      quick_service: "Quick Service",
-      plumbing: "Plumbing",
-      hvac: "HVAC",
-      electrical: "Electrical",
-      cleaning: "Cleaning Service",
-      landscaping: "Landscaping",
-      roofing: "Roofing",
-      painting: "Painting",
-      handyman: "Handyman",
-      residential: "Residential Sales",
-      commercial: "Commercial Real Estate",
-      property_management: "Property Management",
-      rental: "Rental Services",
-      investment: "Investment Properties",
-      fashion: "Fashion & Apparel",
-      electronics: "Electronics",
-      beauty: "Beauty & Cosmetics",
-      sports: "Sports & Fitness",
-      home_goods: "Home Goods",
-      specialty: "Specialty Store",
-      legal: "Legal Services",
-      accounting: "Accounting & Tax",
-      consulting: "Consulting",
-      marketing: "Marketing Agency",
-      insurance: "Insurance",
-      financial: "Financial Services",
-      other: "Other",
-    };
-    return map[subtype || ""] || "";
   }
 
   getStatus() {
     return {
       primary: {
-        provider: 'github-copilot',
-        url: this.copilotBaseUrl,
-        available: this.copilotAvailable,
-        lastError: this.lastCopilotError
+        provider: "google",
+        model: GEMINI_MODEL,
+        available: !!process.env.GEMINI_API_KEY,
       },
-      fallback: {
-        provider: 'openai',
-        model: 'gpt-5',
-        available: true
-      }
     };
   }
 }
 
-// Export singleton instance
 export const unifiedAI = new UnifiedAIService();

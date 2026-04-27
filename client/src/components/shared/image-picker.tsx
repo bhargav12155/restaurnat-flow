@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useToast } from "@/hooks/use-toast";
-import { useBusinessType } from "@/hooks/useBusinessType";
-import { getBusinessLabels } from "@/lib/businessType";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Wand2,
@@ -81,23 +79,9 @@ export function ImagePicker({
   selectedImage,
   className = "",
 }: ImagePickerProps) {
-  const { data: businessData, businessType } = useBusinessType();
-  const { typeLabel: businessTypeLabel } = getBusinessLabels(
-    businessData?.businessType,
-    businessData?.businessSubtype
-  );
-  const businessLabelLower = (businessTypeLabel || 'restaurant').toLowerCase();
-  const defaultStockQuery = `${businessLabelLower} visuals`;
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("ai");
   const [previewImage, setPreviewImage] = useState<string | null>(selectedImage || null);
-
-  // Sync previewImage when selectedImage prop changes
-  useEffect(() => {
-    if (selectedImage) {
-      setPreviewImage(selectedImage);
-    }
-  }, [selectedImage]);
 
   // AI Generate state
   const [aiPrompt, setAiPrompt] = useState("");
@@ -113,17 +97,22 @@ export function ImagePicker({
   // AI Video state
   const [videoPrompt, setVideoPrompt] = useState("");
   const [videoAspectRatio, setVideoAspectRatio] = useState("16:9");
-  const [videoDuration, setVideoDuration] = useState<"5" | "10">("5");
+  const [videoDuration, setVideoDuration] = useState<"4" | "8">("8");
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
-  const [videoGenerationStep, setVideoGenerationStep] = useState<"idle" | "generating-image" | "generating-video" | "done">("idle");
+  const [videoGenerationStep, setVideoGenerationStep] = useState<"idle" | "generating-image" | "generating-video" | "polling" | "done">("idle");
+  const mountedRef = useRef(true);
   const [videoReferenceUrl, setVideoReferenceUrl] = useState<string | null>(null);
   const [videoReferenceUploading, setVideoReferenceUploading] = useState(false);
 
   // Stock Images state
-  const [stockQuery, setStockQuery] = useState(defaultStockQuery);
-  const [stockQueryUserUpdated, setStockQueryUserUpdated] = useState(false);
+  const [stockQuery, setStockQuery] = useState("real estate");
   const [stockOrientation, setStockOrientation] = useState("landscape");
   const [debouncedQuery, setDebouncedQuery] = useState(stockQuery);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Update aspect ratio when platform changes
   useEffect(() => {
@@ -139,13 +128,6 @@ export function ImagePicker({
     }, 500);
     return () => clearTimeout(timer);
   }, [stockQuery]);
-
-  useEffect(() => {
-    if (!stockQueryUserUpdated && stockQuery !== defaultStockQuery) {
-      setStockQuery(defaultStockQuery);
-      setDebouncedQuery(defaultStockQuery);
-    }
-  }, [defaultStockQuery, stockQuery, stockQueryUserUpdated]);
 
   // Fetch templates
   const { data: templatesData } = useQuery<{ templates: ImageTemplate[] }>({
@@ -255,12 +237,120 @@ export function ImagePicker({
     }
   };
 
-  // AI Video generation - removed, use Video Generation page instead
+  // AI Video generation (2-step: generate image, then create video with VEO 3.1)
   const handleGenerateVideo = async () => {
-    toast({
-      title: "Video Generation Moved",
-      description: "Please use the Video Generation page to create videos with your avatars.",
-    });
+    if (!videoPrompt.trim()) {
+      toast({
+        title: "Prompt Required",
+        description: "Please enter a description for your video.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setVideoGenerationStep("generating-image");
+      setGeneratedVideo(null);
+
+      // Step 1: Generate an AI image from the prompt
+      const imageResponse = await apiRequest("POST", "/api/images/generate", {
+        prompt: videoPrompt,
+        aspectRatio: videoAspectRatio,
+        style: "photorealistic",
+        referenceImageUrl: videoReferenceUrl || undefined,
+      });
+      const imageData = await imageResponse.json();
+      
+      if (!imageData.imageUrl) {
+        throw new Error("Failed to generate image for video");
+      }
+
+      setVideoGenerationStep("generating-video");
+
+      // Step 2: Start VEO 3.1 video generation
+      const presetMap: Record<string, string> = {
+        "9:16": "tiktok",
+        "16:9": "facebook-feed",
+        "1:1": "facebook-feed",
+      };
+      const preset = presetMap[videoAspectRatio] || "facebook-feed";
+
+      const veoResponse = await apiRequest("POST", "/api/ai/veo/start", {
+        imageUrl: imageData.imageUrl,
+        preset,
+        prompt: videoPrompt,
+        noSound: true,
+      });
+      const veoData = await veoResponse.json();
+
+      if (!veoData.operationId) {
+        throw new Error("Failed to start video generation");
+      }
+
+      setVideoGenerationStep("polling");
+
+      // Step 3: Poll for completion
+      const videoUrl = await new Promise<string>((resolve, reject) => {
+        let pollCount = 0;
+        const maxPolls = 36;
+        const interval = setInterval(async () => {
+          if (!mountedRef.current) {
+            clearInterval(interval);
+            reject(new Error("Component unmounted"));
+            return;
+          }
+          pollCount++;
+          if (pollCount > maxPolls) {
+            clearInterval(interval);
+            reject(new Error("Video generation timed out. Please try again."));
+            return;
+          }
+          try {
+            const statusResponse = await fetch(`/api/ai/veo/status/${veoData.operationId}`, {
+              credentials: "include",
+            });
+            if (!statusResponse.ok) {
+              clearInterval(interval);
+              reject(new Error("Failed to check video status"));
+              return;
+            }
+            const statusData = await statusResponse.json();
+            if (statusData.error) {
+              clearInterval(interval);
+              reject(new Error(statusData.error));
+              return;
+            }
+            if (statusData.done && statusData.videoUrl) {
+              clearInterval(interval);
+              resolve(statusData.videoUrl);
+            }
+          } catch (err: any) {
+            clearInterval(interval);
+            reject(new Error(err.message || "Error checking video status"));
+          }
+        }, 5000);
+      });
+
+      if (!mountedRef.current) return;
+
+      setGeneratedVideo(videoUrl);
+      setPreviewImage(videoUrl);
+      setVideoGenerationStep("done");
+      
+      toast({
+        title: "Video Generated!",
+        description: "Your AI video is ready. Click Confirm to attach it.",
+      });
+    } catch (error: any) {
+      if (mountedRef.current) {
+        setVideoGenerationStep("idle");
+        toast({
+          title: "Video Generation Failed",
+          description: error.message || "Failed to generate video. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
   };
 
   const handleImageSelect = (imageUrl: string) => {
@@ -280,8 +370,7 @@ export function ImagePicker({
   const clearSelection = () => {
     setPreviewImage(null);
     setGeneratedImage(null);
-    // Don't call onSelect("") here - just clear local preview state
-    // The user can close the dialog without selecting anything
+    onSelect("");
   };
 
   // Download generated image to device
@@ -289,8 +378,21 @@ export function ImagePicker({
     if (!generatedImage) return;
     
     try {
-      const response = await fetch(generatedImage);
-      const blob = await response.blob();
+      let blob: Blob;
+      if (generatedImage.startsWith("data:")) {
+        const [header, base64Data] = generatedImage.split(",");
+        const mimeMatch = header.match(/data:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : "image/png";
+        const byteString = atob(base64Data);
+        const bytes = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) {
+          bytes[i] = byteString.charCodeAt(i);
+        }
+        blob = new Blob([bytes], { type: mime });
+      } else {
+        const response = await fetch(generatedImage);
+        blob = await response.blob();
+      }
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -368,13 +470,13 @@ export function ImagePicker({
   const stockImages = stockData?.images || [];
 
   return (
-    <div className={`space-y-3 ${className}`} data-testid="image-picker">
+    <div className={`space-y-4 ${className}`} data-testid="image-picker">
       {/* Preview Section */}
       {previewImage && (
         <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="p-3">
-            <div className="flex items-start gap-3">
-              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-4">
+              <div className="relative w-32 h-32 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                 <img
                   src={previewImage}
                   alt="Selected"
@@ -383,15 +485,10 @@ export function ImagePicker({
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium mb-1">Selected Image</p>
-                <a 
-                  href={previewImage} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline mb-2 inline-block"
-                >
-                  View larger image ↗
-                </a>
+                <p className="text-sm font-medium mb-2">Selected Image</p>
+                <p className="text-xs text-muted-foreground truncate mb-3">
+                  {previewImage.startsWith("data:") ? "AI Generated Image" : previewImage}
+                </p>
                 <div className="flex gap-2">
                   <Button
                     size="sm"
@@ -419,32 +516,38 @@ export function ImagePicker({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-9">
-          <TabsTrigger value="ai" data-testid="tab-ai-generate" className="text-xs px-1">
-            <Wand2 className="h-3 w-3 sm:mr-1" />
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="ai" data-testid="tab-ai-generate">
+            <Wand2 className="h-4 w-4 mr-1" />
             <span className="hidden sm:inline">AI Image</span>
+            <span className="sm:hidden">Image</span>
           </TabsTrigger>
-          <TabsTrigger value="stock" data-testid="tab-stock-images" className="text-xs px-1">
-            <Search className="h-3 w-3 sm:mr-1" />
-            <span className="hidden sm:inline">Stock</span>
+          <TabsTrigger value="video" data-testid="tab-ai-video">
+            <Video className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">AI Video</span>
+            <span className="sm:hidden">Video</span>
           </TabsTrigger>
-          <TabsTrigger value="upload" data-testid="tab-upload" className="text-xs px-1">
-            <Upload className="h-3 w-3 sm:mr-1" />
-            <span className="hidden sm:inline">Upload</span>
+          <TabsTrigger value="stock" data-testid="tab-stock-images">
+            <Search className="h-4 w-4 mr-1" />
+            Stock
           </TabsTrigger>
-          <TabsTrigger value="mls" data-testid="tab-mls-photos" className="text-xs px-1">
-            <Home className="h-3 w-3 sm:mr-1" />
-            <span className="hidden sm:inline">Photos</span>
+          <TabsTrigger value="upload" data-testid="tab-upload">
+            <Upload className="h-4 w-4 mr-1" />
+            Upload
+          </TabsTrigger>
+          <TabsTrigger value="mls" data-testid="tab-mls-photos">
+            <Home className="h-4 w-4 mr-1" />
+            MLS
           </TabsTrigger>
         </TabsList>
 
         {/* AI Generate Tab */}
-        <TabsContent value="ai" className="space-y-3 mt-3">
+        <TabsContent value="ai" className="space-y-4 mt-4">
           {/* Templates */}
           {templates.length > 0 && (
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Quick Templates</Label>
-              <div className="flex flex-wrap gap-1.5">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Quick Templates</Label>
+              <div className="flex flex-wrap gap-2">
                 {templates.map((template) => (
                   <Button
                     key={template.id}
@@ -452,7 +555,7 @@ export function ImagePicker({
                     size="sm"
                     onClick={() => handleTemplateClick(template)}
                     data-testid={`button-template-${template.id}`}
-                    className="text-xs h-7 px-2"
+                    className="text-xs"
                   >
                     <Sparkles className="h-3 w-3 mr-1" />
                     {template.name}
@@ -463,12 +566,12 @@ export function ImagePicker({
           )}
 
           {/* Prompt Input */}
-          <div className="space-y-1">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="ai-prompt" className="text-xs">Image Description</Label>
+              <Label htmlFor="ai-prompt">Image Description</Label>
               <div className="flex items-center gap-2">
                 <Select value={logoOption} onValueChange={(v) => setLogoOption(v as typeof logoOption)}>
-                  <SelectTrigger className="w-[140px] h-7 text-xs" data-testid="select-logo-option">
+                  <SelectTrigger className="w-[160px] h-8 text-xs" data-testid="select-logo-option">
                     <SelectValue placeholder="Add logo..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -484,9 +587,8 @@ export function ImagePicker({
               id="ai-prompt"
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder="Describe the image you want to generate..."
-              rows={2}
-              className="text-sm"
+              placeholder="Describe the image you want to generate... e.g., 'Modern luxury home with pool at sunset'"
+              rows={3}
               data-testid="textarea-ai-prompt"
             />
             {logoOption !== "none" && (
@@ -501,28 +603,28 @@ export function ImagePicker({
           </div>
 
           {/* Reference Image Upload */}
-          <div className="space-y-1">
-            <Label className="text-xs">Reference Image (Optional)</Label>
+          <div className="space-y-2">
+            <Label>Reference Image (Optional)</Label>
             {imageReferenceUrl ? (
-              <div className="flex items-center gap-2 p-2 border rounded-lg bg-muted/30">
-                <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0">
+              <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30">
+                <div className="w-16 h-16 rounded overflow-hidden flex-shrink-0">
                   <img src={imageReferenceUrl} alt="Reference" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium">Reference uploaded</p>
+                  <p className="text-sm font-medium">Reference uploaded</p>
+                  <p className="text-xs text-muted-foreground">AI will use this as inspiration</p>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setImageReferenceUrl(null)}
                   data-testid="button-remove-image-reference"
-                  className="h-7 w-7 p-0"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             ) : (
-              <div className="border-2 border-dashed rounded-lg p-2 text-center">
+              <div className="border-2 border-dashed rounded-lg p-4 text-center">
                 <input
                   type="file"
                   accept="image/*"
@@ -538,13 +640,14 @@ export function ImagePicker({
                 <label htmlFor="image-reference-upload" className="cursor-pointer">
                   {imageReferenceUploading ? (
                     <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      <span className="text-xs">Uploading...</span>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Uploading...</span>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                      <Upload className="h-4 w-4" />
-                      <span className="text-xs">Upload reference image</span>
+                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                      <Upload className="h-6 w-6" />
+                      <span className="text-sm">Upload reference image</span>
+                      <span className="text-xs">AI will match style/composition</span>
                     </div>
                   )}
                 </label>
@@ -553,11 +656,11 @@ export function ImagePicker({
           </div>
 
           {/* Options Row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Aspect Ratio</Label>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Aspect Ratio</Label>
               <Select value={aspectRatio} onValueChange={setAspectRatio}>
-                <SelectTrigger data-testid="select-aspect-ratio" className="h-8 text-xs">
+                <SelectTrigger data-testid="select-aspect-ratio">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -569,16 +672,16 @@ export function ImagePicker({
                 </SelectContent>
               </Select>
               {platform && PLATFORM_ASPECT_SUGGESTIONS[platform] && (
-                <p className="text-[10px] text-muted-foreground">
-                  Recommended: {PLATFORM_ASPECT_SUGGESTIONS[platform]}
+                <p className="text-xs text-muted-foreground">
+                  Recommended for {platform}: {PLATFORM_ASPECT_SUGGESTIONS[platform]}
                 </p>
               )}
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs">Style</Label>
+            <div className="space-y-2">
+              <Label>Style</Label>
               <Select value={style} onValueChange={setStyle}>
-                <SelectTrigger data-testid="select-style" className="h-8 text-xs">
+                <SelectTrigger data-testid="select-style">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -596,7 +699,7 @@ export function ImagePicker({
           <Button
             onClick={handleGenerate}
             disabled={generateMutation.isPending || !aiPrompt.trim()}
-            className="w-full h-9"
+            className="w-full"
             data-testid="button-generate-image"
           >
             {generateMutation.isPending ? (
@@ -671,12 +774,12 @@ export function ImagePicker({
               id="video-prompt"
               value={videoPrompt}
               onChange={(e) => setVideoPrompt(e.target.value)}
-              placeholder={businessType === 'restaurant' ? "Describe the video you want to generate... e.g., 'Steaming pasta dish with fresh herbs being plated by a chef'" : businessType === 'home_services' ? "Describe the video you want to generate... e.g., 'Professional technician installing modern HVAC system'" : businessType === 'real_estate' ? "Describe the video you want to generate... e.g., 'Luxury home exterior with landscaped yard at sunset'" : "Describe the video you want to generate... e.g., 'Professional product showcase with modern lighting'"}
+              placeholder="Describe the video you want to generate... e.g., 'Aerial view of luxury home with pool surrounded by trees'"
               rows={3}
               data-testid="textarea-video-prompt"
             />
             <p className="text-xs text-muted-foreground">
-              We'll create an AI image from your description and animate it into a short video.
+              We'll create an AI image from your description and generate a cinematic video using VEO 3.1.
             </p>
           </div>
 
@@ -750,13 +853,13 @@ export function ImagePicker({
 
             <div className="space-y-2">
               <Label>Duration</Label>
-              <Select value={videoDuration} onValueChange={(v) => setVideoDuration(v as "5" | "10")}>
+              <Select value={videoDuration} onValueChange={(v) => setVideoDuration(v as "4" | "8")}>
                 <SelectTrigger data-testid="select-video-duration">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="5">5 seconds</SelectItem>
-                  <SelectItem value="10">10 seconds</SelectItem>
+                  <SelectItem value="4">4 seconds</SelectItem>
+                  <SelectItem value="8">8 seconds</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -776,7 +879,12 @@ export function ImagePicker({
             ) : videoGenerationStep === "generating-video" ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Animating video...
+                Starting video generation...
+              </>
+            ) : videoGenerationStep === "polling" ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Creating video... (may take 1-2 min)
               </>
             ) : (
               <>
@@ -823,10 +931,7 @@ export function ImagePicker({
             <div className="flex-1">
               <Input
                 value={stockQuery}
-                onChange={(e) => {
-                  setStockQueryUserUpdated(true);
-                  setStockQuery(e.target.value);
-                }}
+                onChange={(e) => setStockQuery(e.target.value)}
                 placeholder="Search stock images..."
                 data-testid="input-stock-search"
               />
@@ -918,7 +1023,7 @@ export function ImagePicker({
                 >
                   <img
                     src={photoUrl}
-                    alt={`Menu photo ${index + 1}`}
+                    alt={`Property photo ${index + 1}`}
                     className="w-full h-full object-cover"
                   />
                   {previewImage === photoUrl && (
@@ -934,9 +1039,9 @@ export function ImagePicker({
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               <Home className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="mb-2">No item photos available</p>
+              <p className="mb-2">No MLS photos available</p>
               <p className="text-xs">
-                Select an item first to see its photos here
+                Select a property first to see its photos here
               </p>
             </div>
           )}

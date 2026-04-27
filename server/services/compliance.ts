@@ -24,8 +24,8 @@ export interface ContentToCheck {
   videoHasBrokerageSpoken?: boolean;
 }
 
-const DEFAULT_BROKERAGE_NAME = "RestaurantFlow";
-const DEFAULT_BROKERAGE_SHORT = "RestaurantFlow";
+const DEFAULT_BROKERAGE_NAME = "BHHS Ambassador Real Estate";
+const DEFAULT_BROKERAGE_SHORT = "BHHS Ambassador";
 
 const PROHIBITED_TERMS_FOR_NON_BROKERS = [
   "broker",
@@ -51,10 +51,10 @@ const ADVERTISING_INDICATORS = [
   "dm me",
   "reach out",
   "schedule a showing",
-  "restaurant",
-  "dining",
-  "food",
-  "menu special",
+  "home buyer",
+  "home seller",
+  "real estate",
+  "property tour",
   "market update",
   "mortgage",
   "investment property",
@@ -96,8 +96,8 @@ export class ComplianceService {
     return (
       firstLine.includes(brokerageName) ||
       firstLine.includes(shortName) ||
-      firstLine.includes("restaurantflow") ||
-      firstLine.includes("restaurant")
+      firstLine.includes("bhhs") ||
+      firstLine.includes("berkshire")
     );
   }
 
@@ -109,8 +109,8 @@ export class ComplianceService {
     return (
       lowerContent.includes(brokerageName) ||
       lowerContent.includes(shortName) ||
-      lowerContent.includes("restaurantflow") ||
-      lowerContent.includes("restaurant")
+      lowerContent.includes("bhhs ambassador") ||
+      lowerContent.includes("berkshire hathaway")
     );
   }
 
@@ -247,9 +247,9 @@ export class ComplianceService {
     const brokerageVariants = [
       this.getBrokerageName(),
       this.getBrokerageShortName(),
-      "RestaurantFlow",
-      "Restaurant Flow",
-      "RestaurantFlow Platform",
+      "BHHS Ambassador Real Estate",
+      "BHHS Ambassador",
+      "Berkshire Hathaway HomeServices",
     ];
 
     let brokerageFound = "";

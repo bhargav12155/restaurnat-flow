@@ -26,12 +26,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useBusinessType } from "@/hooks/useBusinessType";
-import { getBusinessLabels } from "@/lib/businessType";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Play, Sparkles, Video } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 
 interface HeyGenTemplate {
   template_id: string;
@@ -65,11 +62,6 @@ interface TemplateDetails {
 
 export function VideoTemplates() {
   const { toast } = useToast();
-  const { data: businessData } = useBusinessType();
-  const { typeLabel: businessTypeLabel } = getBusinessLabels(
-    businessData?.businessType,
-    businessData?.businessSubtype
-  );
   const [selectedTemplate, setSelectedTemplate] =
     useState<HeyGenTemplate | null>(null);
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
@@ -346,13 +338,11 @@ export function VideoTemplates() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="w-5 h-5" />
-            <span>Video Templates</span>
-            <Badge variant="outline" className="text-xs font-normal">
-              {businessTypeLabel}
-            </Badge>
+            Video Templates
           </CardTitle>
           <CardDescription>
-            Browse professional templates tailored for {(businessTypeLabel || 'restaurant').toLowerCase()} teams to create engaging content quickly
+            Browse and use professional video templates from HeyGen to create
+            engaging content quickly
           </CardDescription>
         </CardHeader>
         <CardContent>

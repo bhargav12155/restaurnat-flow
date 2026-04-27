@@ -14,16 +14,15 @@ import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient, downloadFile } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { useBusinessType } from "@/hooks/useBusinessType";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useLocation } from "wouter";
+import { useBusinessType } from "@/lib/businessContext";
 import {
   Upload,
   Wand2,
   Play,
   Loader2,
   Check,
-  CheckCircle,
   Download,
   RefreshCw,
   Image,
@@ -43,7 +42,24 @@ import {
   RotateCcw,
   Search,
   Save,
+  MoreVertical,
+  Shirt,
+  ArrowRight,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 interface Voice {
   voice_id: string;
@@ -63,6 +79,7 @@ interface PhotoAsset {
   metadata?: {
     imageKey: string;
     heygenAssetId: string;
+    groupId?: string;
   };
   createdAt?: string;
 }
@@ -79,41 +96,59 @@ const MOTION_PROMPTS = [
   { id: "friendly", label: "Friendly", prompt: "friendly customer service representative" },
 ];
 
-// Dynamic script styles based on business type
-const getScriptStyles = (businessType: string) => {
-  if (businessType === 'restaurant') {
-    return [
-      { id: "menu_showcase", label: "Menu Showcase", description: "Showcase menu items and specials" },
-      { id: "dish_spotlight", label: "Dish Spotlight", description: "Quick attention-grabbing dish preview" },
-      { id: "restaurant_update", label: "Restaurant Update", description: "Local restaurant news and updates" },
-      { id: "chef_intro", label: "Chef Introduction", description: "Professional chef/owner introduction" },
-      { id: "neighborhood_guide", label: "Area Guide", description: "Local area highlights and food scene" },
-    ];
-  } else if (businessType === 'home_services') {
-    return [
-      { id: "service_showcase", label: "Service Showcase", description: "Showcase services and specialties" },
-      { id: "project_spotlight", label: "Project Spotlight", description: "Quick attention-grabbing project preview" },
-      { id: "business_update", label: "Business Update", description: "Company news and updates" },
-      { id: "team_intro", label: "Team Introduction", description: "Professional team/owner introduction" },
-      { id: "neighborhood_guide", label: "Service Area Guide", description: "Local area highlights and service coverage" },
-    ];
-  } else if (businessType === 'real_estate') {
-    return [
-      { id: "listing_showcase", label: "Listing Showcase", description: "Showcase properties and listings" },
-      { id: "property_spotlight", label: "Property Spotlight", description: "Quick attention-grabbing property preview" },
-      { id: "market_update", label: "Market Update", description: "Local market news and updates" },
-      { id: "agent_intro", label: "Agent Introduction", description: "Professional agent introduction" },
-      { id: "neighborhood_guide", label: "Neighborhood Guide", description: "Local area highlights and amenities" },
-    ];
-  }
-  return [
-    { id: "product_showcase", label: "Product Showcase", description: "Showcase products and offerings" },
-    { id: "item_spotlight", label: "Item Spotlight", description: "Quick attention-grabbing item preview" },
-    { id: "business_update", label: "Business Update", description: "Company news and updates" },
-    { id: "team_intro", label: "Team Introduction", description: "Professional team/owner introduction" },
-    { id: "neighborhood_guide", label: "Area Guide", description: "Local area highlights" },
-  ];
+const SCRIPT_STYLES_BY_BUSINESS: Record<string, { id: string; label: string; description: string }[]> = {
+  real_estate: [
+    { id: "property_tour", label: "Property Tour", description: "Showcase property features and highlights" },
+    { id: "listing_spotlight", label: "Listing Spotlight", description: "Quick attention-grabbing listing preview" },
+    { id: "market_update", label: "Market Update", description: "Local real estate market insights" },
+    { id: "agent_intro", label: "Agent Introduction", description: "Professional self-introduction" },
+    { id: "neighborhood_guide", label: "Neighborhood Guide", description: "Area highlights and amenities" },
+  ],
+  restaurant: [
+    { id: "menu_showcase", label: "Menu Showcase", description: "Highlight your best dishes and specials" },
+    { id: "daily_special", label: "Daily Special", description: "Quick promo for today's special offer" },
+    { id: "chefs_story", label: "Chef's Story", description: "Behind-the-scenes with the chef" },
+    { id: "customer_welcome", label: "Customer Welcome", description: "Warm welcome and invitation to visit" },
+    { id: "local_favorite", label: "Local Favorite", description: "Why locals love this restaurant" },
+  ],
+  home_services: [
+    { id: "service_demo", label: "Service Demo", description: "Showcase your service in action" },
+    { id: "new_service", label: "New Service Launch", description: "Introduce a new service offering" },
+    { id: "expert_tip", label: "Expert Tip", description: "Share a helpful tip from your expertise" },
+    { id: "business_intro", label: "Business Introduction", description: "Professional self-introduction" },
+    { id: "customer_success", label: "Customer Success", description: "Share a customer success story" },
+  ],
+  retail: [
+    { id: "product_showcase", label: "Product Showcase", description: "Feature your best products" },
+    { id: "new_arrival", label: "New Arrival", description: "Announce new stock or collections" },
+    { id: "brand_story", label: "Brand Story", description: "Tell your brand's unique story" },
+    { id: "sale_promo", label: "Sale Promotion", description: "Promote upcoming sales or deals" },
+    { id: "local_favorite", label: "Local Favorite", description: "Why the community loves your store" },
+  ],
+  professional_services: [
+    { id: "service_overview", label: "Service Overview", description: "Explain your key services clearly" },
+    { id: "expert_insight", label: "Expert Insight", description: "Share industry knowledge and tips" },
+    { id: "client_success", label: "Client Success", description: "Showcase a client success story" },
+    { id: "professional_intro", label: "Professional Introduction", description: "Introduce yourself and your practice" },
+    { id: "industry_update", label: "Industry Update", description: "Share relevant industry trends" },
+  ],
+  general: [
+    { id: "business_showcase", label: "Business Showcase", description: "Highlight what makes your business special" },
+    { id: "new_offering", label: "New Offering", description: "Announce a new product or service" },
+    { id: "business_intro", label: "Business Introduction", description: "Introduce yourself and your business" },
+    { id: "testimonial", label: "Customer Testimonial", description: "Share a positive customer experience" },
+    { id: "community_update", label: "Community Update", description: "Share news and updates with your community" },
+  ],
 };
+
+const OUTFIT_PRESETS = [
+  { label: "Business Suit", prompt: "wearing a tailored navy blue business suit with white dress shirt and silk tie, professional office setting", icon: "👔" },
+  { label: "Casual Polo", prompt: "wearing a fitted casual polo shirt in solid color, relaxed professional look", icon: "👕" },
+  { label: "Real Estate Blazer", prompt: "wearing a stylish modern blazer over crisp button-down shirt, professional real estate agent look", icon: "🧥" },
+  { label: "Smart Casual", prompt: "wearing smart casual outfit with quarter-zip sweater over collared shirt, approachable professional look", icon: "👔" },
+  { label: "Formal Dress", prompt: "wearing elegant formal business dress or blouse with professional styling, confident real estate professional", icon: "👗" },
+  { label: "Outdoor/Active", prompt: "wearing clean outdoor casual attire, quarter-zip jacket, ready for property showings and open houses", icon: "🧤" },
+];
 
 const STEPS = [
   { id: 1, title: "Upload Photo", icon: Image },
@@ -205,9 +240,8 @@ interface VideoJob {
 
 export function AvatarIVStudio() {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const { user, isAuthenticated } = useAuth();
-  const { businessType } = useBusinessType();
-  const SCRIPT_STYLES = getScriptStyles(businessType || 'restaurant');
   const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -219,20 +253,35 @@ export function AvatarIVStudio() {
   const [showLibrary, setShowLibrary] = useState(true);
   const [isConvertingHeic, setIsConvertingHeic] = useState(false);
   
+  const { businessType } = useBusinessType();
+  const scriptStyles = SCRIPT_STYLES_BY_BUSINESS[businessType] ?? SCRIPT_STYLES_BY_BUSINESS.real_estate;
+
   const [videoTitle, setVideoTitle] = useState("");
   const [script, setScript] = useState("");
-  const [scriptStyle, setScriptStyle] = useState(SCRIPT_STYLES[0].id);
+  const [scriptStyle, setScriptStyle] = useState(scriptStyles[0].id);
+
+  useEffect(() => {
+    const styles = SCRIPT_STYLES_BY_BUSINESS[businessType] ?? SCRIPT_STYLES_BY_BUSINESS.real_estate;
+    setScriptStyle(styles[0].id);
+  }, [businessType]);
   const videoTitleRef = useRef<IsolatedInputHandle>(null);
   const scriptTextareaRef = useRef<IsolatedInputHandle>(null);
   const [selectedVoice, setSelectedVoice] = useState("");
   const [voiceSearch, setVoiceSearch] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "female" | "male">("all");
   const [selectedMotion, setSelectedMotion] = useState(MOTION_PROMPTS[0].id);
-  const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("landscape");
+  const [videoOrientation, setVideoOrientation] = useState<"landscape" | "portrait">("portrait");
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
   
   // Background generation mode
   const [runInBackground, setRunInBackground] = useState(false);
+
+  // SJinn AI platform selection
+  const [videoPlatform, setVideoPlatform] = useState<"heygen" | "sjinn_auto" | "sjinn_veo3" | "sjinn_sora2">("heygen");
+  const [sjinnChatId, setSjinnChatId] = useState<string | null>(null);
+  const [sjinnStatus, setSjinnStatus] = useState<"idle" | "pending" | "processing" | "completed" | "failed">("idle");
+  const [sjinnVideoUrl, setSjinnVideoUrl] = useState<string | null>(null);
+  const sjinnPollRef = useRef<NodeJS.Timeout | null>(null);
   
   // Audio recording state
   const [inputMode, setInputMode] = useState<"text" | "audio">("text");
@@ -242,10 +291,21 @@ export function AvatarIVStudio() {
   const [uploadedAudioUrl, setUploadedAudioUrl] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const stylePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const [generatingVideoId, setGeneratingVideoId] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
   const [pollInterval, setPollInterval] = useState<NodeJS.Timeout | null>(null);
+  const [changeStyleDialogOpen, setChangeStyleDialogOpen] = useState(false);
+  const [changeStylePrompt, setChangeStylePrompt] = useState("");
+  const [selectedPhotoForStyle, setSelectedPhotoForStyle] = useState<PhotoAsset | null>(null);
+  const [autoStyleGenerating, setAutoStyleGenerating] = useState(false);
+  const [previewLook, setPreviewLook] = useState<any | null>(null);
+  const [selectedLookIds, setSelectedLookIds] = useState<Set<string>>(new Set());
+  const [isLookSelectMode, setIsLookSelectMode] = useState(false);
+
+  // Multi-upload state
+  const [multiUploadProgress, setMultiUploadProgress] = useState<{ current: number; total: number } | null>(null);
 
   // WebSocket for background job notifications
   const handleWebSocketMessage = (message: any) => {
@@ -311,7 +371,31 @@ export function AvatarIVStudio() {
     queryKey: ["/api/avatar-iv/voices"],
   });
 
+  const { data: allLooksResponse, isLoading: isLoadingAllLooks } = useQuery<{ looks: any[]; count: number }>({
+    queryKey: ["/api/photo-avatars/all-looks"],
+  });
+  const allLooks = allLooksResponse?.looks || [];
+
+  const { data: activeJobsData } = useQuery<{ activeJobs: any[]; recentlyCompleted: any[]; hasActiveJobs: boolean; totalActive: number; totalRecentlyCompleted: number }>({
+    queryKey: ["/api/photo-avatars/active-jobs"],
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      return data?.hasActiveJobs ? 10000 : 30000;
+    },
+  });
+  const hasActiveJobs = activeJobsData?.hasActiveJobs || false;
+  const activeJobsList = activeJobsData?.activeJobs || [];
+  const recentlyCompleted = activeJobsData?.recentlyCompleted || [];
+
+  // Auto-refresh looks when active jobs complete
+  useEffect(() => {
+    if (recentlyCompleted.length > 0) {
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/all-looks"] });
+    }
+  }, [recentlyCompleted.length]);
+
   const voices = voicesData?.voices || FALLBACK_VOICES;
+
   
   // Filter voices based on search and gender
   const filteredVoices = useMemo(() => {
@@ -650,6 +734,75 @@ export function AvatarIVStudio() {
     },
   });
 
+  // SJinn polling cleanup
+  const stopSjinnPolling = () => {
+    if (sjinnPollRef.current) {
+      clearInterval(sjinnPollRef.current);
+      sjinnPollRef.current = null;
+    }
+  };
+
+  const startSjinnPolling = (chatId: string) => {
+    stopSjinnPolling();
+    sjinnPollRef.current = setInterval(async () => {
+      try {
+        const response = await apiRequest("GET", `/api/sjinn/status/${chatId}`);
+        const data = await response.json();
+        if (data.status === "completed" && data.videoUrl) {
+          stopSjinnPolling();
+          setSjinnStatus("completed");
+          setSjinnVideoUrl(data.videoUrl);
+          setCurrentStep(3);
+          toast({ title: "SJinn Video Ready!", description: "Your AI-generated video is ready to view." });
+        } else if (data.status === "failed") {
+          stopSjinnPolling();
+          setSjinnStatus("failed");
+          toast({ title: "SJinn Generation Failed", description: data.error || "Something went wrong", variant: "destructive" });
+        } else {
+          setSjinnStatus("processing");
+        }
+      } catch (err: any) {
+        console.error("SJinn poll error:", err);
+      }
+    }, 15000);
+  };
+
+  const sjinnMutation = useMutation({
+    mutationFn: async () => {
+      const prompt = script.trim() || videoTitle;
+      if (!prompt) throw new Error("Please write a script or enter a video title first");
+      const modelMap: Record<string, string> = {
+        sjinn_auto: "auto",
+        sjinn_veo3: "veo3",
+        sjinn_sora2: "sora2",
+      };
+      const response = await apiRequest("POST", "/api/sjinn/create-video", {
+        prompt,
+        model: modelMap[videoPlatform] || "auto",
+        quality: "quality",
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.error) {
+        toast({ title: "SJinn Error", description: data.error, variant: "destructive" });
+        return;
+      }
+      setSjinnChatId(data.chatId);
+      setSjinnStatus("pending");
+      setCurrentStep(3);
+      toast({
+        title: "SJinn Video Started!",
+        description: "SJinn AI is creating your video. This can take 5-15 minutes.",
+        duration: 8000,
+      });
+      startSjinnPolling(data.chatId);
+    },
+    onError: (error: any) => {
+      toast({ title: "SJinn Failed", description: error?.message || "Could not start SJinn video", variant: "destructive" });
+    },
+  });
+
   const generateMutation = useMutation({
     mutationFn: async () => {
       const motionPrompt = MOTION_PROMPTS.find(m => m.id === selectedMotion)?.prompt;
@@ -722,6 +875,166 @@ export function AvatarIVStudio() {
     },
   });
 
+  const deletePhotoMutation = useMutation({
+    mutationFn: async (photoId: string) => {
+      await apiRequest("DELETE", `/api/avatar-iv/photos/${photoId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/avatar-iv/photos"] });
+      toast({ title: "Photo deleted", description: "Photo removed from your library." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Delete failed", description: error.message || "Could not delete photo", variant: "destructive" });
+    },
+  });
+
+  const deleteLookMutation = useMutation({
+    mutationFn: async (lookId: string) => {
+      await apiRequest("DELETE", `/api/photo-avatars/looks/${lookId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/all-looks"] });
+      setPreviewLook(null);
+      toast({ title: "Look deleted", description: "Generated look removed successfully." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Delete failed", description: error.message || "Could not delete look", variant: "destructive" });
+    },
+  });
+
+  const useLookForVideoMutation = useMutation({
+    mutationFn: async (look: any) => {
+      const response = await apiRequest("POST", "/api/avatar-iv/use-look-image", {
+        imageUrl: look.photoUrl,
+        lookName: look.lookName || look.lookLabel || "AI Generated Look",
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      setImageKey(data.imageKey);
+      setImagePreview(data.imageUrl);
+      setPreviewLook(null);
+      toast({
+        title: "Look Selected",
+        description: "AI-generated look is ready. Now write your script.",
+      });
+      setCurrentStep(2);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to use look",
+        description: error?.message || "Could not prepare this look for video. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkDeleteLooksMutation = useMutation({
+    mutationFn: async (lookIds: string[]) => {
+      await Promise.all(lookIds.map(id => apiRequest("DELETE", `/api/photo-avatars/looks/${id}`)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/all-looks"] });
+      setSelectedLookIds(new Set());
+      setIsLookSelectMode(false);
+      toast({ title: "Looks deleted", description: `${selectedLookIds.size} generated look(s) removed.` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Delete failed", description: error.message || "Could not delete looks", variant: "destructive" });
+    },
+  });
+
+  const createGroupMutation = useMutation({
+    mutationFn: async (photoId: string) => {
+      const response = await apiRequest("POST", `/api/avatar-iv/photos/${photoId}/create-group`);
+      return response as unknown as { groupId: string; created?: boolean; alreadyExists?: boolean };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/avatar-iv/photos"] });
+      if (selectedPhotoForStyle) {
+        setSelectedPhotoForStyle({
+          ...selectedPhotoForStyle,
+          metadata: {
+            ...selectedPhotoForStyle.metadata!,
+            groupId: data.groupId,
+          },
+        });
+      }
+      toast({
+        title: "Avatar Group Created",
+        description: "Preparing your avatar for style changes... Training may take a minute.",
+        duration: 6000,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Preparation Failed",
+        description: error.message || "Could not prepare avatar for style changes",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const changeStyleMutation = useMutation({
+    mutationFn: async ({ groupId, prompt }: { groupId: string; prompt: string }) => {
+      return await apiRequest("POST", `/api/photo-avatars/groups/${groupId}/proxy-generate-look`, {
+        prompt,
+        orientation: "square",
+        pose: "half_body",
+        style: "Realistic",
+        numLooks: 1,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Generating New Look",
+        description: "Your new outfit is being generated. It will appear in your library when ready (1-3 minutes).",
+        duration: 6000,
+      });
+      setChangeStyleDialogOpen(false);
+      setChangeStylePrompt("");
+      setSelectedPhotoForStyle(null);
+
+      if (stylePollRef.current) clearInterval(stylePollRef.current);
+      const initialIds = new Set(photoLibrary.map(p => p.id));
+      let pollAttempt = 0;
+      const maxPollAttempts = 36;
+      stylePollRef.current = setInterval(async () => {
+        pollAttempt++;
+        try {
+          const result = await refetchPhotos();
+          const newPhotos = result.data?.photos || [];
+          const hasNew = newPhotos.some(p => !initialIds.has(p.id));
+          if (hasNew) {
+            if (stylePollRef.current) clearInterval(stylePollRef.current);
+            stylePollRef.current = null;
+            toast({
+              title: "New Style Ready!",
+              description: "Your new avatar style has been saved to your photo library.",
+              duration: 5000,
+            });
+          }
+        } catch (e) {
+          console.error("Style poll error:", e);
+        }
+        if (pollAttempt >= maxPollAttempts) {
+          if (stylePollRef.current) clearInterval(stylePollRef.current);
+          stylePollRef.current = null;
+        }
+      }, 5000);
+    },
+    onError: (error: any) => {
+      const msg = error.message || "Could not generate new look";
+      const isTraining = msg.includes("still training") || msg.includes("being prepared") || msg.includes("1-2 minutes");
+      toast({
+        title: isTraining ? "Avatar Still Preparing" : "Style change failed",
+        description: isTraining ? "Your avatar is being trained. Please wait 1-2 minutes and try again." : msg,
+        variant: isTraining ? "default" : "destructive",
+        duration: isTraining ? 6000 : 5000,
+      });
+    },
+  });
+
   const startPolling = (videoId: string, vidTitle?: string, vidScript?: string) => {
     if (!videoId) {
       console.error("Cannot start polling without a video ID");
@@ -777,30 +1090,41 @@ export function AvatarIVStudio() {
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    console.log("File selected:", file?.name, file?.type, file?.size);
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    const isHeic = file.type === "image/heic" || file.type === "image/heif" || 
-                   file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif");
+    const validFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isHeic = file.type === "image/heic" || file.type === "image/heif" || 
+                     file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif");
+      if (file.type.startsWith("image/") || isHeic) {
+        validFiles.push(file);
+      }
+    }
 
-    if (!file.type.startsWith("image/") && !isHeic) {
+    if (validFiles.length === 0) {
       toast({
         title: "Invalid File",
-        description: "Please select an image file (JPG, PNG, HEIC)",
+        description: "Please select image files (JPG, PNG, HEIC)",
         variant: "destructive",
       });
       return;
     }
 
-    setUploadedImage(file);
+    const firstFile = validFiles[0];
+    setUploadedImage(firstFile);
+    console.log("Files selected:", validFiles.length, "first:", firstFile.name);
+
+    const isHeic = firstFile.type === "image/heic" || firstFile.type === "image/heif" || 
+                   firstFile.name.toLowerCase().endsWith(".heic") || firstFile.name.toLowerCase().endsWith(".heif");
 
     if (isHeic) {
       try {
         setIsConvertingHeic(true);
         console.log("Converting HEIC to JPEG for preview...");
         const convertedBlob = await heic2any({
-          blob: file,
+          blob: firstFile,
           toType: "image/jpeg",
           quality: 0.8,
         });
@@ -808,14 +1132,10 @@ export function AvatarIVStudio() {
         const reader = new FileReader();
         reader.onload = (event) => {
           const result = event.target?.result as string;
-          console.log("HEIC converted preview length:", result?.length);
           setImagePreview(result);
           setIsConvertingHeic(false);
         };
-        reader.onerror = (err) => {
-          console.error("FileReader error after HEIC conversion:", err);
-          setIsConvertingHeic(false);
-        };
+        reader.onerror = () => setIsConvertingHeic(false);
         reader.readAsDataURL(jpegBlob);
       } catch (err) {
         console.error("HEIC conversion error:", err);
@@ -829,14 +1149,78 @@ export function AvatarIVStudio() {
     } else {
       const reader = new FileReader();
       reader.onload = (event) => {
-        const result = event.target?.result as string;
-        console.log("FileReader result length:", result?.length);
-        setImagePreview(result);
+        setImagePreview(event.target?.result as string);
       };
-      reader.onerror = (err) => {
-        console.error("FileReader error:", err);
-      };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(firstFile);
+    }
+
+    if (validFiles.length > 1) {
+      handleMultiUpload(validFiles);
+    }
+  };
+
+  const handleMultiUpload = async (files: File[]) => {
+    setMultiUploadProgress({ current: 0, total: files.length });
+    let lastSuccessData: { imageKey: string; imageUrl: string } | null = null;
+    let successCount = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      setMultiUploadProgress({ current: i + 1, total: files.length });
+      try {
+        let fileToUpload = files[i];
+
+        const isHeic = fileToUpload.type === "image/heic" || fileToUpload.type === "image/heif" ||
+                       fileToUpload.name.toLowerCase().endsWith(".heic") || fileToUpload.name.toLowerCase().endsWith(".heif");
+
+        if (isHeic) {
+          try {
+            console.log(`Converting HEIC file ${fileToUpload.name} to JPEG before upload...`);
+            const convertedBlob = await heic2any({
+              blob: fileToUpload,
+              toType: "image/jpeg",
+              quality: 0.8,
+            });
+            const jpegBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+            const newName = fileToUpload.name.replace(/\.heic$/i, ".jpg").replace(/\.heif$/i, ".jpg");
+            fileToUpload = new File([jpegBlob], newName, { type: "image/jpeg" });
+          } catch (convErr) {
+            console.error(`HEIC conversion failed for ${fileToUpload.name}, uploading as-is:`, convErr);
+          }
+        }
+
+        const formData = new FormData();
+        formData.append("image", fileToUpload);
+        const response = await fetch("/api/avatar-iv/upload", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          console.error(`Upload failed for ${files[i].name}:`, error.error);
+        } else {
+          const data = await response.json();
+          lastSuccessData = { imageKey: data.imageKey, imageUrl: data.imageUrl };
+          successCount++;
+        }
+      } catch (err: any) {
+        console.error(`Upload error for ${files[i].name}:`, err?.message);
+      }
+    }
+
+    if (lastSuccessData) {
+      setImageKey(lastSuccessData.imageKey);
+      setImagePreview(lastSuccessData.imageUrl);
+    }
+
+    setMultiUploadProgress(null);
+    queryClient.invalidateQueries({ queryKey: ["/api/avatar-iv/photos"] });
+    toast({
+      title: "Upload Complete",
+      description: `${successCount} of ${files.length} photos uploaded and saved to your library.`,
+    });
+    if (lastSuccessData) {
+      setCurrentStep(2);
     }
   };
 
@@ -845,6 +1229,15 @@ export function AvatarIVStudio() {
       uploadMutation.mutate(uploadedImage);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (stylePollRef.current) {
+        clearInterval(stylePollRef.current);
+        stylePollRef.current = null;
+      }
+    };
+  }, []);
 
   const resetStudio = () => {
     setCurrentStep(1);
@@ -872,46 +1265,48 @@ export function AvatarIVStudio() {
 
   return (
     <div className="space-y-6">
-      {/* Active Background Jobs Section */}
-      {activeJobs.length > 0 && (
-        <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock className="h-4 w-4 text-blue-600 animate-pulse" />
-              <span>Background Jobs</span>
-              <Badge variant="secondary" className="ml-auto">
-                {activeJobs.length} generating
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-2">
-              {activeJobs.map((job) => (
-                <div
-                  key={job.id}
-                  className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border"
-                  data-testid={`job-item-${job.id}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                      <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{job.title}</p>
-                      <p className="text-xs text-gray-500 capitalize">{job.status}</p>
-                    </div>
-                  </div>
-                  <Badge variant={job.status === "processing" ? "default" : "secondary"}>
-                    {job.status === "processing" ? "Processing..." : "Queued"}
-                  </Badge>
-                </div>
-              ))}
+      {/* Compact Status Indicators */}
+      {(activeJobs.length > 0 || hasActiveJobs || recentlyCompleted.length > 0) && (
+        <div className="flex flex-wrap items-center gap-3" data-testid="status-indicators">
+          {activeJobs.length > 0 && (
+            <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-full px-4 py-2" data-testid="video-jobs-indicator">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {activeJobs.length === 1 ? 'Rendering video...' : `Rendering ${activeJobs.length} videos...`}
+              </span>
             </div>
-            <p className="text-xs text-gray-500 mt-3 text-center">
-              You'll receive a notification when each video is ready
-            </p>
-          </CardContent>
-        </Card>
+          )}
+          {hasActiveJobs && (
+            <div className="inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-950/40 border border-[#D4AF37]/40 rounded-full px-4 py-2" data-testid="look-jobs-indicator">
+              <Loader2 className="h-4 w-4 animate-spin text-[#D4AF37]" />
+              <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                Generating {activeJobsList.length} look{activeJobsList.length !== 1 ? 's' : ''}...
+              </span>
+              <button
+                className="text-sm font-semibold text-[#D4AF37] hover:text-amber-600 dark:hover:text-amber-200 flex items-center gap-0.5"
+                onClick={() => document.getElementById('look-gallery-section')?.scrollIntoView({ behavior: 'smooth' })}
+                data-testid="button-view-looks"
+              >
+                View <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          {!hasActiveJobs && recentlyCompleted.length > 0 && (
+            <div className="inline-flex items-center gap-2 bg-green-50 dark:bg-green-950/40 border border-green-300/50 rounded-full px-4 py-2" data-testid="looks-completed-indicator">
+              <Check className="h-4 w-4 text-green-500" />
+              <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                {recentlyCompleted.length} new look{recentlyCompleted.length !== 1 ? 's' : ''} ready!
+              </span>
+              <button
+                className="text-sm font-semibold text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 flex items-center gap-0.5"
+                onClick={() => document.getElementById('look-gallery-section')?.scrollIntoView({ behavior: 'smooth' })}
+                data-testid="button-view-completed-looks"
+              >
+                View <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       <Card>
@@ -1055,10 +1450,231 @@ export function AvatarIVStudio() {
                               <Check className="h-8 w-8 text-[#D4AF37]" />
                             </div>
                           )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute top-1 right-1 w-6 h-6 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center z-20 transition-colors"
+                                data-testid={`button-menu-photo-${photo.id}`}
+                              >
+                                <MoreVertical className="h-3.5 w-3.5 text-white" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedPhotoForStyle(photo);
+                                  setChangeStyleDialogOpen(true);
+                                }}
+                                data-testid={`button-style-photo-${photo.id}`}
+                              >
+                                <Shirt className="h-4 w-4 mr-2" />
+                                Change Style
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const confirmed = await confirm({
+                                    title: "Delete Photo",
+                                    description: "Delete this photo? This cannot be undone.",
+                                    confirmText: "Delete",
+                                    variant: "destructive",
+                                  });
+                                  if (confirmed) {
+                                    deletePhotoMutation.mutate(photo.id);
+                                  }
+                                }}
+                                className="text-red-600 focus:text-red-600"
+                                data-testid={`button-delete-photo-${photo.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       ))}
                     </div>
                   )}
+
+                  <div className="mt-6 pt-4 border-t border-gray-200" id="look-gallery-section">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-[#D4AF37]" />
+                        AI Generated Looks {allLooks.length > 0 && `(${allLooks.length})`}
+                        {hasActiveJobs && (
+                          <span className="inline-flex items-center gap-1 ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            {activeJobsList.length} generating...
+                          </span>
+                        )}
+                      </h4>
+                      {allLooks.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          {isLookSelectMode && selectedLookIds.size > 0 && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={async () => {
+                                const confirmed = await confirm({
+                                  title: "Delete Selected Looks",
+                                  description: `Delete ${selectedLookIds.size} selected look(s)? This cannot be undone.`,
+                                  confirmText: "Delete All",
+                                  variant: "destructive",
+                                });
+                                if (confirmed) {
+                                  bulkDeleteLooksMutation.mutate(Array.from(selectedLookIds));
+                                }
+                              }}
+                              disabled={bulkDeleteLooksMutation.isPending}
+                              data-testid="button-bulk-delete-looks"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" />
+                              {bulkDeleteLooksMutation.isPending ? "Deleting..." : `Delete (${selectedLookIds.size})`}
+                            </Button>
+                          )}
+                          {isLookSelectMode && allLooks.length > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                if (selectedLookIds.size === allLooks.length) {
+                                  setSelectedLookIds(new Set());
+                                } else {
+                                  setSelectedLookIds(new Set(allLooks.map((l: any) => l.id)));
+                                }
+                              }}
+                              data-testid="button-select-all-looks"
+                            >
+                              {selectedLookIds.size === allLooks.length ? "Deselect All" : "Select All"}
+                            </Button>
+                          )}
+                          <Button
+                            variant={isLookSelectMode ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => {
+                              setIsLookSelectMode(!isLookSelectMode);
+                              setSelectedLookIds(new Set());
+                            }}
+                            data-testid="button-toggle-select-mode"
+                          >
+                            {isLookSelectMode ? "Cancel" : "Select"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    {isLoadingAllLooks ? (
+                      <div className="flex justify-center py-6">
+                        <Loader2 className="h-6 w-6 animate-spin text-[#D4AF37]" />
+                      </div>
+                    ) : allLooks.length === 0 ? (
+                      <div className="text-center py-6 border-2 border-dashed rounded-xl">
+                        <Sparkles className="h-10 w-10 mx-auto text-gray-300 mb-3" />
+                        <p className="text-gray-500 text-sm mb-1">No AI-generated looks yet</p>
+                        <p className="text-gray-400 text-xs">Use "Change Style" on a photo above to generate new AI looks</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                        {allLooks.map((look: any) => (
+                          <div
+                            key={look.id}
+                            onClick={() => {
+                              if (isLookSelectMode) {
+                                setSelectedLookIds(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(look.id)) next.delete(look.id);
+                                  else next.add(look.id);
+                                  return next;
+                                });
+                              } else {
+                                setPreviewLook(look);
+                              }
+                            }}
+                            className={`group relative rounded-lg overflow-hidden border-2 transition-all hover:shadow-lg cursor-pointer ${
+                              isLookSelectMode && selectedLookIds.has(look.id)
+                                ? "border-[#D4AF37] ring-2 ring-[#D4AF37]/40"
+                                : "border-gray-200 hover:border-[#D4AF37]"
+                            }`}
+                            data-testid={`card-look-${look.id}`}
+                          >
+                            {look.photoUrl ? (
+                              <img
+                                src={look.photoUrl}
+                                alt={look.lookName || "Avatar look"}
+                                className="w-full aspect-square object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-full aspect-square bg-gray-100 flex items-center justify-center">
+                                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                              </div>
+                            )}
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                              <p className="text-[10px] font-medium text-white truncate">
+                                {look.lookName || look.lookLabel || "Look"}
+                              </p>
+                              <p className="text-[9px] text-white/70 truncate">
+                                {look.groupName || ""}
+                              </p>
+                            </div>
+                            {isLookSelectMode ? (
+                              <div
+                                className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                  selectedLookIds.has(look.id)
+                                    ? "bg-[#D4AF37] border-[#D4AF37]"
+                                    : "bg-white/80 border-gray-400"
+                                }`}
+                              >
+                                {selectedLookIds.has(look.id) && <Check className="h-3 w-3 text-white" />}
+                              </div>
+                            ) : (
+                              <Badge
+                                className="absolute top-1 left-1 text-[9px] px-1 py-0 bg-[#D4AF37]/90 text-white border-0"
+                                data-testid={`badge-look-${look.id}`}
+                              >
+                                AI
+                              </Badge>
+                            )}
+                            {!isLookSelectMode && (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (look.photoUrl) {
+                                      downloadFile(look.photoUrl, `${look.lookName || look.lookLabel || 'avatar-look'}.png`);
+                                    }
+                                  }}
+                                  className="absolute top-1.5 right-8 w-5 h-5 rounded-full bg-black/50 hover:bg-blue-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                  data-testid={`button-download-look-${look.id}`}
+                                >
+                                  <Download className="h-3 w-3 text-white" />
+                                </button>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const confirmed = await confirm({
+                                      title: "Delete Look",
+                                      description: "Delete this generated look? This cannot be undone.",
+                                      confirmText: "Delete",
+                                      variant: "destructive",
+                                    });
+                                    if (confirmed) {
+                                      deleteLookMutation.mutate(look.id);
+                                    }
+                                  }}
+                                  className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/50 hover:bg-red-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                  data-testid={`button-x-delete-look-${look.id}`}
+                                >
+                                  <X className="h-3 w-3 text-white" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1101,7 +1717,16 @@ export function AvatarIVStudio() {
                     </div>
                   )}
 
-                  {uploadedImage && !imageKey && (
+                  {multiUploadProgress && (
+                    <div className="text-center py-3" data-testid="multi-upload-progress">
+                      <Loader2 className="h-6 w-6 mx-auto text-[#D4AF37] mb-2 animate-spin" />
+                      <p className="text-sm text-gray-600">
+                        Uploading {multiUploadProgress.current} of {multiUploadProgress.total} photos...
+                      </p>
+                    </div>
+                  )}
+
+                  {uploadedImage && !imageKey && !multiUploadProgress && (
                     <div className="flex justify-center">
                       <Button
                         onClick={handleUpload}
@@ -1130,6 +1755,7 @@ export function AvatarIVStudio() {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*,.heic,.heif"
+                multiple
                 className="hidden"
                 onChange={handleFileSelect}
                 data-testid="input-file"
@@ -1198,13 +1824,55 @@ export function AvatarIVStudio() {
                   {inputMode === "text" ? (
                     <div className="space-y-3">
                       <div>
+                        <Label htmlFor="videoPlatform">AI Video Platform</Label>
+                        <Select value={videoPlatform} onValueChange={(v) => setVideoPlatform(v as typeof videoPlatform)}>
+                          <SelectTrigger className="mt-1" data-testid="select-ai-platform">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="heygen">
+                              <div className="flex flex-col">
+                                <span>HeyGen (Talking Photo Avatar)</span>
+                                <span className="text-xs text-gray-500">Animate your photo with voice — 1-3 min</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="sjinn_auto">
+                              <div className="flex flex-col">
+                                <span>SJinn Auto (Kling / Seedance / Hailuo)</span>
+                                <span className="text-xs text-gray-500">AI auto-selects best model — 5-15 min</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="sjinn_veo3">
+                              <div className="flex flex-col">
+                                <span>SJinn Veo3</span>
+                                <span className="text-xs text-gray-500">Google Veo3 cinematic video with audio — 5-15 min</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="sjinn_sora2">
+                              <div className="flex flex-col">
+                                <span>SJinn Sora2</span>
+                                <span className="text-xs text-gray-500">OpenAI Sora2 with consistent characters — 5-15 min</span>
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {videoPlatform !== "heygen" && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                          Your script will be sent to SJinn as the video prompt. No avatar or voice selection needed.
+                        </div>
+                      )}
+
+                      {videoPlatform === "heygen" && (
+                      <div>
                         <Label htmlFor="scriptStyle">Script Style</Label>
                         <Select value={scriptStyle} onValueChange={setScriptStyle}>
                           <SelectTrigger className="mt-1" data-testid="select-script-style">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {SCRIPT_STYLES.map((style) => (
+                            {scriptStyles.map((style) => (
                               <SelectItem key={style.id} value={style.id}>
                                 <div className="flex flex-col">
                                   <span>{style.label}</span>
@@ -1215,6 +1883,7 @@ export function AvatarIVStudio() {
                           </SelectContent>
                         </Select>
                       </div>
+                      )}
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <Label htmlFor="script">Script (max 1500 characters)</Label>
@@ -1492,45 +2161,26 @@ export function AvatarIVStudio() {
                 </div>
               </div>
 
-              {/* Background Generation Toggle - Modern Card Style */}
-              <div 
-                onClick={() => setRunInBackground(!runInBackground)}
-                className={`relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200 ${
-                  runInBackground 
-                    ? 'border-[#D4AF37] bg-[#D4AF37]/5' 
-                    : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                }`}
-                data-testid="toggle-background-mode"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${runInBackground ? 'bg-[#D4AF37]/20' : 'bg-gray-200'}`}>
-                      <Clock className={`h-5 w-5 ${runInBackground ? 'text-[#D4AF37]' : 'text-gray-500'}`} />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">Generate in Background</p>
-                      <p className="text-sm text-gray-500">
-                        {runInBackground 
-                          ? "You can navigate away while video generates" 
-                          : "Enable to continue working while video generates"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`w-12 h-7 rounded-full p-1 transition-colors duration-200 ${
-                    runInBackground ? 'bg-[#D4AF37]' : 'bg-gray-300'
-                  }`}>
-                    <div className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                      runInBackground ? 'translate-x-5' : 'translate-x-0'
-                    }`} />
-                  </div>
-                </div>
+              {/* Background Generation Toggle — HeyGen only */}
+              {videoPlatform === "heygen" && (
+              <div className="flex items-center justify-center gap-3 py-4 px-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                <Switch
+                  id="background-mode"
+                  checked={runInBackground}
+                  onCheckedChange={setRunInBackground}
+                  data-testid="switch-background-mode"
+                />
+                <Label htmlFor="background-mode" className="flex items-center gap-2 cursor-pointer">
+                  <Clock className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium">Generate in Background</span>
+                </Label>
                 {runInBackground && (
-                  <div className="mt-3 flex items-center gap-2 text-sm text-[#D4AF37]">
-                    <CheckCircle className="h-4 w-4" />
-                    <span>You'll get a notification when your video is ready</span>
-                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    You can navigate away
+                  </Badge>
                 )}
               </div>
+              )}
 
               <div className="flex justify-between pt-4">
                 <Button
@@ -1542,19 +2192,32 @@ export function AvatarIVStudio() {
                   Back
                 </Button>
                 <Button
-                  onClick={() => generateMutation.mutate()}
+                  onClick={() => {
+                    if (videoPlatform === "heygen") {
+                      generateMutation.mutate();
+                    } else {
+                      syncFromRefs();
+                      sjinnMutation.mutate();
+                    }
+                  }}
                   disabled={
-                    generateMutation.isPending || 
-                    (inputMode === "text" && !script.trim()) ||
-                    (inputMode === "audio" && !uploadedAudioUrl)
+                    generateMutation.isPending ||
+                    sjinnMutation.isPending ||
+                    (inputMode === "text" && !script.trim() && !videoTitle.trim()) ||
+                    (videoPlatform === "heygen" && inputMode === "audio" && !uploadedAudioUrl)
                   }
                   className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white px-8"
                   data-testid="button-generate"
                 >
-                  {generateMutation.isPending ? (
+                  {(generateMutation.isPending || sjinnMutation.isPending) ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Starting...
+                    </>
+                  ) : videoPlatform !== "heygen" ? (
+                    <>
+                      <Wand2 className="h-4 w-4 mr-2" />
+                      Generate with SJinn
                     </>
                   ) : runInBackground ? (
                     <>
@@ -1577,19 +2240,94 @@ export function AvatarIVStudio() {
               <div className="text-center">
                 <h3 className="text-lg font-semibold mb-2">Your Video</h3>
                 <p className="text-gray-500 text-sm">
-                  {videoStatus?.status === "completed" 
-                    ? "Your video is ready!" 
+                  {(videoPlatform !== "heygen" ? sjinnStatus === "completed" : videoStatus?.status === "completed")
+                    ? "Your video is ready!"
                     : "Video generation in progress..."}
                 </p>
               </div>
 
-              <div className="max-w-2xl mx-auto">
+              {/* SJinn video result */}
+              {videoPlatform !== "heygen" ? (
+              <div className="mx-auto max-w-2xl">
+                {sjinnStatus === "completed" && sjinnVideoUrl ? (
+                  <div className="space-y-4">
+                    <video
+                      src={sjinnVideoUrl}
+                      controls
+                      className="w-full max-h-[70vh] rounded-xl shadow-lg object-contain mx-auto"
+                      data-testid="video-player-sjinn"
+                    />
+                    <div className="flex flex-wrap justify-center gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const filename = `${videoTitle || 'sjinn-video'}-${Date.now()}.mp4`;
+                          downloadFile(sjinnVideoUrl, filename);
+                          toast({ title: "Downloading...", description: "Your video will be saved shortly." });
+                        }}
+                        data-testid="button-download-sjinn"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const videoUrl = encodeURIComponent(sjinnVideoUrl);
+                          const title = encodeURIComponent(videoTitle || "My SJinn Video");
+                          setLocation(`/dashboard?quickPost=video&videoUrl=${videoUrl}&videoTitle=${title}`);
+                          toast({ title: "Ready to Post", description: "Your video is ready for quick posting!" });
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                        data-testid="button-quick-post-sjinn"
+                      >
+                        <Share2 className="h-4 w-4 mr-2" />
+                        Quick Post
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          stopSjinnPolling();
+                          setSjinnStatus("idle");
+                          setSjinnVideoUrl(null);
+                          setSjinnChatId(null);
+                          setCurrentStep(1);
+                        }}
+                        className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
+                        data-testid="button-create-new-sjinn"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Create New
+                      </Button>
+                    </div>
+                  </div>
+                ) : sjinnStatus === "failed" ? (
+                  <div className="text-center py-12 border rounded-xl">
+                    <X className="h-12 w-12 mx-auto text-red-500 mb-4" />
+                    <p className="text-red-500 font-medium mb-2">SJinn Generation Failed</p>
+                    <p className="text-gray-500 text-sm mb-4">Something went wrong. Please try again.</p>
+                    <Button onClick={() => { setSjinnStatus("idle"); setCurrentStep(2); }} variant="outline" data-testid="button-try-again-sjinn">
+                      Try Again
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 border rounded-xl space-y-4">
+                    <Loader2 className="h-12 w-12 mx-auto text-[#D4AF37] animate-spin" />
+                    <p className="font-medium">SJinn AI is creating your video...</p>
+                    <p className="text-gray-500 text-sm">This can take 5-15 minutes. You'll be notified when it's ready.</p>
+                    <Badge variant="secondary" className="text-sm capitalize">
+                      Status: {sjinnStatus}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+              ) : (
+
+              <div className={`mx-auto ${videoOrientation === "portrait" ? "max-w-sm" : "max-w-2xl"}`}>
                 {videoStatus?.status === "completed" && videoStatus.video_url ? (
                   <div className="space-y-4">
                     <video
                       src={videoStatus.video_url}
                       controls
-                      className="w-full rounded-xl shadow-lg"
+                      className="w-full max-h-[70vh] rounded-xl shadow-lg object-contain mx-auto"
                       data-testid="video-player"
                     />
                     <div className="flex flex-wrap justify-center gap-3">
@@ -1663,9 +2401,258 @@ export function AvatarIVStudio() {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
         </CardContent>
+
+      {previewLook && (
+        <Dialog open={!!previewLook} onOpenChange={(open) => !open && setPreviewLook(null)}>
+          <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden">
+            <DialogHeader className="p-4 pb-2">
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-[#D4AF37]" />
+                {previewLook.lookName || previewLook.lookLabel || "AI Generated Look"}
+              </DialogTitle>
+              <DialogDescription>
+                {previewLook.groupName ? `Group: ${previewLook.groupName}` : previewLook.prompt ? previewLook.prompt.substring(0, 100) + "..." : "AI-generated avatar look"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="px-4 pb-4">
+              {previewLook.photoUrl && (
+                <img
+                  src={previewLook.photoUrl}
+                  alt={previewLook.lookName || "Avatar look"}
+                  className="w-full rounded-lg object-contain max-h-[70vh]"
+                  data-testid="img-preview-look"
+                />
+              )}
+              <div className="flex items-center justify-between mt-3">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-[#D4AF37]/90 text-white border-0" data-testid="badge-preview-status">
+                    {previewLook.status || "completed"}
+                  </Badge>
+                  {previewLook.lookLabel && (
+                    <Badge variant="outline" className="text-xs">
+                      {previewLook.lookLabel}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={async () => {
+                      const confirmed = await confirm({
+                        title: "Delete Look",
+                        description: "Are you sure you want to delete this generated look? This cannot be undone.",
+                        confirmText: "Delete",
+                        variant: "destructive",
+                      });
+                      if (confirmed) {
+                        deleteLookMutation.mutate(previewLook.id);
+                      }
+                    }}
+                    disabled={deleteLookMutation.isPending}
+                    data-testid="button-delete-look"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    {deleteLookMutation.isPending ? "Deleting..." : "Delete"}
+                  </Button>
+                  {previewLook.photoUrl && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          downloadFile(previewLook.photoUrl, `${previewLook.lookName || previewLook.lookLabel || 'avatar-look'}.png`);
+                        }}
+                        data-testid="button-download-preview-look"
+                      >
+                        <Download className="h-3.5 w-3.5 mr-1.5" />
+                        Download
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const a = document.createElement("a");
+                          a.href = previewLook.photoUrl;
+                          a.target = "_blank";
+                          a.rel = "noopener noreferrer";
+                          a.click();
+                        }}
+                        data-testid="button-open-full-size"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                        Full Size
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+              {previewLook.photoUrl && (
+                <Button
+                  className="w-full mt-3 bg-[#D4AF37] hover:bg-[#C4A030] text-white"
+                  size="lg"
+                  onClick={() => useLookForVideoMutation.mutate(previewLook)}
+                  disabled={useLookForVideoMutation.isPending}
+                  data-testid="button-use-look-for-video"
+                >
+                  {useLookForVideoMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Preparing look...
+                    </>
+                  ) : (
+                    <>
+                      <Video className="h-4 w-4 mr-2" />
+                      Use This Look for Video
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      <Dialog open={changeStyleDialogOpen} onOpenChange={setChangeStyleDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shirt className="h-5 w-5 text-[#D4AF37]" />
+              Change Style
+            </DialogTitle>
+            <DialogDescription>
+              Choose a preset outfit or describe what you'd like. This will generate a new look on your trained avatar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {selectedPhotoForStyle && (
+              <div className="flex items-center gap-3 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <img
+                  src={selectedPhotoForStyle.thumbnailUrl || selectedPhotoForStyle.url}
+                  alt={selectedPhotoForStyle.title || "Selected photo"}
+                  className="w-12 h-12 rounded-lg object-cover"
+                />
+                <div>
+                  <p className="text-sm font-medium">{selectedPhotoForStyle.title || "Selected Photo"}</p>
+                  <p className="text-xs text-gray-500">Generating a new style for this photo</p>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Quick Outfit Presets</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {OUTFIT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setChangeStylePrompt(preset.prompt)}
+                    className={`p-2 rounded-lg border text-left transition-all hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 ${
+                      changeStylePrompt === preset.prompt ? 'border-[#D4AF37] bg-[#D4AF37]/10' : 'border-gray-200 dark:border-gray-700'
+                    }`}
+                    data-testid={`button-style-preset-${preset.label.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <span className="text-lg">{preset.icon}</span>
+                    <p className="text-xs font-medium mt-1">{preset.label}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 my-2">
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+              <span className="text-xs text-gray-400">or describe your own</span>
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="style-prompt">Describe the outfit</Label>
+              <Textarea
+                id="style-prompt"
+                placeholder="e.g., navy blazer with white shirt, or casual polo with khakis..."
+                value={changeStylePrompt}
+                onChange={(e) => setChangeStylePrompt(e.target.value)}
+                rows={3}
+                className="resize-none"
+                data-testid="textarea-style-prompt"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setChangeStyleDialogOpen(false);
+                setChangeStylePrompt("");
+                setSelectedPhotoForStyle(null);
+              }}
+              data-testid="button-cancel-style"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!selectedPhotoForStyle?.url || !changeStylePrompt.trim()) return;
+                setAutoStyleGenerating(true);
+                try {
+                  const imageRes = await fetch(selectedPhotoForStyle.url);
+                  const imageBlob = await imageRes.blob();
+                  const formData = new FormData();
+                  formData.append("image", imageBlob, selectedPhotoForStyle.title || "photo.jpg");
+                  formData.append("prompt", changeStylePrompt.trim());
+                  formData.append("name", selectedPhotoForStyle.title || "Avatar");
+                  formData.append("orientation", "square");
+                  formData.append("pose", "half_body");
+                  formData.append("style", "Realistic");
+                  const res = await fetch("/api/photo-avatars/create-with-looks", {
+                    method: "POST",
+                    credentials: "include",
+                    body: formData,
+                  });
+                  const data = await res.json();
+                  if (res.ok && data.group_id) {
+                    toast({
+                      title: "Style Generation Started",
+                      description: "Training and generating 3 looks in the background. This takes 6-8 minutes.",
+                      duration: 8000,
+                    });
+                    setChangeStyleDialogOpen(false);
+                    setChangeStylePrompt("");
+                    setSelectedPhotoForStyle(null);
+                    queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+                  } else {
+                    toast({ title: "Generation Failed", description: data.error || "Could not start style generation", variant: "destructive" });
+                  }
+                } catch (error: any) {
+                  toast({ title: "Generation Failed", description: error.message || "Could not connect to avatar service", variant: "destructive" });
+                } finally {
+                  setAutoStyleGenerating(false);
+                }
+              }}
+              disabled={!changeStylePrompt.trim() || autoStyleGenerating}
+              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110"
+              data-testid="button-generate-style"
+            >
+              {autoStyleGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4 mr-2" />
+                  Generate Outfit
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       </Card>
     </div>
   );

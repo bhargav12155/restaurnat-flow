@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useLocation, Link } from "wouter";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,22 +12,20 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ArrowRight, Sparkles } from "lucide-react";
+import { Loader2, User, ArrowRight, Sparkles } from "lucide-react";
 
 interface LoginPageProps {
   onSuccess?: () => void;
 }
 
 export default function LoginPage({ onSuccess }: LoginPageProps) {
-  const { universalLogin, checkAuth, error, isLoading } = useAuth();
+  const { universalLogin, error, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const [userIdentifier, setUserIdentifier] = useState("");
-  const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isAutoLogging, setIsAutoLogging] = useState(false);
   const [isDemoLoading, setIsDemoLoading] = useState(false);
-  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
 
   const handleLoginSuccess = () => {
     if (onSuccess) {
@@ -112,7 +110,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     if (isInIframe()) {
       console.log("In iframe - requesting user data from parent window");
       window.parent.postMessage(
-        { source: "marketingflow", action: "requestUserData" },
+        { source: "realtyflow", action: "requestUserData" },
         "*", // Will be validated by the parent
       );
     }
@@ -123,7 +121,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     };
   }, [universalLogin, onSuccess]);
 
-  // Check for auto-login from URL parameters (iMakePage or external integration)
+  // Check for auto-login from URL parameters (iMakePage or NebraskaHomeHub)
   useEffect(() => {
     const checkAutoLogin = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -163,9 +161,9 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
         return;
       }
 
-      // Priority 2: External integration URL parameters
-      if (autoLogin === "true" && userEmail) {
-        console.log("Auto-login detected from external integration for:", userEmail);
+      // Priority 2: NebraskaHomeHub URL parameters
+      if (autoLogin === "true" && userEmail && source === "nebraska-home-hub") {
+        console.log("Auto-login detected from NebraskaHomeHub for:", userEmail);
         setIsAutoLogging(true);
         setUserIdentifier(userEmail);
 
@@ -173,7 +171,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
           const loginResult = await universalLogin(userEmail);
 
           if (loginResult.success) {
-            setSuccess("Welcome to MarketingFlow!");
+            setSuccess("Welcome from NebraskaHomeHub!");
             setTimeout(() => handleLoginSuccess(), 1000);
           } else {
             setLocalError(
@@ -195,55 +193,6 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     checkAutoLogin();
   }, [universalLogin, onSuccess]);
 
-  // Handle password-based login
-  const handlePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLocalError(null);
-    setSuccess(null);
-
-    if (!userIdentifier.trim()) {
-      setLocalError("Please enter your email");
-      return;
-    }
-    if (!password) {
-      setLocalError("Please enter your password");
-      return;
-    }
-
-    setIsPasswordLoading(true);
-
-    try {
-      const response = await fetch("/api/auth/login-with-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          email: userIdentifier.trim().toLowerCase(),
-          password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setSuccess("Welcome to MarketingFlow!");
-        // Refresh auth state to recognize the new session
-        await checkAuth();
-        setTimeout(() => handleLoginSuccess(), 500);
-      } else if (data.requiresVerification) {
-        setLocalError("Please verify your email before signing in. Check your inbox for the verification link.");
-      } else {
-        setLocalError(data.error || "Invalid email or password");
-      }
-    } catch (err) {
-      setLocalError("Network error. Please try again.");
-    } finally {
-      setIsPasswordLoading(false);
-    }
-  };
-
   // Handle universal login - determine user type automatically
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -261,7 +210,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
     const loginResult = await universalLogin(identifier);
 
     if (loginResult.success) {
-      setSuccess("Welcome to MarketingFlow!");
+      setSuccess("Welcome to RealtyFlow!");
       setTimeout(() => handleLoginSuccess(), 1000);
     } else {
       setLocalError(
@@ -303,14 +252,14 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-orange-50 to-red-100 p-4 sm:p-6">
-      <Card className="w-full max-w-md mx-auto shadow-xl border-0 sm:border">
-        <CardHeader className="text-center px-6 pt-8 pb-4 sm:px-8 sm:pt-10">
-          <CardTitle className="text-2xl sm:text-3xl font-bold">🚀 MarketingFlow</CardTitle>
-          <CardDescription className="text-base mt-2">Business Marketing Platform</CardDescription>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">RealtyFlow</CardTitle>
+          <CardDescription>Multi-User Real Estate Platform</CardDescription>
         </CardHeader>
 
-        <CardContent className="px-6 pb-8 sm:px-8 sm:pb-10">
+        <CardContent>
           {/* Show errors/success */}
           {(error || localError) && (
             <Alert className="mb-4 border-red-200 bg-red-50">
@@ -328,47 +277,47 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
             </Alert>
           )}
 
-          <form onSubmit={handlePasswordLogin} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                value={userIdentifier}
-                onChange={(e) => setUserIdentifier(e.target.value)}
-                placeholder="john@restaurant.com"
-                disabled={isPasswordLoading}
-                autoFocus
-                className="h-12 text-base px-4"
-              />
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="text-center mb-6">
+              <User className="mx-auto h-12 w-12 text-gray-400 mb-3" />
+              <h3 className="text-lg font-medium text-gray-900">Welcome</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Enter your identifier to continue
+              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+              <Label htmlFor="userIdentifier">User Identifier</Label>
               <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                disabled={isPasswordLoading}
-                className="h-12 text-base px-4"
+                id="userIdentifier"
+                type="text"
+                value={userIdentifier}
+                onChange={(e) => setUserIdentifier(e.target.value)}
+                placeholder="Enter your email or agent code"
+                disabled={isLoading}
+                className="text-center"
+                autoFocus
               />
+              <p className="text-xs text-gray-500 text-center">
+                We'll automatically detect your access level
+              </p>
             </div>
 
             <Button
               type="submit"
-              className="w-full h-12 text-base font-semibold bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 active:scale-[0.98] transition-transform"
-              disabled={isPasswordLoading || isAutoLogging}
+              className="w-full"
+              disabled={isLoading || isAutoLogging}
             >
-              {isPasswordLoading || isAutoLogging ? (
+              {isLoading || isAutoLogging ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Signing in...
+                  {isAutoLogging
+                    ? "Auto-signing you in..."
+                    : "Signing you in..."}
                 </>
               ) : (
                 <>
-                  Sign In
+                  Continue
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </>
               )}
@@ -377,11 +326,10 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
 
           <div className="mt-6 pt-6 border-t border-gray-200">
             <div className="text-center space-y-4">
-              <p className="text-sm text-gray-600">
-                Don't have an account?{" "}
-                <Link href="/signup" className="text-orange-600 hover:text-orange-700 font-medium">
-                  Sign up free
-                </Link>
+              <p className="text-xs text-gray-500">
+                Use your email address for client access
+                <br />
+                or agent code for professional features
               </p>
 
               <div className="relative">
@@ -396,7 +344,7 @@ export default function LoginPage({ onSuccess }: LoginPageProps) {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-12 text-base bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 hover:from-purple-100 hover:to-indigo-100 text-purple-700 active:scale-[0.98] transition-transform"
+                className="w-full bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200 hover:from-purple-100 hover:to-indigo-100 text-purple-700"
                 onClick={handleDemoAccess}
                 disabled={isDemoLoading || isLoading}
                 data-testid="button-demo-access"

@@ -34,7 +34,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { useBusinessType } from "@/hooks/useBusinessType";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -48,11 +47,11 @@ import {
   Clock,
   Edit,
   Image,
+  Shirt,
   Loader2,
   Mic,
   MicOff,
   Play,
-  Plus,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -60,11 +59,22 @@ import {
   Upload,
   UserPlus,
   Users,
+  MoreVertical,
+  Trash2,
+  Video,
   Wand2,
   X,
   ZoomIn,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { AvatarPhotoGallery } from "./avatar-photo-gallery";
 import { VoiceLibraryManager } from "./voice-library-manager";
 
@@ -73,13 +83,16 @@ function LargeAvatarCard({
   groupId,
   groupName,
   onOpenGallery,
-  onAddLooks,
+  onChangeOutfit,
+  onDelete,
 }: {
   groupId: string;
   groupName: string;
   onOpenGallery: () => void;
-  onAddLooks: (groupId: string, groupName: string) => void;
+  onChangeOutfit: () => void;
+  onDelete: () => void;
 }) {
+  const confirm = useConfirm();
   const { data: photoData } = useQuery<any>({
     queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
     enabled: !!groupId,
@@ -91,65 +104,106 @@ function LargeAvatarCard({
   if (!firstPhoto) return null;
 
   return (
-    <div className="relative group rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 bg-white w-full">
-      <button
-        onClick={onOpenGallery}
-        className="w-full"
-        data-testid={`large-avatar-${groupId}`}
-      >
-        <div className="aspect-[3/4] w-full">
-          <img
-            src={firstPhoto.url}
-            alt={firstPhoto.name || groupName}
-            className="w-full h-full object-cover"
-          />
-        </div>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpenGallery}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenGallery(); } }}
+      className="relative group rounded-2xl overflow-hidden hover:shadow-2xl transition-all duration-300 bg-white w-full cursor-pointer"
+      data-testid={`large-avatar-${groupId}`}
+    >
+      <div className="aspect-[3/4] w-full">
+        <img
+          src={firstPhoto.url}
+          alt={firstPhoto.name || groupName}
+          className="w-full h-full object-cover"
+        />
+      </div>
 
-        {/* Name Overlay at Bottom - Always Visible */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-          <p className="text-white text-sm font-medium truncate">
-            {firstPhoto.name || groupName}
-          </p>
-        </div>
+      {/* Three-dot menu - Always visible */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="absolute top-2 right-2 w-7 h-7 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center z-20 transition-colors"
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`button-menu-avatar-${groupId}`}
+          >
+            <MoreVertical className="h-4 w-4 text-white" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem
+            onClick={(e) => {
+              e.stopPropagation();
+              onChangeOutfit();
+            }}
+            data-testid={`button-menu-outfit-avatar-${groupId}`}
+          >
+            <Shirt className="h-4 w-4 mr-2" />
+            Change Outfit
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={async (e) => {
+              e.stopPropagation();
+              const confirmed = await confirm({
+                title: "Delete Avatar Group",
+                description: "Delete this avatar group? This cannot be undone.",
+                confirmText: "Delete",
+                variant: "destructive",
+              });
+              if (confirmed) {
+                onDelete();
+              }
+            }}
+            className="text-red-600 focus:text-red-600"
+            data-testid={`button-menu-delete-avatar-${groupId}`}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-        {/* Hover Actions Overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-          <div className="flex gap-2 text-white">
+      {/* Name Overlay at Bottom - Always Visible */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+        <p className="text-white text-sm font-medium truncate">
+          {firstPhoto.name || groupName}
+        </p>
+      </div>
+
+      {/* Hover Actions Overlay */}
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+        <div className="flex gap-2 text-white">
+          <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+            <ZoomIn className="w-5 h-5" />
+          </div>
+          {firstPhoto.motion_preview_url && (
             <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
-              <ZoomIn className="w-5 h-5" />
+              <Play className="w-5 h-5" />
             </div>
-            {firstPhoto.motion_preview_url && (
-              <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
-                <Play className="w-5 h-5" />
-              </div>
-            )}
-          </div>
+          )}
         </div>
+      </div>
 
-        {/* Video Badge */}
-        {firstPhoto.motion_preview_url && (
-          <div className="absolute top-3 right-3 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1">
-            <Play className="w-3 h-3" />
-            Video
-          </div>
-        )}
-      </button>
-
-      {/* Generate Looks Button - Always visible at top */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onAddLooks(groupId, groupName);
-        }}
-        className="absolute top-3 left-3 bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white text-xs px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 shadow-lg transition-all"
-        data-testid={`generate-looks-${groupId}`}
-      >
-        <Sparkles className="w-3.5 h-3.5" />
-        Generate Looks
-      </button>
+      {/* Video Badge */}
+      {firstPhoto.motion_preview_url && (
+        <div className="absolute top-3 left-3 bg-black/50 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1">
+          <Play className="w-3 h-3" />
+          Video
+        </div>
+      )}
     </div>
   );
 }
+
+const OUTFIT_PRESETS = [
+  { label: "Business Suit", prompt: "wearing a tailored navy blue business suit with white dress shirt and silk tie, professional office setting", icon: "👔" },
+  { label: "Casual Polo", prompt: "wearing a fitted casual polo shirt in solid color, relaxed professional look", icon: "👕" },
+  { label: "Real Estate Blazer", prompt: "wearing a stylish modern blazer over crisp button-down shirt, professional real estate agent look", icon: "🧥" },
+  { label: "Smart Casual", prompt: "wearing smart casual outfit with quarter-zip sweater over collared shirt, approachable professional look", icon: "👔" },
+  { label: "Formal Dress", prompt: "wearing elegant formal business dress or blouse with professional styling, confident real estate professional", icon: "👗" },
+  { label: "Outdoor/Active", prompt: "wearing clean outdoor casual attire, quarter-zip jacket, ready for property showings and open houses", icon: "🧤" },
+];
 
 // Professional HeyGen Voices
 const PROFESSIONAL_VOICES = [
@@ -204,7 +258,7 @@ interface PhotoGenerationRequest {
 
 export function PhotoAvatarManager() {
   const { toast } = useToast();
-  const { businessType, businessTypeLabel } = useBusinessType();
+  const confirm = useConfirm();
   const [selectedTab, setSelectedTab] = useState("generate");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -242,66 +296,30 @@ export function PhotoAvatarManager() {
   const [motionType, setMotionType] = useState<string>("consistent");
   const [showGroupNameDialog, setShowGroupNameDialog] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState("");
-  
-  // Generate Looks Dialog
-  const [showGenerateLooksDialog, setShowGenerateLooksDialog] = useState(false);
-  const [selectedGroupForGenerateLooks, setSelectedGroupForGenerateLooks] = useState<{
-    groupId: string;
-    groupName: string;
-  } | null>(null);
-  const [generateLooksPrompt, setGenerateLooksPrompt] = useState("");
-  const [generateLooksOrientation, setGenerateLooksOrientation] = useState<"square" | "horizontal" | "vertical">("square");
-  const [generateLooksPose, setGenerateLooksPose] = useState<"half_body" | "close_up" | "full_body">("half_body");
-  const [generateLooksStyle, setGenerateLooksStyle] = useState("Realistic");
-  const [generateLooksStatus, setGenerateLooksStatus] = useState<"idle" | "generating" | "success" | "error">("idle");
-  
-  // Get business-aware default persona
-  const getDefaultPersona = () => {
-    switch (businessType) {
-      case 'restaurant':
-        return {
-          name: "Professional Restaurant Avatar",
-          appearance: "Professional restaurant owner/chef, well-groomed, confident smile, business attire"
-        };
-      case 'home_services':
-        return {
-          name: "Professional Service Expert Avatar",
-          appearance: "Professional home service technician, clean uniform, friendly smile, trustworthy demeanor"
-        };
-      case 'real_estate':
-        return {
-          name: "Professional Real Estate Avatar",
-          appearance: "Professional real estate agent, business attire, confident smile, approachable demeanor"
-        };
-      case 'retail':
-        return {
-          name: "Professional Retail Avatar",
-          appearance: "Professional store owner, business casual, welcoming smile, approachable demeanor"
-        };
-      case 'professional_services':
-        return {
-          name: "Professional Consultant Avatar",
-          appearance: "Professional consultant, business formal attire, confident smile, trustworthy demeanor"
-        };
-      default:
-        return {
-          name: "Professional Business Avatar",
-          appearance: "Professional business owner, business attire, confident smile, approachable demeanor"
-        };
-    }
-  };
-  
-  const defaultPersona = getDefaultPersona();
   const [generationForm, setGenerationForm] = useState<PhotoGenerationRequest>({
-    name: defaultPersona.name,
+    name: "Mike Bjork Professional Avatar",
     age: "Early Middle Age",
     gender: "Man",
     ethnicity: "White",
     orientation: "vertical",
     pose: "half_body",
     style: "Realistic",
-    appearance: defaultPersona.appearance,
+    appearance:
+      "Professional real estate agent, well-groomed, confident smile, business attire",
   });
+
+  const [aiLookDialogOpen, setAiLookDialogOpen] = useState(false);
+  const [aiLookSource, setAiLookSource] = useState<"upload" | "existing">("upload");
+  const [aiLookFile, setAiLookFile] = useState<File | null>(null);
+  const [aiLookFilePreview, setAiLookFilePreview] = useState<string | null>(null);
+  const [aiLookName, setAiLookName] = useState("");
+  const [aiLookPrompt, setAiLookPrompt] = useState("");
+  const [aiLookOrientation, setAiLookOrientation] = useState<"square" | "horizontal" | "vertical">("square");
+  const [aiLookPose, setAiLookPose] = useState<"half_body" | "close_up" | "full_body">("half_body");
+  const [aiLookStyle, setAiLookStyle] = useState("Realistic");
+  const [aiLookSelectedGroup, setAiLookSelectedGroup] = useState<string>("");
+  const [aiLookGenerating, setAiLookGenerating] = useState(false);
+  const aiLookFileRef = useRef<HTMLInputElement>(null);
 
   // Query avatar groups
   const { data: avatarGroupsResponse, isLoading: isLoadingGroups } = useQuery({
@@ -322,6 +340,11 @@ export function PhotoAvatarManager() {
 
   // Extract avatar groups array from response
   const avatarGroups = avatarGroupsResponse?.avatar_group_list || [];
+
+  const { data: allLooksResponse, isLoading: isLoadingAllLooks } = useQuery({
+    queryKey: ["/api/photo-avatars/all-looks"],
+  });
+  const allLooks = allLooksResponse?.looks || [];
 
   // Track previous avatar group statuses to detect training completion
   const prevStatusesRef = useRef<Record<string, string>>({});
@@ -471,12 +494,12 @@ export function PhotoAvatarManager() {
         return;
       }
 
-      // STEP 2: AUTO-GENERATE LOOKS - If trained but has < 4 looks
+      // STEP 2: AUTO-GENERATE LOOKS - If trained but has < 3 looks
       // Note: HeyGen returns "completed" or "ready" for trained avatars - accept both!
       const isTrainedStatus = currentTrainStatus === "ready" || currentTrainStatus === "completed";
       const wasNotTrained = previousTrainStatus !== "ready" && previousTrainStatus !== "completed";
       const trainingJustCompleted = previousTrainStatus && wasNotTrained && isTrainedStatus;
-      const alreadyTrainedWithFewLooks = !previousTrainStatus && isTrainedStatus && numLooks < 4;
+      const alreadyTrainedWithFewLooks = !previousTrainStatus && isTrainedStatus && numLooks < 3;
       
       const shouldAutoGenerate = (trainingJustCompleted || alreadyTrainedWithFewLooks) && 
                                   !alreadyProcessedLooks;
@@ -486,12 +509,12 @@ export function PhotoAvatarManager() {
         console.log(`    ⏳ WAITING: Training in progress...`);
       } else if (!isTrainedStatus) {
         console.log(`    ⚠️ SKIPPED: Not trained yet (status: "${currentTrainStatus}")`);
-      } else if (numLooks >= 4) {
+      } else if (numLooks >= 3) {
         console.log(`    ✅ COMPLETE: Already has ${numLooks} looks`);
       } else if (alreadyProcessedLooks) {
         console.log(`    ⏭️ SKIPPED: Already processed looks in this session`);
       } else if (shouldAutoGenerate) {
-        console.log(`    🚀 TRIGGERING: Auto-generating 4 looks!`);
+        console.log(`    🚀 TRIGGERING: Auto-generating 3 looks!`);
       }
 
       if (shouldAutoGenerate) {
@@ -512,7 +535,7 @@ export function PhotoAvatarManager() {
 
         toast({
           title: trainingJustCompleted ? "🎉 Training Complete!" : "🎨 Generating Looks",
-          description: `Avatar "${group.name}" - Now auto-generating 4 professional looks...`,
+          description: `Avatar "${group.name}" - Now auto-generating 3 professional looks...`,
           duration: 8000,
         });
 
@@ -521,12 +544,12 @@ export function PhotoAvatarManager() {
         // Also mark as trained to prevent re-triggering training
         autoTrainedRef.current.add(groupId);
         
-        // Update status to show generation is starting (4 professional styles)
+        // Update status to show generation is starting (3 professional styles)
         addActivityLog({
           step: 'generating_looks',
-          message: 'Generating 4 professional looks...',
+          message: 'Generating 3 professional looks...',
           groupName: group.name,
-          details: 'Executive, Friendly Chef, Kitchen Tour, Modern Professional'
+          details: 'Executive, Friendly Agent, Property Tour'
         });
         
         setLookGenerationStatus(prev => ({
@@ -536,114 +559,65 @@ export function PhotoAvatarManager() {
             progress: 10,
             looks: [
               { label: 'professional-executive', name: 'Executive' },
-              { label: 'professional-friendly', name: 'Friendly Chef' },
-              { label: 'professional-outdoor', name: 'Kitchen Tour' },
-              { label: 'professional-modern', name: 'Modern Professional' }
+              { label: 'professional-friendly', name: 'Friendly Agent' },
+              { label: 'professional-outdoor', name: 'Property Tour' }
             ]
           }
         }));
 
         try {
-          // Call generate-looks endpoint for 4 professional styles
-          const response = await apiRequest(
-            "POST",
-            `/api/photo-avatars/groups/${groupId}/generate-looks`,
-            { numLooks: 4 }
-          );
-          const data = await response.json();
+          const lookPrompts = [
+            "Professional executive in a navy business suit, confident and approachable",
+            "Friendly real estate agent in smart casual blazer, warm and welcoming smile",
+            "Outdoor property tour guide in clean casual attire, natural setting",
+          ];
           
-          console.log("🎨 Auto-generating looks:", data);
+          console.log("🎨 Auto-generating looks via proxy...");
           
-          // Poll for look generation completion using Promise.all for parallel polling
-          if (data.looks && data.looks.length > 0) {
-            // Create poll function for each look
-            const pollLookStatus = async (look: any, lookIndex: number): Promise<boolean> => {
-              const maxAttempts = 60; // 5 minutes max
-              let attempts = 0;
-              
-              while (attempts < maxAttempts) {
-                try {
-                  const statusRes = await apiRequest(
-                    "GET",
-                    `/api/photo-avatars/groups/${groupId}/look-status/${look.generationId}`
-                  );
-                  const statusData = await statusRes.json();
-                  
-                  if (statusData.status === "completed" || statusData.status === "success") {
-                    console.log(`✅ Look ${look.label} completed`);
-                    return true;
-                  } else if (statusData.status === "failed") {
-                    console.error(`❌ Look ${look.label} failed`);
-                    return false;
-                  }
-                  
-                  // Still processing, wait and try again
-                  await new Promise(resolve => setTimeout(resolve, 5000));
-                  attempts++;
-                  
-                  // Update progress while waiting
-                  const progressPercent = Math.min(90, 10 + (attempts / maxAttempts) * 80);
-                  setLookGenerationStatus(prev => ({
-                    ...prev,
-                    [groupId]: {
-                      ...prev[groupId],
-                      progress: progressPercent
-                    }
-                  }));
-                } catch (pollError) {
-                  console.error("Error polling look status:", pollError);
-                  attempts++;
-                  await new Promise(resolve => setTimeout(resolve, 5000));
-                }
-              }
-              return false; // Timed out
-            };
-            
-            // Run all polls in parallel
-            Promise.all(data.looks.map((look: any, index: number) => pollLookStatus(look, index)))
-              .then((results) => {
-                const allCompleted = results.every((r: boolean) => r === true);
-                
-                setLookGenerationStatus(prev => ({
-                  ...prev,
-                  [groupId]: {
-                    ...prev[groupId],
-                    progress: 100,
-                    status: allCompleted ? 'completed' : 'failed'
-                  }
-                }));
-                
-                if (allCompleted) {
-                  addActivityLog({
-                    step: 'looks_complete',
-                    message: 'All looks ready!',
-                    groupName: group.name,
-                    details: '4 professional looks generated successfully.'
-                  });
-                  
-                  toast({
-                    title: "✅ Looks Ready!",
-                    description: `Professional and Casual looks for "${group.name}" are now available!`,
-                    duration: 6000,
-                  });
-                }
-                
-                // Refresh avatar groups to show new looks
-                queryClient.invalidateQueries({
-                  queryKey: ["/api/photo-avatars/groups"],
-                });
-                queryClient.invalidateQueries({
-                  queryKey: [`/api/photo-avatars/groups/${groupId}/photos`],
-                });
-              })
-              .catch((err: Error) => {
-                console.error("Error in look generation polling:", err);
-                setLookGenerationStatus(prev => ({
-                  ...prev,
-                  [groupId]: { ...prev[groupId], status: 'failed' }
-                }));
-              });
+          for (const prompt of lookPrompts) {
+            try {
+              await apiRequest(
+                "POST",
+                `/api/photo-avatars/groups/${groupId}/proxy-generate-look`,
+                { prompt, orientation: "square", pose: "half_body", style: "Realistic" }
+              );
+            } catch (e: any) {
+              console.warn(`Look generation failed for prompt "${prompt}":`, e?.message);
+            }
           }
+          
+          setLookGenerationStatus(prev => ({
+            ...prev,
+            [groupId]: {
+              ...prev[groupId],
+              progress: 50,
+            }
+          }));
+
+          toast({
+            title: "🎨 Generating Looks",
+            description: `Generating 3 professional looks for "${group.name}". This takes 2-5 minutes.`,
+            duration: 8000,
+          });
+
+          const pollInterval = setInterval(() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+            queryClient.invalidateQueries({ queryKey: [`/api/photo-avatars/groups/${groupId}/photos`] });
+          }, 5000);
+
+          setTimeout(() => {
+            clearInterval(pollInterval);
+            setLookGenerationStatus(prev => ({
+              ...prev,
+              [groupId]: { ...prev[groupId], progress: 100, status: 'completed' }
+            }));
+            addActivityLog({
+              step: 'looks_complete',
+              message: 'Look generation completed!',
+              groupName: group.name,
+              details: '3 professional looks generated.'
+            });
+          }, 180000);
         } catch (error) {
           console.error("Failed to auto-generate looks:", error);
           setLookGenerationStatus(prev => ({
@@ -662,6 +636,99 @@ export function PhotoAvatarManager() {
       prevStatusesRef.current[groupId] = currentTrainStatus;
     });
   }, [avatarGroups, toast]);
+
+  const handleAiLookGenerate = async () => {
+    setAiLookGenerating(true);
+    try {
+      if (aiLookSource === "existing" && aiLookSelectedGroup) {
+        const userPrompt = aiLookPrompt.trim() || "Professional look";
+        const lookPrompts = [
+          userPrompt,
+          `${userPrompt}, friendly and welcoming variation`,
+          `${userPrompt}, outdoor natural setting variation`,
+          `${userPrompt}, modern contemporary variation`,
+        ];
+        
+        let successCount = 0;
+        for (const prompt of lookPrompts) {
+          try {
+            await apiRequest("POST", `/api/photo-avatars/groups/${aiLookSelectedGroup}/proxy-generate-look`, {
+              prompt,
+              orientation: aiLookOrientation,
+              pose: aiLookPose,
+              style: aiLookStyle,
+            });
+            successCount++;
+          } catch (e: any) {
+            console.warn(`Look generation failed for prompt "${prompt}":`, e?.message);
+          }
+        }
+        
+        if (successCount > 0) {
+          toast({
+            title: "Look Generation Started",
+            description: `Generating ${successCount} AI-enhanced looks. This takes 2-3 minutes.`,
+            duration: 8000,
+          });
+          setAiLookDialogOpen(false);
+          setAiLookSelectedGroup("");
+          setAiLookPrompt("");
+          queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+
+          const pollInterval = setInterval(() => {
+            queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+            queryClient.invalidateQueries({ queryKey: [`/api/photo-avatars/groups/${aiLookSelectedGroup}/photos`] });
+          }, 5000);
+          setTimeout(() => clearInterval(pollInterval), 180000);
+        } else {
+          toast({ title: "Generation Failed", description: "Could not start look generation", variant: "destructive" });
+        }
+      } else if (aiLookSource === "upload" && aiLookFile) {
+        const formData = new FormData();
+        formData.append("image", aiLookFile);
+        if (aiLookName.trim()) formData.append("name", aiLookName.trim());
+        if (aiLookPrompt.trim()) formData.append("prompt", aiLookPrompt.trim());
+        formData.append("orientation", aiLookOrientation);
+        formData.append("pose", aiLookPose);
+        formData.append("style", aiLookStyle);
+
+        const res = await fetch("/api/photo-avatars/create-with-looks", {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.group_id) {
+          toast({
+            title: "Avatar Processing Started",
+            description: `${data.message || "Training and look generation will complete in ~6-8 minutes."}`,
+            duration: 8000,
+          });
+          setAiLookDialogOpen(false);
+          setAiLookFile(null);
+          setAiLookFilePreview(null);
+          setAiLookName("");
+          setAiLookPrompt("");
+          setAiLookOrientation("square");
+          setAiLookPose("half_body");
+          setAiLookStyle("Realistic");
+          queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
+        } else {
+          toast({ title: "Generation Failed", description: data.error || "Could not start avatar generation", variant: "destructive" });
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Generation Failed",
+        description: error.message || "Could not connect to avatar service",
+        variant: "destructive",
+      });
+    } finally {
+      setAiLookGenerating(false);
+    }
+  };
 
   // Generate AI photos
   const generatePhotosMutation = useMutation({
@@ -1009,41 +1076,57 @@ export function PhotoAvatarManager() {
       groupId: string;
       numLooks: number;
     }) => {
-      const endpoint = `/api/photo-avatars/groups/${groupId}/generate-looks`;
-      const payload = { numLooks };
+      const defaultPrompts = [
+        "Professional executive in a navy business suit, confident and approachable",
+        "Friendly real estate agent in smart casual blazer, warm and welcoming smile",
+        "Outdoor property tour guide in clean casual attire, natural setting",
+        "Modern professional in contemporary business wear, sleek and polished",
+      ];
+      const prompts = defaultPrompts.slice(0, numLooks);
       
       addDebugLog({
         type: 'request',
-        endpoint,
-        payload,
-        message: `Generating ${numLooks} looks for group ${groupId}`
+        endpoint: `/api/photo-avatars/groups/${groupId}/proxy-generate-look`,
+        payload: { numLooks, prompts },
+        message: `Generating ${numLooks} looks for group ${groupId} via proxy`
       });
       
-      const response = await apiRequest("POST", endpoint, payload);
-      const data = await response.json();
+      let successCount = 0;
+      for (const prompt of prompts) {
+        try {
+          await apiRequest("POST", `/api/photo-avatars/groups/${groupId}/proxy-generate-look`, {
+            prompt,
+            orientation: "square",
+            pose: "half_body",
+            style: "Realistic",
+          });
+          successCount++;
+        } catch (e: any) {
+          console.warn(`Look generation failed for prompt "${prompt}":`, e?.message);
+        }
+      }
       
       addDebugLog({
         type: 'response',
-        endpoint,
-        response: data,
-        message: `Received ${data?.looks?.length || 0} look generation IDs`
+        endpoint: `/api/photo-avatars/groups/${groupId}/proxy-generate-look`,
+        response: { successCount, total: prompts.length },
+        message: `${successCount}/${prompts.length} look generation requests sent`
       });
       
-      return data;
+      return { successCount, groupId };
     },
     onSuccess: (data: any, variables) => {
       toast({
         title: "🎨 Generating New Looks",
-        description: `Started generating ${data?.looks?.length || 0} looks. Check the debug panel for details.`,
+        description: `Started generating ${data.successCount} looks. They'll appear in a few minutes.`,
         duration: 6000,
       });
       
       addDebugLog({
         type: 'info',
-        message: `Look generation started successfully for group ${variables.groupId}. Generation IDs: ${data?.looks?.map((l: any) => l.generationId).join(', ')}`
+        message: `Look generation started successfully for group ${variables.groupId}. ${data.successCount} requests sent.`
       });
 
-      // Start polling for the new photos - refresh every 3 seconds for 2 minutes
       const pollInterval = setInterval(() => {
         queryClient.invalidateQueries({
           queryKey: [`/api/photo-avatars/groups/${variables.groupId}/photos`],
@@ -1051,12 +1134,11 @@ export function PhotoAvatarManager() {
         queryClient.invalidateQueries({
           queryKey: ["/api/photo-avatars/groups"],
         });
-      }, 3000);
+      }, 5000);
 
-      // Stop polling after 2 minutes
       setTimeout(() => {
         clearInterval(pollInterval);
-      }, 120000);
+      }, 180000);
     },
     onError: (error: Error) => {
       const errorMessage = error.message.toLowerCase();
@@ -1097,7 +1179,7 @@ export function PhotoAvatarManager() {
     },
   });
 
-  // Edit look mutation
+  // Edit look mutation - uses external service proxy
   const editLookMutation = useMutation({
     mutationFn: ({
       groupId,
@@ -1112,17 +1194,18 @@ export function PhotoAvatarManager() {
       pose?: string;
       style?: string;
     }) =>
-      apiRequest("POST", `/api/heygen/avatars/${groupId}/generate-look`, {
+      apiRequest("POST", `/api/photo-avatars/groups/${groupId}/proxy-generate-look`, {
         prompt,
         orientation,
         pose,
         style,
+        numLooks: 1,
       }),
     onSuccess: (data: any, variables) => {
       toast({
-        title: "🎨 Generating New Look",
+        title: "Generating New Look",
         description:
-          "Your custom look is being generated. It will appear automatically when ready (usually 30-60 seconds).",
+          "Your custom look is being generated in the background. It will appear when ready (2-3 minutes).",
         duration: 6000,
       });
       setEditDialogOpen(false);
@@ -1131,7 +1214,6 @@ export function PhotoAvatarManager() {
       setEditPose("half_body");
       setEditStyle("Realistic");
 
-      // Start polling for the new photo - refresh every 3 seconds for 2 minutes
       const pollInterval = setInterval(() => {
         queryClient.invalidateQueries({
           queryKey: [`/api/photo-avatars/groups/${variables.groupId}/photos`],
@@ -1139,33 +1221,56 @@ export function PhotoAvatarManager() {
         queryClient.invalidateQueries({
           queryKey: ["/api/photo-avatars/groups"],
         });
-      }, 3000);
+      }, 5000);
 
-      // Stop polling after 2 minutes
       setTimeout(() => {
         clearInterval(pollInterval);
-      }, 120000);
+      }, 180000);
     },
     onError: (error: Error) => {
-      const errorMessage = error.message.toLowerCase();
-      const isModelNotFound =
-        errorMessage.includes("model not found") ||
-        errorMessage.includes("400");
-
       toast({
-        title: "Training Required",
-        description: isModelNotFound
-          ? "⚠️ This avatar group must be TRAINED before you can generate new looks. Click the 'Start Training' button first, wait for training to complete (status changes to 'ready'), then try again."
-          : error.message,
+        title: "Generation Failed",
+        description: error.message || "Could not generate new look. Please try again.",
         variant: "destructive",
         duration: 8000,
       });
     },
   });
 
+  const [, setLocation] = useLocation();
+  const [useLookPendingId, setUseLookPendingId] = useState<string | null>(null);
+
+  const useLookForVideoMutation = useMutation({
+    mutationFn: async (look: any) => {
+      setUseLookPendingId(look.id);
+      const response = await apiRequest("POST", "/api/avatar-iv/use-look-image", {
+        imageUrl: look.photoUrl,
+        lookName: look.poseType || "AI Generated Look",
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      setUseLookPendingId(null);
+      toast({
+        title: "Look Ready for Video!",
+        description: "Redirecting to Video Studio. Your look is selected — write your script and generate!",
+      });
+      window.location.hash = "photo-avatars";
+    },
+    onError: (error: any) => {
+      setUseLookPendingId(null);
+      toast({
+        title: "Failed to prepare look",
+        description: error?.message || "Could not prepare this look for video. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setUploadedFiles(files);
+    setUploadedFiles((prev) => [...prev, ...files]);
+    if (e.target) e.target.value = "";
   };
 
   const handleUploadFiles = async () => {
@@ -1492,6 +1597,7 @@ export function PhotoAvatarManager() {
   };
 
   return (
+    <div className="space-y-4">
     <div className="flex gap-4">
       {/* Main Content */}
       <Card data-testid="card-photo-avatar-manager" className="flex-1">
@@ -1825,10 +1931,11 @@ export function PhotoAvatarManager() {
                       onOpenGallery={() =>
                         setOpenGalleryGroupId(group.group_id)
                       }
-                      onAddLooks={(groupId, groupName) => {
-                        setSelectedGroupForGenerateLooks({ groupId, groupName });
-                        setShowGenerateLooksDialog(true);
+                      onChangeOutfit={() => {
+                        setSelectedGroupForEdit(group);
+                        setEditDialogOpen(true);
                       }}
+                      onDelete={() => deleteGroupMutation.mutate(group.group_id)}
                     />
                   ))}
                 </div>
@@ -1849,13 +1956,13 @@ export function PhotoAvatarManager() {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>Select multiple photos at once (5-20 photos)</strong> of the same person from
+                Upload 5-20 high-quality photos of the same person from
                 different angles for best results. Photos should be clear,
                 well-lit, and show the face clearly.
               </AlertDescription>
             </Alert>
 
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+            <div className="border-2 border-dashed border-gray-300 hover:border-[#D4AF37] rounded-lg p-6 text-center transition-colors">
               <input
                 type="file"
                 multiple
@@ -1870,13 +1977,13 @@ export function PhotoAvatarManager() {
                 data-testid="label-upload"
               >
                 <Image className="w-12 h-12 text-gray-400 mb-2" />
-                <span className="text-sm font-semibold text-gray-700">
-                  Click to select multiple photos (5-20)
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Click to select multiple photos
                 </span>
                 <span className="text-xs text-gray-500 mt-1">
-                  Hold Cmd/Ctrl to select multiple files at once
+                  Hold Ctrl (or Cmd on Mac) to select multiple files at once
                 </span>
-                <span className="text-xs text-gray-500 mt-0.5">
+                <span className="text-xs text-gray-400 mt-0.5">
                   PNG, JPG up to 10MB each
                 </span>
               </label>
@@ -1884,33 +1991,52 @@ export function PhotoAvatarManager() {
 
             {uploadedFiles.length > 0 && (
               <>
-                <div className="space-y-2">
-                  {uploadedFiles.map((file, index) => (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {uploadedFiles.length} photo{uploadedFiles.length > 1 ? "s" : ""} selected
+                  </p>
+                  <label
+                    htmlFor="photo-upload"
+                    className="text-xs text-[#D4AF37] hover:underline cursor-pointer"
+                  >
+                    + Add more
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                  {uploadedFiles.map((file, index) => {
+                    const previewUrl = URL.createObjectURL(file);
+                    return (
                     <div
-                      key={index}
-                      className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                      key={`${file.name}-${file.size}-${index}`}
+                      className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
                     >
-                      <span className="text-sm">{file.name}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
+                      <img
+                        src={previewUrl}
+                        alt={file.name}
+                        className="w-full h-full object-cover"
+                        onLoad={() => URL.revokeObjectURL(previewUrl)}
+                      />
+                      <button
                         onClick={() =>
                           setUploadedFiles((files) =>
                             files.filter((_, i) => i !== index)
                           )
                         }
+                        className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         data-testid={`button-remove-${index}`}
                       >
-                        <X className="w-4 h-4" />
-                      </Button>
+                        <X className="w-3 h-3 text-white" />
+                      </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <Button
                   onClick={handleUploadFiles}
                   disabled={uploadPhotoMutation.isPending}
-                  className="w-full"
+                  className="w-full bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 text-white"
                   data-testid="button-upload-files"
                 >
                   {uploadPhotoMutation.isPending ? (
@@ -1922,7 +2048,7 @@ export function PhotoAvatarManager() {
                     <>
                       <Upload className="w-4 h-4 mr-2" />
                       Upload {uploadedFiles.length} Photo
-                      {uploadedFiles.length > 1 ? "s" : ""}
+                      {uploadedFiles.length > 1 ? "s" : ""} & Create Avatar
                     </>
                   )}
                 </Button>
@@ -2394,6 +2520,26 @@ export function PhotoAvatarManager() {
                   </div>
                 )}
 
+                {/* Generate AI Enhanced Look Banner */}
+                <div 
+                  className="mb-6 cursor-pointer"
+                  onClick={() => setAiLookDialogOpen(true)}
+                  data-testid="banner-ai-enhanced-look"
+                >
+                  <div className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] rounded-xl p-4 flex items-center justify-between hover:brightness-110 transition-all shadow-lg">
+                    <div className="flex items-center gap-3">
+                      <Sparkles className="h-6 w-6 text-black" />
+                      <div>
+                        <p className="font-semibold text-black text-base">Generate AI Enhanced Look</p>
+                        <p className="text-black/70 text-sm">2-3 min processing • {avatarGroups.length}/∞ used</p>
+                      </div>
+                    </div>
+                    <div className="text-black">
+                      <ChevronDown className="h-5 w-5 rotate-[-90deg]" />
+                    </div>
+                  </div>
+                </div>
+
                 {Array.isArray(avatarGroups) &&
                   avatarGroups.map((group: AvatarGroup) => (
                     <Card
@@ -2467,13 +2613,55 @@ export function PhotoAvatarManager() {
                                 ` • ${group.avatar_count} photos`}
                             </p>
                           </div>
-                          <Badge
-                            className={`${getStatusColor(
-                              group.status
-                            )} text-white text-[9px] px-1.5 py-0.5`}
-                          >
-                            {group.status}
-                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge
+                              className={`${getStatusColor(
+                                group.status
+                              )} text-white text-[9px] px-1.5 py-0.5`}
+                            >
+                              {group.status}
+                            </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  className="w-6 h-6 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 rounded-full flex items-center justify-center transition-colors"
+                                  data-testid={`button-menu-group-${group.group_id}`}
+                                >
+                                  <MoreVertical className="h-3.5 w-3.5 text-gray-500" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-40">
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedGroupForEdit(group);
+                                    setEditDialogOpen(true);
+                                  }}
+                                  data-testid={`button-menu-outfit-${group.group_id}`}
+                                >
+                                  <Shirt className="h-4 w-4 mr-2" />
+                                  Change Outfit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={async () => {
+                                    const confirmed = await confirm({
+                                      title: "Delete Avatar Group",
+                                      description: "Delete this avatar group? This cannot be undone.",
+                                      confirmText: "Delete",
+                                      variant: "destructive",
+                                    });
+                                    if (confirmed) {
+                                      deleteGroupMutation.mutate(group.group_id);
+                                    }
+                                  }}
+                                  className="text-red-600 focus:text-red-600"
+                                  data-testid={`button-menu-delete-${group.group_id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
 
                         {/* Training Progress - Compact */}
@@ -2588,11 +2776,11 @@ export function PhotoAvatarManager() {
                                     setSelectedGroupForEdit(group);
                                     setEditDialogOpen(true);
                                   }}
-                                  data-testid={`button-edit-look-${group.group_id}`}
+                                  data-testid={`button-change-outfit-${group.group_id}`}
                                   className="border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/10 h-7 text-[10px] px-2"
                                 >
-                                  <Edit className="w-3 h-3 mr-1" />
-                                  Edit
+                                  <Shirt className="w-3 h-3 mr-1" />
+                                  Change Outfit
                                 </Button>
                               </>
                             )}
@@ -2648,13 +2836,11 @@ export function PhotoAvatarManager() {
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5 text-[#D4AF37]" />
-              Edit Avatar Look
+              <Shirt className="h-5 w-5 text-[#D4AF37]" />
+              Change Outfit
             </DialogTitle>
             <DialogDescription>
-              Describe the edits you'd like to make to this avatar look. Be
-              specific about changes to appearance, clothing, background, or
-              style.
+              Choose a preset outfit or describe what you'd like your avatar to wear. HeyGen will generate a new look with the selected clothing.
             </DialogDescription>
           </DialogHeader>
 
@@ -2667,12 +2853,38 @@ export function PhotoAvatarManager() {
             </div>
 
             <div className="space-y-2">
+              <Label>Quick Outfit Presets</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {OUTFIT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setEditPrompt(preset.prompt)}
+                    className={`p-2 rounded-lg border text-left transition-all hover:border-[#D4AF37] hover:bg-[#D4AF37]/5 ${
+                      editPrompt === preset.prompt ? 'border-[#D4AF37] bg-[#D4AF37]/10' : 'border-gray-200 dark:border-gray-700'
+                    }`}
+                    data-testid={`button-preset-${preset.label.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <span className="text-lg">{preset.icon}</span>
+                    <p className="text-xs font-medium mt-1">{preset.label}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 my-2">
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+              <span className="text-xs text-gray-400">or describe your own</span>
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="edit-prompt">
-                Describe the edits you'd like to make
+                Describe the outfit
               </Label>
               <Textarea
                 id="edit-prompt"
-                placeholder="Example: professional business suit, office background, confident expression..."
+                placeholder="Describe the outfit: e.g., navy blazer with white shirt, or casual polo with khakis..."
                 value={editPrompt}
                 onChange={(e) => setEditPrompt(e.target.value)}
                 rows={4}
@@ -2772,8 +2984,204 @@ export function PhotoAvatarManager() {
               ) : (
                 <>
                   <Wand2 className="w-4 h-4 mr-2" />
-                  Generate New Look
+                  Generate Outfit
                 </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate AI Enhanced Look Dialog */}
+      <Dialog open={aiLookDialogOpen} onOpenChange={(open) => {
+        setAiLookDialogOpen(open);
+        if (!open) {
+          setAiLookFile(null);
+          setAiLookFilePreview(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-[#D4AF37]" />
+              Generate New Look
+            </DialogTitle>
+            <DialogDescription>
+              Create a new appearance for your selected avatar with different outfits and styles
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded-lg p-3 flex items-center gap-2">
+            <Clock className="h-4 w-4 text-[#D4AF37]" />
+            <span className="text-sm"><strong>Processing time:</strong> 2-3 minutes. You can close this modal and continue working.</span>
+          </div>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="font-semibold">Source</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={aiLookSource === "upload" ? "default" : "outline"}
+                  onClick={() => setAiLookSource("upload")}
+                  className={aiLookSource === "upload" ? "bg-[#D4AF37] hover:bg-[#B8860B] text-black" : ""}
+                  data-testid="button-source-upload"
+                >
+                  Use staged photo
+                </Button>
+                <Button
+                  type="button"
+                  variant={aiLookSource === "existing" ? "default" : "outline"}
+                  onClick={() => setAiLookSource("existing")}
+                  className={aiLookSource === "existing" ? "bg-[#D4AF37] hover:bg-[#B8860B] text-black" : ""}
+                  data-testid="button-source-existing"
+                >
+                  Use existing avatar
+                </Button>
+              </div>
+            </div>
+
+            {aiLookSource === "upload" ? (
+              <div className="space-y-2">
+                <input
+                  type="file"
+                  ref={aiLookFileRef}
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  data-testid="input-ai-look-file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setAiLookFile(file);
+                      const reader = new FileReader();
+                      reader.onload = () => setAiLookFilePreview(reader.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+                {aiLookFilePreview ? (
+                  <div className="relative">
+                    <img src={aiLookFilePreview} alt="Preview" className="w-full h-40 object-cover rounded-lg border" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-2 right-2 h-6 w-6 p-0 bg-black/50 hover:bg-black/70 text-white rounded-full"
+                      onClick={() => { setAiLookFile(null); setAiLookFilePreview(null); }}
+                      data-testid="button-remove-ai-look-file"
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div
+                    className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center cursor-pointer hover:border-[#D4AF37] transition-colors"
+                    onClick={() => aiLookFileRef.current?.click()}
+                    data-testid="dropzone-ai-look"
+                  >
+                    <Upload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                    <p className="text-sm text-muted-foreground">Click to upload a photo</p>
+                    <p className="text-xs text-muted-foreground mt-1">JPEG, PNG, WebP • Max 50MB</p>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">Using your latest staged photo by default.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Select Avatar Group</Label>
+                <Select value={aiLookSelectedGroup} onValueChange={setAiLookSelectedGroup}>
+                  <SelectTrigger data-testid="select-ai-look-group">
+                    <SelectValue placeholder="Choose an avatar..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {avatarGroups.map((group: AvatarGroup) => (
+                      <SelectItem key={group.group_id} value={group.group_id}>
+                        {group.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="font-semibold">Describe the Look</Label>
+              <Input
+                placeholder="e.g., White shirt front-facing, Professional attire, Casual outfit"
+                value={aiLookPrompt}
+                onChange={(e) => setAiLookPrompt(e.target.value)}
+                data-testid="input-ai-look-prompt"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-semibold">Orientation</Label>
+              <Select value={aiLookOrientation} onValueChange={(v: any) => setAiLookOrientation(v)}>
+                <SelectTrigger data-testid="select-ai-look-orientation">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="square">Square</SelectItem>
+                  <SelectItem value="horizontal">Horizontal</SelectItem>
+                  <SelectItem value="vertical">Vertical</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-semibold">Pose</Label>
+              <Select value={aiLookPose} onValueChange={(v: any) => setAiLookPose(v)}>
+                <SelectTrigger data-testid="select-ai-look-pose">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="half_body">Half Body</SelectItem>
+                  <SelectItem value="close_up">Close Up</SelectItem>
+                  <SelectItem value="full_body">Full Body</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-semibold">Style</Label>
+              <Select value={aiLookStyle} onValueChange={setAiLookStyle}>
+                <SelectTrigger data-testid="select-ai-look-style">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Realistic">Realistic</SelectItem>
+                  <SelectItem value="Cinematic">Cinematic</SelectItem>
+                  <SelectItem value="Pixar">Pixar</SelectItem>
+                  <SelectItem value="Vintage">Vintage</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAiLookDialogOpen(false);
+                setAiLookFile(null);
+                setAiLookFilePreview(null);
+              }}
+              data-testid="button-cancel-ai-look"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAiLookGenerate}
+              disabled={aiLookGenerating || (aiLookSource === "upload" && !aiLookFile) || (aiLookSource === "existing" && !aiLookSelectedGroup)}
+              className="bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:brightness-110 text-black"
+              data-testid="button-ok-ai-look"
+            >
+              {aiLookGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                "OK"
               )}
             </Button>
           </div>
@@ -2834,6 +3242,7 @@ export function PhotoAvatarManager() {
                   <SelectItem value="hailuo_2">Hailuo 2</SelectItem>
                   <SelectItem value="veo2">Veo 2</SelectItem>
                   <SelectItem value="seedance_lite">Seedance Lite</SelectItem>
+                  <SelectItem value="kling">Kling</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
@@ -3077,182 +3486,90 @@ export function PhotoAvatarManager() {
           </CardContent>
         </Card>
       )}
+    </div>
 
-      {/* Generate Looks Dialog */}
-      <Dialog open={showGenerateLooksDialog} onOpenChange={setShowGenerateLooksDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Generate Looks for {selectedGroupForGenerateLooks?.groupName}</DialogTitle>
-            <DialogDescription>
-              Use AI to generate new looks for this avatar with custom appearance
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {generateLooksStatus === "success" ? (
-              <Alert className="bg-green-50 border-green-200">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-800">
-                  Successfully started generating a new look! Check back in a few moments.
-                </AlertDescription>
-              </Alert>
-            ) : generateLooksStatus === "error" ? (
-              <Alert className="bg-red-50 border-red-200">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <AlertDescription className="text-red-800">
-                  Failed to generate look. Please try again.
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="look-prompt">Appearance Description *</Label>
-                  <Textarea
-                    id="look-prompt"
-                    placeholder="e.g., Professional business suit, office setting, confident smile"
-                    value={generateLooksPrompt}
-                    onChange={(e) => setGenerateLooksPrompt(e.target.value)}
-                    className="min-h-[80px]"
-                    maxLength={1000}
-                  />
-                  <p className="text-xs text-gray-500">
-                    Describe the look's clothing, mood, lighting, and setting ({generateLooksPrompt.length}/1000)
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="look-orientation">Orientation</Label>
-                    <Select
-                      value={generateLooksOrientation}
-                      onValueChange={(v: any) => setGenerateLooksOrientation(v)}
-                    >
-                      <SelectTrigger id="look-orientation">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="square">Square</SelectItem>
-                        <SelectItem value="horizontal">Horizontal</SelectItem>
-                        <SelectItem value="vertical">Vertical</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="look-pose">Pose</Label>
-                    <Select
-                      value={generateLooksPose}
-                      onValueChange={(v: any) => setGenerateLooksPose(v)}
-                    >
-                      <SelectTrigger id="look-pose">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="half_body">Half Body</SelectItem>
-                        <SelectItem value="close_up">Close Up</SelectItem>
-                        <SelectItem value="full_body">Full Body</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="look-style">Style</Label>
-                  <Select
-                    value={generateLooksStyle}
-                    onValueChange={setGenerateLooksStyle}
-                  >
-                    <SelectTrigger id="look-style">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Realistic">Realistic</SelectItem>
-                      <SelectItem value="Pixar">Pixar</SelectItem>
-                      <SelectItem value="Cinematic">Cinematic</SelectItem>
-                      <SelectItem value="Vintage">Vintage</SelectItem>
-                      <SelectItem value="Noir">Noir</SelectItem>
-                      <SelectItem value="Cyberpunk">Cyberpunk</SelectItem>
-                      <SelectItem value="Unspecified">Unspecified</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowGenerateLooksDialog(false);
-                  setGenerateLooksPrompt("");
-                  setGenerateLooksStatus("idle");
-                }}
-                disabled={generateLooksStatus === "generating"}
-              >
-                {generateLooksStatus === "success" ? "Close" : "Cancel"}
-              </Button>
-              {generateLooksStatus !== "success" && (
-                <Button
-                  onClick={async () => {
-                    if (!selectedGroupForGenerateLooks || !generateLooksPrompt.trim()) return;
-                    
-                    setGenerateLooksStatus("generating");
-                    
-                    try {
-                      const response = await fetch(
-                        `/api/photo-avatars/groups/${selectedGroupForGenerateLooks.groupId}/generate-looks`,
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            configs: [{
-                              prompt: generateLooksPrompt,
-                              orientation: generateLooksOrientation,
-                              pose: generateLooksPose,
-                              style: generateLooksStyle,
-                              label: "Custom Look",
-                              name: "Custom Look"
-                            }]
-                          }),
-                          credentials: "include",
-                        }
-                      );
-                      
-                      if (response.ok) {
-                        setGenerateLooksStatus("success");
-                        queryClient.invalidateQueries({ queryKey: ["/api/photo-avatars/groups"] });
-                        toast({
-                          title: "Look generation started!",
-                          description: `Generating new look for ${selectedGroupForGenerateLooks.groupName}. This may take a few moments.`,
-                        });
-                      } else {
-                        setGenerateLooksStatus("error");
-                      }
-                    } catch (error) {
-                      console.error("Generation error:", error);
-                      setGenerateLooksStatus("error");
-                    }
-                  }}
-                  disabled={!generateLooksPrompt.trim() || generateLooksStatus === "generating"}
-                  className="bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-white"
-                >
-                  {generateLooksStatus === "generating" ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Generate Look
-                    </>
-                  )}
-                </Button>
-              )}
+    {allLooks.length > 0 && (
+      <Card data-testid="card-generated-looks">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Image className="w-5 h-5 text-[#D4AF37]" />
+            Generated Looks
+          </CardTitle>
+          <CardDescription>
+            All AI-generated avatar looks across your groups
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingAllLooks ? (
+            <div className="text-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto" />
+              <p className="text-sm text-gray-500 mt-2">Loading looks...</p>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {allLooks.map((look: any) => (
+                <div
+                  key={look.id}
+                  className="group relative rounded-lg overflow-hidden border border-gray-200 hover:border-[#D4AF37] transition-colors"
+                  data-testid={`card-look-${look.id}`}
+                >
+                  <div className="aspect-square bg-gray-100">
+                    <img
+                      src={look.photoUrl}
+                      alt={look.poseType || "Avatar look"}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="p-2">
+                    <p className="text-xs font-medium text-gray-800 truncate">
+                      {look.poseType || "Look"}
+                    </p>
+                    <p className="text-[10px] text-gray-500 truncate">
+                      {look.groupName || look.groupId}
+                    </p>
+                    {look.processingStatus && (
+                      <Badge
+                        variant={look.processingStatus === "completed" ? "default" : "secondary"}
+                        className="mt-1 text-[10px] px-1 py-0"
+                        data-testid={`badge-status-${look.id}`}
+                      >
+                        {look.processingStatus}
+                      </Badge>
+                    )}
+                    {look.photoUrl && look.processingStatus === "completed" && (
+                      <Button
+                        size="sm"
+                        className="w-full mt-2 bg-[#D4AF37] hover:bg-[#C4A030] text-white text-[10px] h-7"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          useLookForVideoMutation.mutate(look);
+                        }}
+                        disabled={useLookForVideoMutation.isPending && useLookPendingId === look.id}
+                        data-testid={`button-use-look-video-${look.id}`}
+                      >
+                        {useLookForVideoMutation.isPending && useLookPendingId === look.id ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Preparing...
+                          </>
+                        ) : (
+                          <>
+                            <Video className="h-3 w-3 mr-1" />
+                            Use for Video
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )}
+
     </div>
   );
 }

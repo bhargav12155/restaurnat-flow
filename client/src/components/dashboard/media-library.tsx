@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getAuthHeaders } from "@/lib/authToken";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Check,
@@ -65,6 +66,12 @@ export function MediaLibrary({
   // Fetch media assets
   const { data: mediaAssets = [], isLoading } = useQuery<MediaAsset[]>({
     queryKey: ["/api/media", filter !== "all" ? filter : undefined],
+    queryFn: async () => {
+      const url = filter !== "all" ? `/api/media?type=${filter}` : "/api/media";
+      const res = await fetch(url, { credentials: "include", headers: getAuthHeaders() });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
   });
 
   // Upload mutation
@@ -254,7 +261,7 @@ export function MediaLibrary({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 w-full">
           {filteredAssets.map((asset) => (
             <Card
               key={asset.id}
@@ -285,6 +292,31 @@ export function MediaLibrary({
                         loading="lazy"
                       />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                        <div className="bg-white/90 rounded-full p-2">
+                          <FileVideo className="h-4 w-4 text-primary" />
+                        </div>
+                      </div>
+                    </div>
+                  ) : asset.url ? (
+                    <div className="relative w-full h-full">
+                      <video
+                        src={asset.url}
+                        className="w-full h-full object-cover"
+                        muted
+                        preload="metadata"
+                        playsInline
+                        onMouseEnter={(e) => {
+                          const video = e.currentTarget;
+                          video.currentTime = 0;
+                          video.play().catch(() => {});
+                        }}
+                        onMouseLeave={(e) => {
+                          const video = e.currentTarget;
+                          video.pause();
+                          video.currentTime = 0;
+                        }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none group-hover:bg-black/10 transition-colors">
                         <div className="bg-white/90 rounded-full p-2">
                           <FileVideo className="h-4 w-4 text-primary" />
                         </div>
